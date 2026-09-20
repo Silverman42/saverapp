@@ -177,7 +177,8 @@ test('user model incorporates has roles trait and interacts with permission mode
     $user = User::factory()->admin()->create();
 
     expect($user->permissions)->toBeEmpty();
-    expect($user->roles)->toBeEmpty();
+    expect($user->roles)->toHaveCount(1);
+    expect($user->hasRole('admin'))->toBeTrue();
 
     $permission = Permission::query()->where('name', AdminPermission::AdminsManage->value)->firstOrFail();
     $user->givePermissionTo($permission);

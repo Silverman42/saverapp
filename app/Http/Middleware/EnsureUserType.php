@@ -21,6 +21,12 @@ class EnsureUserType
             abort(403);
         }
 
+        $roles = $user->getRoleNames();
+
+        if ($roles->count() !== 1 || $roles->first() !== $role) {
+            abort(403);
+        }
+
         return $next($request);
     }
 }

@@ -7,6 +7,7 @@ use App\Enums\AccountState;
 use App\Enums\AuthenticatorState;
 use App\Enums\UserType;
 use App\Notifications\Auth\ResetPasswordNotification;
+use App\Services\RoleSynchronizationService;
 use App\Support\IdentityNormalizer;
 use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
@@ -89,6 +90,10 @@ class User extends Authenticatable
      */
     protected static function booted(): void
     {
+        static::created(function (User $user): void {
+            app(RoleSynchronizationService::class)->synchronize($user);
+        });
+
         static::saving(function (User $user): void {
             if (filled($user->email)) {
                 $user->email_normalized = IdentityNormalizer::normalizeEmail($user->email);
@@ -96,6 +101,10 @@ class User extends Authenticatable
         });
 
         static::updating(function (User $user): void {
+            if ($user->isDirty('user_type')) {
+                throw new RuntimeException('Cannot change user_type on an existing user; roles are immutable.');
+            }
+
             $originalUserType = $user->getOriginal('user_type');
             $originalAccountState = $user->getOriginal('account_state');
 
@@ -287,6 +296,16 @@ class User extends Authenticatable
     public function authenticationLocks(): HasMany
     {
         return $this->hasMany(AuthenticationLock::class);
+    }
+
+    /**
+     * Get permission grant history records for this user.
+     *
+     * @return HasMany<PermissionGrantHistory, $this>
+     */
+    public function permissionGrantHistories(): HasMany
+    {
+        return $this->hasMany(PermissionGrantHistory::class);
     }
 
     /**
