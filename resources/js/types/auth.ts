@@ -1,7 +1,10 @@
+export type UserType = 'customer' | 'agent' | 'admin';
+
 export type User = {
     id: number;
     name: string;
     email: string;
+    user_type: UserType;
     avatar?: string;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;

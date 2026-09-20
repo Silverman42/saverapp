@@ -25,7 +25,13 @@ Source: [`01-user-types.md`](./modules/01-user-types.md)
 
 | Task | Specification reference | Status | Evidence or blocker |
 | --- | --- | --- | --- |
-| Translate the user-type, access-boundary, and cross-cutting requirements into implementation tasks. | Sections 4–9 | To Do | — |
+| Translate the user-type, access-boundary, and cross-cutting requirements into implementation tasks. | Sections 4–9 | Completed | Implementation plan established in `docs/v2/implementation_plan/01-user-types.md` and decomposed into verified tasks. |
+| Define string-backed UserType enum and add required users.user_type database column with fail-fast legacy check. | Sections 3, 7, 9.2, 9.5 | Completed | `App\Enums\UserType` defined and `2026_09_20_100328_add_user_type_to_users_table.php` migration with fail-fast check created; verified in `tests/Feature/UserTypeTest.php`. |
+| Configure User model casting and UserFactory states with least-privileged Customer default, and update DatabaseSeeder. | Sections 3, 4, 5, 6, 8 | Completed | `User` casts `user_type` to `UserType`; `UserFactory` defaults to Customer and provides `customer()`, `agent()`, `admin()` states; sample user removed from `DatabaseSeeder`; verified in `tests/Feature/UserTypeTest.php`. |
+| Disable Fortify registration, remove registration actions/views, and eliminate public registration links. | Sections 4.2, 6.5, 8 | Completed | Fortify registration disabled in `config/fortify.php` and `FortifyServiceProvider`; `CreateNewUser` and `Register.vue` deleted; sign-up links removed from `Welcome.vue` and `Login.vue`; verified by route inspection and `tests/Feature/Auth/RegistrationTest.php`. |
+| Update Inertia TypeScript contracts to expose required UserType on authenticated user. | Sections 3, 8 | Completed | `UserType` and required `user_type` added to `resources/js/types/auth.ts`; verified with `npm run types:check` and `npm run build`. |
+| Bootstrap singleton Business profile and initial first-Admin provisioning. | Sections 6.5, 9.1 | Blocked | Awaiting confirmed decisions from Modules 02, 03, 04, 14, and 15. |
+| Enforce resource-level authorization boundaries and separation of duties for Customer, Agent, and Admin actions. | Sections 4.4, 5.4, 6.4, 8 | Blocked | Awaiting confirmed decisions from Modules 02 and 03. |
 
 ## Module 02 — Authentication and Account Access
 
@@ -34,7 +40,19 @@ Dependencies: Modules 01 and 03
 
 | Task | Specification reference | Status | Evidence or blocker |
 | --- | --- | --- | --- |
-| Translate account provisioning, authentication, MFA, recovery, session, and abuse-protection requirements into implementation tasks. | Sections 3–11; `AUTH-001`–`AUTH-063` | To Do | — |
+| Translate account provisioning, authentication, MFA, recovery, session, and abuse-protection requirements into implementation tasks. | Sections 3–11; `AUTH-001`–`AUTH-063` | Completed | Implementation plan established in `docs/v2/implementation_plan/02-authentication.md`; all 63 functional requirements and 80 acceptance criteria are mapped to implementation tasks. |
+| Add normalized email identity and explicit account-access state foundations while preserving historical attribution and isolating temporary authentication restrictions. | Sections 4.2, 6, 9.6; `AUTH-007`, `AUTH-012`, `AUTH-036`, `AUTH-060` | To Do | — |
+| Align shared sign-in with generic failures, account-state gates, role routing, closed registration, password-first authentication, and no passkey bypass. | Sections 2, 4.1, 6; `AUTH-001`, `AUTH-002`, `AUTH-007` | To Do | — |
+| Implement the password policy and role-specific password-reset lifecycle, including token invalidation and post-reset revocation. | Sections 4.3, 7.1–7.7; `AUTH-009`, `AUTH-013`–`AUTH-016` | To Do | — |
+| Implement mandatory Admin/Agent TOTP, authenticator replacement, lost-authenticator handling, hashed recovery codes, replay prevention, and factor throttling. | Sections 5.1–5.13; `AUTH-008`, `AUTH-023`–`AUTH-030` | To Do | — |
+| Implement first-Admin provisioning and Admin, Agent, and Customer invitation and activation lifecycles. | Sections 3.1–3.14; `AUTH-003`–`AUTH-006`, `AUTH-031`–`AUTH-039` | Blocked | Requires Module 03 permissions, Module 04 profile/assignment and registration decisions, Module 05 fee contracts, Module 13 delivery contracts, Module 14 audit contracts, and Module 15 trusted bootstrap data. |
+| Implement dual-confirmation active-account email changes with fresh authentication, reservations, revocation, notification, and audit. | Section 4.4; `AUTH-040`–`AUTH-045` | Blocked | Requires finalized Module 13 security-notification delivery and Module 14 audit/event contracts. |
+| Implement Customer, Agent, Admin, and final-Admin assisted recovery with separation of duties and emergency-key controls. | Section 7.8; `AUTH-017`–`AUTH-022` | Blocked | Requires Module 03 permissions, Module 04 assignment and identity-verification evidence, Module 13 notifications, Module 14 security/audit evidence, and Module 15 bootstrap ownership. |
+| Implement server-authoritative session/device limits, Agent trusted devices, fresh authentication, safe resume destinations, token rotation, and revocation. | Section 8; `AUTH-010`, `AUTH-046`–`AUTH-051`, `AUTH-053`, `AUTH-055` | To Do | — |
+| Integrate account state, permission versions, assignment changes, and session expiry with server authorization and idempotent financial resumption. | Sections 1, 8.5, 8.7, 8.9; `AUTH-007`, `AUTH-049`, `AUTH-052`, `AUTH-054` | Blocked | Requires Module 03 authorization, Module 04 assignment behavior, and owning financial contracts in Modules 05–10. |
+| Implement independent abuse counters, progressive password restrictions, MFA and recovery cooldowns, controlled unlock, and safe security visibility. | Section 9; `AUTH-056`–`AUTH-063` | To Do | — |
+| Integrate mandatory authentication notifications and canonical audit events with secret-safe payloads and permission-scoped visibility. | Sections 3.14, 4.4.6, 5.13, 8.11, 9.9–10; `AUTH-011` and cross-cutting audit clauses | Blocked | Requires Module 03 permission audiences, Module 13 event/delivery/template contracts, and Module 14 canonical event, retention, and security-operation contracts. |
+| Complete end-to-end evidence for every Module 02 acceptance criterion, including concurrency, direct endpoint calls, revocation, redaction, accessibility, and recovery from failure. | Section 12; `AUTH-001`–`AUTH-063` | Blocked | Requires all preceding Module 02 tasks and their cross-module dependencies to be completed. |
 
 ## Module 03 — Roles, Permissions, and Authorization
 
