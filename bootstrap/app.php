@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Middleware\EnforceSessionLimits;
 use App\Http\Middleware\EnsureActiveAccount;
+use App\Http\Middleware\EnsureFreshAuthentication;
 use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -17,17 +19,19 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'saver_resume_destination', 'agent_trusted_device']);
 
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             EnsureActiveAccount::class,
+            EnforceSessionLimits::class,
         ]);
 
         $middleware->alias([
             'role' => EnsureUserType::class,
+            'fresh' => EnsureFreshAuthentication::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

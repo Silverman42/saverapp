@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { BadgeCheck, ChartNoAxesCombined, ShieldCheck } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import { Toaster } from '@/components/ui/sonner';
 import { home } from '@/routes';
 
 defineProps<{
@@ -106,5 +107,6 @@ defineProps<{
                 </div>
             </div>
         </main>
+        <Toaster position="bottom-center" />
     </div>
 </template>

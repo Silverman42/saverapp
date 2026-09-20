@@ -3,17 +3,29 @@ import { Form, Head, setLayoutProps } from '@inertiajs/vue3';
 import { computed, ref, watchEffect } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
     InputOTP,
     InputOTPGroup,
     InputOTPSlot,
 } from '@/components/ui/input-otp';
+import { Label } from '@/components/ui/label';
 import { store } from '@/routes/two-factor/login';
 import type { TwoFactorConfigContent } from '@/types';
 
+const props = withDefaults(
+    defineProps<{
+        isAgent?: boolean;
+    }>(),
+    {
+        isAgent: false,
+    },
+);
+
 const showRecoveryInput = ref<boolean>(false);
 const code = ref<string>('');
+const trustDevice = ref<boolean | 'indeterminate'>(false);
 
 const authConfigContent = computed<TwoFactorConfigContent>(() => {
     if (showRecoveryInput.value) {
@@ -60,6 +72,11 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                 #default="{ errors, processing, clearErrors }"
             >
                 <input type="hidden" name="code" :value="code" />
+                <input
+                    type="hidden"
+                    name="trust_device"
+                    :value="trustDevice === true ? '1' : '0'"
+                />
                 <div
                     class="flex flex-col items-center justify-center space-y-3 text-center"
                 >
@@ -82,6 +99,22 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                     </div>
                     <InputError :message="errors.code" />
                 </div>
+
+                <div v-if="props.isAgent" class="space-y-1 pt-1 text-left">
+                    <div class="flex items-center space-x-2">
+                        <Checkbox id="trust_device" v-model="trustDevice" />
+                        <Label
+                            for="trust_device"
+                            class="text-sm font-normal cursor-pointer select-none"
+                        >
+                            Trust this device for 30 days
+                        </Label>
+                    </div>
+                    <p class="text-muted-foreground text-xs pl-6">
+                        Do not select this on a shared or public device.
+                    </p>
+                </div>
+
                 <Button type="submit" class="w-full" :disabled="processing"
                     >Continue</Button
                 >
@@ -126,6 +159,15 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                     >
                         {{ authConfigContent.buttonText }}
                     </button>
+                </div>
+
+                <div class="border-border border-t pt-4 text-center">
+                    <a
+                        href="/assisted-recovery"
+                        class="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4 transition-colors"
+                    >
+                        Lost access to your authenticator and recovery codes?
+                    </a>
                 </div>
             </Form>
         </template>

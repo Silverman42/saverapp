@@ -2,6 +2,8 @@
 
 namespace App\Concerns;
 
+use App\Models\User;
+use App\Support\PasswordPolicy;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rules\Password;
 
@@ -12,9 +14,9 @@ trait PasswordValidationRules
      *
      * @return array<int, Password|ValidationRule|array<mixed>|string>
      */
-    protected function passwordRules(): array
+    protected function passwordRules(?User $user = null): array
     {
-        return ['required', 'string', Password::default(), 'confirmed'];
+        return ['required', 'string', PasswordPolicy::ruleForUser($user), 'confirmed'];
     }
 
     /**

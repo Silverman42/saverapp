@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
-test('security page is displayed', function () {
+test('security page is displayed for agent with two factor management', function () {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
 
     Features::twoFactorAuthentication([
@@ -13,7 +13,7 @@ test('security page is displayed', function () {
         'confirmPassword' => true,
     ]);
 
-    $user = User::factory()->create();
+    $user = User::factory()->agent()->withTwoFactor()->create();
 
     $this->actingAs($user)
         ->withSession(['auth.password_confirmed_at' => time()])
@@ -21,7 +21,21 @@ test('security page is displayed', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Security')
             ->where('canManageTwoFactor', true)
-            ->where('twoFactorEnabled', false),
+            ->where('twoFactorEnabled', true),
+        );
+});
+
+test('security page disables two factor management for customers', function () {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+
+    $user = User::factory()->customer()->create();
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/Security')
+            ->where('canManageTwoFactor', false),
         );
 });
 
@@ -68,15 +82,15 @@ test('password can be updated', function () {
         ->from(route('security.edit'))
         ->put(route('user-password.update'), [
             'current_password' => 'password',
-            'password' => 'new-password',
-            'password_confirmation' => 'new-password',
+            'password' => 'new-secure-password',
+            'password_confirmation' => 'new-secure-password',
         ]);
 
     $response
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('security.edit'));
 
-    expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
+    expect(Hash::check('new-secure-password', $user->refresh()->password))->toBeTrue();
 });
 
 test('correct password must be provided to update password', function () {
@@ -87,8 +101,8 @@ test('correct password must be provided to update password', function () {
         ->from(route('security.edit'))
         ->put(route('user-password.update'), [
             'current_password' => 'wrong-password',
-            'password' => 'new-password',
-            'password_confirmation' => 'new-password',
+            'password' => 'new-secure-password',
+            'password_confirmation' => 'new-secure-password',
         ]);
 
     $response

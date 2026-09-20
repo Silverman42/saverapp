@@ -4,6 +4,7 @@ use App\Enums\AccountState;
 use App\Models\User;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
+use PragmaRX\Google2FA\Google2FA;
 
 test('login screen can be rendered', function () {
     $response = $this->get(route('login'));
@@ -56,8 +57,10 @@ test('agent with confirmed two factor redirects to two factor challenge and upon
     $response->assertSessionHas('login.id', $agent->id);
     $this->assertGuest();
 
+    $totp = app(Google2FA::class)->getCurrentOtp(decrypt($agent->two_factor_secret));
+
     $twoFactorResponse = $this->post(route('two-factor.login.store'), [
-        'recovery_code' => 'recovery-code-1',
+        'code' => $totp,
     ]);
 
     $this->assertAuthenticatedAs($agent);
@@ -83,8 +86,10 @@ test('admin with confirmed two factor redirects to two factor challenge and upon
     $response->assertSessionHas('login.id', $admin->id);
     $this->assertGuest();
 
+    $totp = app(Google2FA::class)->getCurrentOtp(decrypt($admin->two_factor_secret));
+
     $twoFactorResponse = $this->post(route('two-factor.login.store'), [
-        'recovery_code' => 'recovery-code-1',
+        'code' => $totp,
     ]);
 
     $this->assertAuthenticatedAs($admin);
@@ -159,10 +164,24 @@ test('all credential and account state failures return identical generic error w
     'invited user' => [fn () => User::factory()->invited()->create(), 'password'],
     'suspended user' => [fn () => User::factory()->suspended()->create(), 'password'],
     'deactivated user' => [fn () => User::factory()->deactivated()->create(), 'password'],
-    'mfa setup required user' => [fn () => User::factory()->mfaSetupRequired()->create(), 'password'],
     'password locked user' => [fn () => User::factory()->customer()->temporarilyLocked('password')->create(), 'password'],
-    'agent without confirmed totp' => [fn () => User::factory()->agent()->create(), 'password'],
-    'admin without confirmed totp' => [fn () => User::factory()->admin()->create(), 'password'],
+]);
+
+test('agent or admin without confirmed totp transitions to mfa_setup_required and enters restricted setup session', function (Closure $createUser) {
+    $user = $createUser();
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticatedAs($user);
+    $response->assertRedirect(route('two-factor.enrolment', absolute: false));
+    expect($user->fresh()->account_state)->toBe(AccountState::MfaSetupRequired);
+})->with([
+    'agent without totp' => [fn () => User::factory()->agent()->create()],
+    'admin without totp' => [fn () => User::factory()->admin()->create()],
+    'user already in mfa_setup_required' => [fn () => User::factory()->mfaSetupRequired()->create()],
 ]);
 
 test('non-password temporary lock does not block password sign in', function () {
@@ -209,8 +228,23 @@ test('authenticated session loses access immediately after suspension or deactiv
     'suspended' => AccountState::Suspended,
     'deactivated' => AccountState::Deactivated,
     'invited' => AccountState::Invited,
-    'mfa_setup_required' => AccountState::MfaSetupRequired,
 ]);
+
+test('authenticated session is redirected to enrolment immediately after transitioning to mfa_setup_required', function () {
+    $user = User::factory()->agent()->active()->withTwoFactor()->create();
+
+    $this->actingAs($user);
+
+    $this->get(route('agent.dashboard'))->assertOk();
+
+    $user->account_state = AccountState::MfaSetupRequired;
+    $user->save();
+
+    $response = $this->get(route('agent.dashboard'));
+
+    $response->assertRedirect(route('two-factor.enrolment'));
+    $this->assertAuthenticatedAs($user);
+});
 
 test('passkey and registration endpoints are not available', function () {
     $this->get('/register')->assertNotFound();

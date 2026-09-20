@@ -19,15 +19,25 @@ class EnsureActiveAccount
     {
         $user = $request->user();
 
-        if ($user && $user->account_state !== AccountState::Active) {
-            Auth::guard('web')->logout();
+        if ($user) {
+            if ($user->account_state === AccountState::MfaSetupRequired || $request->session()->get('two_factor_replacement_required', false)) {
+                if ($request->routeIs('two-factor.*') || $request->routeIs('logout')) {
+                    return $next($request);
+                }
 
-            if ($request->hasSession()) {
-                $request->session()->invalidate();
-                $request->session()->regenerateToken();
+                return redirect()->route('two-factor.enrolment');
             }
 
-            return redirect()->route('login');
+            if ($user->account_state !== AccountState::Active) {
+                Auth::guard('web')->logout();
+
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+
+                return redirect()->route('login');
+            }
         }
 
         return $next($request);

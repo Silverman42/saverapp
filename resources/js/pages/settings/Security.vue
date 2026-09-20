@@ -9,10 +9,14 @@ import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
 import type { Props as ManageTwoFactorProps } from '@/components/ManageTwoFactor.vue';
 import ManageTwoFactor from '@/components/ManageTwoFactor.vue';
+import type { SessionItem } from '@/components/ActiveSessions.vue';
+import ActiveSessions from '@/components/ActiveSessions.vue';
 
 // oxfmt-ignore
 type Props = {
     passwordRules: string;
+    activeSessions?: SessionItem[];
+    maxConcurrentDevices?: number;
 } & ManageTwoFactorProps;
 
 const props = defineProps<Props>();
@@ -108,5 +112,13 @@ defineOptions({
         :canManageTwoFactor="canManageTwoFactor"
         :requiresConfirmation="requiresConfirmation"
         :twoFactorEnabled="twoFactorEnabled"
+        :authenticatorState="authenticatorState"
+        :remainingRecoveryCodes="remainingRecoveryCodes"
+        :hasAcknowledgedRecoveryCodes="hasAcknowledgedRecoveryCodes"
+    />
+
+    <ActiveSessions
+        :sessions="props.activeSessions"
+        :maxDevices="props.maxConcurrentDevices"
     />
 </template>

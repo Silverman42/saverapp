@@ -3,8 +3,10 @@
 namespace Database\Factories;
 
 use App\Enums\AccountState;
+use App\Enums\AuthenticatorState;
 use App\Enums\UserType;
 use App\Models\User;
+use App\Models\UserRecoveryCode;
 use App\Support\IdentityNormalizer;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -35,6 +37,7 @@ class UserFactory extends Factory
             'email_normalized' => IdentityNormalizer::normalizeEmail($email),
             'user_type' => UserType::Customer,
             'account_state' => AccountState::Active,
+            'authenticator_state' => AuthenticatorState::NotConfigured,
             'locked_until' => null,
             'lock_category' => null,
             'lock_reason' => null,
@@ -42,7 +45,6 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
             'two_factor_secret' => null,
-            'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
         ];
     }
@@ -151,13 +153,29 @@ class UserFactory extends Factory
 
     /**
      * Indicate that the model has two-factor authentication configured.
+     *
+     * @param  array<int, string>|null  $plainRecoveryCodes
      */
-    public function withTwoFactor(): static
+    public function withTwoFactor(?array $plainRecoveryCodes = null): static
     {
         return $this->state(fn (array $attributes) => [
-            'two_factor_secret' => encrypt('secret'),
-            'two_factor_recovery_codes' => encrypt(json_encode(['recovery-code-1'])),
+            'authenticator_state' => AuthenticatorState::Active,
+            'two_factor_secret' => encrypt('JBSWY3DPEHPK3PXP'),
             'two_factor_confirmed_at' => now(),
-        ]);
+            'recovery_codes_acknowledged_at' => now(),
+        ])->afterCreating(function (User $user) use ($plainRecoveryCodes) {
+            $codes = $plainRecoveryCodes ?? [
+                'code-one', 'code-two', 'code-three', 'code-four', 'code-five',
+                'code-six', 'code-seven', 'code-eight', 'code-nine', 'code-ten',
+            ];
+
+            foreach ($codes as $code) {
+                UserRecoveryCode::create([
+                    'user_id' => $user->id,
+                    'code_hash' => hash('sha256', $code),
+                    'consumed_at' => null,
+                ]);
+            }
+        });
     }
 }

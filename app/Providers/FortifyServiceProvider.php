@@ -2,22 +2,39 @@
 
 namespace App\Providers;
 
+use App\Actions\Fortify\AttemptToAuthenticateWithDeviceLimit;
 use App\Actions\Fortify\AuthenticateUser;
+use App\Actions\Fortify\RedirectIfTwoFactorAuthenticatable;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Auth\Passwords\PasswordResetBroker;
+use App\Enums\AccountState;
+use App\Enums\UserType;
 use App\Http\Responses\LoginResponse;
+use App\Http\Responses\PasswordResetLinkResponse;
 use App\Http\Responses\TwoFactorLoginResponse;
+use App\Models\User;
 use App\Support\IdentityNormalizer;
+use App\Support\PasswordPolicy;
+use Illuminate\Auth\Passwords\PasswordBrokerManager;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Password as PasswordFacade;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use InvalidArgumentException;
+use Laravel\Fortify\Actions\CanonicalizeUsername;
+use Laravel\Fortify\Actions\EnsureLoginIsNotThrottled;
+use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse as FailedPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Contracts\RedirectsIfTwoFactorAuthenticatable;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as SuccessfulPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Http\Controllers\TwoFactorAuthenticatedSessionController;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -28,6 +45,37 @@ class FortifyServiceProvider extends ServiceProvider
     {
         $this->app->singleton(LoginResponseContract::class, LoginResponse::class);
         $this->app->singleton(TwoFactorLoginResponseContract::class, TwoFactorLoginResponse::class);
+        $this->app->singleton(
+            RedirectsIfTwoFactorAuthenticatable::class,
+            RedirectIfTwoFactorAuthenticatable::class
+        );
+        $this->app->singleton(
+            TwoFactorAuthenticatedSessionController::class,
+            \App\Http\Controllers\Auth\TwoFactorAuthenticatedSessionController::class
+        );
+        $this->app->singleton(SuccessfulPasswordResetLinkRequestResponseContract::class, PasswordResetLinkResponse::class);
+        $this->app->singleton(FailedPasswordResetLinkRequestResponseContract::class, PasswordResetLinkResponse::class);
+
+        $this->app->extend('auth.password', function ($service, $app) {
+            return new class($app) extends PasswordBrokerManager
+            {
+                protected function resolve($name)
+                {
+                    $config = $this->getConfig($name);
+
+                    if (is_null($config)) {
+                        throw new InvalidArgumentException("Password resetter [{$name}] is not defined.");
+                    }
+
+                    return new PasswordResetBroker(
+                        $this->createTokenRepository($config),
+                        $this->app['auth']->createUserProvider($config['provider'] ?? null),
+                        $this->app['events'] ?? null,
+                        timeboxDuration: $this->app['config']->get('auth.timebox_duration', 200000),
+                    );
+                }
+            };
+        });
     }
 
     /**
@@ -47,6 +95,16 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::authenticateUsing(fn (Request $request) => app(AuthenticateUser::class)($request));
+
+        Fortify::authenticateThrough(function (Request $request) {
+            return array_filter([
+                config('fortify.limiters.login') ? null : EnsureLoginIsNotThrottled::class,
+                config('fortify.lowercase_usernames') ? CanonicalizeUsername::class : null,
+                Features::enabled(Features::twoFactorAuthentication()) ? RedirectIfTwoFactorAuthenticatable::class : null,
+                AttemptToAuthenticateWithDeviceLimit::class,
+                PrepareAuthenticatedSession::class,
+            ]);
+        });
     }
 
     /**
@@ -59,11 +117,30 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/ResetPassword', [
-            'email' => $request->email,
-            'token' => $request->route('token'),
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
-        ]));
+        Fortify::resetPasswordView(function (Request $request) {
+            $email = (string) $request->query('email', $request->email ?? '');
+            $token = (string) $request->route('token');
+
+            $user = $email !== '' ? User::findByNormalizedEmail($email) : null;
+            $isValidToken = false;
+            $requiresTwoFactor = false;
+
+            if ($user !== null && $user->account_state !== AccountState::Invited) {
+                $isValidToken = PasswordFacade::broker()->tokenExists($user, $token);
+                if ($isValidToken && in_array($user->user_type, [UserType::Agent, UserType::Admin], true) && $user->hasEnabledTwoFactorAuthentication()) {
+                    $requiresTwoFactor = true;
+                }
+            }
+
+            return Inertia::render('auth/ResetPassword', [
+                'email' => $email,
+                'token' => $token,
+                'isValidToken' => $isValidToken,
+                'requiresTwoFactor' => $requiresTwoFactor,
+                'passwordRules' => PasswordPolicy::ruleForUser($user)->toPasswordRulesString(),
+                'userType' => $user?->user_type?->value,
+            ]);
+        });
 
         Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/ForgotPassword', [
             'status' => $request->session()->get('status'),
@@ -73,7 +150,13 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/TwoFactorChallenge'));
+        Fortify::twoFactorChallengeView(function (Request $request) {
+            $user = User::find($request->session()->get('login.id'));
+
+            return Inertia::render('auth/TwoFactorChallenge', [
+                'isAgent' => $user?->user_type === UserType::Agent,
+            ]);
+        });
 
         Fortify::confirmPasswordView(fn () => Inertia::render('auth/ConfirmPassword'));
     }

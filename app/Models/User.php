@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\AccountState;
+use App\Enums\AuthenticatorState;
 use App\Enums\UserType;
 use App\Notifications\Auth\ResetPasswordNotification;
 use App\Support\IdentityNormalizer;
@@ -13,9 +14,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use RuntimeException;
 
@@ -26,14 +29,20 @@ use RuntimeException;
  * @property string $email_normalized
  * @property UserType $user_type
  * @property AccountState $account_state
+ * @property AuthenticatorState $authenticator_state
  * @property Carbon|null $locked_until
  * @property string|null $lock_category
  * @property string|null $lock_reason
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
- * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
+ * @property int|null $two_factor_last_used_timestep
+ * @property string|null $two_factor_pending_secret
+ * @property string|null $two_factor_pending_purpose
+ * @property Carbon|null $two_factor_pending_expires_at
+ * @property int|null $two_factor_pending_last_used_timestep
+ * @property Carbon|null $recovery_codes_acknowledged_at
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -45,11 +54,20 @@ use RuntimeException;
     'password',
     'user_type',
     'account_state',
+    'authenticator_state',
     'locked_until',
     'lock_category',
     'lock_reason',
+    'two_factor_secret',
+    'two_factor_confirmed_at',
+    'two_factor_last_used_timestep',
+    'two_factor_pending_secret',
+    'two_factor_pending_purpose',
+    'two_factor_pending_expires_at',
+    'two_factor_pending_last_used_timestep',
+    'recovery_codes_acknowledged_at',
 ])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_pending_secret', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -121,11 +139,24 @@ class User extends Authenticatable
      */
     public function isTemporarilyLocked(?string $category = null): bool
     {
-        if ($this->locked_until === null || ! $this->locked_until->isFuture()) {
-            return false;
+        if ($this->locked_until !== null && $this->locked_until->isFuture()) {
+            if ($category === null || $this->lock_category === $category) {
+                return true;
+            }
         }
 
-        return $category === null || $this->lock_category === $category;
+        if ($this->exists) {
+            $query = $this->activeLocks();
+            if ($category !== null) {
+                $query->where('lock_category', $category);
+            }
+
+            if ($query->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -144,12 +175,29 @@ class User extends Authenticatable
     /**
      * Clear any temporary lock on the account.
      */
-    public function unlock(): void
+    public function unlock(?string $category = null, ?User $unlockedBy = null, ?string $reason = null): void
     {
-        $this->locked_until = null;
-        $this->lock_category = null;
-        $this->lock_reason = null;
-        $this->save();
+        if ($category === null || $this->lock_category === $category) {
+            $this->locked_until = null;
+            $this->lock_category = null;
+            $this->lock_reason = null;
+            $this->save();
+        }
+
+        if ($this->exists) {
+            $locks = $this->activeLocks();
+            if ($category !== null) {
+                $locks->where('lock_category', $category);
+            }
+            $updateData = [
+                'unlocked_at' => Carbon::now(),
+            ];
+            if ($unlockedBy !== null) {
+                $updateData['unlocked_by_user_id'] = $unlockedBy->id;
+                $updateData['unlock_reason'] = $reason ?? 'Manually unlocked by administrator after identity verification';
+            }
+            $locks->update($updateData);
+        }
     }
 
     /**
@@ -167,9 +215,11 @@ class User extends Authenticatable
     /**
      * Determine if the user is allowed to sign in.
      */
-    public function canSignIn(?string $method = null): bool
+    public function canSignIn(?string $method = null, bool $allowSetupOnly = false): bool
     {
-        if (! $this->account_state->canSignIn()) {
+        $canSign = $this->account_state->canSignIn() || ($allowSetupOnly && $this->account_state->allowsSetupOnly());
+
+        if (! $canSign) {
             return false;
         }
 
@@ -214,6 +264,62 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the user's recovery codes.
+     *
+     * @return HasMany<UserRecoveryCode, $this>
+     */
+    public function recoveryCodes(): HasMany
+    {
+        return $this->hasMany(UserRecoveryCode::class);
+    }
+
+    /**
+     * Get all authentication lock records for this user.
+     *
+     * @return HasMany<AuthenticationLock, $this>
+     */
+    public function authenticationLocks(): HasMany
+    {
+        return $this->hasMany(AuthenticationLock::class);
+    }
+
+    /**
+     * Get active authentication locks for this user.
+     *
+     * @return HasMany<AuthenticationLock, $this>
+     */
+    public function activeLocks(): HasMany
+    {
+        return $this->hasMany(AuthenticationLock::class)
+            ->whereNull('unlocked_at')
+            ->where('locked_until', '>', Carbon::now());
+    }
+
+    /**
+     * Determine if two-factor authentication has been enabled and confirmed.
+     */
+    public function hasEnabledTwoFactorAuthentication(): bool
+    {
+        return ! is_null($this->two_factor_secret) && ! is_null($this->two_factor_confirmed_at);
+    }
+
+    /**
+     * Get the count of unconsumed recovery codes.
+     */
+    public function unconsumedRecoveryCodesCount(): int
+    {
+        return $this->recoveryCodes()->whereNull('consumed_at')->count();
+    }
+
+    /**
+     * Determine if recovery codes have been acknowledged.
+     */
+    public function hasAcknowledgedRecoveryCodes(): bool
+    {
+        return $this->recovery_codes_acknowledged_at !== null;
+    }
+
+    /**
      * Send the password reset notification using a queued notification.
      *
      * @param  string  $token
@@ -221,6 +327,73 @@ class User extends Authenticatable
     public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
     {
         $this->notify(new ResetPasswordNotification($token));
+    }
+
+    /**
+     * Get the trusted device records for the user.
+     *
+     * @return HasMany<AgentTrustedDevice, $this>
+     */
+    public function trustedDevices(): HasMany
+    {
+        return $this->hasMany(AgentTrustedDevice::class);
+    }
+
+    /**
+     * Get maximum permitted concurrent devices for this user type.
+     */
+    public function maxConcurrentDevices(): int
+    {
+        return match ($this->user_type) {
+            UserType::Customer => 5,
+            UserType::Agent => 2,
+            UserType::Admin => 1,
+        };
+    }
+
+    /**
+     * Get inactivity timeout in seconds for this user type.
+     */
+    public function inactivityTimeoutSeconds(): int
+    {
+        return match ($this->user_type) {
+            UserType::Customer => 7 * 86400, // 7 days
+            UserType::Agent => 3600,         // 1 hour
+            UserType::Admin => 1800,         // 30 minutes
+        };
+    }
+
+    /**
+     * Get maximum session lifetime in seconds for this user type.
+     */
+    public function maximumSessionLifetimeSeconds(): int
+    {
+        return match ($this->user_type) {
+            UserType::Customer => 30 * 86400, // 30 days
+            UserType::Agent => 86400,         // 24 hours
+            UserType::Admin => 86400,         // 24 hours
+        };
+    }
+
+    /**
+     * Revoke all database sessions for this user, optionally preserving one.
+     */
+    public function revokeAllSessions(?string $exceptSessionId = null): int
+    {
+        $table = config('session.table', 'sessions');
+
+        return DB::table($table)
+            ->where('user_id', $this->id)
+            ->when($exceptSessionId, fn ($q) => $q->where('id', '!=', $exceptSessionId))
+            ->delete();
+    }
+
+    /**
+     * Revoke all trusted devices for this user.
+     */
+    public function revokeAllTrustedDevices(): int
+    {
+        return $this->trustedDevices()->delete();
     }
 
     /**
@@ -234,8 +407,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
+            'two_factor_last_used_timestep' => 'integer',
+            'two_factor_pending_expires_at' => 'datetime',
+            'two_factor_pending_last_used_timestep' => 'integer',
+            'recovery_codes_acknowledged_at' => 'datetime',
             'user_type' => UserType::class,
             'account_state' => AccountState::class,
+            'authenticator_state' => AuthenticatorState::class,
             'locked_until' => 'datetime',
         ];
     }

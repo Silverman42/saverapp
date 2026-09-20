@@ -2,8 +2,10 @@
 
 namespace App\Actions\Fortify;
 
+use App\Enums\AccountState;
 use App\Enums\UserType;
 use App\Models\User;
+use App\Services\AuthenticationAbuseService;
 use Illuminate\Contracts\Auth\StatefulGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Timebox;
@@ -17,6 +19,7 @@ class AuthenticateUser
     public function __construct(
         protected StatefulGuard $guard,
         protected Timebox $timebox,
+        protected AuthenticationAbuseService $abuseService,
     ) {}
 
     /**
@@ -36,9 +39,18 @@ class AuthenticateUser
 
             $user = User::findByNormalizedEmail($rawEmail);
 
+            // Check if password authentication is currently restricted (AUTH-057, AUTH-060)
+            if ($this->abuseService->isPasswordRestricted($rawEmail, $user, $request)) {
+                $this->abuseService->recordPasswordFailure($rawEmail, $request, $user);
+
+                return null;
+            }
+
             $provider = $this->guard->getProvider();
 
             if (! $user || ! $provider->validateCredentials($user, ['password' => $password])) {
+                $this->abuseService->recordPasswordFailure($rawEmail, $request, $user);
+
                 return null;
             }
 
@@ -46,17 +58,18 @@ class AuthenticateUser
                 $provider->rehashPasswordIfRequired($user, ['password' => $password]);
             }
 
-            if (! $user->canSignIn('password')) {
-                return null;
-            }
-
             if ($user->user_type !== UserType::Customer) {
                 $hasConfirmedTotp = ! empty($user->two_factor_secret)
                     && ! is_null($user->two_factor_confirmed_at);
 
-                if (! $hasConfirmedTotp) {
-                    return null;
+                if (! $hasConfirmedTotp && $user->account_state === AccountState::Active) {
+                    $user->account_state = AccountState::MfaSetupRequired;
+                    $user->save();
                 }
+            }
+
+            if (! $user->canSignIn('password', allowSetupOnly: true)) {
+                return null;
             }
 
             $timebox->returnEarly();
