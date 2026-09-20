@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use RuntimeException;
+use Spatie\Permission\Traits\HasRoles;
 
 /**
  * @property int $id
@@ -71,7 +72,12 @@ use RuntimeException;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
+
+    /**
+     * The guard name for Spatie permissions.
+     */
+    protected string $guard_name = 'web';
 
     /**
      * Flag used to simulate historical attribution presence prior to financial ledger wiring.
@@ -84,7 +90,7 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (User $user): void {
-            if ($user->email !== null) {
+            if (filled($user->email)) {
                 $user->email_normalized = IdentityNormalizer::normalizeEmail($user->email);
             }
         });
