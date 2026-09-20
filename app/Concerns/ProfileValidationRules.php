@@ -3,8 +3,8 @@
 namespace App\Concerns;
 
 use App\Models\User;
+use App\Rules\UniqueNormalizedEmail;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Validation\Rule;
 
 trait ProfileValidationRules
 {
@@ -43,9 +43,7 @@ trait ProfileValidationRules
             'string',
             'email',
             'max:255',
-            $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
+            new UniqueNormalizedEmail($userId),
         ];
     }
 }
