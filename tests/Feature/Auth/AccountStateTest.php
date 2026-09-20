@@ -211,7 +211,7 @@ test('authenticated inertia response serializes account_state and email_normaliz
         'account_state' => AccountState::Active,
     ]);
 
-    $response = $this->actingAs($user)->get(route('dashboard'));
+    $response = $this->actingAs($user)->get(route('customer.dashboard'));
 
     $response->assertOk();
     $response->assertInertia(fn (AssertableInertia $page) => $page

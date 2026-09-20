@@ -33,7 +33,7 @@ test('factory states persist and cast correctly for customer, agent, and admin',
 test('authenticated inertia response serializes user_type as backed string value', function () {
     $user = User::factory()->customer()->create();
 
-    $response = $this->actingAs($user)->get(route('dashboard'));
+    $response = $this->actingAs($user)->get(route('customer.dashboard'));
 
     $response->assertOk();
     $response->assertInertia(fn (AssertableInertia $page) => $page
@@ -45,14 +45,14 @@ test('authenticated inertia response serializes user_type as backed string value
 test('authenticated inertia response serializes agent and admin user types', function () {
     $agent = User::factory()->agent()->create();
     $this->actingAs($agent)
-        ->get(route('dashboard'))
+        ->get(route('agent.dashboard'))
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('auth.user.user_type', 'agent')
         );
 
     $admin = User::factory()->admin()->create();
     $this->actingAs($admin)
-        ->get(route('dashboard'))
+        ->get(route('admin.dashboard'))
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('auth.user.user_type', 'admin')
         );
