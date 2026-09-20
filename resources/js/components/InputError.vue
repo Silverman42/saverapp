@@ -6,7 +6,9 @@ defineProps<{
 
 <template>
     <div v-show="message">
-        <p class="text-sm text-red-600 dark:text-red-500">
+        <p
+            class="text-destructive flex items-center gap-1.5 text-xs font-medium"
+        >
             {{ message }}
         </p>
     </div>

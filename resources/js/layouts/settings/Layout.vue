@@ -29,16 +29,16 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
 </script>
 
 <template>
-    <div class="px-4 py-6">
+    <div class="px-4 py-8 sm:px-6 lg:px-8">
         <Heading
             title="Settings"
             description="Manage your profile and account settings"
         />
 
-        <div class="flex flex-col lg:flex-row lg:space-x-12">
-            <aside class="w-full max-w-xl lg:w-48">
+        <div class="flex flex-col gap-8 lg:flex-row lg:gap-10">
+            <aside class="w-full lg:w-56">
                 <nav
-                    class="flex flex-col space-y-1 space-x-0"
+                    class="border-border bg-card flex flex-col gap-1 rounded-2xl border p-2 shadow-[0_1px_2px_rgba(22,44,58,0.03)]"
                     aria-label="Settings"
                 >
                     <Button
@@ -47,7 +47,10 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
                         variant="ghost"
                         :class="[
                             'w-full justify-start',
-                            { 'bg-muted': isCurrentOrParentUrl(item.href) },
+                            {
+                                'bg-accent text-accent-foreground':
+                                    isCurrentOrParentUrl(item.href),
+                            },
                         ]"
                         as-child
                     >
@@ -61,8 +64,10 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
 
             <Separator class="my-6 lg:hidden" />
 
-            <div class="flex-1 md:max-w-2xl">
-                <section class="max-w-xl space-y-12">
+            <div class="min-w-0 flex-1 md:max-w-3xl">
+                <section
+                    class="border-border bg-card max-w-2xl space-y-12 rounded-2xl border p-5 shadow-[0_1px_2px_rgba(22,44,58,0.03)] sm:p-7"
+                >
                     <slot />
                 </section>
             </div>
