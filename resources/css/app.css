@@ -70,6 +70,19 @@
     ::file-selector-button {
         border-color: var(--color-gray-200, currentColor);
     }
+
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        box-shadow: none !important;
+    }
+
+    :focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--ring) 35%, transparent);
+        outline-offset: 2px;
+    }
 }
 
 .saver-date-picker,

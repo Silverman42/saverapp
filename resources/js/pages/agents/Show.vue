@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
+import { index as agentsIndex, show as agentsShow } from '@/routes/agents';
+import { show as customersShow } from '@/routes/customers';
 import {
     AlertCircle,
     ArrowLeft,
-    Briefcase,
-    Calendar,
     CheckCircle2,
     Clock,
     Lock,
@@ -14,13 +15,15 @@ import {
     ShieldCheck,
     StickyNote,
     User as UserIcon,
-    Users,
     Wallet,
-    XCircle,
 } from '@lucide/vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
+import DirectoryRow from '@/components/directory/DirectoryRow.vue';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     Card,
     CardContent,
@@ -40,7 +43,7 @@ export type AssignedCustomer = {
     name: string;
     operational_status: string;
     operational_status_label: string;
-    account_state: string;
+    account_state: string | null;
     assigned_since: string | null;
 };
 
@@ -71,7 +74,6 @@ export type AgentDetail = {
         restricted_count: number;
         archived_count: number;
         total_active_workload: number;
-        customers: AssignedCustomer[];
     };
     invitation_and_access: {
         account_state: string;
@@ -95,9 +97,26 @@ export type AgentDetail = {
     };
 };
 
+export type PaginatedAssignedCustomers = {
+    data: AssignedCustomer[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    next_page_url: string | null;
+    prev_page_url: string | null;
+};
+
+type AssignmentFilters = {
+    search: string;
+    operational_status: string;
+    per_page: number;
+};
+
 const props = defineProps<{
     agent: AgentDetail;
     viewer_type: string;
+    assigned_customers: PaginatedAssignedCustomers;
+    assignment_filters: AssignmentFilters;
 }>();
 
 defineOptions({
@@ -109,7 +128,7 @@ defineOptions({
             },
             {
                 title: 'Agents',
-                href: '/agents',
+                href: agentsIndex(),
             },
         ],
     },
@@ -144,6 +163,31 @@ const getAccountBadgeVariant = (state: string) => {
             return 'secondary';
     }
 };
+
+const assignmentFiltersOpen = ref(false);
+const assignmentFilterForm = reactive<AssignmentFilters>({ ...props.assignment_filters });
+
+watch(
+    () => props.assignment_filters,
+    (filters) => Object.assign(assignmentFilterForm, filters),
+);
+
+const activeAssignmentFilterCount = computed(() => {
+    return assignmentFilterForm.operational_status && assignmentFilterForm.operational_status !== 'all' ? 1 : 0;
+});
+
+const applyAssignmentFilters = (): void => {
+    const query: Record<string, string | number> = {};
+    if (assignmentFilterForm.search) query.assignments_search = assignmentFilterForm.search;
+    if (assignmentFilterForm.operational_status && assignmentFilterForm.operational_status !== 'all') query.assignments_operational_status = assignmentFilterForm.operational_status;
+    if (assignmentFilterForm.per_page !== 10) query.assignments_per_page = assignmentFilterForm.per_page;
+    router.get(agentsShow(props.agent.id, { query }).url, {}, { preserveState: true, preserveScroll: true, replace: true });
+};
+
+const resetAssignmentFilters = (): void => {
+    Object.assign(assignmentFilterForm, { search: '', operational_status: '', per_page: 10 });
+    applyAssignmentFilters();
+};
 </script>
 
 <template>
@@ -155,7 +199,7 @@ const getAccountBadgeVariant = (state: string) => {
             class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
         >
             <div class="flex items-center gap-4">
-                <Link v-if="viewer_type === 'admin'" href="/agents">
+                <Link v-if="viewer_type === 'admin'" :href="agentsIndex().url">
                     <Button variant="outline" size="icon" class="h-9 w-9">
                         <ArrowLeft class="h-4 w-4" />
                     </Button>
@@ -350,133 +394,28 @@ const getAccountBadgeVariant = (state: string) => {
             </CardContent>
         </Card>
 
-        <!-- Current Assignments & Workload Breakdown -->
-        <Card>
-            <CardHeader class="pb-3">
-                <div
-                    class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                    <div>
-                        <CardTitle
-                            class="flex items-center gap-2 text-base font-semibold"
-                        >
-                            <Users class="h-4 w-4" /> Assigned Customer Workload
-                        </CardTitle>
-                        <CardDescription>
-                            Summary of customers currently assigned to this
-                            agent.
-                        </CardDescription>
-                    </div>
-                    <!-- Workload Metrics -->
-                    <div class="flex flex-wrap gap-2 text-xs">
-                        <span
-                            class="bg-primary/10 text-primary rounded px-2.5 py-1 font-medium"
-                        >
-                            {{ agent.assignments_summary.active_count }} Active
-                        </span>
-                        <span
-                            class="bg-muted text-muted-foreground rounded px-2.5 py-1"
-                        >
-                            {{ agent.assignments_summary.inactive_count }}
-                            Inactive
-                        </span>
-                        <span
-                            class="rounded bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600"
-                        >
-                            {{ agent.assignments_summary.restricted_count }}
-                            Restricted
-                        </span>
-                        <span
-                            class="bg-destructive/10 text-destructive rounded px-2.5 py-1 font-medium"
-                        >
-                            {{ agent.assignments_summary.archived_count }}
-                            Archived (Separated)
-                        </span>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div
-                    v-if="agent.assignments_summary.customers.length === 0"
-                    class="text-muted-foreground py-6 text-center text-sm italic"
-                >
-                    No customers currently assigned to this agent.
-                </div>
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead
-                            class="bg-muted/40 text-muted-foreground border-b text-xs uppercase"
-                        >
-                            <tr>
-                                <th class="px-4 py-2.5">Customer</th>
-                                <th class="px-4 py-2.5">Operational Status</th>
-                                <th class="px-4 py-2.5">Account State</th>
-                                <th class="px-4 py-2.5">Assigned Since</th>
-                                <th class="px-4 py-2.5 text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y text-xs">
-                            <tr
-                                v-for="cust in agent.assignments_summary
-                                    .customers"
-                                :key="cust.id"
-                                class="hover:bg-muted/50 transition-colors"
-                            >
-                                <td class="px-4 py-2.5">
-                                    <div class="text-foreground font-medium">
-                                        {{ cust.name }}
-                                    </div>
-                                    <div
-                                        class="text-muted-foreground font-mono text-[11px]"
-                                    >
-                                        {{ cust.id }}
-                                    </div>
-                                </td>
-                                <td class="px-4 py-2.5">
-                                    <Badge
-                                        :variant="
-                                            getOperationalBadgeVariant(
-                                                cust.operational_status,
-                                            )
-                                        "
-                                        class="text-[11px]"
-                                    >
-                                        {{ cust.operational_status_label }}
-                                    </Badge>
-                                </td>
-                                <td class="px-4 py-2.5">
-                                    <span
-                                        class="text-muted-foreground capitalize"
-                                        >{{
-                                            cust.account_state
-                                                ? cust.account_state.replace(
-                                                      '_',
-                                                      ' ',
-                                                  )
-                                                : 'Unknown'
-                                        }}</span
-                                    >
-                                </td>
-                                <td class="text-muted-foreground px-4 py-2.5">
-                                    {{ cust.assigned_since || 'N/A' }}
-                                </td>
-                                <td class="px-4 py-2.5 text-right">
-                                    <Link :href="`/customers/${cust.id}`">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            class="h-7 text-xs"
-                                        >
-                                            <span>View</span>
-                                        </Button>
-                                    </Link>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </CardContent>
-        </Card>
+        <DirectoryPanel
+            title="Assigned customers"
+            :description="`${assigned_customers.total} current customer${assigned_customers.total === 1 ? '' : 's'} assigned to this agent.`"
+            :search-value="assignmentFilterForm.search"
+            search-placeholder="Search assigned customers"
+            :filters-open="assignmentFiltersOpen"
+            :active-filter-count="activeAssignmentFilterCount"
+            @update:search-value="assignmentFilterForm.search = $event"
+            @submit-search="applyAssignmentFilters"
+            @toggle-filters="assignmentFiltersOpen = !assignmentFiltersOpen"
+            @reset-filters="resetAssignmentFilters"
+        >
+            <template #filters>
+                <div class="w-fit space-y-1.5"><Label for="assignment-status" class="text-xs">Operational status</Label><Select v-model="assignmentFilterForm.operational_status" @update:model-value="applyAssignmentFilters"><SelectTrigger id="assignment-status"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="restricted">Restricted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent></Select></div>
+            </template>
+            <template #filter-summary><p class="text-muted-foreground text-xs">{{ assigned_customers.total }} current customer{{ assigned_customers.total === 1 ? '' : 's' }} match the current filters.</p></template>
+
+            <div class="mb-5 flex flex-wrap gap-2 text-xs"><Badge variant="default">{{ agent.assignments_summary.active_count }} Active</Badge><Badge variant="secondary">{{ agent.assignments_summary.inactive_count }} Inactive</Badge><Badge variant="secondary">{{ agent.assignments_summary.restricted_count }} Restricted</Badge><Badge variant="destructive">{{ agent.assignments_summary.archived_count }} Archived</Badge></div>
+            <div v-if="assigned_customers.data.length === 0" class="text-muted-foreground py-10 text-center text-sm">No customers currently assigned to this agent match this view.</div>
+            <div v-else class="space-y-3"><DirectoryRow v-for="customer in assigned_customers.data" :key="customer.id"><div class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(0,1fr))_auto]"><div><p class="text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground text-xs">{{ customer.id }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Operational status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Account state</p><p class="mt-1 text-sm capitalize">{{ customer.account_state?.replace('_', ' ') || 'Unknown' }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Assigned since</p><p class="mt-1 text-sm">{{ customer.assigned_since || '—' }}</p></div><Link :href="customersShow(customer.id).url"><Button variant="outline" size="sm">View</Button></Link></div><div class="md:hidden"><div class="flex items-start justify-between gap-3"><div><p class="text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground text-xs">{{ customer.id }}</p></div><Link :href="customersShow(customer.id).url"><Button variant="outline" size="sm">View</Button></Link></div><div class="mt-4 grid grid-cols-2 gap-4 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Account</p><p class="mt-1 capitalize">{{ customer.account_state?.replace('_', ' ') || 'Unknown' }}</p></div><div class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Assigned since</p><p class="mt-1">{{ customer.assigned_since || '—' }}</p></div></div></div></DirectoryRow></div>
+            <template #footer><div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="assignmentFilterForm.per_page" @update:model-value="applyAssignmentFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="10">10</SelectItem><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem></SelectContent></Select> per page</div><div class="flex items-center gap-3"><span class="text-muted-foreground text-xs">Page {{ assigned_customers.current_page }} of {{ assigned_customers.last_page }}</span><div class="flex gap-2"><Link v-if="assigned_customers.prev_page_url" :href="assigned_customers.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm">Previous</Button></Link><Button v-else variant="outline" size="sm" disabled>Previous</Button><Link v-if="assigned_customers.next_page_url" :href="assigned_customers.next_page_url" preserve-state preserve-scroll><Button size="sm">Next</Button></Link><Button v-else size="sm" disabled>Next</Button></div></div></div></template>
+        </DirectoryPanel>
 
         <!-- Personal & Engagement Details + Internal Notes Grid -->
         <div class="grid grid-cols-1 gap-6 md:grid-cols-2">

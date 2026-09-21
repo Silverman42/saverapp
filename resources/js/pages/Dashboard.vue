@@ -121,7 +121,10 @@ const refreshDashboard = (): void => {
             </div>
         </div>
 
-        <section aria-labelledby="dashboard-metrics-title">
+        <section
+            aria-labelledby="dashboard-metrics-title"
+            class="bg-card rounded-3xl border border-border p-5 sm:p-8"
+        >
             <h2 id="dashboard-metrics-title" class="sr-only">
                 Dashboard metrics
             </h2>

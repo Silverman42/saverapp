@@ -49,6 +49,7 @@ class CustomerDirectoryController extends Controller
             'sort' => ['nullable', 'string', 'in:created_at,name,customer_id'],
             'direction' => ['nullable', 'string', 'in:asc,desc'],
             'per_page' => ['nullable', 'integer', 'in:25,50,100'],
+            'overview_period' => ['nullable', 'string', 'in:all,today,week,month'],
         ]);
 
         if (filled($validated['registered_from'] ?? null) && filled($validated['registered_to'] ?? null)) {
@@ -59,7 +60,26 @@ class CustomerDirectoryController extends Controller
             }
         }
 
-        // 2. Base scoped query
+        // 2. Module overview is intentionally independent from directory filters.
+        $overviewPeriod = $validated['overview_period'] ?? 'all';
+        [$overviewStart, $overviewEnd] = $this->overviewPeriodBounds($overviewPeriod);
+        $overviewQuery = $resourceScopeService->forCustomers($viewer);
+
+        if ($overviewStart !== null && $overviewEnd !== null) {
+            $overviewQuery->whereBetween('customer_profiles.created_at', [$overviewStart, $overviewEnd]);
+        }
+
+        $overview = [
+            'total' => (clone $overviewQuery)->count(),
+            'active' => (clone $overviewQuery)
+                ->where('operational_status', CustomerStatus::Active->value)
+                ->count(),
+            'restricted' => (clone $overviewQuery)
+                ->where('operational_status', CustomerStatus::Restricted->value)
+                ->count(),
+        ];
+
+        // 3. Base scoped query
         $query = $resourceScopeService->forCustomers($viewer)
             ->with(['user', 'currentAssignment.agentProfile.user']);
 
@@ -267,6 +287,25 @@ class CustomerDirectoryController extends Controller
             ],
             'available_agents' => $availableAgents,
             'viewer_type' => $viewer->user_type->value,
+            'overview' => $overview,
+            'overview_period' => $overviewPeriod,
         ]);
+    }
+
+    /**
+     * Resolve a Lagos-local registration period to its inclusive UTC bounds.
+     *
+     * @return array{0: Carbon|null, 1: Carbon|null}
+     */
+    private function overviewPeriodBounds(string $period): array
+    {
+        $now = now('Africa/Lagos');
+
+        return match ($period) {
+            'today' => [$now->copy()->startOfDay()->setTimezone('UTC'), $now->copy()->endOfDay()->setTimezone('UTC')],
+            'week' => [$now->copy()->startOfWeek()->setTimezone('UTC'), $now->copy()->endOfWeek()->setTimezone('UTC')],
+            'month' => [$now->copy()->startOfMonth()->setTimezone('UTC'), $now->copy()->endOfMonth()->setTimezone('UTC')],
+            default => [null, null],
+        };
     }
 }

@@ -27,8 +27,8 @@ The canonical implementation lives in `resources/css/app.css` and is exposed thr
 
 - Font: Figtree, with the declared system sans-serif fallback stack.
 - Base radius: `0.875rem`; primary panels generally use `rounded-2xl` or `rounded-3xl`.
-- Borders: one-pixel cool-gray outlines. Avoid heavy shadows.
-- Elevation: low-contrast, wide shadows reserved for menus, dialogs, and key auth surfaces.
+- Borders: one-pixel cool-gray outlines define every surface.
+- Elevation: do not use shadows. Separate cards, menus, dialogs, and authentication surfaces with borders, spacing, and surface color.
 - Icons: Lucide through `@lucide/vue`; default UI icon size is 16–20px with a 1.8–2.2px stroke.
 
 ## Application shell
@@ -57,10 +57,12 @@ The canonical implementation lives in `resources/css/app.css` and is exposed thr
 
 ### Tables and filters
 
-- Table and directory filter fields use a `flex flex-row flex-wrap gap-4` group.
-- Each direct filter control uses `w-fit` without forced growth, retaining its control's natural width when rows wrap.
-- Input, Select, and DatePicker controls use a 44px default height (`h-11`).
-- Use the shared `@/components/ui/date-picker` for every date selection. It displays `DD/MM/YYYY` and emits `YYYY-MM-DD` for application forms and filters.
+- Every directory and data table lives in a single bordered, rounded panel. Its header holds the table title, an always-visible search input, and a Filter button.
+- Filter controls are hidden by default and revealed by the Filter button. The button shows the count of active non-search filters; Reset clears search and every filter.
+- Desktop records render as spaced, bordered rows with a concise uppercase label above each value. Mobile records become compact bordered cards with a two-column field grid. Use a pale accent background and border for hover and keyboard focus.
+- Put the rows-per-page selector and previous/next pagination in the panel footer. Changing a search, filter, or page size returns to the first page and preserves the selected overview period.
+- Table and directory filter fields use a `flex flex-row flex-wrap gap-4` group. Each direct filter control uses `w-fit` without forced growth, retaining its control's natural width when rows wrap.
+- Input, Select, and DatePicker controls use a 44px default height (`h-11`). Use the shared `@/components/ui/date-picker` for every date selection. It displays `DD/MM/YYYY` and emits `YYYY-MM-DD` for application forms and filters.
 
 ## Authentication layout
 

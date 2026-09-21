@@ -9,6 +9,7 @@ use App\Models\CustomerAssignment;
 use App\Models\User;
 use App\Services\AgentEligibilityService;
 use App\Services\ResourceScopeService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -42,6 +43,11 @@ class AgentProfileController extends Controller
         Gate::authorize('view', $agentProfile);
 
         $user = $agentProfile->user;
+        $assignmentFilters = $request->validate([
+            'assignments_search' => ['nullable', 'string', 'max:100'],
+            'assignments_operational_status' => ['nullable', 'string', 'in:active,inactive,restricted,archived,all'],
+            'assignments_per_page' => ['nullable', 'integer', 'in:10,25,50'],
+        ]);
 
         // 2. Readiness evaluation
         $canRead = $agentEligibilityService->evaluate($agentProfile, AgentEligibilityCapability::ReadAssignedCustomers);
@@ -59,7 +65,6 @@ class AgentProfileController extends Controller
         $inactiveCount = 0;
         $restrictedCount = 0;
         $archivedCount = 0;
-        $assignedCustomerList = [];
 
         foreach ($currentAssignments as $assignment) {
             $customer = $assignment->customerProfile;
@@ -74,15 +79,46 @@ class AgentProfileController extends Controller
                 CustomerStatus::Archived => $archivedCount++,
             };
 
-            $assignedCustomerList[] = [
-                'id' => $customer->customer_id,
-                'name' => $customer->user?->name ?? 'Unknown',
-                'operational_status' => $customer->operational_status->value,
-                'operational_status_label' => ucfirst($customer->operational_status->value),
-                'account_state' => $customer->user?->account_state?->value,
-                'assigned_since' => $assignment->effective_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
-            ];
         }
+
+        $assignedCustomerQuery = CustomerAssignment::query()
+            ->where('agent_profile_id', $agentProfile->id)
+            ->where('is_current', 1)
+            ->with(['customerProfile.user']);
+        $assignmentsSearch = trim((string) ($assignmentFilters['assignments_search'] ?? ''));
+
+        if ($assignmentsSearch !== '') {
+            $assignedCustomerQuery->whereHas('customerProfile', function (Builder $customerQuery) use ($assignmentsSearch): void {
+                $customerQuery->where('customer_id', 'like', "%{$assignmentsSearch}%")
+                    ->orWhereHas('user', function (Builder $userQuery) use ($assignmentsSearch): void {
+                        $userQuery->where('name', 'like', "%{$assignmentsSearch}%");
+                    });
+            });
+        }
+
+        $assignmentOperationalStatus = $assignmentFilters['assignments_operational_status'] ?? '';
+        if ($assignmentOperationalStatus !== '' && $assignmentOperationalStatus !== 'all') {
+            $assignedCustomerQuery->whereHas('customerProfile', function (Builder $customerQuery) use ($assignmentOperationalStatus): void {
+                $customerQuery->where('operational_status', $assignmentOperationalStatus);
+            });
+        }
+
+        $assignmentsPerPage = (int) ($assignmentFilters['assignments_per_page'] ?? 10);
+        $assignedCustomers = $assignedCustomerQuery->latest('effective_at')
+            ->paginate($assignmentsPerPage)
+            ->withQueryString()
+            ->through(function (CustomerAssignment $assignment): array {
+                $customer = $assignment->customerProfile;
+
+                return [
+                    'id' => $customer?->customer_id ?? 'Unknown',
+                    'name' => $customer?->user?->name ?? 'Unknown',
+                    'operational_status' => $customer?->operational_status?->value,
+                    'operational_status_label' => $customer?->operational_status?->displayName() ?? 'Unknown',
+                    'account_state' => $customer?->user?->account_state?->value,
+                    'assigned_since' => $assignment->effective_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                ];
+            });
 
         // 4. Build viewer-specific profile data
         $profileData = [
@@ -122,7 +158,6 @@ class AgentProfileController extends Controller
                 'restricted_count' => $restrictedCount,
                 'archived_count' => $archivedCount,
                 'total_active_workload' => $activeCount + $inactiveCount + $restrictedCount,
-                'customers' => $assignedCustomerList,
             ],
             'invitation_and_access' => [
                 'account_state' => $user?->account_state?->value,
@@ -155,6 +190,12 @@ class AgentProfileController extends Controller
         return Inertia::render('agents/Show', [
             'agent' => $profileData,
             'viewer_type' => $viewer->user_type->value,
+            'assigned_customers' => $assignedCustomers,
+            'assignment_filters' => [
+                'search' => $assignmentsSearch,
+                'operational_status' => $assignmentOperationalStatus,
+                'per_page' => $assignmentsPerPage,
+            ],
         ]);
     }
 }

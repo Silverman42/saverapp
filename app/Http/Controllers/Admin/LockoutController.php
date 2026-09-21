@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\ManualUnlockRequest;
 use App\Models\AuthenticationLock;
 use App\Models\User;
 use App\Services\AuthenticationAbuseService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -26,10 +27,46 @@ class LockoutController extends Controller
         Gate::authorize(AdminPermission::SecurityOperationsManage->value);
 
         $currentAdmin = $request->user();
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'category' => ['nullable', 'string', 'in:password,mfa,recovery_code,all'],
+            'state' => ['nullable', 'string', 'in:active,expired,unlocked,review,all'],
+            'per_page' => ['nullable', 'integer', 'in:15,25,50'],
+        ]);
 
-        $locks = AuthenticationLock::with(['user', 'unlockedBy'])
-            ->latest('locked_at')
-            ->paginate(15)
+        $query = AuthenticationLock::with(['user', 'unlockedBy']);
+        $search = trim((string) ($validated['search'] ?? ''));
+
+        if ($search !== '') {
+            $query->where(function (Builder $searchQuery) use ($search): void {
+                $searchQuery->where('email_normalized', 'like', "%{$search}%")
+                    ->orWhereHas('user', function (Builder $userQuery) use ($search): void {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $category = $validated['category'] ?? '';
+        if ($category !== '' && $category !== 'all') {
+            $query->where('lock_category', $category);
+        }
+
+        $state = $validated['state'] ?? '';
+        if ($state === 'active') {
+            $query->whereNull('unlocked_at')->where('locked_until', '>', now());
+        } elseif ($state === 'expired') {
+            $query->whereNull('unlocked_at')->where('locked_until', '<=', now());
+        } elseif ($state === 'unlocked') {
+            $query->whereNotNull('unlocked_at');
+        } elseif ($state === 'review') {
+            $query->where('requires_review', true);
+        }
+
+        $perPage = (int) ($validated['per_page'] ?? 15);
+        $locks = $query->latest('locked_at')
+            ->paginate($perPage)
+            ->withQueryString()
             ->through(function (AuthenticationLock $lock) use ($currentAdmin) {
                 $user = $lock->user;
                 $isActive = $lock->isActive();
@@ -71,6 +108,12 @@ class LockoutController extends Controller
         return Inertia::render('admin/Lockouts', [
             'locks' => $locks,
             'verification_methods' => $verificationMethods,
+            'filters' => [
+                'search' => $search,
+                'category' => $category,
+                'state' => $state,
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

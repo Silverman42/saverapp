@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
+import { index as adminAccessIndex, show as adminAccessShow } from '@/routes/admin/access';
 import { useVuelidate } from '@vuelidate/core';
 import { maxLength, minLength, required } from '@vuelidate/validators';
 import {
@@ -9,18 +10,16 @@ import {
     AlertTriangle,
     ArrowLeft,
     Check,
-    CheckCircle2,
-    Clock,
     History,
     MinusCircle,
     PlusCircle,
     RefreshCw,
     Shield,
-    ShieldAlert,
     ShieldCheck,
-    User as UserIcon,
 } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
+import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
+import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,6 +40,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export type CatalogueItem = {
     name: string;
@@ -90,6 +90,12 @@ export type AdminDetail = {
     created_at: string | null;
 };
 
+type HistoryFilters = {
+    search: string;
+    action: string;
+    per_page: number;
+};
+
 const props = defineProps<{
     admin: AdminDetail;
     catalogue: CatalogueItem[];
@@ -97,6 +103,7 @@ const props = defineProps<{
     canManage: boolean;
     isFresh: boolean;
     isSelf: boolean;
+    history_filters: HistoryFilters;
 }>();
 
 defineOptions({
@@ -108,7 +115,7 @@ defineOptions({
             },
             {
                 title: 'Admin access',
-                href: '/admin/access',
+                href: adminAccessIndex(),
             },
             {
                 title: 'Permissions detail',
@@ -124,6 +131,8 @@ const reason = ref<string>('');
 const isConfirmed = ref<boolean>(false);
 const isConfirmDialogOpen = ref<boolean>(false);
 const concurrencyError = ref<string | null>(null);
+const historyFiltersOpen = ref(false);
+const historyFilterForm = reactive<HistoryFilters>({ ...props.history_filters });
 
 // Keep selected in sync if props reload
 watch(
@@ -133,6 +142,28 @@ watch(
         concurrencyError.value = null;
     },
 );
+
+watch(
+    () => props.history_filters,
+    (filters) => Object.assign(historyFilterForm, filters),
+);
+
+const activeHistoryFilterCount = computed(() => {
+    return historyFilterForm.action && historyFilterForm.action !== 'all' ? 1 : 0;
+});
+
+const applyHistoryFilters = (): void => {
+    const query: Record<string, string | number> = {};
+    if (historyFilterForm.search) query.history_search = historyFilterForm.search;
+    if (historyFilterForm.action && historyFilterForm.action !== 'all') query.history_action = historyFilterForm.action;
+    if (historyFilterForm.per_page !== 10) query.history_per_page = historyFilterForm.per_page;
+    router.get(adminAccessShow(props.admin.id, { query }).url, {}, { preserveState: true, preserveScroll: true, replace: true });
+};
+
+const resetHistoryFilters = (): void => {
+    Object.assign(historyFilterForm, { search: '', action: '', per_page: 10 });
+    applyHistoryFilters();
+};
 
 // Form validations
 const rules = computed(() => ({
@@ -242,7 +273,7 @@ const getPermissionDetails = (name: string) => {
     <div class="space-y-6">
         <!-- Back Navigation & Header -->
         <div class="flex items-center gap-4">
-            <Link href="/admin/access">
+            <Link :href="adminAccessIndex().url">
                 <Button variant="outline" size="icon" class="h-8 w-8">
                     <ArrowLeft class="h-4 w-4" />
                 </Button>
@@ -632,125 +663,24 @@ const getPermissionDetails = (name: string) => {
             </CardContent>
         </Card>
 
-        <!-- History Log -->
-        <Card>
-            <CardHeader class="pb-3">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <CardTitle class="flex items-center gap-2">
-                            <History class="h-4 w-4" />
-                            Permission Change History
-                        </CardTitle>
-                        <CardDescription>
-                            Append-only chronological record of grants and
-                            revocations.
-                        </CardDescription>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div v-if="history.data.length > 0" class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead
-                            class="bg-muted/40 text-muted-foreground border-b uppercase"
-                        >
-                            <tr>
-                                <th class="px-3 py-2">Timestamp</th>
-                                <th class="px-3 py-2">Action</th>
-                                <th class="px-3 py-2">Permission</th>
-                                <th class="px-3 py-2">Actor</th>
-                                <th class="px-3 py-2">Reason</th>
-                                <th class="px-3 py-2">Version</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr
-                                v-for="h in history.data"
-                                :key="h.id"
-                                class="hover:bg-muted/30"
-                            >
-                                <td
-                                    class="text-muted-foreground px-3 py-2 whitespace-nowrap"
-                                >
-                                    {{
-                                        h.created_at
-                                            ? new Date(
-                                                  h.created_at,
-                                              ).toLocaleString()
-                                            : '-'
-                                    }}
-                                </td>
-                                <td class="px-3 py-2 whitespace-nowrap">
-                                    <Badge
-                                        :variant="
-                                            h.action === 'grant'
-                                                ? 'default'
-                                                : 'destructive'
-                                        "
-                                        class="px-1.5 py-0 font-mono text-[10px] uppercase"
-                                    >
-                                        {{ h.action }}
-                                    </Badge>
-                                </td>
-                                <td class="px-3 py-2 font-mono">
-                                    {{ h.permission_code }}
-                                </td>
-                                <td class="px-3 py-2 whitespace-nowrap">
-                                    {{ h.actor_name }}
-                                </td>
-                                <td
-                                    class="max-w-xs truncate px-3 py-2"
-                                    :title="h.reason || ''"
-                                >
-                                    {{ h.reason || '-' }}
-                                </td>
-                                <td
-                                    class="text-muted-foreground px-3 py-2 font-mono"
-                                >
-                                    v{{ h.permission_version }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <!-- History Pagination -->
-                    <div
-                        v-if="history.last_page > 1"
-                        class="text-muted-foreground mt-3 flex items-center justify-between border-t pt-3 text-xs"
-                    >
-                        <div>
-                            Page {{ history.current_page }} of
-                            {{ history.last_page }}
-                        </div>
-                        <div class="flex gap-2">
-                            <Link
-                                v-if="history.prev_page_url"
-                                :href="history.prev_page_url"
-                            >
-                                <Button variant="outline" size="sm"
-                                    >Previous</Button
-                                >
-                            </Link>
-                            <Link
-                                v-if="history.next_page_url"
-                                :href="history.next_page_url"
-                            >
-                                <Button variant="outline" size="sm"
-                                    >Next</Button
-                                >
-                            </Link>
-                        </div>
-                    </div>
-                </div>
-                <div
-                    v-else
-                    class="text-muted-foreground py-6 text-center text-sm italic"
-                >
-                    No permission change history recorded for this
-                    administrator.
-                </div>
-            </CardContent>
-        </Card>
+        <DirectoryPanel
+            title="Permission change history"
+            :description="`${history.total} append-only record${history.total === 1 ? '' : 's'} for this administrator.`"
+            :search-value="historyFilterForm.search"
+            search-placeholder="Search permission or actor"
+            :filters-open="historyFiltersOpen"
+            :active-filter-count="activeHistoryFilterCount"
+            @update:search-value="historyFilterForm.search = $event"
+            @submit-search="applyHistoryFilters"
+            @toggle-filters="historyFiltersOpen = !historyFiltersOpen"
+            @reset-filters="resetHistoryFilters"
+        >
+            <template #filters><div class="w-fit space-y-1.5"><Label for="history-action" class="text-xs">Action</Label><Select v-model="historyFilterForm.action" @update:model-value="applyHistoryFilters"><SelectTrigger id="history-action"><SelectValue placeholder="All actions" /></SelectTrigger><SelectContent><SelectItem value="all">All actions</SelectItem><SelectItem value="grant">Grant</SelectItem><SelectItem value="revoke">Revoke</SelectItem></SelectContent></Select></div></template>
+            <template #filter-summary><p class="text-muted-foreground text-xs">{{ history.total }} record{{ history.total === 1 ? '' : 's' }} match the current filters.</p></template>
+            <div v-if="history.data.length === 0" class="text-muted-foreground py-10 text-center text-sm">No permission change history matches this view.</div>
+            <div v-else class="space-y-3"><DirectoryRow v-for="entry in history.data" :key="entry.id"><div class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(10rem,1fr)_minmax(7rem,.55fr)_minmax(14rem,1.2fr)_minmax(9rem,.75fr)_minmax(12rem,1fr)_minmax(5rem,.4fr)]"><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Timestamp</p><p class="mt-1 text-sm">{{ entry.created_at ? new Date(entry.created_at).toLocaleString() : '—' }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Action</p><Badge :variant="entry.action === 'grant' ? 'default' : 'destructive'" class="mt-1 uppercase">{{ entry.action }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Permission</p><p class="mt-1 font-mono text-sm">{{ entry.permission_code }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Actor</p><p class="mt-1 text-sm">{{ entry.actor_name }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Reason</p><p class="mt-1 truncate text-sm" :title="entry.reason || ''">{{ entry.reason || '—' }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Version</p><p class="mt-1 text-sm">v{{ entry.permission_version }}</p></div></div><div class="md:hidden"><div class="flex items-start justify-between gap-3"><div><p class="text-sm font-semibold">{{ entry.permission_code }}</p><p class="text-muted-foreground text-xs">{{ entry.created_at ? new Date(entry.created_at).toLocaleString() : '—' }}</p></div><Badge :variant="entry.action === 'grant' ? 'default' : 'destructive'" class="uppercase">{{ entry.action }}</Badge></div><div class="mt-4 grid grid-cols-2 gap-4 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Actor</p><p class="mt-1">{{ entry.actor_name }}</p></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Version</p><p class="mt-1">v{{ entry.permission_version }}</p></div><div class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Reason</p><p class="mt-1">{{ entry.reason || '—' }}</p></div></div></div></DirectoryRow></div>
+            <template #footer><div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="historyFilterForm.per_page" @update:model-value="applyHistoryFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="10">10</SelectItem><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem></SelectContent></Select> per page</div><div class="flex items-center gap-3"><span class="text-muted-foreground text-xs">Page {{ history.current_page }} of {{ history.last_page }}</span><div class="flex gap-2"><Link v-if="history.prev_page_url" :href="history.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm">Previous</Button></Link><Button v-else variant="outline" size="sm" disabled>Previous</Button><Link v-if="history.next_page_url" :href="history.next_page_url" preserve-state preserve-scroll><Button size="sm">Next</Button></Link><Button v-else size="sm" disabled>Next</Button></div></div></div></template>
+        </DirectoryPanel>
 
         <!-- Final Confirmation Modal Dialog -->
         <Dialog

@@ -179,6 +179,59 @@ test('authorized admin can view lockout index with verification methods and lock
         );
 });
 
+test('lockout directory applies search, category, and restriction state filters', function (): void {
+    $admin = User::factory()->admin()->withTwoFactor()->create();
+    $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
+
+    $matchingUser = User::factory()->customer()->create([
+        'name' => 'Filtered Lockout Customer',
+        'email' => 'filtered@example.com',
+    ]);
+    $otherUser = User::factory()->customer()->create([
+        'name' => 'Other Lockout Customer',
+        'email' => 'other@example.com',
+    ]);
+
+    $matchingLock = AuthenticationLock::create([
+        'user_id' => $matchingUser->id,
+        'email_normalized' => $matchingUser->email,
+        'lock_category' => 'password',
+        'reason' => 'Repeated password failures',
+        'failed_attempts_count' => 10,
+        'locked_at' => Carbon::now(),
+        'locked_until' => Carbon::now()->addMinutes(15),
+    ]);
+    AuthenticationLock::create([
+        'user_id' => $otherUser->id,
+        'email_normalized' => $otherUser->email,
+        'lock_category' => 'mfa',
+        'reason' => 'Repeated MFA failures',
+        'failed_attempts_count' => 10,
+        'locked_at' => Carbon::now(),
+        'locked_until' => Carbon::now()->addMinutes(15),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.lockouts.index', [
+            'search' => 'Filtered Lockout',
+            'category' => 'password',
+            'state' => 'active',
+            'per_page' => 15,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('locks.data', 1)
+            ->where('locks.data.0.id', $matchingLock->id)
+            ->where('filters.search', 'Filtered Lockout')
+            ->where('filters.category', 'password')
+            ->where('filters.state', 'active')
+        );
+
+    $this->actingAs($admin)
+        ->get(route('admin.lockouts.index', ['state' => 'invalid']))
+        ->assertSessionHasErrors(['state']);
+});
+
 test('manual unlock rejects missing, invalid category, verification method, or short reason with 422', function () {
     $admin = User::factory()->admin()->withTwoFactor()->create();
     $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);

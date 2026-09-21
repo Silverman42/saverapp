@@ -57,6 +57,77 @@ test('authorized admin with admins.manage can view directory with full access ma
         );
 });
 
+test('Admin access directory and permission history support server-side filters', function (): void {
+    $manager = User::factory()->admin()->withTwoFactor()->create([
+        'name' => 'Directory Manager',
+        'email' => 'manager@example.com',
+    ]);
+    $manager->givePermissionTo(AdminPermission::AdminsManage->value);
+
+    $matchingAdmin = User::factory()->admin()->withTwoFactor()->create([
+        'name' => 'Ada Directory',
+        'email' => 'ada@example.com',
+    ]);
+    $otherAdmin = User::factory()->admin()->withTwoFactor()->create([
+        'name' => 'Bola Other',
+        'email' => 'bola@example.com',
+    ]);
+
+    PermissionGrantHistory::create([
+        'batch_id' => (string) Str::uuid(),
+        'user_id' => $matchingAdmin->id,
+        'permission_code' => AdminPermission::AuditView->value,
+        'action' => 'grant',
+        'source' => 'manual',
+        'actor_user_id' => $manager->id,
+        'reason' => 'Audit access approved',
+        'permission_version' => 1,
+    ]);
+    PermissionGrantHistory::create([
+        'batch_id' => (string) Str::uuid(),
+        'user_id' => $matchingAdmin->id,
+        'permission_code' => AdminPermission::ReportsExport->value,
+        'action' => 'revoke',
+        'source' => 'manual',
+        'actor_user_id' => $otherAdmin->id,
+        'reason' => 'Access review',
+        'permission_version' => 2,
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('admin.access.index', [
+            'search' => 'ada@example.com',
+            'account_state' => 'active',
+            'per_page' => 15,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('admins.data', 1)
+            ->where('admins.data.0.id', $matchingAdmin->id)
+            ->where('filters.search', 'ada@example.com')
+            ->where('filters.account_state', 'active')
+        );
+
+    $this->actingAs($manager)
+        ->get(route('admin.access.show', [
+            'admin' => $matchingAdmin->id,
+            'history_search' => 'Directory Manager',
+            'history_action' => 'grant',
+            'history_per_page' => 10,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('history.data', 1)
+            ->where('history.data.0.permission_code', AdminPermission::AuditView->value)
+            ->where('history_filters.search', 'Directory Manager')
+            ->where('history_filters.action', 'grant')
+        );
+
+    $this->actingAs($manager)
+        ->get(route('admin.access.index', ['account_state' => 'invalid']))
+        ->assertSessionHasErrors(['account_state']);
+});
+
 test('admin access show returns 404 for non-admin user target', function () {
     $admin = User::factory()->admin()->withTwoFactor()->create();
     $admin->givePermissionTo(AdminPermission::AdminsManage->value);

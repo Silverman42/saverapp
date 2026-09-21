@@ -1,266 +1,50 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { dashboard } from '@/routes';
-import {
-    ChevronRight,
-    Shield,
-    ShieldAlert,
-    ShieldCheck,
-    User as UserIcon,
-} from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { computed, reactive, ref, watch } from 'vue';
+import { ChevronLeft, ChevronRight, User as UserIcon, UsersRound } from '@lucide/vue';
+import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
+import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { index as adminAccessIndex, show as adminAccessShow } from '@/routes/admin/access';
+import { dashboard } from '@/routes';
 
-export type AdminItem = {
-    id: number;
-    name: string;
-    email: string;
-    account_state: string;
-    permission_version: number;
-    is_self: boolean;
-    can_manage: boolean;
-    summary: string[];
-    created_at?: string | null;
+type Admin = { id: number; name: string; email: string; account_state: string; permission_version: number; is_self: boolean; can_manage: boolean; summary: string[] };
+type PaginatedAdmins = { data: Admin[]; current_page: number; last_page: number; total: number; next_page_url: string | null; prev_page_url: string | null };
+type Filters = { search: string; account_state: string; per_page: number };
+
+const props = defineProps<{ admins: PaginatedAdmins; canManage: boolean; filters: Filters }>();
+
+defineOptions({ layout: { breadcrumbs: [{ title: 'Dashboard', href: dashboard() }, { title: 'Admin access', href: adminAccessIndex() }] } });
+
+const filtersOpen = ref(false);
+const filterForm = reactive<Filters>({ ...props.filters });
+watch(() => props.filters, (filters) => Object.assign(filterForm, filters));
+const activeFilterCount = computed(() => filterForm.account_state && filterForm.account_state !== 'all' ? 1 : 0);
+const query = (): Record<string, string | number> => {
+    const params: Record<string, string | number> = {};
+    if (filterForm.search) params.search = filterForm.search;
+    if (filterForm.account_state && filterForm.account_state !== 'all') params.account_state = filterForm.account_state;
+    if (filterForm.per_page !== 15) params.per_page = filterForm.per_page;
+    return params;
 };
-
-export type PaginatedAdmins = {
-    data: AdminItem[];
-    current_page: number;
-    last_page: number;
-    total: number;
-    next_page_url: string | null;
-    prev_page_url: string | null;
-};
-
-const props = defineProps<{
-    admins: PaginatedAdmins;
-    canManage: boolean;
-}>();
-
-defineOptions({
-    layout: {
-        breadcrumbs: [
-            {
-                title: 'Dashboard',
-                href: dashboard(),
-            },
-            {
-                title: 'Admin access',
-                href: '/admin/access',
-            },
-        ],
-    },
-});
-
-const getBadgeVariant = (state: string) => {
-    switch (state) {
-        case 'active':
-            return 'default';
-        case 'suspended':
-        case 'deactivated':
-            return 'destructive';
-        default:
-            return 'secondary';
-    }
-};
+const applyFilters = (): void => { router.get(adminAccessIndex.url({ query: query() }), {}, { preserveState: true, preserveScroll: true, replace: true }); };
+const resetFilters = (): void => { Object.assign(filterForm, { search: '', account_state: '', per_page: 15 }); applyFilters(); };
+const getBadgeVariant = (state: string): 'default' | 'secondary' | 'destructive' | 'outline' => state === 'active' ? 'default' : ['suspended', 'deactivated'].includes(state) ? 'destructive' : 'secondary';
 </script>
 
 <template>
     <Head title="Administrator Access" />
-
     <div class="space-y-6">
-        <div
-            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-        >
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Administrator Access
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    Directory of registered system administrators, permission
-                    versions, and active responsibilities.
-                </p>
-            </div>
-        </div>
-
-        <Card>
-            <CardHeader class="pb-3">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <CardTitle>Administrators</CardTitle>
-                        <CardDescription>
-                            Total of {{ admins.total }} administrator{{
-                                admins.total === 1 ? '' : 's'
-                            }}
-                            registered.
-                        </CardDescription>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-sm">
-                        <thead
-                            class="bg-muted/40 text-muted-foreground border-b text-xs uppercase"
-                        >
-                            <tr>
-                                <th class="px-4 py-3">Administrator</th>
-                                <th class="px-4 py-3">Status</th>
-                                <th class="px-4 py-3">Version</th>
-                                <th class="px-4 py-3">
-                                    Assigned Responsibilities
-                                </th>
-                                <th class="px-4 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y">
-                            <tr
-                                v-for="admin in admins.data"
-                                :key="admin.id"
-                                class="hover:bg-muted/50 transition-colors"
-                            >
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div
-                                            class="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-full"
-                                        >
-                                            <UserIcon class="h-4 w-4" />
-                                        </div>
-                                        <div>
-                                            <div
-                                                class="flex items-center gap-2"
-                                            >
-                                                <span
-                                                    class="text-foreground font-medium"
-                                                    >{{ admin.name }}</span
-                                                >
-                                                <Badge
-                                                    v-if="admin.is_self"
-                                                    variant="outline"
-                                                    class="px-1.5 py-0 text-[10px]"
-                                                >
-                                                    You
-                                                </Badge>
-                                            </div>
-                                            <div
-                                                class="text-muted-foreground text-xs"
-                                            >
-                                                {{ admin.email }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <Badge
-                                        :variant="
-                                            getBadgeVariant(admin.account_state)
-                                        "
-                                        class="text-xs capitalize"
-                                    >
-                                        {{
-                                            admin.account_state.replace(
-                                                '_',
-                                                ' ',
-                                            )
-                                        }}
-                                    </Badge>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <span
-                                        class="bg-secondary text-secondary-foreground inline-flex items-center rounded-md px-2 py-0.5 font-mono text-xs font-medium"
-                                    >
-                                        v{{ admin.permission_version }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3">
-                                    <div class="flex max-w-md flex-wrap gap-1">
-                                        <template
-                                            v-if="admin.summary.length > 0"
-                                        >
-                                            <span
-                                                v-for="(
-                                                    item, idx
-                                                ) in admin.summary.slice(0, 3)"
-                                                :key="idx"
-                                                class="bg-muted text-muted-foreground inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px]"
-                                            >
-                                                {{ item }}
-                                            </span>
-                                            <span
-                                                v-if="admin.summary.length > 3"
-                                                class="bg-muted text-muted-foreground inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px]"
-                                            >
-                                                +{{ admin.summary.length - 3 }}
-                                                more
-                                            </span>
-                                        </template>
-                                        <span
-                                            v-else
-                                            class="text-muted-foreground text-xs italic"
-                                        >
-                                            None
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3 text-right">
-                                    <div
-                                        class="flex items-center justify-end gap-2"
-                                    >
-                                        <Link
-                                            :href="`/admin/access/${admin.id}`"
-                                        >
-                                            <Button variant="outline" size="sm">
-                                                <span>{{
-                                                    admin.can_manage
-                                                        ? 'Manage'
-                                                        : 'View'
-                                                }}</span>
-                                                <ChevronRight
-                                                    class="ml-1 h-3.5 w-3.5"
-                                                />
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                <div
-                    v-if="admins.last_page > 1"
-                    class="text-muted-foreground mt-4 flex items-center justify-between border-t pt-4 text-xs"
-                >
-                    <div>
-                        Showing page {{ admins.current_page }} of
-                        {{ admins.last_page }}
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <Link
-                            v-if="admins.prev_page_url"
-                            :href="admins.prev_page_url"
-                        >
-                            <Button variant="outline" size="sm"
-                                >Previous</Button
-                            >
-                        </Link>
-                        <Link
-                            v-if="admins.next_page_url"
-                            :href="admins.next_page_url"
-                        >
-                            <Button variant="outline" size="sm">Next</Button>
-                        </Link>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
+        <div><h1 class="text-[25px] font-medium tracking-tight">Administrator Access</h1><p class="text-muted-foreground mt-1.5 text-sm">Directory of registered system administrators and their active responsibilities.</p></div>
+        <DirectoryPanel title="Administrators" :description="`${admins.total} administrator${admins.total === 1 ? '' : 's'} matching the current directory view.`" :search-value="filterForm.search" search-placeholder="Search administrators" :filters-open="filtersOpen" :active-filter-count="activeFilterCount" @update:search-value="filterForm.search = $event" @submit-search="applyFilters" @toggle-filters="filtersOpen = !filtersOpen" @reset-filters="resetFilters">
+            <template #filters><div class="w-fit space-y-1.5"><Label for="admin-account-state" class="text-xs">Account state</Label><Select v-model="filterForm.account_state" @update:model-value="applyFilters"><SelectTrigger id="admin-account-state"><SelectValue placeholder="All account states" /></SelectTrigger><SelectContent><SelectItem value="all">All states</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="invited">Invited</SelectItem><SelectItem value="mfa_setup">MFA setup</SelectItem><SelectItem value="suspended">Suspended</SelectItem><SelectItem value="deactivated">Deactivated</SelectItem></SelectContent></Select></div></template>
+            <template #filter-summary><p class="text-muted-foreground text-xs">{{ admins.total }} administrator{{ admins.total === 1 ? '' : 's' }} match the current filters.</p></template>
+            <div v-if="admins.data.length === 0" class="py-14 text-center"><div class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"><UsersRound class="size-5" /></div><h3 class="mt-4 text-sm font-semibold">No administrators found</h3><p class="text-muted-foreground mt-1 text-sm">Adjust the search or filters to find an administrator.</p></div>
+            <div v-else class="space-y-3"><DirectoryRow v-for="admin in admins.data" :key="admin.id"><div class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(15rem,1.5fr)_minmax(8rem,.7fr)_minmax(6rem,.55fr)_minmax(16rem,1.3fr)_auto]"><div class="flex min-w-0 items-center gap-3"><span class="bg-accent text-accent-foreground flex size-11 shrink-0 items-center justify-center rounded-full"><UserIcon class="size-4" /></span><div class="min-w-0"><div class="flex items-center gap-2"><p class="truncate text-sm font-semibold">{{ admin.name }}</p><Badge v-if="admin.is_self" variant="outline" class="px-1.5 py-0 text-[10px]">You</Badge></div><p class="text-muted-foreground truncate text-xs">{{ admin.email }}</p></div></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Status</p><Badge :variant="getBadgeVariant(admin.account_state)" class="mt-1 capitalize">{{ admin.account_state.replace('_', ' ') }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Version</p><p class="mt-1 text-sm">v{{ admin.permission_version }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Responsibilities</p><p class="mt-1 truncate text-sm">{{ admin.summary.join(', ') || 'None' }}</p></div><Link :href="adminAccessShow(admin.id).url"><Button variant="outline" size="sm">{{ admin.can_manage ? 'Manage' : 'View' }} <ChevronRight class="size-3.5" /></Button></Link></div><div class="lg:hidden"><div class="flex items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><span class="bg-accent text-accent-foreground flex size-11 shrink-0 items-center justify-center rounded-full"><UserIcon class="size-4" /></span><div class="min-w-0"><p class="truncate text-sm font-semibold">{{ admin.name }}</p><p class="text-muted-foreground truncate text-xs">{{ admin.email }}</p></div></div><Link :href="adminAccessShow(admin.id).url"><Button variant="outline" size="sm">{{ admin.can_manage ? 'Manage' : 'View' }}</Button></Link></div><div class="mt-4 grid grid-cols-2 gap-4 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Status</p><Badge :variant="getBadgeVariant(admin.account_state)" class="mt-1 capitalize">{{ admin.account_state.replace('_', ' ') }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Version</p><p class="mt-1">v{{ admin.permission_version }}</p></div><div class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Responsibilities</p><p class="mt-1">{{ admin.summary.join(', ') || 'None' }}</p></div></div></div></DirectoryRow></div>
+            <template #footer><div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="filterForm.per_page" @update:model-value="applyFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="15">15</SelectItem><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem></SelectContent></Select> per page</div><div class="flex items-center justify-between gap-3 sm:justify-end"><span class="text-muted-foreground text-xs">Page {{ admins.current_page }} of {{ admins.last_page }}</span><div class="flex gap-2"><Link v-if="admins.prev_page_url" :href="admins.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm"><ChevronLeft /> Prev</Button></Link><Button v-else variant="outline" size="sm" disabled><ChevronLeft /> Prev</Button><Link v-if="admins.next_page_url" :href="admins.next_page_url" preserve-state preserve-scroll><Button size="sm">Next <ChevronRight /></Button></Link><Button v-else size="sm" disabled>Next <ChevronRight /></Button></div></div></div></template>
+        </DirectoryPanel>
     </div>
 </template>

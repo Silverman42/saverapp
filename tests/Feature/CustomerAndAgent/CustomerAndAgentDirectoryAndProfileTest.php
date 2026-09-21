@@ -574,6 +574,172 @@ test('Agent directory filters by eligibility and customer workload range', funct
         );
 });
 
+test('Customer overview uses Lagos registration periods, ignores directory filters, and respects viewer scope', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-09-21 12:00:00', 'Africa/Lagos'));
+
+    try {
+        $agentUser = User::factory()->agent()->create([
+            'account_state' => AccountState::Active,
+            'two_factor_secret' => 'SECRET',
+            'two_factor_confirmed_at' => Carbon::now(),
+        ]);
+        $agentProfile = AgentProfile::factory()->active()->create(['user_id' => $agentUser->id]);
+
+        $visibleActiveCustomer = CustomerProfile::factory()->create([
+            'operational_status' => CustomerStatus::Active,
+            'created_at' => Carbon::parse('2026-09-20 23:00:00', 'UTC'),
+        ]);
+        $visibleRestrictedCustomer = CustomerProfile::factory()->restricted()->create([
+            'created_at' => Carbon::parse('2026-09-21 22:59:59', 'UTC'),
+        ]);
+        CustomerProfile::factory()->create([
+            'operational_status' => CustomerStatus::Active,
+            'created_at' => Carbon::parse('2026-09-21 12:00:00', 'UTC'),
+        ]);
+        CustomerProfile::factory()->create([
+            'operational_status' => CustomerStatus::Active,
+            'created_at' => Carbon::parse('2026-09-20 22:59:59', 'UTC'),
+        ]);
+
+        foreach ([$visibleActiveCustomer, $visibleRestrictedCustomer] as $customer) {
+            CustomerAssignment::factory()->create([
+                'customer_profile_id' => $customer->id,
+                'agent_profile_id' => $agentProfile->id,
+                'status' => CustomerAssignmentStatus::Current,
+                'is_current' => 1,
+            ]);
+        }
+
+        $this->actingAs($agentUser)
+            ->get(route('customers.index', [
+                'overview_period' => 'today',
+                'search' => 'no directory matches',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('customers.data', 0)
+                ->where('overview_period', 'today')
+                ->where('overview.total', 2)
+                ->where('overview.active', 1)
+                ->where('overview.restricted', 1)
+            );
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
+test('Agent overview counts current active and eligible agents in the selected registration period', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-09-21 12:00:00', 'Africa/Lagos'));
+
+    try {
+        $admin = User::factory()->admin()->create();
+
+        $eligibleUser = User::factory()->agent()->create([
+            'account_state' => AccountState::Active,
+            'two_factor_secret' => 'SECRET',
+            'two_factor_confirmed_at' => Carbon::now(),
+        ]);
+        AgentProfile::factory()->active()->create(['user_id' => $eligibleUser->id]);
+
+        $ineligibleUser = User::factory()->agent()->create([
+            'account_state' => AccountState::Active,
+            'two_factor_secret' => null,
+            'two_factor_confirmed_at' => null,
+        ]);
+        AgentProfile::factory()->active()->create(['user_id' => $ineligibleUser->id]);
+
+        $olderUser = User::factory()->agent()->create([
+            'account_state' => AccountState::Active,
+            'two_factor_secret' => 'SECRET',
+            'two_factor_confirmed_at' => Carbon::now(),
+        ]);
+        AgentProfile::factory()->active()->create([
+            'user_id' => $olderUser->id,
+            'created_at' => Carbon::parse('2026-09-20 22:59:59', 'UTC'),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('agents.index', [
+                'overview_period' => 'today',
+                'search' => 'no directory matches',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('agents.data', 0)
+                ->where('overview_period', 'today')
+                ->where('overview.total', 2)
+                ->where('overview.active', 2)
+                ->where('overview.eligible', 1)
+            );
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
+test('Directory overview period validation rejects unsupported values', function (): void {
+    $admin = User::factory()->admin()->create();
+
+    $this->actingAs($admin)
+        ->get(route('customers.index', ['overview_period' => 'year']))
+        ->assertSessionHasErrors(['overview_period']);
+
+    $this->actingAs($admin)
+        ->get(route('agents.index', ['overview_period' => 'year']))
+        ->assertSessionHasErrors(['overview_period']);
+});
+
+test('Agent profile assigned customers support filtered, paginated results separate from workload totals', function (): void {
+    $admin = User::factory()->admin()->create();
+    $agentUser = User::factory()->agent()->create([
+        'account_state' => AccountState::Active,
+        'two_factor_secret' => 'SECRET',
+        'two_factor_confirmed_at' => Carbon::now(),
+    ]);
+    $agentProfile = AgentProfile::factory()->active()->create(['user_id' => $agentUser->id]);
+
+    $activeUser = User::factory()->customer()->create(['name' => 'Amina Active']);
+    $activeCustomer = CustomerProfile::factory()->create([
+        'user_id' => $activeUser->id,
+        'operational_status' => CustomerStatus::Active,
+    ]);
+    $restrictedUser = User::factory()->customer()->create(['name' => 'Bola Restricted']);
+    $restrictedCustomer = CustomerProfile::factory()->restricted()->create([
+        'user_id' => $restrictedUser->id,
+    ]);
+
+    foreach ([$activeCustomer, $restrictedCustomer] as $customer) {
+        CustomerAssignment::factory()->create([
+            'customer_profile_id' => $customer->id,
+            'agent_profile_id' => $agentProfile->id,
+            'status' => CustomerAssignmentStatus::Current,
+            'is_current' => 1,
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('agents.show', [
+            'agent' => $agentProfile->agent_id,
+            'assignments_search' => 'Bola',
+            'assignments_operational_status' => 'restricted',
+            'assignments_per_page' => 10,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('assigned_customers.data', 1)
+            ->where('assigned_customers.data.0.id', $restrictedCustomer->customer_id)
+            ->where('assignment_filters.search', 'Bola')
+            ->where('assignment_filters.operational_status', 'restricted')
+            ->where('agent.assignments_summary.total_active_workload', 2)
+        );
+
+    $this->actingAs($admin)
+        ->get(route('agents.show', [
+            'agent' => $agentProfile->agent_id,
+            'assignments_operational_status' => 'invalid',
+        ]))
+        ->assertSessionHasErrors(['assignments_operational_status']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | 5. Scoped Photo Serving Endpoints & Nonpublic Disk
