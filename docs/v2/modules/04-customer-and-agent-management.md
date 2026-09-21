@@ -1,7 +1,7 @@
 # Customer and Agent Management — Detailed Requirements
 
 **Product version:** 2.0  
-**Module status:** Detailed draft; proposed product decisions pending review  
+**Module status:** Confirmed baseline  
 **Source:** [Version 1 PRD](../../PRD.md) and the Version 2 identity and authorization modules  
 **Depends on:** [User Types and Access Model](./01-user-types.md), [Authentication and Account Access](./02-authentication.md), [Roles, Permissions, and Authorization](./03-roles-and-permissions.md)
 
@@ -1361,24 +1361,24 @@ Acceptance evidence records the scenario ID, requirement IDs, fixture/authority 
 
 Contract doubles may verify failure handling during development but do not substitute for end-to-end authoritative integrations at release. Unknown delivery is not proof of failed registration, and skipped scenarios are Blocked rather than Passed.
 
-## 18. Key Decisions to Confirm
+## 18. Confirmed Key Decisions
 
-Before finalizing the detailed requirements, confirm:
+The following key product decisions have been reviewed and confirmed as the binding baseline for Module 04 implementation:
 
-- The draft required and optional profile fields, limits, next-of-kin structure, and photo rules in Sections 2 and 7.
-- The proposed `CUS-000001` and `AGT-000001` public-reference formats.
-- The draft field-editing matrices in Section 4, including staff name-confirmation proposals, post-activation phone self-service, internal-note visibility, and Agent self-service address and photo edits.
-- The draft Customer status catalogue and financial-hold behaviour in Section 5, and Agent Active/Inactive statuses, Admin readiness step, Inactive activity limits, and temporary-lock assignment rule in Section 9.
-- The draft archival settlement gates, outstanding registration-fee handling, retained access, no-delete policy, and restoration workflow in Section 6.
-- The draft Agent suspension/access-restoration safeguards, offboarding gates, archived-assignment exception, cancellation, and return-to-service rules in Section 10.
-- The draft reassignment consequences and pending-task handover rules in Section 12, including recovery re-verification, invitation continuity, historical cash attribution, and former-Agent notification/export scope.
-- The draft atomic-registration boundary, fee-version reconfirmation, durable creation-attempt bindings, uncertain-outcome handling, and automatic invitation-delivery retry policy in Section 3.
-- The draft directory columns, status filters, search/sort/pagination defaults, profile sections, contextual actions, and safe loading/error/mobile states in Section 13.
-- The proposed Agent phone uniqueness within Agent profiles, without cross-role phone uniqueness.
-- The proposed individual-operation initial scope and bulk/scheduled/import/export exclusions in Section 17, together with its indexed requirements, acceptance scenarios, and dependency delivery gates.
-- The draft notification event/channel matrix, operational retries, scope-sensitive recipients, and delivery visibility in Section 15, and audit capture/masking/durability/access rules in Section 16. Detailed retention, reveal, preferences, and audit export remain with their owning policies.
+- The required and optional profile fields, limits, next-of-kin structure, and photo rules in Sections 2 and 7 are confirmed.
+- The `CUS-000001` and `AGT-000001` public-reference formats are confirmed.
+- The field-editing matrices in Section 4, including staff name-confirmation proposals, post-activation phone self-service, internal-note visibility, and Agent self-service address and photo edits are confirmed.
+- The Customer status catalogue (`Active`, `Inactive`, `Restricted`, `Archived`) and financial-hold behaviour in Section 5, and Agent `Active`/`Inactive` statuses, Admin readiness step, Inactive activity limits, and temporary-lock assignment rule in Section 9 are confirmed.
+- The archival settlement gates, outstanding registration-fee handling, retained access, no-delete policy, and restoration workflow in Section 6 are confirmed.
+- The Agent suspension/access-restoration safeguards, offboarding gates, archived-assignment exception, cancellation, and return-to-service rules in Section 10 are confirmed.
+- The reassignment consequences and pending-task handover rules in Section 12, including recovery re-verification, invitation continuity, historical cash attribution, and former-Agent notification/export scope are confirmed.
+- The atomic-registration boundary, fee-version reconfirmation, durable creation-attempt bindings, uncertain-outcome handling, and automatic invitation-delivery retry policy in Section 3 are confirmed.
+- The directory columns, status filters, search/sort/pagination defaults, profile sections, contextual actions, and safe loading/error/mobile states in Section 13 are confirmed.
+- The proposed Agent phone uniqueness within Agent profiles, without cross-role phone uniqueness, is confirmed.
+- The individual-operation initial scope and bulk/scheduled/import/export exclusions in Section 17, together with its indexed requirements, acceptance scenarios, and dependency delivery gates are confirmed.
+- The notification event/channel matrix, operational retries, scope-sensitive recipients, and delivery visibility in Section 15, and audit capture/masking/durability/access rules in Section 16 are confirmed. Detailed retention, reveal, preferences, and audit export remain with their owning policies.
 
-The most important design issue is the distinction between an operational profile status and an authentication account state. Keeping these separate will prevent actions such as marking a Customer inactive from accidentally removing login access or altering financial history.
+The core principle remains strictly confirmed: operational profile status is independent from authentication account state. Keeping these separate prevents actions such as marking a Customer inactive from accidentally removing login access or altering financial history.
 
 ## 19. Boundaries With Other Modules
 

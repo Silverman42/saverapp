@@ -35,20 +35,6 @@ class IdentityNormalizer
      */
     public static function normalizePhone(?string $phone): ?string
     {
-        if ($phone === null) {
-            return null;
-        }
-
-        $cleaned = preg_replace('/[^\d+]/', '', trim($phone));
-
-        if ($cleaned === null || $cleaned === '') {
-            return null;
-        }
-
-        if (! str_starts_with($cleaned, '+')) {
-            $cleaned = '+'.$cleaned;
-        }
-
-        return $cleaned;
+        return PhoneNormalizer::normalize($phone);
     }
 }

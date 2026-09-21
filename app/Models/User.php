@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -277,7 +278,31 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->customerProfile()->exists() || $this->agentProfile()->exists()) {
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Get the customer profile associated with this user.
+     *
+     * @return HasOne<CustomerProfile, $this>
+     */
+    public function customerProfile(): HasOne
+    {
+        return $this->hasOne(CustomerProfile::class, 'user_id');
+    }
+
+    /**
+     * Get the agent profile associated with this user.
+     *
+     * @return HasOne<AgentProfile, $this>
+     */
+    public function agentProfile(): HasOne
+    {
+        return $this->hasOne(AgentProfile::class, 'user_id');
     }
 
     /**
@@ -328,6 +353,14 @@ class User extends Authenticatable
     public function hasEnabledTwoFactorAuthentication(): bool
     {
         return ! is_null($this->two_factor_secret) && ! is_null($this->two_factor_confirmed_at);
+    }
+
+    /**
+     * Determine if two-factor authentication has been confirmed.
+     */
+    public function hasConfirmedTwoFactor(): bool
+    {
+        return $this->hasEnabledTwoFactorAuthentication();
     }
 
     /**
