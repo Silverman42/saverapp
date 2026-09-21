@@ -2,7 +2,12 @@
 import { Form, Head } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import { useVuelidate } from '@vuelidate/core';
-import { email as emailValidator, minLength, required, sameAs } from '@vuelidate/validators';
+import {
+    email as emailValidator,
+    minLength,
+    required,
+    sameAs,
+} from '@vuelidate/validators';
 import { toast } from 'vue-sonner';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
@@ -39,7 +44,7 @@ const props = withDefaults(
         isValidToken: true,
         requiresTwoFactor: false,
         userType: 'customer',
-    }
+    },
 );
 
 const inputEmail = ref(props.email);
@@ -65,12 +70,12 @@ const rules = computed(() => ({
         required,
         sameAsPassword: sameAs(computed(() => formState.password)),
     },
-    code: props.requiresTwoFactor && !showRecoveryInput.value
-        ? { required, minLength: minLength(6) }
-        : {},
-    recovery_code: props.requiresTwoFactor && showRecoveryInput.value
-        ? { required }
-        : {},
+    code:
+        props.requiresTwoFactor && !showRecoveryInput.value
+            ? { required, minLength: minLength(6) }
+            : {},
+    recovery_code:
+        props.requiresTwoFactor && showRecoveryInput.value ? { required } : {},
 }));
 
 const v$ = useVuelidate(rules, formState);
@@ -92,7 +97,9 @@ const handleSuccess = (): void => {
 
     <!-- Invalid or expired token view -->
     <div v-if="!isValidToken" class="space-y-6 text-center">
-        <div class="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+        <div
+            class="border-destructive/20 bg-destructive/10 text-destructive rounded-xl border p-4 text-sm"
+        >
             This password reset link is invalid or has expired.
         </div>
 
@@ -112,17 +119,19 @@ const handleSuccess = (): void => {
     <Form
         v-else
         v-bind="update.form()"
-        :transform="() => ({
-            token,
-            email: inputEmail,
-            password: formState.password,
-            password_confirmation: formState.password_confirmation,
-            ...(requiresTwoFactor
-                ? (showRecoveryInput
-                    ? { recovery_code: formState.recovery_code }
-                    : { code: formState.code })
-                : {}),
-        })"
+        :transform="
+            () => ({
+                token,
+                email: inputEmail,
+                password: formState.password,
+                password_confirmation: formState.password_confirmation,
+                ...(requiresTwoFactor
+                    ? showRecoveryInput
+                        ? { recovery_code: formState.recovery_code }
+                        : { code: formState.code }
+                    : {}),
+            })
+        "
         :reset-on-success="['password', 'password_confirmation']"
         @success="handleSuccess"
         v-slot="{ errors, processing }"
@@ -144,23 +153,37 @@ const handleSuccess = (): void => {
             </div>
 
             <!-- Mandatory Two Factor for Agent/Admin -->
-            <div v-if="requiresTwoFactor" class="rounded-2xl border border-border bg-card/60 p-4 space-y-4">
+            <div
+                v-if="requiresTwoFactor"
+                class="border-border bg-card/60 space-y-4 rounded-2xl border p-4"
+            >
                 <div class="flex items-center justify-between">
-                    <p class="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    <p
+                        class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                    >
                         Two-factor authentication
                     </p>
                     <button
                         type="button"
-                        class="text-xs text-primary underline underline-offset-4 hover:text-primary/80"
+                        class="text-primary hover:text-primary/80 text-xs underline underline-offset-4"
                         @click="toggleRecoveryMode"
                     >
-                        {{ showRecoveryInput ? 'Use authenticator code' : 'Use recovery code' }}
+                        {{
+                            showRecoveryInput
+                                ? 'Use authenticator code'
+                                : 'Use recovery code'
+                        }}
                     </button>
                 </div>
 
                 <!-- OTP code input -->
-                <div v-if="!showRecoveryInput" class="flex flex-col items-center space-y-3 text-center">
-                    <Label for="otp" class="text-sm">Enter 6-digit authenticator code</Label>
+                <div
+                    v-if="!showRecoveryInput"
+                    class="flex flex-col items-center space-y-3 text-center"
+                >
+                    <Label for="otp" class="text-sm"
+                        >Enter 6-digit authenticator code</Label
+                    >
                     <InputOTP
                         id="otp"
                         v-model="formState.code"
@@ -176,12 +199,21 @@ const handleSuccess = (): void => {
                             />
                         </InputOTPGroup>
                     </InputOTP>
-                    <InputError :message="errors.code || (v$.code.$error ? 'Valid 6-digit code is required.' : undefined)" />
+                    <InputError
+                        :message="
+                            errors.code ||
+                            (v$.code.$error
+                                ? 'Valid 6-digit code is required.'
+                                : undefined)
+                        "
+                    />
                 </div>
 
                 <!-- Recovery code input -->
                 <div v-else class="space-y-2">
-                    <Label for="recovery_code" class="text-sm">Emergency recovery code</Label>
+                    <Label for="recovery_code" class="text-sm"
+                        >Emergency recovery code</Label
+                    >
                     <Input
                         id="recovery_code"
                         name="recovery_code"
@@ -191,7 +223,14 @@ const handleSuccess = (): void => {
                         :disabled="processing"
                         autofocus
                     />
-                    <InputError :message="errors.recovery_code || (v$.recovery_code.$error ? 'Recovery code is required.' : undefined)" />
+                    <InputError
+                        :message="
+                            errors.recovery_code ||
+                            (v$.recovery_code.$error
+                                ? 'Recovery code is required.'
+                                : undefined)
+                        "
+                    />
                 </div>
             </div>
 
@@ -210,7 +249,12 @@ const handleSuccess = (): void => {
                     @blur="v$.password.$touch"
                 />
                 <InputError
-                    :message="errors.password || (v$.password.$error ? `Password must be at least ${minPassLength} characters.` : undefined)"
+                    :message="
+                        errors.password ||
+                        (v$.password.$error
+                            ? `Password must be at least ${minPassLength} characters.`
+                            : undefined)
+                    "
                 />
             </div>
 
@@ -228,7 +272,12 @@ const handleSuccess = (): void => {
                     @blur="v$.password_confirmation.$touch"
                 />
                 <InputError
-                    :message="errors.password_confirmation || (v$.password_confirmation.$error ? 'Passwords must match.' : undefined)"
+                    :message="
+                        errors.password_confirmation ||
+                        (v$.password_confirmation.$error
+                            ? 'Passwords must match.'
+                            : undefined)
+                    "
                 />
             </div>
 

@@ -6,7 +6,7 @@ use App\Actions\Fortify\AttemptToAuthenticateWithDeviceLimit;
 use App\Actions\Fortify\AuthenticateUser;
 use App\Actions\Fortify\RedirectIfTwoFactorAuthenticatable;
 use App\Actions\Fortify\ResetUserPassword;
-use App\Auth\Passwords\PasswordResetBroker;
+use App\Auth\Passwords\PasswordBrokerManager;
 use App\Enums\AccountState;
 use App\Enums\UserType;
 use App\Http\Responses\LoginResponse;
@@ -15,7 +15,6 @@ use App\Http\Responses\TwoFactorLoginResponse;
 use App\Models\User;
 use App\Support\IdentityNormalizer;
 use App\Support\PasswordPolicy;
-use Illuminate\Auth\Passwords\PasswordBrokerManager;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password as PasswordFacade;
@@ -23,7 +22,6 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use InvalidArgumentException;
 use Laravel\Fortify\Actions\CanonicalizeUsername;
 use Laravel\Fortify\Actions\EnsureLoginIsNotThrottled;
 use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
@@ -57,24 +55,7 @@ class FortifyServiceProvider extends ServiceProvider
         $this->app->singleton(FailedPasswordResetLinkRequestResponseContract::class, PasswordResetLinkResponse::class);
 
         $this->app->extend('auth.password', function ($service, $app) {
-            return new class($app) extends PasswordBrokerManager
-            {
-                protected function resolve($name)
-                {
-                    $config = $this->getConfig($name);
-
-                    if (is_null($config)) {
-                        throw new InvalidArgumentException("Password resetter [{$name}] is not defined.");
-                    }
-
-                    return new PasswordResetBroker(
-                        $this->createTokenRepository($config),
-                        $this->app['auth']->createUserProvider($config['provider'] ?? null),
-                        $this->app['events'] ?? null,
-                        timeboxDuration: $this->app['config']->get('auth.timebox_duration', 200000),
-                    );
-                }
-            };
+            return new PasswordBrokerManager($app);
         });
     }
 

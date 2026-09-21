@@ -36,48 +36,48 @@ A deferred correction has no generic “adjust balance” fallback. The original
 
 ## 3. Terms and correction taxonomy
 
-| Term | Meaning |
-| --- | --- |
-| Original transaction | Immutable posted financial event selected for correction. |
-| Reversal request | Versioned request asserting that an eligible original is erroneous and proposing a complete compensation bundle. It has no financial effect before approval/posting. |
-| Compensation bundle | Balanced immutable entries and required owner events that remove the original's current live financial effect and its defined direct dependencies. |
-| Dependent effect | Fee, slot allocation, obligation state, trigger marker, reservation, custody or reconciliation effect whose validity depends directly on the original. |
-| Full reversal | Compensation of the entire remaining live effect of the selected original and every required dependent effect. |
-| Replacement | New, separately confirmed correct transaction after a reversal. Never an edit or automatic replay. |
-| Valid-charge refund | Business decision to return a correctly assessed/settled charge; owned by Module 05 and not evidence that the original was erroneous. |
-| Adjustment | Separately authorized correction where no eligible original can be exactly compensated; deferred until authority/accounting policy exists. |
-| Physical return/recovery | Real movement of money after an original receipt or payout. A database reversal cannot assert that this occurred. |
+| Term                     | Meaning                                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Original transaction     | Immutable posted financial event selected for correction.                                                                                                            |
+| Reversal request         | Versioned request asserting that an eligible original is erroneous and proposing a complete compensation bundle. It has no financial effect before approval/posting. |
+| Compensation bundle      | Balanced immutable entries and required owner events that remove the original's current live financial effect and its defined direct dependencies.                   |
+| Dependent effect         | Fee, slot allocation, obligation state, trigger marker, reservation, custody or reconciliation effect whose validity depends directly on the original.               |
+| Full reversal            | Compensation of the entire remaining live effect of the selected original and every required dependent effect.                                                       |
+| Replacement              | New, separately confirmed correct transaction after a reversal. Never an edit or automatic replay.                                                                   |
+| Valid-charge refund      | Business decision to return a correctly assessed/settled charge; owned by Module 05 and not evidence that the original was erroneous.                                |
+| Adjustment               | Separately authorized correction where no eligible original can be exactly compensated; deferred until authority/accounting policy exists.                           |
+| Physical return/recovery | Real movement of money after an original receipt or payout. A database reversal cannot assert that this occurred.                                                    |
 
 ### 3.1 Taxonomy and owning route
 
-| Situation | Initial route | Why |
-| --- | --- | --- |
-| Erroneous posted Customer contribution or combined savings/fee receipt | This module: Agent request → Admin approval → full compensation | Removes posted liability, slot funding, custody and direct fee effects together. |
-| Erroneous posted external fee receipt, savings fee application or other deduction | This module if it is a Customer financial entry and all direct effects are compensable | Restores the relevant obligation/liability/income effects without granting a waiver or refund. |
-| Erroneous completed Customer withdrawal/payout | This module only after payout/funds disposition is authoritatively resolved under Section 8 | Reversing a ledger entry is not recovery of cash already paid. |
-| Incorrect pending/unposted contribution or withdrawal request | Cancel/reject in its owning module | There is no posted financial effect to reverse. |
-| Incorrect unpaid discretionary fee assessment | Module 05 `fees.manage` assessment correction | No posted-money reversal; `reversals.review` is not a substitute. |
-| Valid fee concession/refund | Module 05 `fees.manage` refund workflow | The charge was valid; it must not be labelled erroneous. |
-| Unpaid-fee waiver | Module 05 `fees.manage` | Waiver is deliberate forgiveness, not reversal. |
-| New fee/deduction | Module 05 with `fees.manage` or `deductions.manage` | A reversal approval cannot create independent charges. |
-| Incorrect remittance, reconciliation decision or evidence | Module 07 with `reconciliation.manage` | It corrects custody/reconciliation records, not Customer financial history through Agent initiation. |
-| Erroneous business fee-earnings draw | Module 05 dedicated `fees.manage` compensation | Business-only action, outside Agent Customer scope. |
-| Unable to identify an exact eligible original or exact counter-account | Deferred adjustment/investigation | Never force an approximate reversal or hidden balance edit. |
+| Situation                                                                         | Initial route                                                                               | Why                                                                                                  |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Erroneous posted Customer contribution or combined savings/fee receipt            | This module: Agent request → Admin approval → full compensation                             | Removes posted liability, slot funding, custody and direct fee effects together.                     |
+| Erroneous posted external fee receipt, savings fee application or other deduction | This module if it is a Customer financial entry and all direct effects are compensable      | Restores the relevant obligation/liability/income effects without granting a waiver or refund.       |
+| Erroneous completed Customer withdrawal/payout                                    | This module only after payout/funds disposition is authoritatively resolved under Section 8 | Reversing a ledger entry is not recovery of cash already paid.                                       |
+| Incorrect pending/unposted contribution or withdrawal request                     | Cancel/reject in its owning module                                                          | There is no posted financial effect to reverse.                                                      |
+| Incorrect unpaid discretionary fee assessment                                     | Module 05 `fees.manage` assessment correction                                               | No posted-money reversal; `reversals.review` is not a substitute.                                    |
+| Valid fee concession/refund                                                       | Module 05 `fees.manage` refund workflow                                                     | The charge was valid; it must not be labelled erroneous.                                             |
+| Unpaid-fee waiver                                                                 | Module 05 `fees.manage`                                                                     | Waiver is deliberate forgiveness, not reversal.                                                      |
+| New fee/deduction                                                                 | Module 05 with `fees.manage` or `deductions.manage`                                         | A reversal approval cannot create independent charges.                                               |
+| Incorrect remittance, reconciliation decision or evidence                         | Module 07 with `reconciliation.manage`                                                      | It corrects custody/reconciliation records, not Customer financial history through Agent initiation. |
+| Erroneous business fee-earnings draw                                              | Module 05 dedicated `fees.manage` compensation                                              | Business-only action, outside Agent Customer scope.                                                  |
+| Unable to identify an exact eligible original or exact counter-account            | Deferred adjustment/investigation                                                           | Never force an approximate reversal or hidden balance edit.                                          |
 
 One reversal approval authorizes only the reviewed original and its displayed mechanically required dependency bundle. It does not authorize a new fee, waiver, valid-charge refund, unrelated deduction, write-off, reconciliation decision, payout, recovery, replacement transaction or correction of another original.
 
 ## 4. Authority, scope and separation of duties
 
-| Action | Customer | Eligible current assigned Agent | Admin |
-| --- | --- | --- | --- |
-| View reversal affecting a Customer | Own permitted history | Current assigned scope | Business-wide baseline read summary; sensitive evidence scoped below |
-| Initiate Customer financial reversal | No | Yes, subject to eligibility | No, including with `reversals.review` |
-| Edit/cancel own pending request | No | Requesting Agent while still authorized; cancellation rules apply | No |
-| Approve/reject/post decision | No | No | One Admin with `reversals.review` |
-| Add review evidence/comment | Issue evidence only where permitted | Pending request within current task scope | Reviewing Admin with `reversals.review` |
-| Waive/refund/assess fee or post deduction | No | No | Separate owning permission only |
-| Resolve reconciliation/remittance | No | No | `reconciliation.manage` only |
-| Detailed audit / business export | No | No | `audit.view` / `reports.export` respectively |
+| Action                                    | Customer                            | Eligible current assigned Agent                                   | Admin                                                                |
+| ----------------------------------------- | ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| View reversal affecting a Customer        | Own permitted history               | Current assigned scope                                            | Business-wide baseline read summary; sensitive evidence scoped below |
+| Initiate Customer financial reversal      | No                                  | Yes, subject to eligibility                                       | No, including with `reversals.review`                                |
+| Edit/cancel own pending request           | No                                  | Requesting Agent while still authorized; cancellation rules apply | No                                                                   |
+| Approve/reject/post decision              | No                                  | No                                                                | One Admin with `reversals.review`                                    |
+| Add review evidence/comment               | Issue evidence only where permitted | Pending request within current task scope                         | Reviewing Admin with `reversals.review`                              |
+| Waive/refund/assess fee or post deduction | No                                  | No                                                                | Separate owning permission only                                      |
+| Resolve reconciliation/remittance         | No                                  | No                                                                | `reconciliation.manage` only                                         |
+| Detailed audit / business export          | No                                  | No                                                                | `audit.view` / `reports.export` respectively                         |
 
 Initiation requires an Agent role, completed activation/MFA, operationally Active status, an Authentication-permitted current session, current effective Customer assignment, access to the original and Customer status eligibility. Preserve Authentication and Module 04's legitimate-session temporary-lock exception; Suspended/Deactivated access remains blocked. A Customer may report an error through a service channel but cannot create the system request.
 
@@ -107,11 +107,11 @@ Validate all identifiers and relationships server-side. All financial values are
 
 ## 6. Request states and transitions
 
-| State | Meaning | Allowed transition |
-| --- | --- | --- |
-| Pending review | Valid request committed; original remains financially effective | Reject, cancel, or approve-and-post after fresh preview |
-| Rejected | Admin found request ineligible/unsupported/unproven | Terminal; a materially new issue may use a new request linked to this history |
-| Cancelled | Requesting Agent withdrew pending request before review commitment | Terminal; no financial effect |
+| State               | Meaning                                                              | Allowed transition                                                                 |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Pending review      | Valid request committed; original remains financially effective      | Reject, cancel, or approve-and-post after fresh preview                            |
+| Rejected            | Admin found request ineligible/unsupported/unproven                  | Terminal; a materially new issue may use a new request linked to this history      |
+| Cancelled           | Requesting Agent withdrew pending request before review commitment   | Terminal; no financial effect                                                      |
 | Approved and posted | Admin approval and the full compensation bundle committed atomically | Terminal; corrections to this result require a separately eligible linked workflow |
 
 There is no durable Approved-but-unposted state in initial scope. Approval and posting form one commit boundary; an unknown network response is resolved by operation lookup, not represented as a new business state. A failed attempt leaves Pending review with safe failure evidence if no bundle committed. Never display Reversed until durable posting succeeds.
@@ -271,13 +271,13 @@ Proposed pagination is 25 rows default with 25/50/100 options. Loading does not 
 
 ## 13. Notifications and audit
 
-| Event | Recipients / channel | Content boundary |
-| --- | --- | --- |
-| Request submitted | Requesting Agent receipt; current assigned Agent task if different; Admin review queue | Request/original references, state, safe dependency status; no email evidence attachment. |
-| Rejected/cancelled | Customer in-app/email when a prior error notice requires resolution; requester/current Agent in-app | State/time and Customer-facing explanation; internal review reason only to permitted staff. |
-| Approved and posted | Customer in-app/email; requester/current Agent and reviewer receipt | Original and correction references, effective amounts/date, plan/fee/withdrawal consequences and next step; never claim physical return without owner proof. |
-| Blocked dependency or post-closure exception | Current Agent and relevant authorized owner queue | Safe blocking category/reference; no broad disclosure of evidence/private reasons. |
-| Delivery failure | Authorized task owner | Delivery status/retry, without repeating financial posting. |
+| Event                                        | Recipients / channel                                                                                | Content boundary                                                                                                                                             |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Request submitted                            | Requesting Agent receipt; current assigned Agent task if different; Admin review queue              | Request/original references, state, safe dependency status; no email evidence attachment.                                                                    |
+| Rejected/cancelled                           | Customer in-app/email when a prior error notice requires resolution; requester/current Agent in-app | State/time and Customer-facing explanation; internal review reason only to permitted staff.                                                                  |
+| Approved and posted                          | Customer in-app/email; requester/current Agent and reviewer receipt                                 | Original and correction references, effective amounts/date, plan/fee/withdrawal consequences and next step; never claim physical return without owner proof. |
+| Blocked dependency or post-closure exception | Current Agent and relevant authorized owner queue                                                   | Safe blocking category/reference; no broad disclosure of evidence/private reasons.                                                                           |
+| Delivery failure                             | Authorized task owner                                                                               | Delivery status/retry, without repeating financial posting.                                                                                                  |
 
 Use durable outbox, event/recipient/channel deduplication, bounded retries and scope recheck at delivery/retrieval. Reassignment routes current operational notices without disclosing former Agent private context. Email subjects avoid financial amounts and sensitive identifiers; do not attach statements/evidence. Delivery failure never changes request/financial outcome.
 
@@ -301,77 +301,77 @@ Release is blocked until the shared ledger chart/accounts, Module 08 withdrawal 
 
 ## 15. Functional requirements
 
-| ID | Requirement | Sections |
-| --- | --- | --- |
-| REV-FR-001 | Correct supported erroneous posted Customer entries only through immutable linked full compensation. | 2–3 |
-| REV-FR-002 | Prohibit deletion/editing, partial reversals and generic balance adjustments in initial scope. | 2, 8 |
-| REV-FR-003 | Route valid-charge refunds, waivers, new deductions, remittance corrections and business draws to their independent owners/permissions. | 3.1, 4 |
-| REV-FR-004 | Permit only an eligible current assigned Agent to initiate a Customer financial reversal. | 4, 9.1 |
-| REV-FR-005 | Permit one Admin with `reversals.review` to approve/reject any value; prohibit Admin initiation and Agent approval. | 4, 9.2 |
-| REV-FR-006 | Require fresh Admin authentication and recheck permission/restrictions at decision commit. | 4, 9.2 |
-| REV-FR-007 | Record validated reason, Customer explanation, immutable original/dependency references and scoped evidence. | 5 |
-| REV-FR-008 | Enforce Pending review, Rejected, Cancelled and Approved-and-posted states without an approved-unposted gap. | 6 |
-| REV-FR-009 | Restrict cancellation to the authorized requesting Agent while pending and make terminal decisions immutable. | 6 |
-| REV-FR-010 | Validate original posting/live effect/status/scope/type and reject unposted/already-compensated/unsupported originals. | 7.1 |
-| REV-FR-011 | Allow corrective posting for Active/Inactive/Restricted Customers and require Archived restoration. | 7.1, 10 |
-| REV-FR-012 | Build an authoritative versioned dependency graph and fail closed on unknown/blocking effects. | 7.2 |
-| REV-FR-013 | Enforce one pending and at most one posted full reversal per original/posting group. | 7.4 |
-| REV-FR-014 | Compensate a full contribution/combined receipt, slot funding, direct fees and custody atomically. | 8.1 |
-| REV-FR-015 | Prevent liability below reservations/downstream payouts and prohibit unrelated automatic reversals. | 7.2, 8.1 |
-| REV-FR-016 | Apply Module 06 completion/closed-cycle correction rules without altering successors. | 8.1, 10 |
-| REV-FR-017 | Compensate erroneous fee receipts/applications/deductions while preserving valid obligation semantics and permission boundaries. | 8.2 |
-| REV-FR-018 | Reverse a completed withdrawal only with authoritative full payout disposition/return and complete group compensation. | 8.3 |
+| ID         | Requirement                                                                                                                                   | Sections        |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| REV-FR-001 | Correct supported erroneous posted Customer entries only through immutable linked full compensation.                                          | 2–3             |
+| REV-FR-002 | Prohibit deletion/editing, partial reversals and generic balance adjustments in initial scope.                                                | 2, 8            |
+| REV-FR-003 | Route valid-charge refunds, waivers, new deductions, remittance corrections and business draws to their independent owners/permissions.       | 3.1, 4          |
+| REV-FR-004 | Permit only an eligible current assigned Agent to initiate a Customer financial reversal.                                                     | 4, 9.1          |
+| REV-FR-005 | Permit one Admin with `reversals.review` to approve/reject any value; prohibit Admin initiation and Agent approval.                           | 4, 9.2          |
+| REV-FR-006 | Require fresh Admin authentication and recheck permission/restrictions at decision commit.                                                    | 4, 9.2          |
+| REV-FR-007 | Record validated reason, Customer explanation, immutable original/dependency references and scoped evidence.                                  | 5               |
+| REV-FR-008 | Enforce Pending review, Rejected, Cancelled and Approved-and-posted states without an approved-unposted gap.                                  | 6               |
+| REV-FR-009 | Restrict cancellation to the authorized requesting Agent while pending and make terminal decisions immutable.                                 | 6               |
+| REV-FR-010 | Validate original posting/live effect/status/scope/type and reject unposted/already-compensated/unsupported originals.                        | 7.1             |
+| REV-FR-011 | Allow corrective posting for Active/Inactive/Restricted Customers and require Archived restoration.                                           | 7.1, 10         |
+| REV-FR-012 | Build an authoritative versioned dependency graph and fail closed on unknown/blocking effects.                                                | 7.2             |
+| REV-FR-013 | Enforce one pending and at most one posted full reversal per original/posting group.                                                          | 7.4             |
+| REV-FR-014 | Compensate a full contribution/combined receipt, slot funding, direct fees and custody atomically.                                            | 8.1             |
+| REV-FR-015 | Prevent liability below reservations/downstream payouts and prohibit unrelated automatic reversals.                                           | 7.2, 8.1        |
+| REV-FR-016 | Apply Module 06 completion/closed-cycle correction rules without altering successors.                                                         | 8.1, 10         |
+| REV-FR-017 | Compensate erroneous fee receipts/applications/deductions while preserving valid obligation semantics and permission boundaries.              | 8.2             |
+| REV-FR-018 | Reverse a completed withdrawal only with authoritative full payout disposition/return and complete group compensation.                        | 8.3             |
 | REV-FR-019 | Classify receipt/payout physical disposition separately from ledger correction; preserve controlled money and block uncertain/partial return. | 3, 7.3, 8.2–8.3 |
-| REV-FR-020 | Keep remittance/reconciliation corrections under `reconciliation.manage` and append effects to prior reconciled versions. | 8.4 |
-| REV-FR-021 | Commit decision, balanced entries, owner events, audit and outbox atomically/exactly once. | 9.2, 11 |
-| REV-FR-022 | Require separately confirmed current-authority replacement transactions with new identities/times. | 9.3 |
-| REV-FR-023 | Preserve requests/actors/custody through reassignment, Agent unavailability and offboarding handover. | 10 |
-| REV-FR-024 | Preserve Customer status holds, archive gates and terminal-plan exceptions without automatic activity. | 10 |
-| REV-FR-025 | Make all mutations idempotent and resolve timeouts/unknown results before retrying. | 11 |
-| REV-FR-026 | Serialize concurrent original/dependency changes and reject stale versions before posting. | 11 |
-| REV-FR-027 | Provide scoped Agent/Admin/Customer screens, queues, history and safe error/accessibility states. | 12 |
-| REV-FR-028 | Send scoped deduplicated lifecycle notifications without coupling delivery to financial outcome. | 13 |
-| REV-FR-029 | Retain append-only masked audit and immutable original/compensation/evidence access history. | 13 |
-| REV-FR-030 | Meet integer arithmetic, authorization, evidence security, observability, recovery and contract-test release gates. | 14 |
+| REV-FR-020 | Keep remittance/reconciliation corrections under `reconciliation.manage` and append effects to prior reconciled versions.                     | 8.4             |
+| REV-FR-021 | Commit decision, balanced entries, owner events, audit and outbox atomically/exactly once.                                                    | 9.2, 11         |
+| REV-FR-022 | Require separately confirmed current-authority replacement transactions with new identities/times.                                            | 9.3             |
+| REV-FR-023 | Preserve requests/actors/custody through reassignment, Agent unavailability and offboarding handover.                                         | 10              |
+| REV-FR-024 | Preserve Customer status holds, archive gates and terminal-plan exceptions without automatic activity.                                        | 10              |
+| REV-FR-025 | Make all mutations idempotent and resolve timeouts/unknown results before retrying.                                                           | 11              |
+| REV-FR-026 | Serialize concurrent original/dependency changes and reject stale versions before posting.                                                    | 11              |
+| REV-FR-027 | Provide scoped Agent/Admin/Customer screens, queues, history and safe error/accessibility states.                                             | 12              |
+| REV-FR-028 | Send scoped deduplicated lifecycle notifications without coupling delivery to financial outcome.                                              | 13              |
+| REV-FR-029 | Retain append-only masked audit and immutable original/compensation/evidence access history.                                                  | 13              |
+| REV-FR-030 | Meet integer arithmetic, authorization, evidence security, observability, recovery and contract-test release gates.                           | 14              |
 
 ## 16. Acceptance scenarios and traceability
 
 An acceptance scenario is **Blocked**, not Passed, when an authoritative owner or approved policy is missing. Evidence records build/configuration, fixture, actor/permission/version, operation IDs, exact pre/post entries and expected/actual owner events.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| REV-AC-001 | REV-FR-001, REV-FR-002 | Reverse an eligible full contribution; original remains visible, linked balanced compensation removes live effect, and direct edit/delete/partial API attempts fail. |
-| REV-AC-002 | REV-FR-003 | Attempt to label a valid charge as error, waive debt, add a deduction, correct remittance or reverse business draw through this flow; route/deny with no effect. |
-| REV-AC-003 | REV-FR-004 | Eligible active current Agent initiates for assigned Active, Inactive and Restricted Customers; unassigned/inactive/suspended Agent and Customer fail safely. |
-| REV-AC-004 | REV-FR-005 | Customer/Admin initiation and Agent approval endpoints fail; one Admin with `reversals.review` approves any supported value without a second approver. |
-| REV-AC-005 | REV-FR-005, REV-FR-006 | Admin lacks/revokes permission or fresh authentication expires before commit; decision/posting fails and stays Pending review. |
-| REV-AC-006 | REV-FR-007 | Missing/overlong reasons, unsafe explanation, invalid/malicious/oversize evidence and mismatched references fail; valid immutable evidence remains attributable. |
-| REV-AC-007 | REV-FR-008 | Submit, reject and cancel separate requests; terminal histories persist and none changes money. Successful approval has no durable approved-unposted state. |
-| REV-AC-008 | REV-FR-009, REV-FR-023 | Requester cancels while pending; replacement/former Agent and stale requester cannot cancel after reassignment or decision. |
-| REV-AC-009 | REV-FR-010 | Draft/failed/pending transaction, already reversed original, unsupported partial correction and wrong Customer/type are rejected without existence leakage. |
-| REV-AC-010 | REV-FR-011 | Correct Restricted Customer without enabling payout/new transaction; Archived Customer blocks until identity-preserving restoration to Inactive. |
-| REV-AC-011 | REV-FR-012 | Graph contains compensable, retained, blocking and unknown dependencies; only complete supported graph can reach approval. |
-| REV-AC-012 | REV-FR-013, REV-FR-025 | Concurrent Agents/retries target same original; one Pending request and at most one compensation commit. |
-| REV-AC-013 | REV-FR-014 | Reverse multi-slot combined savings/fee receipt; remove all live allocations/components, update liability/obligation/earnings/custody once and preserve history. |
+| ID         | Requirements           | Scenario and expected result                                                                                                                                                                                                                          |
+| ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REV-AC-001 | REV-FR-001, REV-FR-002 | Reverse an eligible full contribution; original remains visible, linked balanced compensation removes live effect, and direct edit/delete/partial API attempts fail.                                                                                  |
+| REV-AC-002 | REV-FR-003             | Attempt to label a valid charge as error, waive debt, add a deduction, correct remittance or reverse business draw through this flow; route/deny with no effect.                                                                                      |
+| REV-AC-003 | REV-FR-004             | Eligible active current Agent initiates for assigned Active, Inactive and Restricted Customers; unassigned/inactive/suspended Agent and Customer fail safely.                                                                                         |
+| REV-AC-004 | REV-FR-005             | Customer/Admin initiation and Agent approval endpoints fail; one Admin with `reversals.review` approves any supported value without a second approver.                                                                                                |
+| REV-AC-005 | REV-FR-005, REV-FR-006 | Admin lacks/revokes permission or fresh authentication expires before commit; decision/posting fails and stays Pending review.                                                                                                                        |
+| REV-AC-006 | REV-FR-007             | Missing/overlong reasons, unsafe explanation, invalid/malicious/oversize evidence and mismatched references fail; valid immutable evidence remains attributable.                                                                                      |
+| REV-AC-007 | REV-FR-008             | Submit, reject and cancel separate requests; terminal histories persist and none changes money. Successful approval has no durable approved-unposted state.                                                                                           |
+| REV-AC-008 | REV-FR-009, REV-FR-023 | Requester cancels while pending; replacement/former Agent and stale requester cannot cancel after reassignment or decision.                                                                                                                           |
+| REV-AC-009 | REV-FR-010             | Draft/failed/pending transaction, already reversed original, unsupported partial correction and wrong Customer/type are rejected without existence leakage.                                                                                           |
+| REV-AC-010 | REV-FR-011             | Correct Restricted Customer without enabling payout/new transaction; Archived Customer blocks until identity-preserving restoration to Inactive.                                                                                                      |
+| REV-AC-011 | REV-FR-012             | Graph contains compensable, retained, blocking and unknown dependencies; only complete supported graph can reach approval.                                                                                                                            |
+| REV-AC-012 | REV-FR-013, REV-FR-025 | Concurrent Agents/retries target same original; one Pending request and at most one compensation commit.                                                                                                                                              |
+| REV-AC-013 | REV-FR-014             | Reverse multi-slot combined savings/fee receipt; remove all live allocations/components, update liability/obligation/earnings/custody once and preserve history.                                                                                      |
 | REV-AC-014 | REV-FR-014, REV-FR-019 | Reverse false duplicate, actually received/wrong-Customer, returned and uncertain receipt fixtures; compensate nonexistent custody, preserve real money in linked suspense or evidenced return, and block uncertainty without claiming cash returned. |
-| REV-AC-015 | REV-FR-015 | Contribution reversal would put liability below live reservation/completed payout; approval blocks without releasing or reversing the unrelated withdrawal. |
-| REV-AC-016 | REV-FR-016 | Reversal unfunds Completed plan; it becomes Paused with prior completion retained. Closed plan stays Closed with exception and successor unchanged. |
-| REV-AC-017 | REV-FR-017 | Reverse valid-assessment fee payment/application; restore valid obligation and liability/income/custody as applicable, without waiver/refund/new fee. |
-| REV-AC-018 | REV-FR-017 | Reverse erroneous deduction; restore Customer liability and destination exactly, while replacement deduction requires separate grant/action. |
-| REV-AC-019 | REV-FR-018, REV-FR-019 | False-undelivered or fully returned payout posts complete withdrawal-group compensation; delivered/unreturned/partial/unknown payout blocks. |
-| REV-AC-020 | REV-FR-018 | Pending/rejected/cancelled/approved-unpaid withdrawal is sent to Module 08 cancellation/hold path and creates no reversal. |
-| REV-AC-021 | REV-FR-020 | Receipt reversal touches reconciled batch; old review stays immutable and linked exception/supplement appears; reviewer cannot mark remittance resolved. |
-| REV-AC-022 | REV-FR-021 | Fault each ledger/plan/fee/reservation/custody/audit boundary; either complete bundle commits once or no decision/effect commits. |
-| REV-AC-023 | REV-FR-022 | After reversal, replacement uses new ID/current confirmation/time/Agent, never auto-replays or backdates the original. |
-| REV-AC-024 | REV-FR-023 | Reassign/suspend/offboard after valid initiation; request remains reviewable, actors/cash liability stay original, task access follows current scope. |
-| REV-AC-025 | REV-FR-024 | Pending correction blocks archive; later archived discovery records investigation and requires restoration, without automatic financial mutation. |
-| REV-AC-026 | REV-FR-025 | Lose responses during initiation/approval and retry same/different payload; same returns committed result, different conflicts, no duplicates. |
-| REV-AC-027 | REV-FR-026 | Race approval with new payout reservation, fee refund, remittance, plan closure or another compensation; stale preview fails and reloads complete graph. |
-| REV-AC-028 | REV-FR-027 | Verify scoped searches/counts/direct links across roles/reassignment, responsive keyboard/screen-reader flow, and safe loading/stale/unknown states. |
-| REV-AC-029 | REV-FR-027 | Customer statement shows original and reversal/net effect without private evidence, deletion or false physical-return claim. |
-| REV-AC-030 | REV-FR-028 | Delivery fails after commit; one financial result remains, retry is deduplicated and current scope is checked before delivery. |
-| REV-AC-031 | REV-FR-029 | Every request/decision/bundle/failure has masked immutable audit; detailed access/export obeys independent grants and secrets never appear. |
-| REV-AC-032 | REV-FR-030 | Exercise overflow, unbalanced entry, evidence malware/access, owner outage, restore/rebuild and missing contract; fail closed or rebuild exact projections. |
+| REV-AC-015 | REV-FR-015             | Contribution reversal would put liability below live reservation/completed payout; approval blocks without releasing or reversing the unrelated withdrawal.                                                                                           |
+| REV-AC-016 | REV-FR-016             | Reversal unfunds Completed plan; it becomes Paused with prior completion retained. Closed plan stays Closed with exception and successor unchanged.                                                                                                   |
+| REV-AC-017 | REV-FR-017             | Reverse valid-assessment fee payment/application; restore valid obligation and liability/income/custody as applicable, without waiver/refund/new fee.                                                                                                 |
+| REV-AC-018 | REV-FR-017             | Reverse erroneous deduction; restore Customer liability and destination exactly, while replacement deduction requires separate grant/action.                                                                                                          |
+| REV-AC-019 | REV-FR-018, REV-FR-019 | False-undelivered or fully returned payout posts complete withdrawal-group compensation; delivered/unreturned/partial/unknown payout blocks.                                                                                                          |
+| REV-AC-020 | REV-FR-018             | Pending/rejected/cancelled/approved-unpaid withdrawal is sent to Module 08 cancellation/hold path and creates no reversal.                                                                                                                            |
+| REV-AC-021 | REV-FR-020             | Receipt reversal touches reconciled batch; old review stays immutable and linked exception/supplement appears; reviewer cannot mark remittance resolved.                                                                                              |
+| REV-AC-022 | REV-FR-021             | Fault each ledger/plan/fee/reservation/custody/audit boundary; either complete bundle commits once or no decision/effect commits.                                                                                                                     |
+| REV-AC-023 | REV-FR-022             | After reversal, replacement uses new ID/current confirmation/time/Agent, never auto-replays or backdates the original.                                                                                                                                |
+| REV-AC-024 | REV-FR-023             | Reassign/suspend/offboard after valid initiation; request remains reviewable, actors/cash liability stay original, task access follows current scope.                                                                                                 |
+| REV-AC-025 | REV-FR-024             | Pending correction blocks archive; later archived discovery records investigation and requires restoration, without automatic financial mutation.                                                                                                     |
+| REV-AC-026 | REV-FR-025             | Lose responses during initiation/approval and retry same/different payload; same returns committed result, different conflicts, no duplicates.                                                                                                        |
+| REV-AC-027 | REV-FR-026             | Race approval with new payout reservation, fee refund, remittance, plan closure or another compensation; stale preview fails and reloads complete graph.                                                                                              |
+| REV-AC-028 | REV-FR-027             | Verify scoped searches/counts/direct links across roles/reassignment, responsive keyboard/screen-reader flow, and safe loading/stale/unknown states.                                                                                                  |
+| REV-AC-029 | REV-FR-027             | Customer statement shows original and reversal/net effect without private evidence, deletion or false physical-return claim.                                                                                                                          |
+| REV-AC-030 | REV-FR-028             | Delivery fails after commit; one financial result remains, retry is deduplicated and current scope is checked before delivery.                                                                                                                        |
+| REV-AC-031 | REV-FR-029             | Every request/decision/bundle/failure has masked immutable audit; detailed access/export obeys independent grants and secrets never appear.                                                                                                           |
+| REV-AC-032 | REV-FR-030             | Exercise overflow, unbalanced entry, evidence malware/access, owner outage, restore/rebuild and missing contract; fail closed or rebuild exact projections.                                                                                           |
 
 ## 17. Worked examples
 
@@ -393,20 +393,20 @@ A posted ₦10,000 gross withdrawal paid ₦9,800 to the Customer and applied a 
 
 ## 18. Proposed decisions and release gates
 
-| Decision | Draft recommendation / consequence |
-| --- | --- |
-| Scope | Full reversal only, one original posting group; replacement is separate. Partial corrections remain blocked. |
-| States | Pending review, Rejected, Cancelled, Approved and posted; approval/posting atomic. |
-| Evidence | Up to three JPEG/PNG/WebP/PDF files, 5 MB each per evidence record, immutable supplements; finalize retention/reveal before release. |
-| Fresh authentication | Admin review uses Authentication's shared password-and-MFA freshness policy; no competing interval. |
-| Correction period | No arbitrary age cutoff; current-period compensation date with original date preserved. Accounting period policy must exist. |
-| Withdrawal correction | Require proven never-delivered or fully returned net payout; partial/uncertain recovery remains blocked pending recovery/adjustment workflow. |
-| Dependency breadth | Only direct required compensation in one approval; independent later activity is retained or blocks, never silently bundled. |
-| Completed/closed plans | Completed shortfall becomes Paused; Closed remains terminal with linked exception. Confirm with Module 06 implementation. |
-| Reconciled custody | Append exception/supplement while retaining prior batch review; Module 07 defines accounts and resolution. |
-| Valid refunds/waivers | Remain Module 05 actions under their own permissions; never represented as erroneous reversal. |
-| Authority gaps | Do not create an Admin initiator, Agent approver, manual-journal role or new permission. Revise Module 03 explicitly before adding capability. |
-| Posting architecture | Shared balanced ledger and exactly-once owner protocol must be contract-tested before any approval endpoint is enabled. |
+| Decision               | Draft recommendation / consequence                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scope                  | Full reversal only, one original posting group; replacement is separate. Partial corrections remain blocked.                                   |
+| States                 | Pending review, Rejected, Cancelled, Approved and posted; approval/posting atomic.                                                             |
+| Evidence               | Up to three JPEG/PNG/WebP/PDF files, 5 MB each per evidence record, immutable supplements; finalize retention/reveal before release.           |
+| Fresh authentication   | Admin review uses Authentication's shared password-and-MFA freshness policy; no competing interval.                                            |
+| Correction period      | No arbitrary age cutoff; current-period compensation date with original date preserved. Accounting period policy must exist.                   |
+| Withdrawal correction  | Require proven never-delivered or fully returned net payout; partial/uncertain recovery remains blocked pending recovery/adjustment workflow.  |
+| Dependency breadth     | Only direct required compensation in one approval; independent later activity is retained or blocks, never silently bundled.                   |
+| Completed/closed plans | Completed shortfall becomes Paused; Closed remains terminal with linked exception. Confirm with Module 06 implementation.                      |
+| Reconciled custody     | Append exception/supplement while retaining prior batch review; Module 07 defines accounts and resolution.                                     |
+| Valid refunds/waivers  | Remain Module 05 actions under their own permissions; never represented as erroneous reversal.                                                 |
+| Authority gaps         | Do not create an Admin initiator, Agent approver, manual-journal role or new permission. Revise Module 03 explicitly before adding capability. |
+| Posting architecture   | Shared balanced ledger and exactly-once owner protocol must be contract-tested before any approval endpoint is enabled.                        |
 
 ## 19. Related modules
 

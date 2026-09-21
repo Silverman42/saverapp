@@ -38,15 +38,15 @@ Module 11's stable metric contract is reused: every shared metric keeps one code
 
 ### 2.3 Interactive report versus issued statement
 
-| Characteristic | Interactive report / Module 12 export | Issued Customer statement / Module 10 |
-| --- | --- | --- |
-| Purpose | Analysis across selected records/metrics | Reproducible financial record for exactly one Customer |
-| State | Live/cutoff-labelled projection; export is a snapshot of report query | Immutable Issued artifact with statement ID, cutoff/hash and supersession lineage |
-| Scope | Own Customer, current Agent scope, or Admin business scope | One Customer under current record access |
-| Download authority | Module 12 multi-Customer/business files require `reports.export` | Single-Customer statement follows Module 10 resource scope |
-| Opening/activity/closing | Included only for defined balance reports | Required Customer liability reconciliation |
-| Corrections | New run/file at new or same explicit cutoff; old export is not silently replaced | New issue/supersession; old statement remains reproducible |
-| Wording | “Report generated at/as of” | “Statement issued,” never “Final” in initial scope |
+| Characteristic           | Interactive report / Module 12 export                                            | Issued Customer statement / Module 10                                             |
+| ------------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Purpose                  | Analysis across selected records/metrics                                         | Reproducible financial record for exactly one Customer                            |
+| State                    | Live/cutoff-labelled projection; export is a snapshot of report query            | Immutable Issued artifact with statement ID, cutoff/hash and supersession lineage |
+| Scope                    | Own Customer, current Agent scope, or Admin business scope                       | One Customer under current record access                                          |
+| Download authority       | Module 12 multi-Customer/business files require `reports.export`                 | Single-Customer statement follows Module 10 resource scope                        |
+| Opening/activity/closing | Included only for defined balance reports                                        | Required Customer liability reconciliation                                        |
+| Corrections              | New run/file at new or same explicit cutoff; old export is not silently replaced | New issue/supersession; old statement remains reproducible                        |
+| Wording                  | “Report generated at/as of”                                                      | “Statement issued,” never “Final” in initial scope                                |
 
 An Admin or Agent who needs a Customer's formal statement uses Module 10. Module 12 must not recreate a statement-shaped PDF to bypass statement controls or `reports.export` controls.
 
@@ -109,17 +109,17 @@ Apply this reconciliation independently to Customer savings liability, each cycl
 
 ### 4.1 Interactive access matrix
 
-| Report | Customer | Agent | Admin baseline |
-| --- | --- | --- | --- |
-| Customer financial summary | Own record only | Currently assigned Customers | Business-wide/customer drill-down |
-| Contribution activity | Own posted activity | Currently assigned Customers; masked own historical custody summary separately | Business-wide |
-| Withdrawal activity | Own requests/posted activity in scoped presentation | Currently assigned Customers | Business-wide |
-| Fees/deductions | Own records | Currently assigned Customers | Business-wide/business earnings summary |
-| Collection performance | Own plan/slot progress only, not Agent ranking | Current assigned portfolio and own recorded activity | Business-wide/Agent comparison |
-| Reconciliation/custody | No business custody/Agent totals | Own status and masked responsibility allowed by Module 07 | Business-wide safe summary; raw evidence still permission-gated by owner |
-| Agent operational performance | No | Own/current portfolio only; no peer directory | Business-wide |
-| Plan/cycle | Own plans | Currently assigned Customers | Business-wide |
-| Exceptions | Own safe Customer-facing holds/requests only | Current assigned tasks plus masked own custody issues | Business-wide safe queue |
+| Report                        | Customer                                            | Agent                                                                          | Admin baseline                                                           |
+| ----------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Customer financial summary    | Own record only                                     | Currently assigned Customers                                                   | Business-wide/customer drill-down                                        |
+| Contribution activity         | Own posted activity                                 | Currently assigned Customers; masked own historical custody summary separately | Business-wide                                                            |
+| Withdrawal activity           | Own requests/posted activity in scoped presentation | Currently assigned Customers                                                   | Business-wide                                                            |
+| Fees/deductions               | Own records                                         | Currently assigned Customers                                                   | Business-wide/business earnings summary                                  |
+| Collection performance        | Own plan/slot progress only, not Agent ranking      | Current assigned portfolio and own recorded activity                           | Business-wide/Agent comparison                                           |
+| Reconciliation/custody        | No business custody/Agent totals                    | Own status and masked responsibility allowed by Module 07                      | Business-wide safe summary; raw evidence still permission-gated by owner |
+| Agent operational performance | No                                                  | Own/current portfolio only; no peer directory                                  | Business-wide                                                            |
+| Plan/cycle                    | Own plans                                           | Currently assigned Customers                                                   | Business-wide                                                            |
+| Exceptions                    | Own safe Customer-facing holds/requests only        | Current assigned tasks plus masked own custody issues                          | Business-wide safe queue                                                 |
 
 Scope applies to rows, totals, counts, charts, group labels, filter options, search suggestions, drill-down, job metadata, notification text and files. A count or “no results” response must not reveal out-of-scope record existence. Agent historical `created_by`, collected-by or former assignment never restores Customer detail access. Module 07 may provide an aggregate/masked former-Agent custody responsibility without Customer identity.
 
@@ -248,16 +248,16 @@ PDF must be tagged/accessibility-tested under the approved renderer, use embedde
 
 ### 7.3 Proposed limits
 
-| Limit | Proposed initial value / outcome |
-| --- | --- |
-| Export date range | Maximum five years inclusive; lifetime allowed only if retained authoritative history fits all row/size limits. |
-| CSV rows | 250,000 data rows; above limit fails before publication and asks for narrower filters. No silent truncation. |
-| PDF detail rows/pages | 10,000 rows and 500 pages; above limit requires CSV or narrower scope. |
-| Artifact size | 250 MB CSV; 100 MB PDF; renderer/storage lower safe limit may block with explicit profile version. |
-| Concurrent active jobs per Admin | 2; additional request queued or rate-limited without losing idempotent result. |
-| Daily jobs per Admin | Proposed 20 successful/new jobs per rolling 24 hours; same-key lookup does not consume another job. |
-| Download link | Signed opaque link valid 15 minutes, single artifact; each request reauthorizes. |
-| Artifact retention | Proposed artifact bytes/render fragments: 7 days. Detailed executable job specification and row manifest: 90 days. Canonical export evidence—job ID, requester, scope/filter hash, schema, cutoff, artifact hash, result and audit references—follows Module 14's financial/lifecycle/authorization evidence class, proposed seven years after the applicable closure or later linked settlement. All periods remain subject to approved financial/privacy retention policy and holds. |
+| Limit                            | Proposed initial value / outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Export date range                | Maximum five years inclusive; lifetime allowed only if retained authoritative history fits all row/size limits.                                                                                                                                                                                                                                                                                                                                                                        |
+| CSV rows                         | 250,000 data rows; above limit fails before publication and asks for narrower filters. No silent truncation.                                                                                                                                                                                                                                                                                                                                                                           |
+| PDF detail rows/pages            | 10,000 rows and 500 pages; above limit requires CSV or narrower scope.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Artifact size                    | 250 MB CSV; 100 MB PDF; renderer/storage lower safe limit may block with explicit profile version.                                                                                                                                                                                                                                                                                                                                                                                     |
+| Concurrent active jobs per Admin | 2; additional request queued or rate-limited without losing idempotent result.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Daily jobs per Admin             | Proposed 20 successful/new jobs per rolling 24 hours; same-key lookup does not consume another job.                                                                                                                                                                                                                                                                                                                                                                                    |
+| Download link                    | Signed opaque link valid 15 minutes, single artifact; each request reauthorizes.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Artifact retention               | Proposed artifact bytes/render fragments: 7 days. Detailed executable job specification and row manifest: 90 days. Canonical export evidence—job ID, requester, scope/filter hash, schema, cutoff, artifact hash, result and audit references—follows Module 14's financial/lifecycle/authorization evidence class, proposed seven years after the applicable closure or later linked settlement. All periods remain subject to approved financial/privacy retention policy and holds. |
 
 Limits are server enforced before and during rendering. If a source estimate is wrong and the actual result exceeds a cap, fail with no partial downloadable file. Do not divide one request into undisclosed files or truncate rows/totals. A future multipart format requires an explicit manifest and complete-set semantics.
 
@@ -325,13 +325,13 @@ Support keyboard navigation/focus, semantic tables/headings, accessible filter l
 
 ### 12.1 Notifications
 
-| Event | Recipient | Content/channel |
-| --- | --- | --- |
-| Export queued/running beyond threshold | Requesting Admin only | In-app job ID/report/state; no Customer data or attachment. |
-| Export Ready | Requesting Admin if still authorized | In-app safe metadata and link to authenticated job center; no direct email attachment/signed URL. Optional minimal email only after policy approval. |
-| Export Failed/Cancelled | Requesting Admin if eligible | Safe category, no raw query/provider/evidence, retry/refine next step. |
-| Export nearing expiry/Expired | Requesting Admin if eligible | In-app expiry/time; rerun behavior. Proposed one reminder, not repeated alerts. |
-| Integrity/source coverage problem | Authorized operational owner | Report/type/cutoff/category and investigation link under owner scope. |
+| Event                                  | Recipient                            | Content/channel                                                                                                                                      |
+| -------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Export queued/running beyond threshold | Requesting Admin only                | In-app job ID/report/state; no Customer data or attachment.                                                                                          |
+| Export Ready                           | Requesting Admin if still authorized | In-app safe metadata and link to authenticated job center; no direct email attachment/signed URL. Optional minimal email only after policy approval. |
+| Export Failed/Cancelled                | Requesting Admin if eligible         | Safe category, no raw query/provider/evidence, retry/refine next step.                                                                               |
+| Export nearing expiry/Expired          | Requesting Admin if eligible         | In-app expiry/time; rerun behavior. Proposed one reminder, not repeated alerts.                                                                      |
+| Integrity/source coverage problem      | Authorized operational owner         | Report/type/cutoff/category and investigation link under owner scope.                                                                                |
 
 Use durable outbox, event/recipient/channel deduplication, bounded retries and current authorization at dispatch/retrieval. Revocation suppresses Ready/reminder content. Notification delivery failure does not rerun the job, extend artifact retention, change cutoff or make a partial artifact valid.
 
@@ -397,92 +397,92 @@ Admin submits a five-year CSV with `reports.export`; permission is revoked while
 
 ## 16. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| RPT-FR-001 | Keep interactive reports/exports distinct from Module 10 immutable issued Customer statements. | Section 2.3 |
-| RPT-FR-002 | Display report/schema/timezone/date/status/scope/cutoff/watermark metadata and reject ambiguous/unavailable semantics. | Section 3.1–3.2 |
-| RPT-FR-003 | Apply exact correction/component counting rules and prevent parent/component, receipt/remittance, G/P/F/D and reservation/liability double counting. | Section 3.3 |
-| RPT-FR-004 | Reconcile defined balance reports as opening plus signed activity equals closing at one cutoff. | Section 3.4 |
-| RPT-FR-005 | Enforce Customer-own, current-Agent/own-masked, and Admin business-wide interactive resource scopes for rows through drill-down. | Section 4.1 |
-| RPT-FR-006 | Require current `reports.export` at submit/run/publication/notification/download for every Module 12 file. | Section 4.2 |
-| RPT-FR-007 | Keep `reports.export`, `audit.view`, evidence access, approval and financial mutation independently authorized. | Sections 2.2, 4, 12 |
-| RPT-FR-008 | Provide an authoritative Customer financial summary with lifetime/period components, liability, reservation/availability and separate fee obligations. | Section 5.1 |
-| RPT-FR-009 | Report contribution receipt components/allocations/methods/actors/corrections without treating fee split or slots as extra savings receipts. | Section 5.2 |
-| RPT-FR-010 | Separate Posted withdrawal G/P/F/D activity from non-posted request workflow states/reservations. | Section 5.3 |
-| RPT-FR-011 | Separate fee assessment/settlement/application/waiver/refund/earnings/draw and non-fee deductions by owner date/source. | Section 5.4 |
-| RPT-FR-012 | Compute schedule fulfillment from eligible target slots and show received-date current/catch-up/advance activity separately. | Section 5.5 |
-| RPT-FR-013 | Report gross custody, allocations, Agent receivable, remittance, business assets, reconciliation versions/variance without mixing liability/income. | Section 5.6 |
-| RPT-FR-014 | Separate current portfolio, historical actors/effective service, collection, custody and exception Agent metrics without composite ranking. | Section 5.7 |
-| RPT-FR-015 | Report plan terms/progress/actuals/lifecycle/settlement exceptions without converting estimates or statuses into money. | Section 5.8 |
-| RPT-FR-016 | Provide scope-safe exception summaries whose zero state requires complete owner coverage and whose links cannot mutate. | Section 5.9 |
-| RPT-FR-017 | Validate filters/search/grouping, use stable cutoff-bound pagination and calculate totals over the complete scoped result. | Section 6 |
-| RPT-FR-018 | Drill into owning views using immutable context and fresh authorization, never report-derived access authority. | Section 6 |
-| RPT-FR-019 | Generate safe schema-versioned CSV with exact machine-readable money/time values and formula-injection protection. | Section 7.1 |
-| RPT-FR-020 | Generate accessible bounded PDF reports clearly labelled as reports, with metadata/totals and no raw evidence. | Section 7.2 |
-| RPT-FR-021 | Enforce date/row/page/size/rate/download/retention limits without silent truncation or undisclosed splitting. | Section 7.3 |
-| RPT-FR-022 | Persist immutable export job specs and use Queued/Running/Ready/Failed/Cancelled/Expired lifecycle. | Section 8.1 |
-| RPT-FR-023 | Recheck authority, align owner cutoffs, verify controls, render/scan/hash and atomically publish only complete artifacts. | Section 8.2 |
-| RPT-FR-024 | Preserve reproducible manifest/history across cancellation, expiry, late corrections and reruns without replacing files. | Section 8.3 |
-| RPT-FR-025 | Minimize/redact sensitive fields and protect artifact storage/tokens/download authorization. | Section 9 |
-| RPT-FR-026 | Apply approved retention/cleanup without deleting source finance, issued statements, canonical audit or job integrity metadata. | Section 9 |
-| RPT-FR-027 | Make job submission/execution/publication/cleanup idempotent and resolve unknown outcomes without duplicate or partial artifacts. | Section 10 |
-| RPT-FR-028 | Fail reports/exports safely on scope/schema/source/integrity/concurrency changes and never use caches for mutation authority. | Section 10 |
-| RPT-FR-029 | Provide accessible report/job screens with explicit empty/stale/partial/unavailable/too-large/revoked states. | Section 11 |
-| RPT-FR-030 | Notify only the currently authorized requester/owners with deduplicated safe job/integrity events and no attachments/public links. | Section 12.1 |
-| RPT-FR-031 | Durably audit sensitive report/job/token/download/cleanup/integrity actions while excluding contents/secrets. | Section 12.2 |
-| RPT-FR-032 | Meet reviewed performance, deterministic pagination, security, recovery and observability requirements. | Section 13 |
-| RPT-FR-033 | Block dependent release on missing owner metrics, cutoff history, renderer/storage/privacy/audit or authorization contracts. | Section 14 |
+| ID         | Requirement                                                                                                                                            | Detail              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| RPT-FR-001 | Keep interactive reports/exports distinct from Module 10 immutable issued Customer statements.                                                         | Section 2.3         |
+| RPT-FR-002 | Display report/schema/timezone/date/status/scope/cutoff/watermark metadata and reject ambiguous/unavailable semantics.                                 | Section 3.1–3.2     |
+| RPT-FR-003 | Apply exact correction/component counting rules and prevent parent/component, receipt/remittance, G/P/F/D and reservation/liability double counting.   | Section 3.3         |
+| RPT-FR-004 | Reconcile defined balance reports as opening plus signed activity equals closing at one cutoff.                                                        | Section 3.4         |
+| RPT-FR-005 | Enforce Customer-own, current-Agent/own-masked, and Admin business-wide interactive resource scopes for rows through drill-down.                       | Section 4.1         |
+| RPT-FR-006 | Require current `reports.export` at submit/run/publication/notification/download for every Module 12 file.                                             | Section 4.2         |
+| RPT-FR-007 | Keep `reports.export`, `audit.view`, evidence access, approval and financial mutation independently authorized.                                        | Sections 2.2, 4, 12 |
+| RPT-FR-008 | Provide an authoritative Customer financial summary with lifetime/period components, liability, reservation/availability and separate fee obligations. | Section 5.1         |
+| RPT-FR-009 | Report contribution receipt components/allocations/methods/actors/corrections without treating fee split or slots as extra savings receipts.           | Section 5.2         |
+| RPT-FR-010 | Separate Posted withdrawal G/P/F/D activity from non-posted request workflow states/reservations.                                                      | Section 5.3         |
+| RPT-FR-011 | Separate fee assessment/settlement/application/waiver/refund/earnings/draw and non-fee deductions by owner date/source.                                | Section 5.4         |
+| RPT-FR-012 | Compute schedule fulfillment from eligible target slots and show received-date current/catch-up/advance activity separately.                           | Section 5.5         |
+| RPT-FR-013 | Report gross custody, allocations, Agent receivable, remittance, business assets, reconciliation versions/variance without mixing liability/income.    | Section 5.6         |
+| RPT-FR-014 | Separate current portfolio, historical actors/effective service, collection, custody and exception Agent metrics without composite ranking.            | Section 5.7         |
+| RPT-FR-015 | Report plan terms/progress/actuals/lifecycle/settlement exceptions without converting estimates or statuses into money.                                | Section 5.8         |
+| RPT-FR-016 | Provide scope-safe exception summaries whose zero state requires complete owner coverage and whose links cannot mutate.                                | Section 5.9         |
+| RPT-FR-017 | Validate filters/search/grouping, use stable cutoff-bound pagination and calculate totals over the complete scoped result.                             | Section 6           |
+| RPT-FR-018 | Drill into owning views using immutable context and fresh authorization, never report-derived access authority.                                        | Section 6           |
+| RPT-FR-019 | Generate safe schema-versioned CSV with exact machine-readable money/time values and formula-injection protection.                                     | Section 7.1         |
+| RPT-FR-020 | Generate accessible bounded PDF reports clearly labelled as reports, with metadata/totals and no raw evidence.                                         | Section 7.2         |
+| RPT-FR-021 | Enforce date/row/page/size/rate/download/retention limits without silent truncation or undisclosed splitting.                                          | Section 7.3         |
+| RPT-FR-022 | Persist immutable export job specs and use Queued/Running/Ready/Failed/Cancelled/Expired lifecycle.                                                    | Section 8.1         |
+| RPT-FR-023 | Recheck authority, align owner cutoffs, verify controls, render/scan/hash and atomically publish only complete artifacts.                              | Section 8.2         |
+| RPT-FR-024 | Preserve reproducible manifest/history across cancellation, expiry, late corrections and reruns without replacing files.                               | Section 8.3         |
+| RPT-FR-025 | Minimize/redact sensitive fields and protect artifact storage/tokens/download authorization.                                                           | Section 9           |
+| RPT-FR-026 | Apply approved retention/cleanup without deleting source finance, issued statements, canonical audit or job integrity metadata.                        | Section 9           |
+| RPT-FR-027 | Make job submission/execution/publication/cleanup idempotent and resolve unknown outcomes without duplicate or partial artifacts.                      | Section 10          |
+| RPT-FR-028 | Fail reports/exports safely on scope/schema/source/integrity/concurrency changes and never use caches for mutation authority.                          | Section 10          |
+| RPT-FR-029 | Provide accessible report/job screens with explicit empty/stale/partial/unavailable/too-large/revoked states.                                          | Section 11          |
+| RPT-FR-030 | Notify only the currently authorized requester/owners with deduplicated safe job/integrity events and no attachments/public links.                     | Section 12.1        |
+| RPT-FR-031 | Durably audit sensitive report/job/token/download/cleanup/integrity actions while excluding contents/secrets.                                          | Section 12.2        |
+| RPT-FR-032 | Meet reviewed performance, deterministic pagination, security, recovery and observability requirements.                                                | Section 13          |
+| RPT-FR-033 | Block dependent release on missing owner metrics, cutoff history, renderer/storage/privacy/audit or authorization contracts.                           | Section 14          |
 
 ## 17. Acceptance scenarios and traceability
 
 These are future verification scenarios, not claims of implementation or completed testing. Each record includes scenario/requirement IDs, build/fixture, actor/account/grants/scope, report/spec versions, filters/timezone/UTC boundaries/cutoffs, expected and observed row/group/control totals, artifact/hash/job/audit/notification references, and Passed/Failed/Blocked. UI hiding alone is not server authorization evidence.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| RPT-AC-001 | RPT-FR-001 | Generate same Customer period as interactive report and Module 10 Issued statement; report uses report ID/live-cutoff semantics and cannot replace/supersede/call itself the statement. |
-| RPT-AC-002 | RPT-FR-002 | Change timezone across midnight/DST-capable fixture and run same local range; resolved UTC bounds/date basis/cutoff display explicitly and historical saved job never shifts. |
-| RPT-AC-003 | RPT-FR-002, RPT-FR-028 | Remove one owner watermark or return stale incompatible source; section shows Unavailable/Partial and export fails rather than zero/mixed-current total. |
-| RPT-AC-004 | RPT-FR-003 | Mixed ₦6,500 tender split ₦6,000 savings/₦500 fee appears once in custody, with correct component reports and no duplicated cash/contribution. |
-| RPT-AC-005 | RPT-FR-003, RPT-FR-010 | Withdrawal G ₦10,000/P ₦9,800/F ₦200 reports liability debit/cash/fee separately; combined totals never become ₦20,000. |
-| RPT-AC-006 | RPT-FR-003 | Receipt/remittance/reversal/reservation fixtures produce net posted totals once; pending workflows and reservation never appear as posted activity. |
-| RPT-AC-007 | RPT-FR-004 | Customer, cycle, Agent receivable and custody opening + signed period movements each equal closing exactly at cutoff. |
-| RPT-AC-008 | RPT-FR-004, RPT-FR-024 | Late pre-/in-period posting changes later run's opening/activity appropriately while old exported cutoff remains reproducible. |
-| RPT-AC-009 | RPT-FR-005 | Customer direct queries/counts/drill-down show own rows only; Agent shows current assigned rows and masked own historical custody only; Admin baseline sees business rows. |
-| RPT-AC-010 | RPT-FR-005 | Reassign Customer during Agent page/session; former Agent rows/count/filter suggestion/drill-down disappear immediately without leaking identity. |
-| RPT-AC-011 | RPT-FR-006 | Baseline Admin/Customer/Agent cannot submit Module 12 file; `reports.export` Admin passes submit, worker, publish and download rechecks. |
-| RPT-AC-012 | RPT-FR-006 | Revoke grant while Queued/Running/Ready; safe cancellation or denied publication/download occurs and history remains. |
-| RPT-AC-013 | RPT-FR-007 | `audit.view` alone cannot export; `reports.export` cannot read/export raw audit/evidence, approve, waive, reconcile, post or mutate. |
-| RPT-AC-014 | RPT-FR-008 | Customer row lifetime/period components reconcile to ledger liability; live reservation reduces available only; external unpaid/paid fee does not silently debit savings. |
-| RPT-AC-015 | RPT-FR-009 | One receipt across multiple slots counts once; savings/fee split, partial/advance/catch-up, original/current Agent and correction states match owners. |
-| RPT-AC-016 | RPT-FR-010 | Posted-mode excludes Pending review, Approved — awaiting payout, Payout processing, Payment failed and Outcome unknown requests, including any with an active hold overlay; workflow-mode includes primary state, hold, reservation and age, and Reversed net changes only after compensation posts. |
-| RPT-AC-017 | RPT-FR-011 | Assessment/acknowledgement is not income/cash; external settlement versus savings application, waiver/refund/correction/draw and other deduction classify separately. |
-| RPT-AC-018 | RPT-FR-012 | ₦20,000 target/₦16,000 funded plus ₦6,000 catch-up/₦4,000 advance gives 80.0% fulfillment and ₦26,000 received, not 130%. |
-| RPT-AC-019 | RPT-FR-012 | Pause/status/Agent-unavailability intervals preserve original versus eligible expectations and current status never deletes historical due/funded slots. |
-| RPT-AC-020 | RPT-FR-013 | Agent receipt/remittance/shortage fixture reconciles receivable opening/additions/remittance/closing; liability and fee income remain separate and unchanged by remittance. |
-| RPT-AC-021 | RPT-FR-013 | Reconciled original plus supplemental late batch retains both versions and variance state without raw evidence export or silent rewrite. |
-| RPT-AC-022 | RPT-FR-014 | Reassignment splits current portfolio/effective service/recording actor correctly; no peer report to Agent, composite score or rewritten Agent cash attribution. |
-| RPT-AC-023 | RPT-FR-015 | Active/Completed/Closed/Cancelled cycle shows correct target/actual/lifecycle/fees/reservations; withdrawal does not unpay slots or imply closure. |
-| RPT-AC-024 | RPT-FR-016 | All owners healthy/no items yields zero exceptions; one owner outage yields Partial/Unavailable rather than false zero; links enforce owning permissions. |
-| RPT-AC-025 | RPT-FR-017 | Filter/search/group/date/amount boundaries, 25/50/100 pages and stable cursors return scoped deterministic rows; full-result totals do not equal page-only sum. |
-| RPT-AC-026 | RPT-FR-017 | Zero expected denominator displays Not applicable; grouped aggregate percentage uses summed exact numerator/denominator, not average percentages. |
-| RPT-AC-027 | RPT-FR-018 | Drill using exported/source ID after scope loss; owner denies access and report context grants no capability or protected evidence. |
-| RPT-AC-028 | RPT-FR-019 | CSV preserves exact NGN decimals/ISO dates/quoting and neutralizes leading formula/control payloads without macros, formulas or active URLs. |
-| RPT-AC-029 | RPT-FR-020 | PDF title/metadata says report, not Issued statement; multipage tables, NGN, reading order, tags, table alternative, masking and hash verify. |
-| RPT-AC-030 | RPT-FR-021 | Exercise exact range/row/page/size/rate limits and limit+1; oversized run fails with refinement guidance and no truncated/partial artifact. |
-| RPT-AC-031 | RPT-FR-022 | Job follows Queued→Running→Ready, plus Failed/Cancelled/Expired paths; only Ready full checked artifact downloads. |
-| RPT-AC-032 | RPT-FR-023 | Worker aligns ledger/owner cutoffs, validates counts/control totals, scans/hashes and publishes once; incompatible cutoff or control mismatch blocks publication. |
-| RPT-AC-033 | RPT-FR-024 | Manifest/spec/hash reproduces semantic rows/totals at same cutoff; later run/correction makes a new file and never overwrites old export. |
-| RPT-AC-034 | RPT-FR-025 | Artifact/token guessing, copied/expired link, wrong account/business, revoked permission and stale token reveal no file/metadata; permitted download is encrypted/audited. |
-| RPT-AC-035 | RPT-FR-025 | Contact/private notes/full bank/raw evidence/security/audit fields are absent; approved masks/source references do not enable unauthorized retrieval. |
-| RPT-AC-036 | RPT-FR-026 | Seven-day cleanup removes artifact/partials/tokens idempotently while source ledger, Issued statements, job manifest/hash and canonical audit survive policy. |
-| RPT-AC-037 | RPT-FR-027 | Duplicate/lost submission, worker retry/restart and object-store unknown result resolve one job/artifact hash; changed spec conflicts and no partial Ready. |
-| RPT-AC-038 | RPT-FR-028 | Scope/schema/config/integrity changes during run fail/cancel rather than publish silently different data; no report cache authorizes a financial action. |
-| RPT-AC-039 | RPT-FR-029 | Desktop/mobile/keyboard/screen-reader at loading/empty/stale/partial/unavailable/too-large/revoked/job states remains understandable and clears sensitive stale rows. |
-| RPT-AC-040 | RPT-FR-030 | Ready/fail/expiry/integrity notification retries deduplicate, recheck permission and include no attachment/public token/Customer data; delivery failure does not rerun/extend. |
-| RPT-AC-041 | RPT-FR-031 | Query/job/token/download/denial/cleanup/control-failure events contain spec/hash/cutoff/result but no file contents, signed token, credentials or raw evidence; detailed audit requires `audit.view`. |
-| RPT-AC-042 | RPT-FR-032 | Representative load meets or records misses against p95 goals; fixed cutoffs keep pagination/totals deterministic during concurrent posting, with no cross-business exposure. |
-| RPT-AC-043 | RPT-FR-032 | Recovery reproduces sampled manifest rows/control totals and prevents artifact access past retention or scope; worker credentials cannot reach financial mutation endpoints. |
-| RPT-AC-044 | RPT-FR-033 | Remove each metric/history/cutoff/renderer/storage/privacy/audit/authorization dependency; affected report/export is Blocked, never guessed zero, broad access or manual spreadsheet workaround. |
+| ID         | Requirements           | Scenario and expected result                                                                                                                                                                                                                                                                         |
+| ---------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RPT-AC-001 | RPT-FR-001             | Generate same Customer period as interactive report and Module 10 Issued statement; report uses report ID/live-cutoff semantics and cannot replace/supersede/call itself the statement.                                                                                                              |
+| RPT-AC-002 | RPT-FR-002             | Change timezone across midnight/DST-capable fixture and run same local range; resolved UTC bounds/date basis/cutoff display explicitly and historical saved job never shifts.                                                                                                                        |
+| RPT-AC-003 | RPT-FR-002, RPT-FR-028 | Remove one owner watermark or return stale incompatible source; section shows Unavailable/Partial and export fails rather than zero/mixed-current total.                                                                                                                                             |
+| RPT-AC-004 | RPT-FR-003             | Mixed ₦6,500 tender split ₦6,000 savings/₦500 fee appears once in custody, with correct component reports and no duplicated cash/contribution.                                                                                                                                                       |
+| RPT-AC-005 | RPT-FR-003, RPT-FR-010 | Withdrawal G ₦10,000/P ₦9,800/F ₦200 reports liability debit/cash/fee separately; combined totals never become ₦20,000.                                                                                                                                                                              |
+| RPT-AC-006 | RPT-FR-003             | Receipt/remittance/reversal/reservation fixtures produce net posted totals once; pending workflows and reservation never appear as posted activity.                                                                                                                                                  |
+| RPT-AC-007 | RPT-FR-004             | Customer, cycle, Agent receivable and custody opening + signed period movements each equal closing exactly at cutoff.                                                                                                                                                                                |
+| RPT-AC-008 | RPT-FR-004, RPT-FR-024 | Late pre-/in-period posting changes later run's opening/activity appropriately while old exported cutoff remains reproducible.                                                                                                                                                                       |
+| RPT-AC-009 | RPT-FR-005             | Customer direct queries/counts/drill-down show own rows only; Agent shows current assigned rows and masked own historical custody only; Admin baseline sees business rows.                                                                                                                           |
+| RPT-AC-010 | RPT-FR-005             | Reassign Customer during Agent page/session; former Agent rows/count/filter suggestion/drill-down disappear immediately without leaking identity.                                                                                                                                                    |
+| RPT-AC-011 | RPT-FR-006             | Baseline Admin/Customer/Agent cannot submit Module 12 file; `reports.export` Admin passes submit, worker, publish and download rechecks.                                                                                                                                                             |
+| RPT-AC-012 | RPT-FR-006             | Revoke grant while Queued/Running/Ready; safe cancellation or denied publication/download occurs and history remains.                                                                                                                                                                                |
+| RPT-AC-013 | RPT-FR-007             | `audit.view` alone cannot export; `reports.export` cannot read/export raw audit/evidence, approve, waive, reconcile, post or mutate.                                                                                                                                                                 |
+| RPT-AC-014 | RPT-FR-008             | Customer row lifetime/period components reconcile to ledger liability; live reservation reduces available only; external unpaid/paid fee does not silently debit savings.                                                                                                                            |
+| RPT-AC-015 | RPT-FR-009             | One receipt across multiple slots counts once; savings/fee split, partial/advance/catch-up, original/current Agent and correction states match owners.                                                                                                                                               |
+| RPT-AC-016 | RPT-FR-010             | Posted-mode excludes Pending review, Approved — awaiting payout, Payout processing, Payment failed and Outcome unknown requests, including any with an active hold overlay; workflow-mode includes primary state, hold, reservation and age, and Reversed net changes only after compensation posts. |
+| RPT-AC-017 | RPT-FR-011             | Assessment/acknowledgement is not income/cash; external settlement versus savings application, waiver/refund/correction/draw and other deduction classify separately.                                                                                                                                |
+| RPT-AC-018 | RPT-FR-012             | ₦20,000 target/₦16,000 funded plus ₦6,000 catch-up/₦4,000 advance gives 80.0% fulfillment and ₦26,000 received, not 130%.                                                                                                                                                                            |
+| RPT-AC-019 | RPT-FR-012             | Pause/status/Agent-unavailability intervals preserve original versus eligible expectations and current status never deletes historical due/funded slots.                                                                                                                                             |
+| RPT-AC-020 | RPT-FR-013             | Agent receipt/remittance/shortage fixture reconciles receivable opening/additions/remittance/closing; liability and fee income remain separate and unchanged by remittance.                                                                                                                          |
+| RPT-AC-021 | RPT-FR-013             | Reconciled original plus supplemental late batch retains both versions and variance state without raw evidence export or silent rewrite.                                                                                                                                                             |
+| RPT-AC-022 | RPT-FR-014             | Reassignment splits current portfolio/effective service/recording actor correctly; no peer report to Agent, composite score or rewritten Agent cash attribution.                                                                                                                                     |
+| RPT-AC-023 | RPT-FR-015             | Active/Completed/Closed/Cancelled cycle shows correct target/actual/lifecycle/fees/reservations; withdrawal does not unpay slots or imply closure.                                                                                                                                                   |
+| RPT-AC-024 | RPT-FR-016             | All owners healthy/no items yields zero exceptions; one owner outage yields Partial/Unavailable rather than false zero; links enforce owning permissions.                                                                                                                                            |
+| RPT-AC-025 | RPT-FR-017             | Filter/search/group/date/amount boundaries, 25/50/100 pages and stable cursors return scoped deterministic rows; full-result totals do not equal page-only sum.                                                                                                                                      |
+| RPT-AC-026 | RPT-FR-017             | Zero expected denominator displays Not applicable; grouped aggregate percentage uses summed exact numerator/denominator, not average percentages.                                                                                                                                                    |
+| RPT-AC-027 | RPT-FR-018             | Drill using exported/source ID after scope loss; owner denies access and report context grants no capability or protected evidence.                                                                                                                                                                  |
+| RPT-AC-028 | RPT-FR-019             | CSV preserves exact NGN decimals/ISO dates/quoting and neutralizes leading formula/control payloads without macros, formulas or active URLs.                                                                                                                                                         |
+| RPT-AC-029 | RPT-FR-020             | PDF title/metadata says report, not Issued statement; multipage tables, NGN, reading order, tags, table alternative, masking and hash verify.                                                                                                                                                        |
+| RPT-AC-030 | RPT-FR-021             | Exercise exact range/row/page/size/rate limits and limit+1; oversized run fails with refinement guidance and no truncated/partial artifact.                                                                                                                                                          |
+| RPT-AC-031 | RPT-FR-022             | Job follows Queued→Running→Ready, plus Failed/Cancelled/Expired paths; only Ready full checked artifact downloads.                                                                                                                                                                                   |
+| RPT-AC-032 | RPT-FR-023             | Worker aligns ledger/owner cutoffs, validates counts/control totals, scans/hashes and publishes once; incompatible cutoff or control mismatch blocks publication.                                                                                                                                    |
+| RPT-AC-033 | RPT-FR-024             | Manifest/spec/hash reproduces semantic rows/totals at same cutoff; later run/correction makes a new file and never overwrites old export.                                                                                                                                                            |
+| RPT-AC-034 | RPT-FR-025             | Artifact/token guessing, copied/expired link, wrong account/business, revoked permission and stale token reveal no file/metadata; permitted download is encrypted/audited.                                                                                                                           |
+| RPT-AC-035 | RPT-FR-025             | Contact/private notes/full bank/raw evidence/security/audit fields are absent; approved masks/source references do not enable unauthorized retrieval.                                                                                                                                                |
+| RPT-AC-036 | RPT-FR-026             | Seven-day cleanup removes artifact/partials/tokens idempotently while source ledger, Issued statements, job manifest/hash and canonical audit survive policy.                                                                                                                                        |
+| RPT-AC-037 | RPT-FR-027             | Duplicate/lost submission, worker retry/restart and object-store unknown result resolve one job/artifact hash; changed spec conflicts and no partial Ready.                                                                                                                                          |
+| RPT-AC-038 | RPT-FR-028             | Scope/schema/config/integrity changes during run fail/cancel rather than publish silently different data; no report cache authorizes a financial action.                                                                                                                                             |
+| RPT-AC-039 | RPT-FR-029             | Desktop/mobile/keyboard/screen-reader at loading/empty/stale/partial/unavailable/too-large/revoked/job states remains understandable and clears sensitive stale rows.                                                                                                                                |
+| RPT-AC-040 | RPT-FR-030             | Ready/fail/expiry/integrity notification retries deduplicate, recheck permission and include no attachment/public token/Customer data; delivery failure does not rerun/extend.                                                                                                                       |
+| RPT-AC-041 | RPT-FR-031             | Query/job/token/download/denial/cleanup/control-failure events contain spec/hash/cutoff/result but no file contents, signed token, credentials or raw evidence; detailed audit requires `audit.view`.                                                                                                |
+| RPT-AC-042 | RPT-FR-032             | Representative load meets or records misses against p95 goals; fixed cutoffs keep pagination/totals deterministic during concurrent posting, with no cross-business exposure.                                                                                                                        |
+| RPT-AC-043 | RPT-FR-032             | Recovery reproduces sampled manifest rows/control totals and prevents artifact access past retention or scope; worker credentials cannot reach financial mutation endpoints.                                                                                                                         |
+| RPT-AC-044 | RPT-FR-033             | Remove each metric/history/cutoff/renderer/storage/privacy/audit/authorization dependency; affected report/export is Blocked, never guessed zero, broad access or manual spreadsheet workaround.                                                                                                     |
 
 Required fixtures include at least two Customers and Agents with reassignment intervals; Active/Inactive/Restricted/Archived Customers; Agent unavailable/offboarding states; all cycle states; mixed/partial/advance/catch-up/reversed receipts; external/savings fee settlements, waivers/refunds/deductions/draws; withdrawal requests in every state and Posted G/P/F/D; live reservations; original/supplemental reconciliation batches and shortages; remitted/unremitted custody; late postings/corrections; issued/superseded statements; baseline/split-grant/revoked Admins; malicious CSV cells; oversized jobs; stale/incompatible owner cutoffs; storage unknown outcomes; and representative performance/accessibility/recovery conditions.
 

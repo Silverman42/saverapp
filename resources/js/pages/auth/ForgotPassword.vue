@@ -35,7 +35,9 @@ const rules = {
 const v$ = useVuelidate(rules, formState);
 
 const handleSuccess = (): void => {
-    toast.success("If an account exists for this email, we've sent password reset instructions.");
+    toast.success(
+        "If an account exists for this email, we've sent password reset instructions.",
+    );
 };
 </script>
 
@@ -69,7 +71,12 @@ const handleSuccess = (): void => {
                     @blur="v$.email.$touch"
                 />
                 <InputError
-                    :message="errors.email || (v$.email.$error ? 'A valid email address is required.' : undefined)"
+                    :message="
+                        errors.email ||
+                        (v$.email.$error
+                            ? 'A valid email address is required.'
+                            : undefined)
+                    "
                 />
             </div>
 

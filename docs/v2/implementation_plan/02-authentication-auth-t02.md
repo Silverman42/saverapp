@@ -7,22 +7,22 @@ Align Fortify sign-in with `AUTH-001`, `AUTH-002`, and the currently implementab
 ## Implementation Changes
 
 - Add a focused Fortify authentication action that:
-  - Looks up `email_normalized` using the existing identity normalizer.
-  - Verifies and rehashes passwords through Laravel's configured provider.
-  - Preserves authentication timeboxing and the existing rate limiter.
-  - Returns the same failure for unknown emails, invalid passwords, prohibited account states, and password-locked accounts.
-  - Allows Customers through password authentication and preserves Fortify's challenge for Agent/Admin accounts with confirmed TOTP.
-  - Fails closed for `mfa_setup_required` and Agent/Admin accounts lacking confirmed TOTP until AUTH-T04 provides enrolment.
+    - Looks up `email_normalized` using the existing identity normalizer.
+    - Verifies and rehashes passwords through Laravel's configured provider.
+    - Preserves authentication timeboxing and the existing rate limiter.
+    - Returns the same failure for unknown emails, invalid passwords, prohibited account states, and password-locked accounts.
+    - Allows Customers through password authentication and preserves Fortify's challenge for Agent/Admin accounts with confirmed TOTP.
+    - Fails closed for `mfa_setup_required` and Agent/Admin accounts lacking confirmed TOTP until AUTH-T04 provides enrolment.
 - Add active-account middleware across authenticated web access:
-  - Invited, MFA-setup-required, suspended, and deactivated sessions are invalidated and returned to login without exposing the state.
-  - Temporary password locks block new password authentication but do not terminate legitimate active sessions.
+    - Invited, MFA-setup-required, suspended, and deactivated sessions are invalidated and returned to login without exposing the state.
+    - Temporary password locks block new password authentication but do not terminate legitimate active sessions.
 - Introduce a single role-destination resolver and three guarded placeholder routes:
-  - `/customer/dashboard` → `customer.dashboard`
-  - `/agent/dashboard` → `agent.dashboard`
-  - `/admin/dashboard` → `admin.dashboard`
-  - Each renders the existing dashboard placeholder without adding Module 11 data.
-  - `/dashboard` remains a compatibility dispatcher and redirects to the authenticated user's role route.
-  - Direct access to another role's route returns `403`.
+    - `/customer/dashboard` → `customer.dashboard`
+    - `/agent/dashboard` → `agent.dashboard`
+    - `/admin/dashboard` → `admin.dashboard`
+    - Each renders the existing dashboard placeholder without adding Module 11 data.
+    - `/dashboard` remains a compatibility dispatcher and redirects to the authenticated user's role route.
+    - Direct access to another role's route returns `403`.
 - Bind a custom Fortify login response so completed authentication lands at the role destination while preserving Fortify's JSON response contract and two-factor challenge flow.
 - Set `auth.failed` to “We could not sign you in with those details.” and normalize the login limiter key consistently.
 - Remove the remaining `.well-known/passkey-endpoints` route, passkey limiter, and inactive Fortify passkey configuration. Keep the historical migration and installed package unchanged because dependency removal requires separate approval.

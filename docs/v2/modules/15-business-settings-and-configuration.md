@@ -63,17 +63,17 @@ The following invariants apply:
 
 ### 4.1 Access matrix
 
-| Action | Customer | Agent | Admin baseline | Admin with `business.settings.manage` |
-| --- | --- | --- | --- | --- |
-| View public business identity/contact/branding | Relevant own experience | Relevant workspace | Yes | Yes |
-| View safe effective operational defaults/readiness | No settings screen; owner workflow may display applicable value | Applicable value in owning workflow only | Yes, read-only | Yes |
-| View protected mapping/provider metadata | No | No | Safe readiness/masked mapping only | Masked management view; no secrets/raw evidence |
-| Create/edit/discard draft | No | No | No | Yes |
-| Preview/publish/schedule/disable/rollback-as-new-version | No | No | No | Yes, subject to setting/dependency gates |
-| Configure fee rules | No | No | No | No; `fees.manage` separately |
-| Manage Admin grants/authentication/security policy | No | No | No | No; owning permissions/workflows |
-| View detailed configuration audit | No | No | No | `audit.view` separately; management timeline is limited |
-| Export business reports or raw settings backup | No | No | No | `reports.export` does not provide raw configuration backup; no user backup export initially |
+| Action                                                   | Customer                                                        | Agent                                    | Admin baseline                     | Admin with `business.settings.manage`                                                       |
+| -------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| View public business identity/contact/branding           | Relevant own experience                                         | Relevant workspace                       | Yes                                | Yes                                                                                         |
+| View safe effective operational defaults/readiness       | No settings screen; owner workflow may display applicable value | Applicable value in owning workflow only | Yes, read-only                     | Yes                                                                                         |
+| View protected mapping/provider metadata                 | No                                                              | No                                       | Safe readiness/masked mapping only | Masked management view; no secrets/raw evidence                                             |
+| Create/edit/discard draft                                | No                                                              | No                                       | No                                 | Yes                                                                                         |
+| Preview/publish/schedule/disable/rollback-as-new-version | No                                                              | No                                       | No                                 | Yes, subject to setting/dependency gates                                                    |
+| Configure fee rules                                      | No                                                              | No                                       | No                                 | No; `fees.manage` separately                                                                |
+| Manage Admin grants/authentication/security policy       | No                                                              | No                                       | No                                 | No; owning permissions/workflows                                                            |
+| View detailed configuration audit                        | No                                                              | No                                       | No                                 | `audit.view` separately; management timeline is limited                                     |
+| Export business reports or raw settings backup           | No                                                              | No                                       | No                                 | `reports.export` does not provide raw configuration backup; no user backup export initially |
 
 All reads/mutations derive the one business from trusted account/system context. Public profile data does not make the settings endpoint public. A baseline Admin can inspect effective safe values, version/effective time and readiness so oversight does not require write permission; protected account identifiers, provider configuration and internal reasons remain minimized.
 
@@ -87,17 +87,17 @@ Recheck active account/session, permission version, draft/base version, dependen
 
 ### 5.1 Catalogue summary
 
-| Group | Setting examples | Write owner / key boundary |
-| --- | --- | --- |
-| Business identity and branding | Display/legal name, public contact, address, logo, colors | `business.settings.manage`; identity fields only, no account email/role change. |
-| Locale and time | `en-NG`, IANA timezone, operational day boundary, week start | `business.settings.manage`; immutable event/plan snapshots remain. |
-| Currency | NGN, 2 minor digits | Displayed configuration; no alternative currency initially; hard-lock after dependent records/history. |
-| Collection methods/mappings | Cash/transfer/POS/approved Other, custody account, evidence/reference policy | `business.settings.manage` selects approved existing mapping; Module 07 enforces use. |
-| Operational collection limits | Receipt max, late lookback, day/batch behavior | `business.settings.manage` within product caps; period close remains separately gated. |
-| Withdrawal method registry | Cash/bank transfer readiness, executor/funding/destination/evidence/finality/limits | `business.settings.manage` may enable only owner-certified versions; no payout authority created. |
-| Notifications | Business sender identity reference, supported global channels, locale/contact, optional policy defaults | Settings integrates; Module 13 owns events, templates, recipients, mandatory rules and delivery. |
-| Dashboard/report defaults | Week/default ranges, page size, default export format | Presentation defaults only; Modules 11/12 own metrics, cutoffs, security limits and export permission. |
-| Feature enablement | Closed feature code, readiness, activation/disable state | `business.settings.manage` within dependency and stranding gates; never role permission. |
+| Group                          | Setting examples                                                                                        | Write owner / key boundary                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Business identity and branding | Display/legal name, public contact, address, logo, colors                                               | `business.settings.manage`; identity fields only, no account email/role change.                        |
+| Locale and time                | `en-NG`, IANA timezone, operational day boundary, week start                                            | `business.settings.manage`; immutable event/plan snapshots remain.                                     |
+| Currency                       | NGN, 2 minor digits                                                                                     | Displayed configuration; no alternative currency initially; hard-lock after dependent records/history. |
+| Collection methods/mappings    | Cash/transfer/POS/approved Other, custody account, evidence/reference policy                            | `business.settings.manage` selects approved existing mapping; Module 07 enforces use.                  |
+| Operational collection limits  | Receipt max, late lookback, day/batch behavior                                                          | `business.settings.manage` within product caps; period close remains separately gated.                 |
+| Withdrawal method registry     | Cash/bank transfer readiness, executor/funding/destination/evidence/finality/limits                     | `business.settings.manage` may enable only owner-certified versions; no payout authority created.      |
+| Notifications                  | Business sender identity reference, supported global channels, locale/contact, optional policy defaults | Settings integrates; Module 13 owns events, templates, recipients, mandatory rules and delivery.       |
+| Dashboard/report defaults      | Week/default ranges, page size, default export format                                                   | Presentation defaults only; Modules 11/12 own metrics, cutoffs, security limits and export permission. |
+| Feature enablement             | Closed feature code, readiness, activation/disable state                                                | `business.settings.manage` within dependency and stranding gates; never role permission.               |
 
 ### 5.2 Ownership prohibitions
 
@@ -112,18 +112,18 @@ Recheck active account/session, permission version, draft/base version, dependen
 
 ### 6.1 Fields and validation
 
-| Field | Requirement |
-| --- | --- |
-| Display name | Required Unicode plain text, trimmed 1–150 characters. Used in current navigation/new communications and artifacts; no markup/control characters. |
-| Legal name | Optional protected plain text, 1–200 characters; Admin views/approved artifacts only, never inferred from display name. |
-| Public business reference | Server-generated immutable proposed `BUS-000001`; never reused and never grants access. |
-| Public support email | Optional valid normalized email ≤254 characters, distinct from any Admin login identity; must complete provider/ownership verification before outbound use. |
-| Public support phone | Optional normalized international phone; Nigeria +234 default only when country is selected. Format is not ownership verification. |
-| Address | Optional plain text, maximum 500 characters. Separate public/private address policy must be approved before external display. |
-| Website | Optional absolute HTTPS URL, maximum 500 characters; no credentials, IP-local/javascript/data scheme or unsafe redirect. |
-| Logo | Optional JPEG/PNG/WebP ≤2 MB, dimensions 128×128–2,048×2,048; content-decode, malware scan and metadata removal; protected immutable asset version. |
-| Brand colors | Optional 6-digit hex foreground/accent choices; preview and contrast checks. Financial/security meaning cannot rely on branding color. |
-| Locale | `en-NG` only initially; future locale requires complete approved templates/formats, never automatic machine translation. |
+| Field                     | Requirement                                                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Display name              | Required Unicode plain text, trimmed 1–150 characters. Used in current navigation/new communications and artifacts; no markup/control characters.           |
+| Legal name                | Optional protected plain text, 1–200 characters; Admin views/approved artifacts only, never inferred from display name.                                     |
+| Public business reference | Server-generated immutable proposed `BUS-000001`; never reused and never grants access.                                                                     |
+| Public support email      | Optional valid normalized email ≤254 characters, distinct from any Admin login identity; must complete provider/ownership verification before outbound use. |
+| Public support phone      | Optional normalized international phone; Nigeria +234 default only when country is selected. Format is not ownership verification.                          |
+| Address                   | Optional plain text, maximum 500 characters. Separate public/private address policy must be approved before external display.                               |
+| Website                   | Optional absolute HTTPS URL, maximum 500 characters; no credentials, IP-local/javascript/data scheme or unsafe redirect.                                    |
+| Logo                      | Optional JPEG/PNG/WebP ≤2 MB, dimensions 128×128–2,048×2,048; content-decode, malware scan and metadata removal; protected immutable asset version.         |
+| Brand colors              | Optional 6-digit hex foreground/accent choices; preview and contrast checks. Financial/security meaning cannot rely on branding color.                      |
+| Locale                    | `en-NG` only initially; future locale requires complete approved templates/formats, never automatic machine translation.                                    |
 
 At least display name is required. Public contact fields are independently optional; the product must not expose an Admin's personal login email/phone as fallback. A removed/replaced logo/contact remains in historical artifact/template snapshots where already rendered, subject to retention, and disappears prospectively after effective change.
 
@@ -174,25 +174,25 @@ Each method version stores immutable method ID/code, display name, method type (
 
 Proposed initial registry:
 
-| Method | Proposed seed state | Required readiness before enablement |
-| --- | --- | --- |
-| Cash received by Agent | Disabled until Agent-receivable mapping, receipt/batch/reconciliation and cash evidence policy pass | Module 07 posting/reconciliation, account mapping and Agent custody attribution. |
-| Bank transfer to business | Disabled until verified destination/mapping/reference/evidence/finality pass | Business bank/clearing mapping and actual-receipt evidence policy. |
-| POS | Disabled until terminal/provider clearing mapping/reference/evidence/finality pass | Approved clearing/custody and settlement/reconciliation contract. |
-| Other configured method | Unavailable initially | Named reviewed method type and exact mapping/evidence contract; no generic catch-all posting. |
+| Method                    | Proposed seed state                                                                                 | Required readiness before enablement                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Cash received by Agent    | Disabled until Agent-receivable mapping, receipt/batch/reconciliation and cash evidence policy pass | Module 07 posting/reconciliation, account mapping and Agent custody attribution.              |
+| Bank transfer to business | Disabled until verified destination/mapping/reference/evidence/finality pass                        | Business bank/clearing mapping and actual-receipt evidence policy.                            |
+| POS                       | Disabled until terminal/provider clearing mapping/reference/evidence/finality pass                  | Approved clearing/custody and settlement/reconciliation contract.                             |
+| Other configured method   | Unavailable initially                                                                               | Named reviewed method type and exact mapping/evidence contract; no generic catch-all posting. |
 
 At least one fully ready method must be enabled before collections feature activation. Disabling blocks new receipt previews/commits at effective time. Already Posted receipts retain the captured method/mapping. Draft/uncommitted receipts must refresh. Reconciliation, reversal and recovery for historical/in-flight method records stay available under their owning permissions even when method is disabled.
 
 ### 8.2 Receipt and late-recording limits
 
-| Setting | Proposed seed / range | Boundary |
-| --- | --- | --- |
-| Receipt/tender maximum | 999,999,999,999 kobo; configurable lower positive integer-kobo limit | Cannot exceed Module 07/system hard cap or per-plan residual capacity. |
-| Receipt minimum | 1 kobo hard minimum; proposed business minimum ₦1.00 | Cannot permit zero/negative/fractional-kobo values. |
-| Late received-date lookback | 30 prior local calendar dates; configurable integer 0–365 | Still subject to authoritative open-period policy, current Agent/assignment and actual-receipt evidence. |
-| Future received date | Always prohibited | Not configurable. Advance means allocation to future slot, not future receipt. |
-| Unexplained reconciliation tolerance | Zero kobo initially | Not configurable until a reviewed variance/write-off authority exists. |
-| Evidence file limits/types | Owner policy only | Not Admin-configurable initially; settings displays readiness/reference. |
+| Setting                              | Proposed seed / range                                                | Boundary                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Receipt/tender maximum               | 999,999,999,999 kobo; configurable lower positive integer-kobo limit | Cannot exceed Module 07/system hard cap or per-plan residual capacity.                                   |
+| Receipt minimum                      | 1 kobo hard minimum; proposed business minimum ₦1.00                 | Cannot permit zero/negative/fractional-kobo values.                                                      |
+| Late received-date lookback          | 30 prior local calendar dates; configurable integer 0–365            | Still subject to authoritative open-period policy, current Agent/assignment and actual-receipt evidence. |
+| Future received date                 | Always prohibited                                                    | Not configurable. Advance means allocation to future slot, not future receipt.                           |
+| Unexplained reconciliation tolerance | Zero kobo initially                                                  | Not configurable until a reviewed variance/write-off authority exists.                                   |
+| Evidence file limits/types           | Owner policy only                                                    | Not Admin-configurable initially; settings displays readiness/reference.                                 |
 
 Increasing a limit does not bypass plan capacity, fee outstanding amount, account mapping, evidence, period or role checks. Decreasing limits applies to new confirmations after effective time and does not split/reverse prior receipts. Open forms re-preview. A lookback change never restores a previous Agent's assignment or re-dates `recorded_at`.
 
@@ -292,17 +292,17 @@ All validation runs server-side with client feedback. Trim text; reject control/
 
 Proposed seed/bootstrap:
 
-| Setting | Seed |
-| --- | --- |
-| Business record / first Admin | Provisioned trusted data; no public setup route. First Admin still follows Authentication onboarding. |
-| Display name | Required seed value reviewed before user-facing launch. |
-| Currency | NGN, 2 minor digits, displayed/locked under Section 7.4. |
-| Locale/timezone/day boundary/week | `en-NG`; `Africa/Lagos`; `00:00`; Monday. |
-| Dashboard/report/page/export defaults | Owner defaults; current-period views; 25 rows; CSV. |
-| Collection methods | Disabled until exact mappings/evidence/ledger/reconciliation readiness. |
-| Withdrawal methods | Disabled until executor/destination/evidence/finality/account readiness. |
-| Notification channels | In-app available after Module 13; transactional email only for allowlisted events after verified provider/sender. |
-| Features | Read-only core profile first; each mutation feature disabled until dependency release checklist passes. |
+| Setting                               | Seed                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Business record / first Admin         | Provisioned trusted data; no public setup route. First Admin still follows Authentication onboarding.             |
+| Display name                          | Required seed value reviewed before user-facing launch.                                                           |
+| Currency                              | NGN, 2 minor digits, displayed/locked under Section 7.4.                                                          |
+| Locale/timezone/day boundary/week     | `en-NG`; `Africa/Lagos`; `00:00`; Monday.                                                                         |
+| Dashboard/report/page/export defaults | Owner defaults; current-period views; 25 rows; CSV.                                                               |
+| Collection methods                    | Disabled until exact mappings/evidence/ledger/reconciliation readiness.                                           |
+| Withdrawal methods                    | Disabled until executor/destination/evidence/finality/account readiness.                                          |
+| Notification channels                 | In-app available after Module 13; transactional email only for allowlisted events after verified provider/sender. |
+| Features                              | Read-only core profile first; each mutation feature disabled until dependency release checklist passes.           |
 
 There is no permissive fallback account/method, `UTC` fallback, zero fee, unlimited amount/lookback, all-feature switch, wildcard permission, default password or silent email sender. A seeded value is authoritative only when it passes its current schema/readiness. Bootstrap completion status lists blockers explicitly.
 
@@ -342,14 +342,14 @@ Support keyboard/focus/error-summary, semantic forms/tables, screen-reader chang
 
 ### 16.1 Notifications
 
-| Event | Recipient | Proposed content/channel |
-| --- | --- | --- |
-| Draft changed | Editor only in UI; no general notice | Draft/version/stale state; not a runtime change. |
-| Change published/scheduled/cancelled | Acting Admin receipt; active Admins with `business.settings.manage` in-app | Group, safe before/after summary, actor/effective time/reason, affected features; no secret/mapping credential. |
-| Change became Effective/failed/degraded | Settings managers and relevant owner queue | Actual version/state, blocker/recovery, safe impact; distinguish publication from activation. |
-| Public identity/contact material change | Active Admins; affected users only if owner communication policy requires | Prospective public detail and effective time; no mass campaign. |
-| Method/feature disabled | Settings managers and owning operational staff/queues | New-operation block, in-flight behavior and next step; Customers only through affected workflow events. |
-| Currency/hard-lock attempt or high-risk conflict | Acting Admin; security/owner queue only when policy indicates abuse | Safe denial category, no hidden account/provider detail. |
+| Event                                            | Recipient                                                                  | Proposed content/channel                                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Draft changed                                    | Editor only in UI; no general notice                                       | Draft/version/stale state; not a runtime change.                                                                |
+| Change published/scheduled/cancelled             | Acting Admin receipt; active Admins with `business.settings.manage` in-app | Group, safe before/after summary, actor/effective time/reason, affected features; no secret/mapping credential. |
+| Change became Effective/failed/degraded          | Settings managers and relevant owner queue                                 | Actual version/state, blocker/recovery, safe impact; distinguish publication from activation.                   |
+| Public identity/contact material change          | Active Admins; affected users only if owner communication policy requires  | Prospective public detail and effective time; no mass campaign.                                                 |
+| Method/feature disabled                          | Settings managers and owning operational staff/queues                      | New-operation block, in-flight behavior and next step; Customers only through affected workflow events.         |
+| Currency/hard-lock attempt or high-risk conflict | Acting Admin; security/owner queue only when policy indicates abuse        | Safe denial category, no hidden account/provider detail.                                                        |
 
 Module 13 renders/routes messages after durable config events, deduplicates event/recipient/channel and rechecks permission. No attachments, raw diffs, credentials or public settings-management links. Delivery failure does not repeat/cancel a configuration commit, extend a schedule or bypass an unavailable feature.
 
@@ -411,87 +411,87 @@ A new logo/default report period is undesirable. Admin selects prior values into
 
 ## 20. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| CFG-FR-001 | Maintain exactly one trusted seeded business identity and immutable business/public references without public registration/tenant switching. | Sections 1–3 |
-| CFG-FR-002 | Give active Admins safe baseline reads and require current `business.settings.manage` for every configuration mutation. | Section 4 |
-| CFG-FR-003 | Require proposed fresh password/MFA, reason, confirmation and current permission/version/dependency checks for publication/cancel/disable/rollback. | Sections 4.2, 12 |
-| CFG-FR-004 | Enforce settings ownership boundaries for fees, permissions, authentication/security, accounts, notifications, reports and financial workflows. | Sections 2.2, 5.2 |
-| CFG-FR-005 | Validate/version business identity/contact/branding while preserving historical artifact snapshots and login identities. | Section 6 |
-| CFG-FR-006 | Validate IANA timezone and apply future prospective change without moving historical event/plan dates. | Section 7.1 |
-| CFG-FR-007 | Enforce the Version 2 midnight operational day boundary on receipts, batches, dashboards and reports without redefining plan slots/UTC/history. | Section 7.2 |
-| CFG-FR-008 | Provide week/dashboard/report/display defaults that cannot alter formulas, cutoffs, permissions, hard limits or prior artifacts. | Sections 7.3, 10.2 |
-| CFG-FR-009 | Support NGN integer kobo initially and permanently lock business currency after any dependent record/history. | Section 7.4 |
-| CFG-FR-010 | Version collection methods and select only compatible approved existing custody/account mappings; prohibit free-form account creation. | Section 8.1 |
-| CFG-FR-011 | Disable new method use prospectively while preserving posted history and owning recovery/reconciliation/correction access. | Sections 8.1, 9 |
-| CFG-FR-012 | Enforce receipt amount/late-date settings within hard caps and preserve future-date/period/assignment/evidence restrictions. | Section 8.2 |
-| CFG-FR-013 | Version withdrawal methods and enable only owner-certified executor/destination/evidence/finality/funding contracts. | Section 9 |
-| CFG-FR-014 | Order emergency withdrawal-method disable against in-flight irreversible attempts without fallback/repricing/false result. | Section 9 |
-| CFG-FR-015 | Integrate safe business context/channel readiness with Module 13 while prohibiting template/recipient/mandatory-notice/broadcast overrides. | Section 10.1 |
-| CFG-FR-016 | Maintain a closed versioned feature/readiness catalogue and prohibit enablement before compatible dependencies/propagation. | Section 11 |
-| CFG-FR-017 | Disable/degrade features without deleting history or stranding submitted/in-flight/unknown obligations and recovery. | Section 11 |
-| CFG-FR-018 | Maintain Draft/Scheduled/Effective/Superseded/Cancelled lifecycle with immutable versions and conflict-safe schedules. | Section 12.1 |
-| CFG-FR-019 | Bind impact preview to draft/base/dependency versions and explain prospective, immutable, in-flight and notification effects. | Section 12.2 |
-| CFG-FR-020 | Publish configuration/audit/schedule/outbox atomically and claim effectiveness only after owner-safe activation/acknowledgement. | Section 12.3 |
-| CFG-FR-021 | Implement rollback as validated new version and require separate owner-authorized migrations for historical/open records. | Section 12.4 |
-| CFG-FR-022 | Enforce server-side typed validation and safe non-permissive seed/bootstrap defaults/readiness. | Section 13 |
-| CFG-FR-023 | Propagate ordered version events, key/invalidate caches and fail critical stale settings closed. | Section 14 |
-| CFG-FR-024 | Serialize concurrent drafts/publications/schedules and idempotently resolve retries/restarts/unknown outcomes. | Section 14 |
-| CFG-FR-025 | Provide accessible role-sensitive settings/diff/readiness/history screens with masked protected references and explicit states. | Section 15 |
-| CFG-FR-026 | Send deduplicated scope-checked configuration/readiness notices after commit without secrets or mutation replay. | Section 16.1 |
-| CFG-FR-027 | Durably audit configuration lifecycle/access/propagation with protected values and separate `audit.view`. | Section 16.2 |
-| CFG-FR-028 | Back up/recover versions and references without replaying business events; prohibit raw config/secret export and destructive purge. | Section 17 |
-| CFG-FR-029 | Meet reviewed integrity, performance, propagation, security, reliability, accessibility and observability requirements. | Section 18 |
-| CFG-FR-030 | Block release on missing owner/account/method/time/notification/audit/retention/recovery contracts rather than enabling unsafe defaults. | Sections 11, 18 |
+| ID         | Requirement                                                                                                                                         | Detail             |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| CFG-FR-001 | Maintain exactly one trusted seeded business identity and immutable business/public references without public registration/tenant switching.        | Sections 1–3       |
+| CFG-FR-002 | Give active Admins safe baseline reads and require current `business.settings.manage` for every configuration mutation.                             | Section 4          |
+| CFG-FR-003 | Require proposed fresh password/MFA, reason, confirmation and current permission/version/dependency checks for publication/cancel/disable/rollback. | Sections 4.2, 12   |
+| CFG-FR-004 | Enforce settings ownership boundaries for fees, permissions, authentication/security, accounts, notifications, reports and financial workflows.     | Sections 2.2, 5.2  |
+| CFG-FR-005 | Validate/version business identity/contact/branding while preserving historical artifact snapshots and login identities.                            | Section 6          |
+| CFG-FR-006 | Validate IANA timezone and apply future prospective change without moving historical event/plan dates.                                              | Section 7.1        |
+| CFG-FR-007 | Enforce the Version 2 midnight operational day boundary on receipts, batches, dashboards and reports without redefining plan slots/UTC/history.     | Section 7.2        |
+| CFG-FR-008 | Provide week/dashboard/report/display defaults that cannot alter formulas, cutoffs, permissions, hard limits or prior artifacts.                    | Sections 7.3, 10.2 |
+| CFG-FR-009 | Support NGN integer kobo initially and permanently lock business currency after any dependent record/history.                                       | Section 7.4        |
+| CFG-FR-010 | Version collection methods and select only compatible approved existing custody/account mappings; prohibit free-form account creation.              | Section 8.1        |
+| CFG-FR-011 | Disable new method use prospectively while preserving posted history and owning recovery/reconciliation/correction access.                          | Sections 8.1, 9    |
+| CFG-FR-012 | Enforce receipt amount/late-date settings within hard caps and preserve future-date/period/assignment/evidence restrictions.                        | Section 8.2        |
+| CFG-FR-013 | Version withdrawal methods and enable only owner-certified executor/destination/evidence/finality/funding contracts.                                | Section 9          |
+| CFG-FR-014 | Order emergency withdrawal-method disable against in-flight irreversible attempts without fallback/repricing/false result.                          | Section 9          |
+| CFG-FR-015 | Integrate safe business context/channel readiness with Module 13 while prohibiting template/recipient/mandatory-notice/broadcast overrides.         | Section 10.1       |
+| CFG-FR-016 | Maintain a closed versioned feature/readiness catalogue and prohibit enablement before compatible dependencies/propagation.                         | Section 11         |
+| CFG-FR-017 | Disable/degrade features without deleting history or stranding submitted/in-flight/unknown obligations and recovery.                                | Section 11         |
+| CFG-FR-018 | Maintain Draft/Scheduled/Effective/Superseded/Cancelled lifecycle with immutable versions and conflict-safe schedules.                              | Section 12.1       |
+| CFG-FR-019 | Bind impact preview to draft/base/dependency versions and explain prospective, immutable, in-flight and notification effects.                       | Section 12.2       |
+| CFG-FR-020 | Publish configuration/audit/schedule/outbox atomically and claim effectiveness only after owner-safe activation/acknowledgement.                    | Section 12.3       |
+| CFG-FR-021 | Implement rollback as validated new version and require separate owner-authorized migrations for historical/open records.                           | Section 12.4       |
+| CFG-FR-022 | Enforce server-side typed validation and safe non-permissive seed/bootstrap defaults/readiness.                                                     | Section 13         |
+| CFG-FR-023 | Propagate ordered version events, key/invalidate caches and fail critical stale settings closed.                                                    | Section 14         |
+| CFG-FR-024 | Serialize concurrent drafts/publications/schedules and idempotently resolve retries/restarts/unknown outcomes.                                      | Section 14         |
+| CFG-FR-025 | Provide accessible role-sensitive settings/diff/readiness/history screens with masked protected references and explicit states.                     | Section 15         |
+| CFG-FR-026 | Send deduplicated scope-checked configuration/readiness notices after commit without secrets or mutation replay.                                    | Section 16.1       |
+| CFG-FR-027 | Durably audit configuration lifecycle/access/propagation with protected values and separate `audit.view`.                                           | Section 16.2       |
+| CFG-FR-028 | Back up/recover versions and references without replaying business events; prohibit raw config/secret export and destructive purge.                 | Section 17         |
+| CFG-FR-029 | Meet reviewed integrity, performance, propagation, security, reliability, accessibility and observability requirements.                             | Section 18         |
+| CFG-FR-030 | Block release on missing owner/account/method/time/notification/audit/retention/recovery contracts rather than enabling unsafe defaults.            | Sections 11, 18    |
 
 ## 21. Acceptance scenarios and traceability
 
 These are future release scenarios, not claims of implementation or completed testing. Each evidence record includes scenario/requirement IDs, build/fixture, actor/account/grants/freshness, business/config/draft/base/dependency versions, typed before/proposed/effective values, effective timezone/time, expected/observed consumer/runtime/history states, audit/notification/propagation references, and Passed/Failed/Blocked. A visible toggle or successful draft save is not evidence a feature safely activated.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| CFG-AC-001 | CFG-FR-001 | Seed one business/first Admin; public second-business creation, tenant ID injection/switch and business ID edit/delete all fail without affecting scope. |
-| CFG-AC-002 | CFG-FR-002 | Customer/Agent see only relevant public/applicable values; baseline Admin reads safe effective settings but cannot draft/publish; exact grant enables mutation. |
-| CFG-AC-003 | CFG-FR-003 | Publish/cancel/disable/rollback with missing/expired freshness, reason, confirmation or revoked grant fails; valid one-Admin action commits once. |
-| CFG-AC-004 | CFG-FR-004 | `business.settings.manage` actor attempts fee/permission/MFA/account creation/manual posting/template body/financial approval fields; every owner violation is rejected wholly. |
-| CFG-AC-005 | CFG-FR-005 | Validate name/contact/HTTPS/logo/type/size/dimension/color boundaries; invalid asset never replaces current, and no Admin login contact is used as public fallback. |
-| CFG-AC-006 | CFG-FR-005 | Change display name/logo/contact; new permitted surfaces use new version while old sent notice/issued statement/export retains its captured identity. |
-| CFG-AC-007 | CFG-FR-006 | Schedule valid IANA timezone 48-hour boundary and test month/year/DST offsets; new events snapshot it, old plan/receipt/report dates never shift. |
-| CFG-AC-008 | CFG-FR-006 | Reject raw offset/abbreviation/unknown zone/past or too-soon effect and unavailable temporal dependency without falling back to UTC/browser zone. |
-| CFG-AC-009 | CFG-FR-007 | Keep `00:00` across a timezone change: scheduler freezes every old/new business date exactly once, new receipts/batches capture the version, and plan slots/UTC/history remain unchanged. |
-| CFG-AC-010 | CFG-FR-007 | Reject every non-midnight boundary in Version 2, including otherwise well-formed 15-minute values; failed publication keeps the prior safe version. |
-| CFG-AC-011 | CFG-FR-008 | Change week/default range/page/export choice; only new presentation defaults change, metric formula/query selection/export permission/hard cap/saved job stays. |
-| CFG-AC-012 | CFG-FR-009 | NGN renders exact kobo. Attempt another currency before support and after invitation/plan/ledger history; both fail, latter permanently locked with no conversion. |
-| CFG-AC-013 | CFG-FR-010 | Map Cash to compatible approved Agent receivable and transfer to approved business clearing; wrong class/currency/retired/free-form account blocks enablement. |
-| CFG-AC-014 | CFG-FR-010 | Post before/after compatible mapping change; each receipt retains exact version, reconciliation handles both, no generic fallback/double posting. |
-| CFG-AC-015 | CFG-FR-011 | Disable collection method; new forms/commits refresh/block, Posted records/history remain and permitted reconciliation/reversal recovery continues. |
-| CFG-AC-016 | CFG-FR-012 | Test receipt min/max/max+1 and lower prospective business cap; invalid values fail, prior above-new-cap receipt is not split/reversed. |
-| CFG-AC-017 | CFG-FR-012 | Test late lookback 0/30/365/beyond, future date and closed-period/assignment/evidence blocks; larger setting never bypasses owners. |
-| CFG-AC-018 | CFG-FR-013 | Enable bank/cash payout with complete versus missing executor/destination/funding/evidence/finality/unknown/return contracts; only fully certified compatible version is Ready. |
-| CFG-AC-019 | CFG-FR-013 | `withdrawals.review` or settings Admin cannot become executor/mark paid merely via registry; secrets/raw bank credentials cannot be stored. |
-| CFG-AC-020 | CFG-FR-014 | Emergency-disable bank method racing execution: disable-first blocks start; durable irreversible-start-first resolves exact attempt using captured version, never retries/falls back cash. |
-| CFG-AC-021 | CFG-FR-015 | Change branding/sender/channel defaults; previous rendered notices unchanged, mandatory/allowlisted rules/preferences remain, no template edit/broadcast/SMS fallback. |
-| CFG-AC-022 | CFG-FR-016 | UI deployed but account/evidence/posting owner missing: feature stays Unavailable and API rejects enable; complete versioned readiness plus acknowledgements enables. |
-| CFG-AC-023 | CFG-FR-016 | Cached Enabled flag with owner now unready cannot authorize mutation; owner check marks Degraded/Unavailable and emits issue without selecting substitute. |
-| CFG-AC-024 | CFG-FR-017 | Disable feature with pending/processing/unknown/posted work; new action blocks while exact hold/recovery/read/history paths persist and no obligation disappears. |
-| CFG-AC-025 | CFG-FR-018 | Save/edit Draft with no runtime effect; schedule then effect once; cancel before effect retains history; immutable Effective edit/delete fails. |
-| CFG-AC-026 | CFG-FR-018, CFG-FR-024 | Two Admins publish same base/overlapping setting schedule; one valid ordering wins and stale actor re-previews, with no lost/half-applied value. |
-| CFG-AC-027 | CFG-FR-019 | Preview binds diff/hash/base/dependencies and enumerates historical/open/in-flight effects; edit/dependency change invalidates confirmation. |
-| CFG-AC-028 | CFG-FR-020 | Inject config/audit/schedule/outbox failure; publication commits none. Inject consumer ack failure; never claim feature Effective/accept mutation while propagation pending. |
-| CFG-AC-029 | CFG-FR-020 | Lost publication/activation response resolves same attempt/version after restart without duplicate schedule/notification/effective event. |
-| CFG-AC-030 | CFG-FR-021 | Roll back display default through new higher version; old versions retained. Prior retired mapping/locked currency fails current validation and no history rewrites. |
-| CFG-AC-031 | CFG-FR-021 | Request timezone/account/open-plan historical migration through ordinary settings; remain Blocked pending separate owner authority/preflight, while records retain captured version. |
-| CFG-AC-032 | CFG-FR-022 | Fuzz unknown/protected fields, control markup, invalid URL/file/money/minutes/code/effective times and schema overflow; whole publication fails with safe field errors. |
-| CFG-AC-033 | CFG-FR-022 | Fresh seed starts NGN/Africa-Lagos/00:00/Monday and financial methods/features disabled until readiness; no zero/unlimited/fallback account/default password. |
-| CFG-AC-034 | CFG-FR-023 | Publish ordered versions with cache lag/replay; critical mutation reads effective acknowledged version or fails closed, profile display labels last verified stale version. |
-| CFG-AC-035 | CFG-FR-024 | Duplicate draft/publish/cancel/disable keys, timeout and scheduler restart yield one result/effective transition; changed payload conflicts. |
-| CFG-AC-036 | CFG-FR-025 | Baseline/manager screens, direct URLs and masked diffs obey roles; keyboard/mobile/screen-reader handles Draft/Scheduled/pending/degraded/conflict/unknown states. |
-| CFG-AC-037 | CFG-FR-026 | Publish/effect/fail/disable notice retries deduplicate/current-scope check and contain safe summary only; delivery failure never repeats/cancels change. |
-| CFG-AC-038 | CFG-FR-027 | Draft/preview/publish/effect/rollback/access/denial/propagation events retain protected hashes/versions/results; only `audit.view` sees detail and no secrets appear. |
-| CFG-AC-039 | CFG-FR-028 | Backup/restore preserves business/version/effective schedule/references exactly, does not replay money/notifications/exports, and unavailable restored secret leaves feature disabled. |
-| CFG-AC-040 | CFG-FR-028 | `reports.export`, guessed backup route and settings manager cannot download raw config/secrets or purge published history; governed artifact cleanup preserves references. |
-| CFG-AC-041 | CFG-FR-029 | Representative latency/propagation/load/accessibility/security tests record targets/misses while integrity/authorization remain enforced; no optimistic success. |
-| CFG-AC-042 | CFG-FR-030 | Remove each owner/mapping/time/provider/notification/audit/retention/recovery dependency; affected setting/feature reports Blocked, never guessed/default-enabled. |
+| ID         | Requirements           | Scenario and expected result                                                                                                                                                               |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CFG-AC-001 | CFG-FR-001             | Seed one business/first Admin; public second-business creation, tenant ID injection/switch and business ID edit/delete all fail without affecting scope.                                   |
+| CFG-AC-002 | CFG-FR-002             | Customer/Agent see only relevant public/applicable values; baseline Admin reads safe effective settings but cannot draft/publish; exact grant enables mutation.                            |
+| CFG-AC-003 | CFG-FR-003             | Publish/cancel/disable/rollback with missing/expired freshness, reason, confirmation or revoked grant fails; valid one-Admin action commits once.                                          |
+| CFG-AC-004 | CFG-FR-004             | `business.settings.manage` actor attempts fee/permission/MFA/account creation/manual posting/template body/financial approval fields; every owner violation is rejected wholly.            |
+| CFG-AC-005 | CFG-FR-005             | Validate name/contact/HTTPS/logo/type/size/dimension/color boundaries; invalid asset never replaces current, and no Admin login contact is used as public fallback.                        |
+| CFG-AC-006 | CFG-FR-005             | Change display name/logo/contact; new permitted surfaces use new version while old sent notice/issued statement/export retains its captured identity.                                      |
+| CFG-AC-007 | CFG-FR-006             | Schedule valid IANA timezone 48-hour boundary and test month/year/DST offsets; new events snapshot it, old plan/receipt/report dates never shift.                                          |
+| CFG-AC-008 | CFG-FR-006             | Reject raw offset/abbreviation/unknown zone/past or too-soon effect and unavailable temporal dependency without falling back to UTC/browser zone.                                          |
+| CFG-AC-009 | CFG-FR-007             | Keep `00:00` across a timezone change: scheduler freezes every old/new business date exactly once, new receipts/batches capture the version, and plan slots/UTC/history remain unchanged.  |
+| CFG-AC-010 | CFG-FR-007             | Reject every non-midnight boundary in Version 2, including otherwise well-formed 15-minute values; failed publication keeps the prior safe version.                                        |
+| CFG-AC-011 | CFG-FR-008             | Change week/default range/page/export choice; only new presentation defaults change, metric formula/query selection/export permission/hard cap/saved job stays.                            |
+| CFG-AC-012 | CFG-FR-009             | NGN renders exact kobo. Attempt another currency before support and after invitation/plan/ledger history; both fail, latter permanently locked with no conversion.                         |
+| CFG-AC-013 | CFG-FR-010             | Map Cash to compatible approved Agent receivable and transfer to approved business clearing; wrong class/currency/retired/free-form account blocks enablement.                             |
+| CFG-AC-014 | CFG-FR-010             | Post before/after compatible mapping change; each receipt retains exact version, reconciliation handles both, no generic fallback/double posting.                                          |
+| CFG-AC-015 | CFG-FR-011             | Disable collection method; new forms/commits refresh/block, Posted records/history remain and permitted reconciliation/reversal recovery continues.                                        |
+| CFG-AC-016 | CFG-FR-012             | Test receipt min/max/max+1 and lower prospective business cap; invalid values fail, prior above-new-cap receipt is not split/reversed.                                                     |
+| CFG-AC-017 | CFG-FR-012             | Test late lookback 0/30/365/beyond, future date and closed-period/assignment/evidence blocks; larger setting never bypasses owners.                                                        |
+| CFG-AC-018 | CFG-FR-013             | Enable bank/cash payout with complete versus missing executor/destination/funding/evidence/finality/unknown/return contracts; only fully certified compatible version is Ready.            |
+| CFG-AC-019 | CFG-FR-013             | `withdrawals.review` or settings Admin cannot become executor/mark paid merely via registry; secrets/raw bank credentials cannot be stored.                                                |
+| CFG-AC-020 | CFG-FR-014             | Emergency-disable bank method racing execution: disable-first blocks start; durable irreversible-start-first resolves exact attempt using captured version, never retries/falls back cash. |
+| CFG-AC-021 | CFG-FR-015             | Change branding/sender/channel defaults; previous rendered notices unchanged, mandatory/allowlisted rules/preferences remain, no template edit/broadcast/SMS fallback.                     |
+| CFG-AC-022 | CFG-FR-016             | UI deployed but account/evidence/posting owner missing: feature stays Unavailable and API rejects enable; complete versioned readiness plus acknowledgements enables.                      |
+| CFG-AC-023 | CFG-FR-016             | Cached Enabled flag with owner now unready cannot authorize mutation; owner check marks Degraded/Unavailable and emits issue without selecting substitute.                                 |
+| CFG-AC-024 | CFG-FR-017             | Disable feature with pending/processing/unknown/posted work; new action blocks while exact hold/recovery/read/history paths persist and no obligation disappears.                          |
+| CFG-AC-025 | CFG-FR-018             | Save/edit Draft with no runtime effect; schedule then effect once; cancel before effect retains history; immutable Effective edit/delete fails.                                            |
+| CFG-AC-026 | CFG-FR-018, CFG-FR-024 | Two Admins publish same base/overlapping setting schedule; one valid ordering wins and stale actor re-previews, with no lost/half-applied value.                                           |
+| CFG-AC-027 | CFG-FR-019             | Preview binds diff/hash/base/dependencies and enumerates historical/open/in-flight effects; edit/dependency change invalidates confirmation.                                               |
+| CFG-AC-028 | CFG-FR-020             | Inject config/audit/schedule/outbox failure; publication commits none. Inject consumer ack failure; never claim feature Effective/accept mutation while propagation pending.               |
+| CFG-AC-029 | CFG-FR-020             | Lost publication/activation response resolves same attempt/version after restart without duplicate schedule/notification/effective event.                                                  |
+| CFG-AC-030 | CFG-FR-021             | Roll back display default through new higher version; old versions retained. Prior retired mapping/locked currency fails current validation and no history rewrites.                       |
+| CFG-AC-031 | CFG-FR-021             | Request timezone/account/open-plan historical migration through ordinary settings; remain Blocked pending separate owner authority/preflight, while records retain captured version.       |
+| CFG-AC-032 | CFG-FR-022             | Fuzz unknown/protected fields, control markup, invalid URL/file/money/minutes/code/effective times and schema overflow; whole publication fails with safe field errors.                    |
+| CFG-AC-033 | CFG-FR-022             | Fresh seed starts NGN/Africa-Lagos/00:00/Monday and financial methods/features disabled until readiness; no zero/unlimited/fallback account/default password.                              |
+| CFG-AC-034 | CFG-FR-023             | Publish ordered versions with cache lag/replay; critical mutation reads effective acknowledged version or fails closed, profile display labels last verified stale version.                |
+| CFG-AC-035 | CFG-FR-024             | Duplicate draft/publish/cancel/disable keys, timeout and scheduler restart yield one result/effective transition; changed payload conflicts.                                               |
+| CFG-AC-036 | CFG-FR-025             | Baseline/manager screens, direct URLs and masked diffs obey roles; keyboard/mobile/screen-reader handles Draft/Scheduled/pending/degraded/conflict/unknown states.                         |
+| CFG-AC-037 | CFG-FR-026             | Publish/effect/fail/disable notice retries deduplicate/current-scope check and contain safe summary only; delivery failure never repeats/cancels change.                                   |
+| CFG-AC-038 | CFG-FR-027             | Draft/preview/publish/effect/rollback/access/denial/propagation events retain protected hashes/versions/results; only `audit.view` sees detail and no secrets appear.                      |
+| CFG-AC-039 | CFG-FR-028             | Backup/restore preserves business/version/effective schedule/references exactly, does not replay money/notifications/exports, and unavailable restored secret leaves feature disabled.     |
+| CFG-AC-040 | CFG-FR-028             | `reports.export`, guessed backup route and settings manager cannot download raw config/secrets or purge published history; governed artifact cleanup preserves references.                 |
+| CFG-AC-041 | CFG-FR-029             | Representative latency/propagation/load/accessibility/security tests record targets/misses while integrity/authorization remain enforced; no optimistic success.                           |
+| CFG-AC-042 | CFG-FR-030             | Remove each owner/mapping/time/provider/notification/audit/retention/recovery dependency; affected setting/feature reports Blocked, never guessed/default-enabled.                         |
 
 Required fixtures include baseline/read-only and `business.settings.manage` Admins with fresh/stale/revoked access; one seeded business; valid/invalid branding assets/contacts; timezone/fixed-midnight DST/month/year cases; empty versus currency-locked histories; active/retired/incompatible account mappings; all receipt limits/methods and late dates; withdrawal requests in Pending review, Approved — awaiting payout, Payout processing, Outcome unknown, Payment failed and Posted, with and without applicable hold overlays; notification mandatory/optional/provider/template states; feature readiness states; competing/scheduled/emergency changes; stale caches/consumer acknowledgements; provider/secret loss; backup/restore; malicious input; and representative accessibility/performance conditions.
 

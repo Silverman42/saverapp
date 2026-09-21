@@ -49,14 +49,14 @@ A missing owner contract or projection never becomes zero, estimated actual mone
 
 ## 4. Scope and access model
 
-| Surface | Customer | Agent | Admin |
-| --- | --- | --- | --- |
-| Customer dashboard | Own account only | No impersonation; open assigned Customer profile separately | No impersonation; business oversight separately |
-| Agent dashboard | No | Own role, current assignments and original-actor activity described below | May inspect an Agent's scoped operational summary business-wide |
-| Admin dashboard | No | No | Active Admin business-wide baseline read |
-| Protected task detail | Own permitted request status only | Current assignment/task scope | Owning permission for protected evidence/actions |
-| Business/multi-Customer export | No | No | `reports.export` |
-| Detailed audit event | No | No | `audit.view` |
+| Surface                        | Customer                          | Agent                                                                     | Admin                                                           |
+| ------------------------------ | --------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Customer dashboard             | Own account only                  | No impersonation; open assigned Customer profile separately               | No impersonation; business oversight separately                 |
+| Agent dashboard                | No                                | Own role, current assignments and original-actor activity described below | May inspect an Agent's scoped operational summary business-wide |
+| Admin dashboard                | No                                | No                                                                        | Active Admin business-wide baseline read                        |
+| Protected task detail          | Own permitted request status only | Current assignment/task scope                                             | Owning permission for protected evidence/actions                |
+| Business/multi-Customer export | No                                | No                                                                        | `reports.export`                                                |
+| Detailed audit event           | No                                | No                                                                        | `audit.view`                                                    |
 
 Customer account/operational status does not remove own permitted historical read access. Agent dashboard access requires an Authentication-permitted session. An operationally Inactive Agent with usable account access may retain permitted read-only own/assigned records under Module 04, but sees no collection/plan/customer mutation actions. Suspended/Deactivated accounts have no application access. Preserve Authentication's valid-session temporary-lock exception.
 
@@ -81,16 +81,16 @@ Each response records query cutoff in UTC, business timezone/version, ledger wat
 
 ### 5.2 Date bases
 
-| Metric family | Default period basis |
-| --- | --- |
-| Contributions/receipts | `received_date` for operational money-received totals; `committed_at` separately for posting activity. Late records update the historical received date and appear in posting-today diagnostics. |
-| Scheduled/covered collection slots | Module 06 slot local due date/timezone; allocations may have different receipt dates. |
-| Customer liability, availability, custody and earnings balance | Point-in-time ledger/reservation cutoff, not sum of period activity. |
-| Withdrawals/payouts | Successful payout/effective date from Module 08; requested/approved counts separately labelled by their own dates. |
-| Fees | Recognition/settlement effective date for earned amounts; assessment date for obligation activity; business draw date for draws. |
-| Reversals | Compensation committed/effective date for posting activity; original occurrence remains unchanged and linked. |
-| Customer/Agent/plan counts | State effective at cutoff; historical counts require complete effective intervals. |
-| Requests/tasks/exceptions | Current state at cutoff; age from original creation/request time to cutoff. |
+| Metric family                                                  | Default period basis                                                                                                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Contributions/receipts                                         | `received_date` for operational money-received totals; `committed_at` separately for posting activity. Late records update the historical received date and appear in posting-today diagnostics. |
+| Scheduled/covered collection slots                             | Module 06 slot local due date/timezone; allocations may have different receipt dates.                                                                                                            |
+| Customer liability, availability, custody and earnings balance | Point-in-time ledger/reservation cutoff, not sum of period activity.                                                                                                                             |
+| Withdrawals/payouts                                            | Successful payout/effective date from Module 08; requested/approved counts separately labelled by their own dates.                                                                               |
+| Fees                                                           | Recognition/settlement effective date for earned amounts; assessment date for obligation activity; business draw date for draws.                                                                 |
+| Reversals                                                      | Compensation committed/effective date for posting activity; original occurrence remains unchanged and linked.                                                                                    |
+| Customer/Agent/plan counts                                     | State effective at cutoff; historical counts require complete effective intervals.                                                                                                               |
+| Requests/tasks/exceptions                                      | Current state at cutoff; age from original creation/request time to cutoff.                                                                                                                      |
 
 “Today” never means the viewer device's timezone. Future-dated events are excluded. Invalid/reversed ranges fail validation. Proposed interactive custom range maximum is 366 calendar days; longer analysis uses a governed report/export. Changing date, Agent or status filters resets pagination and updates every dependent metric to one consistent cutoff or clearly shows independently versioned sections.
 
@@ -100,16 +100,16 @@ All money is NGN integer kobo formatted as currency. Counts use distinct stable 
 
 ### 6.1 Customer and plan metrics
 
-| Code / label | Definition |
-| --- | --- |
-| `customers_total` | Distinct Customer records in selected status scope at cutoff. Default Admin/Agent operational scope excludes Archived but shows status breakdown; lifetime registered includes Archived only when explicitly selected. |
-| `customers_active/inactive/restricted/archived` | Distinct Customers whose Module 04 operational status is that value at cutoff. Account/invitation state is separate. |
-| `current_assigned_customers` | Distinct non-Archived Customers currently assigned to scoped Agent at cutoff, with status breakdown. Historical assignment does not count. |
-| `open_plans` | Distinct plans in Active, Paused or Completed state under Module 06 at cutoff. Completed remains open until Closed. |
-| `active_collectible_plans` | Active plans whose Customer and current assigned Agent are eligible for collection at cutoff; future-start plans may be Active but not due today. |
-| `plans_paused/completed/closed/cancelled` | Distinct plans by exact lifecycle at cutoff. Never infer state from elapsed final date or zero balance. |
-| `funded_slots` | Count of plan slots fully net funded from Module 07 allocations after reversals. Skipped/partial/elapsed slots do not count. |
-| `remaining_slots` | Required plan slot count minus fully funded slots; partial shortfall shown separately in money. Not days until scheduled end. |
+| Code / label                                    | Definition                                                                                                                                                                                                             |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `customers_total`                               | Distinct Customer records in selected status scope at cutoff. Default Admin/Agent operational scope excludes Archived but shows status breakdown; lifetime registered includes Archived only when explicitly selected. |
+| `customers_active/inactive/restricted/archived` | Distinct Customers whose Module 04 operational status is that value at cutoff. Account/invitation state is separate.                                                                                                   |
+| `current_assigned_customers`                    | Distinct non-Archived Customers currently assigned to scoped Agent at cutoff, with status breakdown. Historical assignment does not count.                                                                             |
+| `open_plans`                                    | Distinct plans in Active, Paused or Completed state under Module 06 at cutoff. Completed remains open until Closed.                                                                                                    |
+| `active_collectible_plans`                      | Active plans whose Customer and current assigned Agent are eligible for collection at cutoff; future-start plans may be Active but not due today.                                                                      |
+| `plans_paused/completed/closed/cancelled`       | Distinct plans by exact lifecycle at cutoff. Never infer state from elapsed final date or zero balance.                                                                                                                |
+| `funded_slots`                                  | Count of plan slots fully net funded from Module 07 allocations after reversals. Skipped/partial/elapsed slots do not count.                                                                                           |
+| `remaining_slots`                               | Required plan slot count minus fully funded slots; partial shortfall shown separately in money. Not days until scheduled end.                                                                                          |
 
 ### 6.2 Collection metrics
 
@@ -129,35 +129,35 @@ Actual collection against today's expectations is `covered_due`, not money recei
 
 ### 6.3 Ledger, payout and fee metrics
 
-| Code / label | Authoritative formula and exclusions |
-| --- | --- |
-| `net_contributions` | Net posted savings contribution credits after linked compensations for selected occurrence/received scope. Excludes fees, remittance and estimates. Gross contributions and reversals may be separately disclosed. |
-| `customer_liability` | Headline business total is the sum of every Customer savings-liability subsidiary balance at cutoff, including Inactive, Restricted and Archived Customers with balances; operational status filters never alter or replace it. An optional explicitly labelled scoped-liability analysis may apply Customer filters, but must display scope and reconcile as a subset. |
-| `live_payout_reservations` | Sum of live gross reservation amounts G from Module 08 at reservation cutoff. Not a ledger debit. |
-| `available_savings` | Customer liability minus live gross payout reservations, per Customer then aggregated. Unknown reservation data makes availability unavailable, not equal to liability. |
-| `successful_net_payouts` | Sum of net cash paid P for successfully posted Customer payouts in period, after effective compensation. |
-| `withdrawal_gross_debits` | Sum G debited from Customer liability for posted withdrawals, where G = net payout P + included fee F + approved deductions D. Never present as cash paid. |
-| `pending_withdrawal_count/value` | Distinct current requests and their live gross reservation value by Module 08 state. Kept outside posted payout totals. |
-| `fee_assessed` | Module 05 obligations assessed in period, including unpaid amount; not earnings or cash. |
-| `fee_received_external` | Posted external fee settlements by receipt date; physical tender and recognized amount shown according to Module 05/07. |
-| `gross_fee_recognized` | Posted credits to approved fee-income accounts before refunds/compensations in period. |
-| `net_fee_earnings` | Effective fee-income recognition minus linked fee refunds/corrections in period. Excludes unpaid obligations and other-deduction income. |
-| `book_fee_balance` | Lifetime net recognized fee earnings minus posted business fee-earnings draws at cutoff. Not necessarily drawable cash. |
-| `drawable_fee_balance` | Module 05 authoritative conservative result after cash backing, Customer liabilities, payables and separate encumbrances. Never locally derived from book income. |
-| `outstanding_fee_obligations` | Module 05 assessed minus effective settlement/waiver, never below zero; separate from Customer savings liability. |
-| `other_deductions` | Net posted savings deductions to approved non-fee destinations in period; excluded from fee earnings. |
+| Code / label                     | Authoritative formula and exclusions                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `net_contributions`              | Net posted savings contribution credits after linked compensations for selected occurrence/received scope. Excludes fees, remittance and estimates. Gross contributions and reversals may be separately disclosed.                                                                                                                                                      |
+| `customer_liability`             | Headline business total is the sum of every Customer savings-liability subsidiary balance at cutoff, including Inactive, Restricted and Archived Customers with balances; operational status filters never alter or replace it. An optional explicitly labelled scoped-liability analysis may apply Customer filters, but must display scope and reconcile as a subset. |
+| `live_payout_reservations`       | Sum of live gross reservation amounts G from Module 08 at reservation cutoff. Not a ledger debit.                                                                                                                                                                                                                                                                       |
+| `available_savings`              | Customer liability minus live gross payout reservations, per Customer then aggregated. Unknown reservation data makes availability unavailable, not equal to liability.                                                                                                                                                                                                 |
+| `successful_net_payouts`         | Sum of net cash paid P for successfully posted Customer payouts in period, after effective compensation.                                                                                                                                                                                                                                                                |
+| `withdrawal_gross_debits`        | Sum G debited from Customer liability for posted withdrawals, where G = net payout P + included fee F + approved deductions D. Never present as cash paid.                                                                                                                                                                                                              |
+| `pending_withdrawal_count/value` | Distinct current requests and their live gross reservation value by Module 08 state. Kept outside posted payout totals.                                                                                                                                                                                                                                                 |
+| `fee_assessed`                   | Module 05 obligations assessed in period, including unpaid amount; not earnings or cash.                                                                                                                                                                                                                                                                                |
+| `fee_received_external`          | Posted external fee settlements by receipt date; physical tender and recognized amount shown according to Module 05/07.                                                                                                                                                                                                                                                 |
+| `gross_fee_recognized`           | Posted credits to approved fee-income accounts before refunds/compensations in period.                                                                                                                                                                                                                                                                                  |
+| `net_fee_earnings`               | Effective fee-income recognition minus linked fee refunds/corrections in period. Excludes unpaid obligations and other-deduction income.                                                                                                                                                                                                                                |
+| `book_fee_balance`               | Lifetime net recognized fee earnings minus posted business fee-earnings draws at cutoff. Not necessarily drawable cash.                                                                                                                                                                                                                                                 |
+| `drawable_fee_balance`           | Module 05 authoritative conservative result after cash backing, Customer liabilities, payables and separate encumbrances. Never locally derived from book income.                                                                                                                                                                                                       |
+| `outstanding_fee_obligations`    | Module 05 assessed minus effective settlement/waiver, never below zero; separate from Customer savings liability.                                                                                                                                                                                                                                                       |
+| `other_deductions`               | Net posted savings deductions to approved non-fee destinations in period; excluded from fee earnings.                                                                                                                                                                                                                                                                   |
 
 ### 6.4 Custody and reconciliation metrics
 
-| Code / label | Definition |
-| --- | --- |
-| `agent_receivable` | Module 10 debit balance by original recording Agent for entrusted money, less posted remittance/eligible compensation. It is neither Agent income nor additional Customer debt. |
-| `business_custody` | Balances of approved cash/bank/POS/clearing assets by account at cutoff. Not labelled profit or Customer balance. |
-| `recorded_tender` | Posted physical receipt components assigned to the selected original Agent/period, including savings and external fees; excludes savings-funded fees. |
-| `confirmed_remittance` | Posted amount moving custody from original Agent receivable to business custody in period; not contribution/earnings. |
-| `unreconciled_amount` | Authoritative Module 07 amount awaiting reconciliation by batch/version, not a locally computed residual from rounded cards. |
-| `open_reconciliation_exceptions` | Distinct current exception IDs by severity/age/recording Agent. A shortage does not change Customer liability. |
-| `reconciled_batches` | Distinct batch revisions in authoritative reconciled state; supplements count separately or as revisions according to Module 07, never both. |
+| Code / label                     | Definition                                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_receivable`               | Module 10 debit balance by original recording Agent for entrusted money, less posted remittance/eligible compensation. It is neither Agent income nor additional Customer debt. |
+| `business_custody`               | Balances of approved cash/bank/POS/clearing assets by account at cutoff. Not labelled profit or Customer balance.                                                               |
+| `recorded_tender`                | Posted physical receipt components assigned to the selected original Agent/period, including savings and external fees; excludes savings-funded fees.                           |
+| `confirmed_remittance`           | Posted amount moving custody from original Agent receivable to business custody in period; not contribution/earnings.                                                           |
+| `unreconciled_amount`            | Authoritative Module 07 amount awaiting reconciliation by batch/version, not a locally computed residual from rounded cards.                                                    |
+| `open_reconciliation_exceptions` | Distinct current exception IDs by severity/age/recording Agent. A shortage does not change Customer liability.                                                                  |
+| `reconciled_batches`             | Distinct batch revisions in authoritative reconciled state; supplements count separately or as revisions according to Module 07, never both.                                    |
 
 ## 7. Role dashboards
 
@@ -293,73 +293,73 @@ Projection rebuild is deterministic from authoritative sources and promotes only
 
 ## 15. Functional requirements
 
-| ID | Requirement | Sections |
-| --- | --- | --- |
-| DSH-FR-001 | Provide distinct Customer, Agent and Admin dashboards with server-enforced role/resource scope. | 4, 7 |
-| DSH-FR-002 | Keep dashboards read-only projections and prohibit financial/plan/approval/permission mutation authority. | 1–3 |
-| DSH-FR-003 | Source each metric from its authoritative module with stable code, definition, unit, cutoff, date basis and drill-down. | 3, 5–8 |
-| DSH-FR-004 | Keep Customer liability, reservations, fee earnings, custody, Agent receivable and obligations separately named and calculated. | 3, 6 |
-| DSH-FR-005 | Apply business/plan timezone, period and event-date semantics consistently and expose UTC/source cutoffs. | 5 |
-| DSH-FR-006 | Distinguish current assignment, event-time assignment and immutable recording-Agent attribution. | 4.1 |
-| DSH-FR-007 | Calculate Customer/status/plan/slot counts from effective owner states without inference from dates/balances. | 6.1 |
-| DSH-FR-008 | Calculate scheduled, eligible, covered, outstanding and received collections independently without double counting. | 6.2 |
-| DSH-FR-009 | Derive liability/available savings, contribution, payout, withdrawal and deduction metrics from ledger/reservation owners. | 6.3 |
-| DSH-FR-010 | Present fee assessment, obligation, receipt, recognition, book and drawable metrics with distinct meanings. | 6.3 |
-| DSH-FR-011 | Present custody, Agent receivable, remittance and reconciliation metrics without altering Customer liability. | 6.4 |
-| DSH-FR-012 | Provide Customer own balances/plan/activity/requests while preserving status limits and no mutation authority. | 7.1 |
-| DSH-FR-013 | Provide Agent current portfolio, daily work, immutable own activity/custody and scoped tasks. | 7.2 |
-| DSH-FR-014 | Provide Admin business operations/financial summaries without combining unlike balances or enabling Agent-only actions. | 7.3 |
-| DSH-FR-015 | Project current owner tasks/exceptions once with stable authorized links and no new workflow state. | 8 |
-| DSH-FR-016 | Make every drill-down reconcile under identical scope/filter/cutoff or disclose watermark differences. | 8 |
-| DSH-FR-017 | Validate scope-bound filters, comparison semantics, stable ordering and full-result totals. | 9 |
-| DSH-FR-018 | Return per-section freshness/status/source metadata and meet proposed propagation objectives. | 10 |
-| DSH-FR-019 | Key/invalidate caches by principal, permission, assignment, status, filters, timezone and projection versions. | 10 |
-| DSH-FR-020 | Render safe partial/unavailable states and never substitute zero or mix incompatible cutoffs. | 10.1 |
-| DSH-FR-021 | Bind distributed reads/cursors to compatible cutoffs and reauthorize every page, link and refresh. | 11 |
-| DSH-FR-022 | Protect private data in payloads, caches, URLs, logs, telemetry, charts and small cohorts. | 11 |
-| DSH-FR-023 | Require `reports.export` for business/multi-Customer exports and preserve separate statement/audit permissions. | 12 |
-| DSH-FR-024 | Audit protected views/exports/high-risk denials while avoiding noisy permanent logs for routine refreshes. | 12 |
-| DSH-FR-025 | Meet responsive/mobile/keyboard/screen-reader/chart/state accessibility requirements. | 13 |
-| DSH-FR-026 | Measure the proposed p95 targets under the declared capacity/network/device profile. | 14.1 |
-| DSH-FR-027 | Monitor/rebuild projections safely and retain last verified or unavailable states through failure/recovery. | 14.2 |
-| DSH-FR-028 | Block release of metrics whose owner, formula, scope, cutoff, accounting or privacy contract is unresolved. | 2, 16, 18 |
+| ID         | Requirement                                                                                                                     | Sections  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| DSH-FR-001 | Provide distinct Customer, Agent and Admin dashboards with server-enforced role/resource scope.                                 | 4, 7      |
+| DSH-FR-002 | Keep dashboards read-only projections and prohibit financial/plan/approval/permission mutation authority.                       | 1–3       |
+| DSH-FR-003 | Source each metric from its authoritative module with stable code, definition, unit, cutoff, date basis and drill-down.         | 3, 5–8    |
+| DSH-FR-004 | Keep Customer liability, reservations, fee earnings, custody, Agent receivable and obligations separately named and calculated. | 3, 6      |
+| DSH-FR-005 | Apply business/plan timezone, period and event-date semantics consistently and expose UTC/source cutoffs.                       | 5         |
+| DSH-FR-006 | Distinguish current assignment, event-time assignment and immutable recording-Agent attribution.                                | 4.1       |
+| DSH-FR-007 | Calculate Customer/status/plan/slot counts from effective owner states without inference from dates/balances.                   | 6.1       |
+| DSH-FR-008 | Calculate scheduled, eligible, covered, outstanding and received collections independently without double counting.             | 6.2       |
+| DSH-FR-009 | Derive liability/available savings, contribution, payout, withdrawal and deduction metrics from ledger/reservation owners.      | 6.3       |
+| DSH-FR-010 | Present fee assessment, obligation, receipt, recognition, book and drawable metrics with distinct meanings.                     | 6.3       |
+| DSH-FR-011 | Present custody, Agent receivable, remittance and reconciliation metrics without altering Customer liability.                   | 6.4       |
+| DSH-FR-012 | Provide Customer own balances/plan/activity/requests while preserving status limits and no mutation authority.                  | 7.1       |
+| DSH-FR-013 | Provide Agent current portfolio, daily work, immutable own activity/custody and scoped tasks.                                   | 7.2       |
+| DSH-FR-014 | Provide Admin business operations/financial summaries without combining unlike balances or enabling Agent-only actions.         | 7.3       |
+| DSH-FR-015 | Project current owner tasks/exceptions once with stable authorized links and no new workflow state.                             | 8         |
+| DSH-FR-016 | Make every drill-down reconcile under identical scope/filter/cutoff or disclose watermark differences.                          | 8         |
+| DSH-FR-017 | Validate scope-bound filters, comparison semantics, stable ordering and full-result totals.                                     | 9         |
+| DSH-FR-018 | Return per-section freshness/status/source metadata and meet proposed propagation objectives.                                   | 10        |
+| DSH-FR-019 | Key/invalidate caches by principal, permission, assignment, status, filters, timezone and projection versions.                  | 10        |
+| DSH-FR-020 | Render safe partial/unavailable states and never substitute zero or mix incompatible cutoffs.                                   | 10.1      |
+| DSH-FR-021 | Bind distributed reads/cursors to compatible cutoffs and reauthorize every page, link and refresh.                              | 11        |
+| DSH-FR-022 | Protect private data in payloads, caches, URLs, logs, telemetry, charts and small cohorts.                                      | 11        |
+| DSH-FR-023 | Require `reports.export` for business/multi-Customer exports and preserve separate statement/audit permissions.                 | 12        |
+| DSH-FR-024 | Audit protected views/exports/high-risk denials while avoiding noisy permanent logs for routine refreshes.                      | 12        |
+| DSH-FR-025 | Meet responsive/mobile/keyboard/screen-reader/chart/state accessibility requirements.                                           | 13        |
+| DSH-FR-026 | Measure the proposed p95 targets under the declared capacity/network/device profile.                                            | 14.1      |
+| DSH-FR-027 | Monitor/rebuild projections safely and retain last verified or unavailable states through failure/recovery.                     | 14.2      |
+| DSH-FR-028 | Block release of metrics whose owner, formula, scope, cutoff, accounting or privacy contract is unresolved.                     | 2, 16, 18 |
 
 ## 16. Acceptance scenarios and traceability
 
 A scenario is **Blocked**, not Passed, when an owner integration/policy is unavailable. Evidence records build, fixture, user/scope/version, normalized filters, cutoff/watermarks, expected formula, owner totals, UI/API result, latency and accessibility result where applicable.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| DSH-AC-001 | DSH-FR-001 | Customer sees only own dashboard; Agent sees current assigned scope; Admin sees business summary; direct cross-role/cross-Customer calls leak nothing. |
-| DSH-AC-002 | DSH-FR-002 | Invoke dashboard/card/drill-down APIs with mutation payloads or attempt collection/plan/approval actions as Admin/Customer; no business effect or authority. |
-| DSH-AC-003 | DSH-FR-003 | For every visible card inspect definition/source/date/cutoff/link and reconcile to owner fixture; undocumented metric remains unavailable. |
-| DSH-AC-004 | DSH-FR-004 | Fixture has liability ₦100,000, reservation ₦20,000, fee income ₦5,000, Agent receivable ₦30,000 and custody ₦70,000; display separately, never sum as balance/profit. |
-| DSH-AC-005 | DSH-FR-005 | Test local midnight/week/month/year boundary and timezone change; receipt periods use captured business date and existing slots preserve plan timezone. |
-| DSH-AC-006 | DSH-FR-006 | Reassign Customer A→B; A immediately loses portfolio but retains recorded-activity/custody attribution, B gains portfolio without inheriting old receipts/receivable. |
-| DSH-AC-007 | DSH-FR-007 | Active/Paused/Completed/Closed plans, elapsed incomplete cycle and Archived Customer produce exact status counts; elapsed date/zero balance does not infer state. |
-| DSH-AC-008 | DSH-FR-008 | Advance yesterday covers today, catch-up today funds prior slot, today receipt funds future slot; scheduled/eligible/covered/outstanding/received metrics remain independently correct. |
-| DSH-AC-009 | DSH-FR-008 | Partial, skipped, missed and blocked slots count by owner rules; skipped remains outstanding and blocked never becomes missed. |
-| DSH-AC-010 | DSH-FR-009 | Contributions 100,000, gross withdrawal G 30,000=P27,000+F2,000+D1,000, reservation 10,000 yields liability 70,000 and availability 60,000 without subtracting components twice. |
-| DSH-AC-011 | DSH-FR-009 | Post and compensate transactions; net totals change once while gross/original/reversal drill-down preserves both entries. |
-| DSH-AC-012 | DSH-FR-010 | Assessed unpaid, external paid, savings-applied, waived/refunded and drawn fees appear in correct obligation/recognition/book/drawable cards without counting assessment as earnings. |
-| DSH-AC-013 | DSH-FR-011 | Agent receipt/remittance/shortage changes receivable/custody/reconciliation only; Customer liability stays at posted contribution amount. |
-| DSH-AC-014 | DSH-FR-012 | Active/Inactive/Restricted/Archived and Invited Customer fixtures retain permitted own history with exact restrictions; unknown source never appears zero. |
-| DSH-AC-015 | DSH-FR-013 | Operationally Active Agent sees today's actionable list; Inactive usable account is read-only; suspended account has no dashboard access. |
-| DSH-AC-016 | DSH-FR-014 | Admin without granular permissions reads permitted summary but cannot see protected evidence/actions or record collections/manage plans; independent grant reveals only its owning route. |
-| DSH-AC-017 | DSH-FR-015 | One root exception with dependent events appears once in task count and links to the owner; terminal work is excluded. |
-| DSH-AC-018 | DSH-FR-016 | Card and drill-down use identical filter/cutoff and reconcile exactly; new event after cutoff appears only after refresh or with disclosed new watermark. |
-| DSH-AC-019 | DSH-FR-017 | Test invalid/366-day boundary, stable cursor ordering, page-size choices, full totals and previous-period zero/incomplete-day comparisons. |
-| DSH-AC-020 | DSH-FR-018 | Post contribution/reassignment/status event; observe financial/task propagation within 60s and scope/control refresh within 5s under profile, with timestamps. |
-| DSH-AC-021 | DSH-FR-019, DSH-FR-021 | Revoke permission/reassign/suspend while cached page/cursor/link exists; next access denies/refreshes immediately and clears unauthorized client data. |
-| DSH-AC-022 | DSH-FR-020 | Independently fail ledger, reservation, fee, assignment and reconciliation sources; preserve safe independent sections and show correct unavailable dependency effects, never zero. |
-| DSH-AC-023 | DSH-FR-020, DSH-FR-021 | Mix incompatible old/new watermarks; derived cross-source metric/comparison is suppressed rather than calculated in browser. |
-| DSH-AC-024 | DSH-FR-022 | Inspect URL/cache/log/telemetry/chart payloads and small scopes; no forbidden PII, financial payload or cross-scope metadata. |
-| DSH-AC-025 | DSH-FR-023 | Customer gets own statement route; Agent business export fails; Admin export requires `reports.export`, rechecks before job/download and expires safely. |
-| DSH-AC-026 | DSH-FR-024 | Routine refresh produces bounded telemetry, while protected evidence view, export and repeated cross-scope denial produce required access/audit evidence. |
-| DSH-AC-027 | DSH-FR-025 | Verify supported mobile widths, zoom/reflow, keyboard/focus/screen reader/reduced motion, chart table alternative and non-color statuses. |
-| DSH-AC-028 | DSH-FR-026 | Load declared dataset/concurrency/network/device profile; above-fold p95 ≤3s, cached filter p95 ≤1s and shell ≤1.5s, or release target is not claimed. |
-| DSH-AC-029 | DSH-FR-027 | Corrupt/rebuild projection and fail promotion; mismatch alerts, affected metrics become stale/unavailable, last verified remains labelled and rebuilt totals reconcile before promotion. |
-| DSH-AC-030 | DSH-FR-028 | Disable each owner/contract or present undefined Module 08 state; affected metric/scenario is Blocked with no invented formula/status/permission. |
+| ID         | Requirements           | Scenario and expected result                                                                                                                                                              |
+| ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DSH-AC-001 | DSH-FR-001             | Customer sees only own dashboard; Agent sees current assigned scope; Admin sees business summary; direct cross-role/cross-Customer calls leak nothing.                                    |
+| DSH-AC-002 | DSH-FR-002             | Invoke dashboard/card/drill-down APIs with mutation payloads or attempt collection/plan/approval actions as Admin/Customer; no business effect or authority.                              |
+| DSH-AC-003 | DSH-FR-003             | For every visible card inspect definition/source/date/cutoff/link and reconcile to owner fixture; undocumented metric remains unavailable.                                                |
+| DSH-AC-004 | DSH-FR-004             | Fixture has liability ₦100,000, reservation ₦20,000, fee income ₦5,000, Agent receivable ₦30,000 and custody ₦70,000; display separately, never sum as balance/profit.                    |
+| DSH-AC-005 | DSH-FR-005             | Test local midnight/week/month/year boundary and timezone change; receipt periods use captured business date and existing slots preserve plan timezone.                                   |
+| DSH-AC-006 | DSH-FR-006             | Reassign Customer A→B; A immediately loses portfolio but retains recorded-activity/custody attribution, B gains portfolio without inheriting old receipts/receivable.                     |
+| DSH-AC-007 | DSH-FR-007             | Active/Paused/Completed/Closed plans, elapsed incomplete cycle and Archived Customer produce exact status counts; elapsed date/zero balance does not infer state.                         |
+| DSH-AC-008 | DSH-FR-008             | Advance yesterday covers today, catch-up today funds prior slot, today receipt funds future slot; scheduled/eligible/covered/outstanding/received metrics remain independently correct.   |
+| DSH-AC-009 | DSH-FR-008             | Partial, skipped, missed and blocked slots count by owner rules; skipped remains outstanding and blocked never becomes missed.                                                            |
+| DSH-AC-010 | DSH-FR-009             | Contributions 100,000, gross withdrawal G 30,000=P27,000+F2,000+D1,000, reservation 10,000 yields liability 70,000 and availability 60,000 without subtracting components twice.          |
+| DSH-AC-011 | DSH-FR-009             | Post and compensate transactions; net totals change once while gross/original/reversal drill-down preserves both entries.                                                                 |
+| DSH-AC-012 | DSH-FR-010             | Assessed unpaid, external paid, savings-applied, waived/refunded and drawn fees appear in correct obligation/recognition/book/drawable cards without counting assessment as earnings.     |
+| DSH-AC-013 | DSH-FR-011             | Agent receipt/remittance/shortage changes receivable/custody/reconciliation only; Customer liability stays at posted contribution amount.                                                 |
+| DSH-AC-014 | DSH-FR-012             | Active/Inactive/Restricted/Archived and Invited Customer fixtures retain permitted own history with exact restrictions; unknown source never appears zero.                                |
+| DSH-AC-015 | DSH-FR-013             | Operationally Active Agent sees today's actionable list; Inactive usable account is read-only; suspended account has no dashboard access.                                                 |
+| DSH-AC-016 | DSH-FR-014             | Admin without granular permissions reads permitted summary but cannot see protected evidence/actions or record collections/manage plans; independent grant reveals only its owning route. |
+| DSH-AC-017 | DSH-FR-015             | One root exception with dependent events appears once in task count and links to the owner; terminal work is excluded.                                                                    |
+| DSH-AC-018 | DSH-FR-016             | Card and drill-down use identical filter/cutoff and reconcile exactly; new event after cutoff appears only after refresh or with disclosed new watermark.                                 |
+| DSH-AC-019 | DSH-FR-017             | Test invalid/366-day boundary, stable cursor ordering, page-size choices, full totals and previous-period zero/incomplete-day comparisons.                                                |
+| DSH-AC-020 | DSH-FR-018             | Post contribution/reassignment/status event; observe financial/task propagation within 60s and scope/control refresh within 5s under profile, with timestamps.                            |
+| DSH-AC-021 | DSH-FR-019, DSH-FR-021 | Revoke permission/reassign/suspend while cached page/cursor/link exists; next access denies/refreshes immediately and clears unauthorized client data.                                    |
+| DSH-AC-022 | DSH-FR-020             | Independently fail ledger, reservation, fee, assignment and reconciliation sources; preserve safe independent sections and show correct unavailable dependency effects, never zero.       |
+| DSH-AC-023 | DSH-FR-020, DSH-FR-021 | Mix incompatible old/new watermarks; derived cross-source metric/comparison is suppressed rather than calculated in browser.                                                              |
+| DSH-AC-024 | DSH-FR-022             | Inspect URL/cache/log/telemetry/chart payloads and small scopes; no forbidden PII, financial payload or cross-scope metadata.                                                             |
+| DSH-AC-025 | DSH-FR-023             | Customer gets own statement route; Agent business export fails; Admin export requires `reports.export`, rechecks before job/download and expires safely.                                  |
+| DSH-AC-026 | DSH-FR-024             | Routine refresh produces bounded telemetry, while protected evidence view, export and repeated cross-scope denial produce required access/audit evidence.                                 |
+| DSH-AC-027 | DSH-FR-025             | Verify supported mobile widths, zoom/reflow, keyboard/focus/screen reader/reduced motion, chart table alternative and non-color statuses.                                                 |
+| DSH-AC-028 | DSH-FR-026             | Load declared dataset/concurrency/network/device profile; above-fold p95 ≤3s, cached filter p95 ≤1s and shell ≤1.5s, or release target is not claimed.                                    |
+| DSH-AC-029 | DSH-FR-027             | Corrupt/rebuild projection and fail promotion; mismatch alerts, affected metrics become stale/unavailable, last verified remains labelled and rebuilt totals reconcile before promotion.  |
+| DSH-AC-030 | DSH-FR-028             | Disable each owner/contract or present undefined Module 08 state; affected metric/scenario is Blocked with no invented formula/status/permission.                                         |
 
 ## 17. Worked metric examples
 
@@ -383,20 +383,20 @@ Agent A recorded ₦40,000 and still owes ₦10,000 remittance when the Customer
 
 ## 18. Proposed choices and release gates
 
-| Decision | Draft recommendation / consequence |
-| --- | --- |
-| Business periods | Africa/Lagos initial setting; Monday-start week; inclusive local calendar dates; plan slots retain snapshot timezone. Approve with Business Configuration. |
-| Activity basis | Received date for receipt operations, payout effective date for successful payout, recognition date for fees, committed-at separately for posting diagnostics. |
-| Contribution/withdrawal labels | Net contributions; net cash payouts P and gross liability debits G shown separately. Avoid ambiguous PRD “total withdrawals.” |
-| Collection performance | Show schedule coverage and received money side-by-side; never derive cash shortfall by subtracting unlike bases. |
-| Customer scope default | Non-Archived count plus explicit status breakdown; all statuses remain in liability totals whenever balance exists. |
-| Assignment analytics | Current portfolio and immutable recording-Agent activity are separate; historic assignment metrics require interval owner. |
-| Comparison | Prior equal-length period, like-for-like incomplete cutoff; no infinity/no unsupported historical balance comparison. |
-| Freshness | 60 seconds financial/task projections; immediate authorization and 5-second visible assignment/control refresh under declared profile. |
-| Performance | Above-fold p95 ≤3s, indexed cached filter p95 ≤1s, shell ≤1.5s under Section 14 profile; validate before claim. |
-| Export | Governed async business export requires `reports.export`; format/retention/deletion remain Reporting gates. |
-| Module 08 | Final request states, reservation values, payout effective date and review queues must replace generic contracts before release. |
-| Privacy/audit | No personal telemetry/URL data; routine reads use bounded access telemetry, protected access/export/high-risk denial gets durable audit. Final retention policy required. |
+| Decision                       | Draft recommendation / consequence                                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Business periods               | Africa/Lagos initial setting; Monday-start week; inclusive local calendar dates; plan slots retain snapshot timezone. Approve with Business Configuration.                |
+| Activity basis                 | Received date for receipt operations, payout effective date for successful payout, recognition date for fees, committed-at separately for posting diagnostics.            |
+| Contribution/withdrawal labels | Net contributions; net cash payouts P and gross liability debits G shown separately. Avoid ambiguous PRD “total withdrawals.”                                             |
+| Collection performance         | Show schedule coverage and received money side-by-side; never derive cash shortfall by subtracting unlike bases.                                                          |
+| Customer scope default         | Non-Archived count plus explicit status breakdown; all statuses remain in liability totals whenever balance exists.                                                       |
+| Assignment analytics           | Current portfolio and immutable recording-Agent activity are separate; historic assignment metrics require interval owner.                                                |
+| Comparison                     | Prior equal-length period, like-for-like incomplete cutoff; no infinity/no unsupported historical balance comparison.                                                     |
+| Freshness                      | 60 seconds financial/task projections; immediate authorization and 5-second visible assignment/control refresh under declared profile.                                    |
+| Performance                    | Above-fold p95 ≤3s, indexed cached filter p95 ≤1s, shell ≤1.5s under Section 14 profile; validate before claim.                                                           |
+| Export                         | Governed async business export requires `reports.export`; format/retention/deletion remain Reporting gates.                                                               |
+| Module 08                      | Final request states, reservation values, payout effective date and review queues must replace generic contracts before release.                                          |
+| Privacy/audit                  | No personal telemetry/URL data; routine reads use bounded access telemetry, protected access/export/high-risk denial gets durable audit. Final retention policy required. |
 
 ## 19. Related modules
 

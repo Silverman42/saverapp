@@ -17,14 +17,14 @@ Numerical availability, recovery, retention and operational thresholds below are
 
 Initial scope includes one production environment for the configured business; dependency inventory and safe degraded modes; SLIs/SLOs/error budgets; transactional outbox and job operations; database/object/audit backup; point-in-time and full restore; disaster promotion; schema/data/configuration migration; controlled deployment/rollback/feature flags; observability; capacity and time correctness; incident response; read-only maintenance; and projection repair/replay.
 
-| Included | Excluded or separately owned |
-| --- | --- |
-| Infrastructure/service operations under external IAM and runbooks | New application Admin permissions or an in-product “operator” role |
-| Restore, rebuild, replay and verified deterministic migration | Direct manual Customer balance edits, ad-hoc production SQL repair, arbitrary ledger journals |
-| Safe availability/status communication interfaces | Free-form Admin broadcasts, legal breach conclusions or unapproved Customer campaigns |
-| Online commands with durable idempotency/outcome lookup | Offline financial recording or a browser/device mutation queue |
-| Platform/provider outage handling and unknown-outcome resolution | Pretending provider acceptance is payout/delivery success |
-| Technical backup/recovery control | Using backups as uncontrolled indefinite archives or bypassing retention/holds |
+| Included                                                          | Excluded or separately owned                                                                  |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Infrastructure/service operations under external IAM and runbooks | New application Admin permissions or an in-product “operator” role                            |
+| Restore, rebuild, replay and verified deterministic migration     | Direct manual Customer balance edits, ad-hoc production SQL repair, arbitrary ledger journals |
+| Safe availability/status communication interfaces                 | Free-form Admin broadcasts, legal breach conclusions or unapproved Customer campaigns         |
+| Online commands with durable idempotency/outcome lookup           | Offline financial recording or a browser/device mutation queue                                |
+| Platform/provider outage handling and unknown-outcome resolution  | Pretending provider acceptance is payout/delivery success                                     |
+| Technical backup/recovery control                                 | Using backups as uncontrolled indefinite archives or bypassing retention/holds                |
 
 Offline read caches may be considered later, but initial scope never marks a contribution, payout, reversal or other financial command successful without an online durable authoritative result. Service workers/local storage must not queue financial mutations for automatic replay.
 
@@ -47,20 +47,20 @@ Offline read caches may be considered later, but initial scope never marks a con
 
 Every service/command declares critical dependencies, read/write mode, timeout/circuit-breaker policy, fallback, data classification, recovery tier, owner and health signal in a versioned catalogue. An undeclared dependency or fallback cannot be enabled in production. Dependency health is evidence, not authorization.
 
-| Dependency | Safe outage/degradation behaviour |
-| --- | --- |
-| Primary transactional database | Stop authoritative reads/writes; no local financial success. If a verified read replica is permitted, expose cutoff-labelled read-only data only. |
-| Authentication/authorization state | Deny new protected requests when current account/session/permission/scope cannot be verified. Cached UI state is not proof. Public health/status may remain. |
-| Ledger/posting service | Block financial postings, reversals and balance-sensitive lifecycle actions. Verified prior balances may display Stale/Read-only; never recalculate from page rows. |
-| Reservation/withdrawal service | Block new balance-decreasing commands and archival/closure checks depending on availability. Preserve existing reservations and Outcome unknown states. |
-| Fee/plan/customer owner | Block commands requiring its rule/schedule/status. Unavailable fee is not zero; unavailable Customer status is not Active. |
-| Canonical audit/outbox | Block material protected mutation if durable canonical event/outbox cannot commit. Search-index outage alone does not block when canonical durability remains. |
-| Message broker/worker | Source may commit only with durable transactional outbox/job intent. Backlog retries later; no direct unrecorded send. |
-| Search/index/cache/dashboard/report | Authoritative commands continue if they do not depend on it; affected reads show Stale/Partial/Unavailable and rebuild from source. |
-| Object/evidence/artifact storage | Evidence-required actions and artifact publication/download block/fail safely. Unrelated no-evidence commands may continue if all their dependencies pass. |
-| Email provider | Business mutation remains committed with Pending/Failed delivery intent; no unsafe alternate channel or repeated mutation. |
-| Payout provider/custody integration | Stop new execution; preserve gross reservation and exact Payout processing/Outcome unknown state until authoritative reconciliation. Do not resend. |
-| Key/secrets service | Block decrypt/sign/token/posting operations requiring unavailable key. Do not log plaintext or fall back to embedded keys. |
+| Dependency                                  | Safe outage/degradation behaviour                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary transactional database              | Stop authoritative reads/writes; no local financial success. If a verified read replica is permitted, expose cutoff-labelled read-only data only.                                                                                                                                                                                         |
+| Authentication/authorization state          | Deny new protected requests when current account/session/permission/scope cannot be verified. Cached UI state is not proof. Public health/status may remain.                                                                                                                                                                              |
+| Ledger/posting service                      | Block financial postings, reversals and balance-sensitive lifecycle actions. Verified prior balances may display Stale/Read-only; never recalculate from page rows.                                                                                                                                                                       |
+| Reservation/withdrawal service              | Block new balance-decreasing commands and archival/closure checks depending on availability. Preserve existing reservations and Outcome unknown states.                                                                                                                                                                                   |
+| Fee/plan/customer owner                     | Block commands requiring its rule/schedule/status. Unavailable fee is not zero; unavailable Customer status is not Active.                                                                                                                                                                                                                |
+| Canonical audit/outbox                      | Block material protected mutation if durable canonical event/outbox cannot commit. Search-index outage alone does not block when canonical durability remains.                                                                                                                                                                            |
+| Message broker/worker                       | Source may commit only with durable transactional outbox/job intent. Backlog retries later; no direct unrecorded send.                                                                                                                                                                                                                    |
+| Search/index/cache/dashboard/report         | Authoritative commands continue if they do not depend on it; affected reads show Stale/Partial/Unavailable and rebuild from source.                                                                                                                                                                                                       |
+| Object/evidence/artifact storage            | Evidence-required actions and artifact publication/download block/fail safely. Unrelated no-evidence commands may continue if all their dependencies pass.                                                                                                                                                                                |
+| Email provider                              | Business mutation remains committed with Pending/Failed delivery intent; no unsafe alternate channel or repeated mutation.                                                                                                                                                                                                                |
+| Payout provider/custody integration         | Stop new execution; preserve gross reservation and exact Payout processing/Outcome unknown state until authoritative reconciliation. Do not resend.                                                                                                                                                                                       |
+| Key/secrets service                         | Block decrypt/sign/token/posting operations requiring unavailable key. Do not log plaintext or fall back to embedded keys.                                                                                                                                                                                                                |
 | Time synchronization/business configuration | Use current verified immutable effective version. Stale critical configuration, missing effective timezone/account mapping, or propagation-pending consumer acknowledgement blocks the dependent mutation; display-only cache may show its verified version/stale label. Excess clock uncertainty blocks time/financial-sensitive writes. |
 
 ### 4.2 Dependency-specific fail scope
@@ -71,13 +71,13 @@ Circuit breakers reduce repeated load but do not convert unknown into success. T
 
 ### 4.3 Platform modes
 
-| Mode | Permitted behaviour |
-| --- | --- |
-| Normal | All released features use current dependencies and owner controls. |
-| Degraded | Healthy operations continue; individual sections/actions are Stale/Partial/Unavailable with exact reason/cutoff. |
+| Mode                   | Permitted behaviour                                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Normal                 | All released features use current dependencies and owner controls.                                                                                                                |
+| Degraded               | Healthy operations continue; individual sections/actions are Stale/Partial/Unavailable with exact reason/cutoff.                                                                  |
 | Financial write freeze | Authentication and safe reads/nonfinancial actions may continue; no new posting/reservation/correction/payout execution. Existing unknown outcomes are investigated, not retried. |
-| Read-only maintenance | Current authorized reads from verified sources only; all application mutations disabled except infrastructure recovery controls outside application. |
-| Unavailable | Deny application access safely when authorization/privacy/integrity cannot be guaranteed. Public minimal status/health remains separate. |
+| Read-only maintenance  | Current authorized reads from verified sources only; all application mutations disabled except infrastructure recovery controls outside application.                              |
+| Unavailable            | Deny application access safely when authorization/privacy/integrity cannot be guaranteed. Public minimal status/health remains separate.                                          |
 
 Mode changes are externally controlled, versioned, time-bound where possible and audit-linked. A mode cannot grant a capability. Entering a freeze does not cancel reservations, roll back postings or mark jobs failed; each owner retains truthful state.
 
@@ -91,18 +91,18 @@ Measure by endpoint/event class and role rather than averaging a fast health end
 
 ### 5.2 Proposed monthly objectives
 
-| Service class | Availability/completion SLO | Latency/timeliness SLI |
-| --- | --- | --- |
-| Session validation and authorization checks | 99.95% | p95 ≤500 ms for server authorization dependency, excluding full sign-in/MFA user time |
-| Interactive sign-in/recovery API | 99.9% | p95 ≤2 seconds excluding email delivery and user interaction |
-| Financial command durable outcome/lookup | 99.9% | Collection p95 ≤2 seconds; other internal posting commands p95 ≤5 seconds, excluding upload/external payout settlement |
-| Authoritative Customer balance/first transaction page | 99.9% | p95 ≤2 seconds |
-| Customer/Agent search | 99.5% | p95 ≤1 second on declared dataset/mobile-network profile |
-| Role dashboard first usable response | 99.5% | p95 ≤3 seconds; each section carries own freshness/status |
-| In-app notifications | 99.5% available | p95 available ≤10 seconds after dispatchable outbox; Module 13 owns channel details |
-| Background report/export jobs | 99.0% start within owner target | Queue start ≤60 seconds; completion uses Module 12 format/size targets |
-| Audit searchable projection | 99.5% | p95 searchable ≤60 seconds; canonical capture remains synchronous/durable |
-| Business settings read/publication/propagation | 99.9% | Safe settings read p95 <1 second; draft/preview <2 seconds; durable publish <3 seconds excluding fresh-auth/dependency time; critical compatible acknowledgement <30 seconds; display cache ≤60 seconds with stale/version label |
+| Service class                                         | Availability/completion SLO     | Latency/timeliness SLI                                                                                                                                                                                                           |
+| ----------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session validation and authorization checks           | 99.95%                          | p95 ≤500 ms for server authorization dependency, excluding full sign-in/MFA user time                                                                                                                                            |
+| Interactive sign-in/recovery API                      | 99.9%                           | p95 ≤2 seconds excluding email delivery and user interaction                                                                                                                                                                     |
+| Financial command durable outcome/lookup              | 99.9%                           | Collection p95 ≤2 seconds; other internal posting commands p95 ≤5 seconds, excluding upload/external payout settlement                                                                                                           |
+| Authoritative Customer balance/first transaction page | 99.9%                           | p95 ≤2 seconds                                                                                                                                                                                                                   |
+| Customer/Agent search                                 | 99.5%                           | p95 ≤1 second on declared dataset/mobile-network profile                                                                                                                                                                         |
+| Role dashboard first usable response                  | 99.5%                           | p95 ≤3 seconds; each section carries own freshness/status                                                                                                                                                                        |
+| In-app notifications                                  | 99.5% available                 | p95 available ≤10 seconds after dispatchable outbox; Module 13 owns channel details                                                                                                                                              |
+| Background report/export jobs                         | 99.0% start within owner target | Queue start ≤60 seconds; completion uses Module 12 format/size targets                                                                                                                                                           |
+| Audit searchable projection                           | 99.5%                           | p95 searchable ≤60 seconds; canonical capture remains synchronous/durable                                                                                                                                                        |
+| Business settings read/publication/propagation        | 99.9%                           | Safe settings read p95 <1 second; draft/preview <2 seconds; durable publish <3 seconds excluding fresh-auth/dependency time; critical compatible acknowledgement <30 seconds; display cache ≤60 seconds with stale/version label |
 
 For a 30-day month, 99.95%, 99.9% and 99.5% correspond to approximately 21m55s, 43m50s and 3h36m of allowed unavailability respectively. These figures are planning aids, not permission to defer correction of integrity/security faults.
 
@@ -179,12 +179,12 @@ Backup job success means upload plus manifest/checksum verification, not merely 
 
 ### 8.1 Proposed recovery objectives
 
-| Tier | Data/services | RPO | RTO |
-| --- | --- | ---: | ---: |
-| A — financial/security authoritative | Ledger, domain financial state, reservations, identity/permissions, canonical audit/outbox, business settings/version history | 5 minutes | 4 hours |
-| B — durable operational | Notifications/preferences, security cases, statement/export manifests and retained artifacts/evidence | 15 minutes | 8 hours |
-| C — rebuildable projections | Search/audit index, dashboards, report caches and derived balance/search projections | Source-derived; at most 24-hour cache loss | 12 hours to verified service |
-| D — ephemeral | Sessions, worker leases, transient cache | No preservation promise | Safely recreate/revoke within Tier A/B recovery |
+| Tier                                 | Data/services                                                                                                                 |                                        RPO |                                             RTO |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -----------------------------------------: | ----------------------------------------------: |
+| A — financial/security authoritative | Ledger, domain financial state, reservations, identity/permissions, canonical audit/outbox, business settings/version history |                                  5 minutes |                                         4 hours |
+| B — durable operational              | Notifications/preferences, security cases, statement/export manifests and retained artifacts/evidence                         |                                 15 minutes |                                         8 hours |
+| C — rebuildable projections          | Search/audit index, dashboards, report caches and derived balance/search projections                                          | Source-derived; at most 24-hour cache loss |                    12 hours to verified service |
+| D — ephemeral                        | Sessions, worker leases, transient cache                                                                                      |                    No preservation promise | Safely recreate/revoke within Tier A/B recovery |
 
 RPO is maximum targeted committed-data loss measured against the authoritative cutoff; RTO is time to verified safe service, not merely booted infrastructure. Session loss may require reauthentication and is safer than restoring stale bearer state. If architecture cannot meet a tier, revise/approve the objective before launch rather than silently claim it.
 
@@ -303,15 +303,15 @@ Proposed thresholds: warn at absolute server offset >500 ms; remove a node from 
 
 Infrastructure roles exist in external IAM/runbooks, separate from Customer/Agent/Admin accounts:
 
-| External role/service identity | Narrow authority |
-| --- | --- |
-| On-call observer | Read minimized telemetry/status/runbooks; no database backup payload or business mutation. |
-| Incident commander | Coordinate mode/fencing/status decisions through approved controls; no application impersonation/financial edit. |
-| Release operator/service | Deploy signed builds, safe flags and approved migrations for assigned environment. |
-| Backup service | Create/verify/expire backups by policy; no interactive Customer browsing. |
-| Recovery operator | Restore to isolated environment and request promotion under recovery runbook; time-bound privileged access. |
-| Projection/job operator service | Rebuild/replay selected derived work using immutable IDs/dry-run/idempotency; no payload edits. |
-| Key/secrets service/operator | Rotate/recover keys under separate dual-control policy; cannot read application plaintext by default. |
+| External role/service identity  | Narrow authority                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| On-call observer                | Read minimized telemetry/status/runbooks; no database backup payload or business mutation.                       |
+| Incident commander              | Coordinate mode/fencing/status decisions through approved controls; no application impersonation/financial edit. |
+| Release operator/service        | Deploy signed builds, safe flags and approved migrations for assigned environment.                               |
+| Backup service                  | Create/verify/expire backups by policy; no interactive Customer browsing.                                        |
+| Recovery operator               | Restore to isolated environment and request promotion under recovery runbook; time-bound privileged access.      |
+| Projection/job operator service | Rebuild/replay selected derived work using immutable IDs/dry-run/idempotency; no payload edits.                  |
+| Key/secrets service/operator    | Rotate/recover keys under separate dual-control policy; cannot read application plaintext by default.            |
 
 Proposed high-risk production restore, promotion, canonical migration and break-glass access require two authorized external approvers, strong MFA, reason/ticket, time-bound session, command/session evidence and post-review. Service accounts use workload identity, short-lived credentials, environment/resource allowlists and no human login.
 
@@ -323,12 +323,12 @@ Emergency access cannot directly update financial/domain rows. It may fence serv
 
 ### 13.1 Severity and lifecycle
 
-| Severity | Example | Initial response objective |
-| --- | --- | --- |
+| Severity                          | Example                                                                                                                     | Initial response objective                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | SEV-0 Critical integrity/security | Duplicate/unbalanced money, cross-scope exposure, canonical audit tamper/capture failure, active key compromise/split brain | Page/fence affected writes immediately; incident command within 15 minutes proposed |
-| SEV-1 Major | Widespread auth/financial unavailable, payout unknown backlog, RPO breach, primary data loss | Incident command within 30 minutes proposed |
-| SEV-2 Degraded | Partial dashboard/search/jobs/provider failure with safe core operation | Owner response within 2 hours proposed |
-| SEV-3 Minor | Isolated noncritical defect or target miss with workaround | Triage next business day proposed |
+| SEV-1 Major                       | Widespread auth/financial unavailable, payout unknown backlog, RPO breach, primary data loss                                | Incident command within 30 minutes proposed                                         |
+| SEV-2 Degraded                    | Partial dashboard/search/jobs/provider failure with safe core operation                                                     | Owner response within 2 hours proposed                                              |
+| SEV-3 Minor                       | Isolated noncritical defect or target miss with workaround                                                                  | Triage next business day proposed                                                   |
 
 Lifecycle: Detected → Acknowledged → Contained → Recovering → Monitoring → Resolved → Post-incident actions complete. Severity may change with evidence. “Resolved” requires service and integrity verification; a temporary dashboard green state is insufficient.
 
@@ -398,102 +398,102 @@ Missing restore evidence, owner, policy, integrity check or dependency contract 
 
 ## 17. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| OPS-FR-001 | Maintain a versioned dependency catalogue with criticality, owner, mode, health and recovery tier. | 4.1 |
-| OPS-FR-002 | Apply dependency-specific fail-closed writes and cutoff-labelled graceful read degradation. | 3, 4 |
-| OPS-FR-003 | Support Normal/Degraded/Financial-freeze/Read-only/Unavailable modes without mutating business state. | 4.3 |
-| OPS-FR-004 | Define versioned SLIs that measure valid user-visible outcomes by service class. | 5.1 |
-| OPS-FR-005 | Measure proposed availability/latency/timeliness SLOs without trading correctness. | 5.2 |
-| OPS-FR-006 | Apply burn-rate/error-budget release controls and immediate correctness/security escalation. | 5.3 |
-| OPS-FR-007 | Bind every side-effect command to durable payload-specific idempotency and outcome lookup. | 6.1 |
-| OPS-FR-008 | Commit domain/audit/outbox durably and consume duplicate delivery through durable inbox keys. | 6.2 |
-| OPS-FR-009 | Run background work with versioned states, leases, heartbeats, checkpoints and bounded retries. | 6.3 |
-| OPS-FR-010 | Replay/dead-letter work only through immutable dry-run/idempotent owner-aware operations. | 6.4 |
-| OPS-FR-011 | Reconcile external unknown outcomes before retry and preserve unresolved truth. | 4.1, 6.4 |
-| OPS-FR-012 | Back up every authoritative/interpreting dataset at least daily with Tier A PITR. | 7.1 |
-| OPS-FR-013 | Encrypt, isolate, immutably protect and least-privilege backup/key access. | 7.2 |
-| OPS-FR-014 | Align backup retention/holds/geography with approved source policies and eventual expiry. | 7.2, 15 |
-| OPS-FR-015 | Produce monitored checksum/version/cutoff manifests and test readable restores. | 7.3 |
-| OPS-FR-016 | Meet approved tiered RPO/RTO objectives or report/block unsupported claims. | 8.1 |
-| OPS-FR-017 | Restore in isolation, fence writers/side effects and promote progressively without split brain. | 8.2 |
-| OPS-FR-018 | Require ledger/reservation/fee/custody/audit/job/statement/identity integrity before financial writes. | 8.3 |
-| OPS-FR-019 | Catalogue immutable reviewed migrations with compatibility, validation and recovery strategy. | 9.1 |
-| OPS-FR-020 | Run idempotent checkpointed backfills without rewriting or inferring financial history. | 9.2 |
-| OPS-FR-021 | Preserve published setting/account/timezone versions and prospective effective meaning. | 9.3 |
-| OPS-FR-022 | Use verified roll-forward/rollback and resolve unknown migration phases safely. | 9.4 |
-| OPS-FR-023 | Deploy traceable signed builds through compatibility tests, canary stages and invariant gates. | 10.1 |
-| OPS-FR-024 | Use safe server flags/kill switches that cannot bypass authorization/accounting/audit. | 10.2 |
-| OPS-FR-025 | Conduct maintenance through server-enforced modes, job draining/fencing and truthful user status. | 10.3 |
-| OPS-FR-026 | Capture minimized metrics/traces/logs without treating telemetry as ledger/audit. | 11.1 |
-| OPS-FR-027 | Alert/deduplicate on correctness, security, recovery, budget, provider and capacity conditions. | 11.2 |
-| OPS-FR-028 | Forecast/test/scale capacity with headroom while preserving ordering/idempotency/privacy. | 11.3 |
-| OPS-FR-029 | Enforce synchronized UTC/monotonic time and immutable versioned business/plan timezone semantics. | 11.4 |
-| OPS-FR-030 | Separate external infrastructure roles/service identities from application roles/permissions. | 12 |
-| OPS-FR-031 | Require time-bound, audited, proposed dual-control high-risk operational access. | 12 |
-| OPS-FR-032 | Run severity-based incident containment/recovery/review with preserved evidence. | 13.1–13.2 |
-| OPS-FR-033 | Communicate incidents through safe pre-approved status/Module 13 interfaces without false claims. | 13.3 |
-| OPS-FR-034 | Permit source-derived projection/replay/restore repairs without new business effects. | 14 |
-| OPS-FR-035 | Prohibit manual balance/state/history edits and route business corrections to owning workflows. | 14 |
-| OPS-FR-036 | Protect environments/networks/secrets/data copies and privileged records under least privilege. | 15 |
-| OPS-FR-037 | Coordinate retention, holds, expiry, privacy and geography across primary/backups/providers. | 7, 15 |
-| OPS-FR-038 | Keep offline financial mutation queues disabled in initial scope. | 2, 16 |
-| OPS-FR-039 | Verify production readiness with load, restore, DR, migration, failure and access-control evidence. | 16 |
-| OPS-FR-040 | Block launch/write classes when required owner/policy/dependency/integrity/recovery evidence is absent. | 16 |
+| ID         | Requirement                                                                                             | Detail    |
+| ---------- | ------------------------------------------------------------------------------------------------------- | --------- |
+| OPS-FR-001 | Maintain a versioned dependency catalogue with criticality, owner, mode, health and recovery tier.      | 4.1       |
+| OPS-FR-002 | Apply dependency-specific fail-closed writes and cutoff-labelled graceful read degradation.             | 3, 4      |
+| OPS-FR-003 | Support Normal/Degraded/Financial-freeze/Read-only/Unavailable modes without mutating business state.   | 4.3       |
+| OPS-FR-004 | Define versioned SLIs that measure valid user-visible outcomes by service class.                        | 5.1       |
+| OPS-FR-005 | Measure proposed availability/latency/timeliness SLOs without trading correctness.                      | 5.2       |
+| OPS-FR-006 | Apply burn-rate/error-budget release controls and immediate correctness/security escalation.            | 5.3       |
+| OPS-FR-007 | Bind every side-effect command to durable payload-specific idempotency and outcome lookup.              | 6.1       |
+| OPS-FR-008 | Commit domain/audit/outbox durably and consume duplicate delivery through durable inbox keys.           | 6.2       |
+| OPS-FR-009 | Run background work with versioned states, leases, heartbeats, checkpoints and bounded retries.         | 6.3       |
+| OPS-FR-010 | Replay/dead-letter work only through immutable dry-run/idempotent owner-aware operations.               | 6.4       |
+| OPS-FR-011 | Reconcile external unknown outcomes before retry and preserve unresolved truth.                         | 4.1, 6.4  |
+| OPS-FR-012 | Back up every authoritative/interpreting dataset at least daily with Tier A PITR.                       | 7.1       |
+| OPS-FR-013 | Encrypt, isolate, immutably protect and least-privilege backup/key access.                              | 7.2       |
+| OPS-FR-014 | Align backup retention/holds/geography with approved source policies and eventual expiry.               | 7.2, 15   |
+| OPS-FR-015 | Produce monitored checksum/version/cutoff manifests and test readable restores.                         | 7.3       |
+| OPS-FR-016 | Meet approved tiered RPO/RTO objectives or report/block unsupported claims.                             | 8.1       |
+| OPS-FR-017 | Restore in isolation, fence writers/side effects and promote progressively without split brain.         | 8.2       |
+| OPS-FR-018 | Require ledger/reservation/fee/custody/audit/job/statement/identity integrity before financial writes.  | 8.3       |
+| OPS-FR-019 | Catalogue immutable reviewed migrations with compatibility, validation and recovery strategy.           | 9.1       |
+| OPS-FR-020 | Run idempotent checkpointed backfills without rewriting or inferring financial history.                 | 9.2       |
+| OPS-FR-021 | Preserve published setting/account/timezone versions and prospective effective meaning.                 | 9.3       |
+| OPS-FR-022 | Use verified roll-forward/rollback and resolve unknown migration phases safely.                         | 9.4       |
+| OPS-FR-023 | Deploy traceable signed builds through compatibility tests, canary stages and invariant gates.          | 10.1      |
+| OPS-FR-024 | Use safe server flags/kill switches that cannot bypass authorization/accounting/audit.                  | 10.2      |
+| OPS-FR-025 | Conduct maintenance through server-enforced modes, job draining/fencing and truthful user status.       | 10.3      |
+| OPS-FR-026 | Capture minimized metrics/traces/logs without treating telemetry as ledger/audit.                       | 11.1      |
+| OPS-FR-027 | Alert/deduplicate on correctness, security, recovery, budget, provider and capacity conditions.         | 11.2      |
+| OPS-FR-028 | Forecast/test/scale capacity with headroom while preserving ordering/idempotency/privacy.               | 11.3      |
+| OPS-FR-029 | Enforce synchronized UTC/monotonic time and immutable versioned business/plan timezone semantics.       | 11.4      |
+| OPS-FR-030 | Separate external infrastructure roles/service identities from application roles/permissions.           | 12        |
+| OPS-FR-031 | Require time-bound, audited, proposed dual-control high-risk operational access.                        | 12        |
+| OPS-FR-032 | Run severity-based incident containment/recovery/review with preserved evidence.                        | 13.1–13.2 |
+| OPS-FR-033 | Communicate incidents through safe pre-approved status/Module 13 interfaces without false claims.       | 13.3      |
+| OPS-FR-034 | Permit source-derived projection/replay/restore repairs without new business effects.                   | 14        |
+| OPS-FR-035 | Prohibit manual balance/state/history edits and route business corrections to owning workflows.         | 14        |
+| OPS-FR-036 | Protect environments/networks/secrets/data copies and privileged records under least privilege.         | 15        |
+| OPS-FR-037 | Coordinate retention, holds, expiry, privacy and geography across primary/backups/providers.            | 7, 15     |
+| OPS-FR-038 | Keep offline financial mutation queues disabled in initial scope.                                       | 2, 16     |
+| OPS-FR-039 | Verify production readiness with load, restore, DR, migration, failure and access-control evidence.     | 16        |
+| OPS-FR-040 | Block launch/write classes when required owner/policy/dependency/integrity/recovery evidence is absent. | 16        |
 
 ## 18. Acceptance scenarios and release evidence
 
 Use production-equivalent fixtures with representative users/data volume; every financial event/state; live reservations and unknown payout; ledger/audit/control checkpoints; outbox/jobs/dead letters; report/statement/notification objects; configuration/timezone versions; backup/holds/keys; old/new application/schema versions; provider failures; skewed clocks; capacity pressure; and external IAM identities. Evidence records requirement/scenario IDs, build/deployment/migration/config/key versions, cutoff/watermark, actor/service/runbook/change/incident IDs, exact pre/post control totals, recovery timing/data gap, expected/observed status and Passed/Failed/Blocked.
 
-| ID | Requirement mapping | Testable expected result |
-| --- | --- | --- |
-| OPS-AC-001 | OPS-FR-001 | Every released endpoint/job declares dependencies, safe modes/owner/recovery tier; unknown dependency prevents write enablement. |
-| OPS-AC-002 | OPS-FR-002 | Stop DB/Auth/Ledger/Reservation/Fee/Audit/Object/Provider dependencies individually; only documented operations continue and no unavailable value becomes zero/success. |
-| OPS-AC-003 | OPS-FR-003 | Enter each platform mode; server enforces allowed classes, labels reads/cutoffs and preserves reservations/jobs/outcomes without mutation. |
-| OPS-AC-004 | OPS-FR-004 | SLI excludes valid denial/input error but includes timeout/circuit/maintenance; health traffic cannot inflate user endpoint success. |
-| OPS-AC-005 | OPS-FR-005 | Production-like measurement reports every proposed SLO/latency class and correctness failures remain zero-budget incidents. |
-| OPS-AC-006 | OPS-FR-006 | Simulate 50/75/100% burn and one integrity event; release controls/escalation activate and month reset does not close evidence. |
-| OPS-AC-007 | OPS-FR-007 | Same operation key/payload across timeout/restart returns one effect; changed payload conflicts after cache expiry; unauthorized lookup reveals nothing. |
-| OPS-AC-008 | OPS-FR-008 | Fault domain/audit/outbox transaction boundaries and duplicate broker delivery; mutation+canonical intent commit once or neither and consumer effect occurs once. |
-| OPS-AC-009 | OPS-FR-009 | Kill worker before/after checkpoints/heartbeat; lease recovery resumes safely, maximum attempts apply and overlapping lease cannot duplicate effect. |
-| OPS-AC-010 | OPS-FR-010 | Dry-run bounded bulk replay identifies completed/conflict/eligible items; execution preserves payload/actor/amount and supports stop/checkpoint. |
-| OPS-AC-011 | OPS-FR-011 | Timeout payout/email/object publication; provider/hash/reference lookup resolves original or keeps Outcome unknown/Dead-letter without duplicate send. |
-| OPS-AC-012 | OPS-FR-012 | Daily backup includes each listed authoritative/version dataset and Tier A PITR log gap stays within proposed five minutes. |
-| OPS-AC-013 | OPS-FR-013 | Production app/Admin/developer credentials cannot read/delete backups/keys; approved time-bound restore identity can access only runbook resources. |
-| OPS-AC-014 | OPS-FR-014, OPS-FR-037 | Expiry/hold/geography tests retain longest approved held data, expire eligible bytes/backups eventually and create no unapproved cross-border replica. |
-| OPS-AC-015 | OPS-FR-015 | Missing/corrupt/truncated/key-unreadable backup fails manifest/restore validation and pages before it can count as success. |
-| OPS-AC-016 | OPS-FR-015 | Monthly sampled and quarterly full restore verify checksums/PITR/objects/holds/keys/source boundaries with recorded elapsed time. |
-| OPS-AC-017 | OPS-FR-016 | Measure simulated Tier A/B/C loss against proposed RPO/RTO; breach is reported/incident, not hidden by process health. |
-| OPS-AC-018 | OPS-FR-017 | DR fences old generation, restores isolated with side effects off, prevents split brain and enables read then write classes only after approval. |
-| OPS-AC-019 | OPS-FR-018 | Corrupt each ledger/source/subsidiary/reservation/fee/batch/audit/job/statement/identity invariant; affected financial writes remain blocked. |
-| OPS-AC-020 | OPS-FR-018 | Clean restored cutoff reproduces control totals/sample statements/audit checkpoints and restarts consumers without duplicate payout/email/financial posting. |
-| OPS-AC-021 | OPS-FR-019 | Migration manifest/checksum/order/compatibility/backup/validation evidence is required; unsigned/unknown migration cannot run. |
-| OPS-AC-022 | OPS-FR-020 | Interrupt/retry a large backfill; checkpoints resume without duplicate/missing rows, source history/actors remain and ambiguous inference blocks. |
-| OPS-AC-023 | OPS-FR-021 | Timezone/account/fee/config change applies prospectively; ordered outbox/ack survives restart, critical feature stays Propagation pending until compatible acks, and old plan/receipt/posting/report retains captured version across deploy/restore. |
-| OPS-AC-024 | OPS-FR-022 | Failed migration detects completed phase; verified roll-forward/rollback preserves concurrent transactions and never blindly reruns script/restores old DB. |
-| OPS-AC-025 | OPS-FR-023 | Signed canary passes contracts/invariants before 25/100%; incompatible event/schema halts and rollback affects code only, not committed money. |
-| OPS-AC-026 | OPS-FR-024 | Client/expired/misconfigured flag cannot bypass server authorization/accounting/audit; kill switch blocks new work without releasing/resolving state. |
-| OPS-AC-027 | OPS-FR-025 | Maintenance drains/checkpoints/fences and enforces read-only server-side; user sees truthful scope/time and impact counts toward SLO. |
-| OPS-AC-028 | OPS-FR-026 | Logs/traces/metrics correlate one command across services while scanners/tests find no credentials, evidence, contact/bank/private notes or personal amount labels. |
-| OPS-AC-029 | OPS-FR-027 | Trigger every Critical/budget/queue/provider/capacity alert; incidents deduplicate/update safely and no alert performs business mutation/broadcast. |
-| OPS-AC-030 | OPS-FR-028 | Load 2× forecast plus backup/report/migration/failover; thresholds/headroom/scale controls work without duplicate, scope leak or provider overload. |
-| OPS-AC-031 | OPS-FR-029 | At >500ms clock skew warning fires; >2s/unknown node loses financial/job leadership; UTC/lease/reference/calendar history stays correct after recovery. |
-| OPS-AC-032 | OPS-FR-029 | Midnight/leap/year/DST/business-timezone migration preserves captured plan/receipt/batch/report dates and no browser clock authorizes action. |
-| OPS-AC-033 | OPS-FR-030 | Test application grants against shell/DB/backup/deploy/replay and infrastructure roles against business endpoints; no authority crosses boundary. |
-| OPS-AC-034 | OPS-FR-031 | Restore/promotion/canonical migration/break-glass requires two proposed external approvals, MFA/time-bound access and complete evidence; expiry revokes it. |
-| OPS-AC-035 | OPS-FR-032 | SEV-0/1/2/3 exercise meets proposed acknowledgement, fencing, evidence, recovery verification and post-incident action requirements. |
-| OPS-AC-036 | OPS-FR-032 | Financial incident preserves original operations/provider evidence, runs controls and refuses compensation/manual edit before owner eligibility. |
-| OPS-AC-037 | OPS-FR-033 | Status template communicates affected capability/time/safe guidance without names/amounts/exploit/unverified claims or Admin broadcast access. |
-| OPS-AC-038 | OPS-FR-033 | Module 13 individual notice rechecks recipient/template; notification outage does not delay containment and unknown financial guidance uses same reference. |
-| OPS-AC-039 | OPS-FR-034 | Rebuild search/dashboard/audit index and replay event/job twice; derived results match and no source mutation/notification/payout repeats. |
-| OPS-AC-040 | OPS-FR-034 | Restore/recompute promotion validates new projection version atomically while prior verified read remains labelled/available where safe. |
-| OPS-AC-041 | OPS-FR-035 | Attempt SQL/manual UI edits to Customer balance/reservation/ledger/audit/reconciliation; access denies and correction requires owning workflow. |
-| OPS-AC-042 | OPS-FR-035 | Canonical inconsistency uses incident/restore or deterministic reviewed migration with evidence, never generic adjustment/suspense fabrication. |
-| OPS-AC-043 | OPS-FR-036 | Network/service/environment isolation, key rotation, dependency scanning and privileged-data-copy controls reject unauthorized path/test copy. |
-| OPS-AC-044 | OPS-FR-037 | Primary/archive/backup/artifact/log retention and hold inventories reconcile; expired source is not retained indefinitely in unmanaged copies. |
-| OPS-AC-045 | OPS-FR-038 | Disconnect mobile/browser, attempt contribution/withdrawal; no local paid/pending-sync mutation exists and reconnect does not auto-post. |
-| OPS-AC-046 | OPS-FR-039 | Production readiness bundle includes passing load/restore/DR/migration/failure/access controls with versions/cutoffs and unresolved scenarios marked Blocked. |
-| OPS-AC-047 | OPS-FR-040 | Remove each critical owner/policy/key/provider/config/integrity/restore dependency; launch/write class remains Blocked without manual override. |
+| ID         | Requirement mapping    | Testable expected result                                                                                                                                                                                                                             |
+| ---------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OPS-AC-001 | OPS-FR-001             | Every released endpoint/job declares dependencies, safe modes/owner/recovery tier; unknown dependency prevents write enablement.                                                                                                                     |
+| OPS-AC-002 | OPS-FR-002             | Stop DB/Auth/Ledger/Reservation/Fee/Audit/Object/Provider dependencies individually; only documented operations continue and no unavailable value becomes zero/success.                                                                              |
+| OPS-AC-003 | OPS-FR-003             | Enter each platform mode; server enforces allowed classes, labels reads/cutoffs and preserves reservations/jobs/outcomes without mutation.                                                                                                           |
+| OPS-AC-004 | OPS-FR-004             | SLI excludes valid denial/input error but includes timeout/circuit/maintenance; health traffic cannot inflate user endpoint success.                                                                                                                 |
+| OPS-AC-005 | OPS-FR-005             | Production-like measurement reports every proposed SLO/latency class and correctness failures remain zero-budget incidents.                                                                                                                          |
+| OPS-AC-006 | OPS-FR-006             | Simulate 50/75/100% burn and one integrity event; release controls/escalation activate and month reset does not close evidence.                                                                                                                      |
+| OPS-AC-007 | OPS-FR-007             | Same operation key/payload across timeout/restart returns one effect; changed payload conflicts after cache expiry; unauthorized lookup reveals nothing.                                                                                             |
+| OPS-AC-008 | OPS-FR-008             | Fault domain/audit/outbox transaction boundaries and duplicate broker delivery; mutation+canonical intent commit once or neither and consumer effect occurs once.                                                                                    |
+| OPS-AC-009 | OPS-FR-009             | Kill worker before/after checkpoints/heartbeat; lease recovery resumes safely, maximum attempts apply and overlapping lease cannot duplicate effect.                                                                                                 |
+| OPS-AC-010 | OPS-FR-010             | Dry-run bounded bulk replay identifies completed/conflict/eligible items; execution preserves payload/actor/amount and supports stop/checkpoint.                                                                                                     |
+| OPS-AC-011 | OPS-FR-011             | Timeout payout/email/object publication; provider/hash/reference lookup resolves original or keeps Outcome unknown/Dead-letter without duplicate send.                                                                                               |
+| OPS-AC-012 | OPS-FR-012             | Daily backup includes each listed authoritative/version dataset and Tier A PITR log gap stays within proposed five minutes.                                                                                                                          |
+| OPS-AC-013 | OPS-FR-013             | Production app/Admin/developer credentials cannot read/delete backups/keys; approved time-bound restore identity can access only runbook resources.                                                                                                  |
+| OPS-AC-014 | OPS-FR-014, OPS-FR-037 | Expiry/hold/geography tests retain longest approved held data, expire eligible bytes/backups eventually and create no unapproved cross-border replica.                                                                                               |
+| OPS-AC-015 | OPS-FR-015             | Missing/corrupt/truncated/key-unreadable backup fails manifest/restore validation and pages before it can count as success.                                                                                                                          |
+| OPS-AC-016 | OPS-FR-015             | Monthly sampled and quarterly full restore verify checksums/PITR/objects/holds/keys/source boundaries with recorded elapsed time.                                                                                                                    |
+| OPS-AC-017 | OPS-FR-016             | Measure simulated Tier A/B/C loss against proposed RPO/RTO; breach is reported/incident, not hidden by process health.                                                                                                                               |
+| OPS-AC-018 | OPS-FR-017             | DR fences old generation, restores isolated with side effects off, prevents split brain and enables read then write classes only after approval.                                                                                                     |
+| OPS-AC-019 | OPS-FR-018             | Corrupt each ledger/source/subsidiary/reservation/fee/batch/audit/job/statement/identity invariant; affected financial writes remain blocked.                                                                                                        |
+| OPS-AC-020 | OPS-FR-018             | Clean restored cutoff reproduces control totals/sample statements/audit checkpoints and restarts consumers without duplicate payout/email/financial posting.                                                                                         |
+| OPS-AC-021 | OPS-FR-019             | Migration manifest/checksum/order/compatibility/backup/validation evidence is required; unsigned/unknown migration cannot run.                                                                                                                       |
+| OPS-AC-022 | OPS-FR-020             | Interrupt/retry a large backfill; checkpoints resume without duplicate/missing rows, source history/actors remain and ambiguous inference blocks.                                                                                                    |
+| OPS-AC-023 | OPS-FR-021             | Timezone/account/fee/config change applies prospectively; ordered outbox/ack survives restart, critical feature stays Propagation pending until compatible acks, and old plan/receipt/posting/report retains captured version across deploy/restore. |
+| OPS-AC-024 | OPS-FR-022             | Failed migration detects completed phase; verified roll-forward/rollback preserves concurrent transactions and never blindly reruns script/restores old DB.                                                                                          |
+| OPS-AC-025 | OPS-FR-023             | Signed canary passes contracts/invariants before 25/100%; incompatible event/schema halts and rollback affects code only, not committed money.                                                                                                       |
+| OPS-AC-026 | OPS-FR-024             | Client/expired/misconfigured flag cannot bypass server authorization/accounting/audit; kill switch blocks new work without releasing/resolving state.                                                                                                |
+| OPS-AC-027 | OPS-FR-025             | Maintenance drains/checkpoints/fences and enforces read-only server-side; user sees truthful scope/time and impact counts toward SLO.                                                                                                                |
+| OPS-AC-028 | OPS-FR-026             | Logs/traces/metrics correlate one command across services while scanners/tests find no credentials, evidence, contact/bank/private notes or personal amount labels.                                                                                  |
+| OPS-AC-029 | OPS-FR-027             | Trigger every Critical/budget/queue/provider/capacity alert; incidents deduplicate/update safely and no alert performs business mutation/broadcast.                                                                                                  |
+| OPS-AC-030 | OPS-FR-028             | Load 2× forecast plus backup/report/migration/failover; thresholds/headroom/scale controls work without duplicate, scope leak or provider overload.                                                                                                  |
+| OPS-AC-031 | OPS-FR-029             | At >500ms clock skew warning fires; >2s/unknown node loses financial/job leadership; UTC/lease/reference/calendar history stays correct after recovery.                                                                                              |
+| OPS-AC-032 | OPS-FR-029             | Midnight/leap/year/DST/business-timezone migration preserves captured plan/receipt/batch/report dates and no browser clock authorizes action.                                                                                                        |
+| OPS-AC-033 | OPS-FR-030             | Test application grants against shell/DB/backup/deploy/replay and infrastructure roles against business endpoints; no authority crosses boundary.                                                                                                    |
+| OPS-AC-034 | OPS-FR-031             | Restore/promotion/canonical migration/break-glass requires two proposed external approvals, MFA/time-bound access and complete evidence; expiry revokes it.                                                                                          |
+| OPS-AC-035 | OPS-FR-032             | SEV-0/1/2/3 exercise meets proposed acknowledgement, fencing, evidence, recovery verification and post-incident action requirements.                                                                                                                 |
+| OPS-AC-036 | OPS-FR-032             | Financial incident preserves original operations/provider evidence, runs controls and refuses compensation/manual edit before owner eligibility.                                                                                                     |
+| OPS-AC-037 | OPS-FR-033             | Status template communicates affected capability/time/safe guidance without names/amounts/exploit/unverified claims or Admin broadcast access.                                                                                                       |
+| OPS-AC-038 | OPS-FR-033             | Module 13 individual notice rechecks recipient/template; notification outage does not delay containment and unknown financial guidance uses same reference.                                                                                          |
+| OPS-AC-039 | OPS-FR-034             | Rebuild search/dashboard/audit index and replay event/job twice; derived results match and no source mutation/notification/payout repeats.                                                                                                           |
+| OPS-AC-040 | OPS-FR-034             | Restore/recompute promotion validates new projection version atomically while prior verified read remains labelled/available where safe.                                                                                                             |
+| OPS-AC-041 | OPS-FR-035             | Attempt SQL/manual UI edits to Customer balance/reservation/ledger/audit/reconciliation; access denies and correction requires owning workflow.                                                                                                      |
+| OPS-AC-042 | OPS-FR-035             | Canonical inconsistency uses incident/restore or deterministic reviewed migration with evidence, never generic adjustment/suspense fabrication.                                                                                                      |
+| OPS-AC-043 | OPS-FR-036             | Network/service/environment isolation, key rotation, dependency scanning and privileged-data-copy controls reject unauthorized path/test copy.                                                                                                       |
+| OPS-AC-044 | OPS-FR-037             | Primary/archive/backup/artifact/log retention and hold inventories reconcile; expired source is not retained indefinitely in unmanaged copies.                                                                                                       |
+| OPS-AC-045 | OPS-FR-038             | Disconnect mobile/browser, attempt contribution/withdrawal; no local paid/pending-sync mutation exists and reconnect does not auto-post.                                                                                                             |
+| OPS-AC-046 | OPS-FR-039             | Production readiness bundle includes passing load/restore/DR/migration/failure/access controls with versions/cutoffs and unresolved scenarios marked Blocked.                                                                                        |
+| OPS-AC-047 | OPS-FR-040             | Remove each critical owner/policy/key/provider/config/integrity/restore dependency; launch/write class remains Blocked without manual override.                                                                                                      |
 
 ## 19. Worked examples
 

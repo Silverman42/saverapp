@@ -17,14 +17,14 @@ Detailed channel, preference, template, retry, inbox, retention and service targ
 
 Initial scope provides an authenticated in-app inbox and explicitly allowlisted transactional email. The same durable source event may create different safe channel renderings. Channels are not enabled merely because contact data exists.
 
-| Included initially | Deferred or separately owned |
-| --- | --- |
-| In-app notifications for all defined eligible event families | Chat, free-form direct messages, discussion threads, Customer-Agent messaging |
-| Transactional email only for events explicitly listed in Section 5 or Authentication | Marketing email, newsletters, promotions and bulk campaigns |
-| Per-recipient read/unread state, filters, search, cursor pagination and authorized deep links | Reactions, replies, forwarding, custom folders and user-created rules |
+| Included initially                                                                                | Deferred or separately owned                                                        |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| In-app notifications for all defined eligible event families                                      | Chat, free-form direct messages, discussion threads, Customer-Agent messaging       |
+| Transactional email only for events explicitly listed in Section 5 or Authentication              | Marketing email, newsletters, promotions and bulk campaigns                         |
+| Per-recipient read/unread state, filters, search, cursor pagination and authorized deep links     | Reactions, replies, forwarding, custom folders and user-created rules               |
 | Mandatory security, lifecycle and financial notices plus limited optional operational preferences | Digests, scheduled reminder campaigns, quiet hours and per-event delivery schedules |
-| Delivery attempts, provider results, suppression, dead-letter visibility and safe retry | Guaranteeing that a person read an email; email-open pixels/tracking |
-| One configured business, proposed `en-NG`, NGN and configured business timezone | User-authored localization, automated translation and per-message language editing |
+| Delivery attempts, provider results, suppression, dead-letter visibility and safe retry           | Guaranteeing that a person read an email; email-open pixels/tracking                |
+| One configured business, proposed `en-NG`, NGN and configured business timezone                   | User-authored localization, automated translation and per-message language editing  |
 
 SMS, WhatsApp, browser/mobile push and voice are deferred unless a later reviewed channel contract defines verified destination/consent, templates, provider finality, cost/rate limits, opt-out, privacy, retry and audit. No system may silently fall back to one of those channels after an email failure.
 
@@ -34,14 +34,14 @@ Version 2 has no permission for arbitrary Admin broadcasts. No Admin, including 
 
 ### 3.1 Ownership boundary
 
-| Owner | Responsibility |
-| --- | --- |
-| Source business module | Decide whether an event occurred, its immutable ID/version, safe notification facts, audience purpose, mandatory/optional classification and deep-link resource. |
-| Authentication | Own invitations, activation/verification/reset/email-change/MFA/recovery challenges, credential-sensitive templates, token lifetime and security retry/rate-limit policy. |
-| Notifications module | Validate event contract, resolve/revalidate recipients, render versioned safe content, create inbox records, dispatch allowlisted email and track delivery attempts. |
-| Authorization/Module 04 | Supply current role, account access, Admin permission, Customer assignment and lifecycle scope at dispatch and retrieval. |
-| Reports/Statements | Generate artifacts and declare ready/failed/superseded state; Notifications never generates, attaches or widens access to them. |
-| Audit | Retain canonical business/security audit under its own access and retention; inbox history is not the audit log. |
+| Owner                   | Responsibility                                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source business module  | Decide whether an event occurred, its immutable ID/version, safe notification facts, audience purpose, mandatory/optional classification and deep-link resource.          |
+| Authentication          | Own invitations, activation/verification/reset/email-change/MFA/recovery challenges, credential-sensitive templates, token lifetime and security retry/rate-limit policy. |
+| Notifications module    | Validate event contract, resolve/revalidate recipients, render versioned safe content, create inbox records, dispatch allowlisted email and track delivery attempts.      |
+| Authorization/Module 04 | Supply current role, account access, Admin permission, Customer assignment and lifecycle scope at dispatch and retrieval.                                                 |
+| Reports/Statements      | Generate artifacts and declare ready/failed/superseded state; Notifications never generates, attaches or widens access to them.                                           |
+| Audit                   | Retain canonical business/security audit under its own access and retention; inbox history is not the audit log.                                                          |
 
 ### 3.2 Invariants
 
@@ -85,14 +85,14 @@ Rendered snapshot/hash is retained for each actual dispatch so later template ch
 
 ### 4.3 Categories and importance
 
-| Category | Examples | Preference class |
-| --- | --- | --- |
-| Security | Activation, password/MFA/recovery, sign-in/session, email/permission/access changes | Mandatory; Authentication policy controls channel |
-| Account and lifecycle | Customer/Agent status, assignment, suspension, offboarding, unavailable service Agent | Mandatory lifecycle |
-| Financial | Posted contribution, fee/deduction/refund, withdrawal state/posting, reversal, statement correction | Mandatory financial |
-| Plan | Creation/terms, pause/resume/cancel/complete/close/shortfall | Contractual lifecycle events mandatory; routine progress optional |
-| Operational task | Approval/reconciliation queues, report readiness/failure, delivery issue, integrity/availability alert | Required for assigned task owner; optional informational summaries |
-| Product reminder | Contribution-due reminder, weekly summary, tips | Deferred/optional; no initial campaign engine |
+| Category              | Examples                                                                                               | Preference class                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Security              | Activation, password/MFA/recovery, sign-in/session, email/permission/access changes                    | Mandatory; Authentication policy controls channel                  |
+| Account and lifecycle | Customer/Agent status, assignment, suspension, offboarding, unavailable service Agent                  | Mandatory lifecycle                                                |
+| Financial             | Posted contribution, fee/deduction/refund, withdrawal state/posting, reversal, statement correction    | Mandatory financial                                                |
+| Plan                  | Creation/terms, pause/resume/cancel/complete/close/shortfall                                           | Contractual lifecycle events mandatory; routine progress optional  |
+| Operational task      | Approval/reconciliation queues, report readiness/failure, delivery issue, integrity/availability alert | Required for assigned task owner; optional informational summaries |
+| Product reminder      | Contribution-due reminder, weekly summary, tips                                                        | Deferred/optional; no initial campaign engine                      |
 
 Importance controls presentation/order, not permission. A source cannot label marketing as Security to bypass preference or consent.
 
@@ -102,57 +102,57 @@ The matrix lists initial defaults. “Email” means explicitly allowlisted tran
 
 ### 5.1 Authentication, authorization, and account security
 
-| Event | Recipients and initial channels | Required content boundary |
-| --- | --- | --- |
-| Invitation/activation challenge, resend, expiry | Invited account: Authentication email; authorized initiator/manager: in-app receipt/issue | Authentication-owned purpose-bound token and immutable disclosed fee snapshot where applicable; no competing activation email. |
-| Activation/MFA completion | Account: email and in-app after access; authorized onboarding owner: in-app | Actual account/onboarding state and next step; activation never implies Agent operational readiness. |
-| Password reset, email confirmation/change, MFA/recovery change | Account through Authentication-defined verified email/in-app paths | No password, authenticator secret/code, recovery code or token in general notification storage. |
-| New/suspicious sign-in, session/trusted-device/security event | Affected account: Authentication email and in-app where accessible; authorized security queue when specified | Safe device/time/location approximation and action link; no session identifier/secret or unsupported allegation. |
-| Account suspension/restoration/deactivation | Affected account: email; in-app only when access permits. Existing management/security recipients: in-app | Effective outcome and safe next step. Suspended link cannot preserve revoked session. |
-| Admin permission grant/revocation or Admin status change | Target Admin: mandatory email and in-app where accessible; actor: in-app receipt; required management/security recipients: in-app | Permission names, effective time, safe actor/business contact. Internal reason and unrelated grants remain protected. |
-| High-risk authorization denial | Affected actor only when owner policy says actionable; authorized security queue where Module 02/03 requires | No target-record existence disclosure or repeated denial spam. |
+| Event                                                          | Recipients and initial channels                                                                                                   | Required content boundary                                                                                                      |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Invitation/activation challenge, resend, expiry                | Invited account: Authentication email; authorized initiator/manager: in-app receipt/issue                                         | Authentication-owned purpose-bound token and immutable disclosed fee snapshot where applicable; no competing activation email. |
+| Activation/MFA completion                                      | Account: email and in-app after access; authorized onboarding owner: in-app                                                       | Actual account/onboarding state and next step; activation never implies Agent operational readiness.                           |
+| Password reset, email confirmation/change, MFA/recovery change | Account through Authentication-defined verified email/in-app paths                                                                | No password, authenticator secret/code, recovery code or token in general notification storage.                                |
+| New/suspicious sign-in, session/trusted-device/security event  | Affected account: Authentication email and in-app where accessible; authorized security queue when specified                      | Safe device/time/location approximation and action link; no session identifier/secret or unsupported allegation.               |
+| Account suspension/restoration/deactivation                    | Affected account: email; in-app only when access permits. Existing management/security recipients: in-app                         | Effective outcome and safe next step. Suspended link cannot preserve revoked session.                                          |
+| Admin permission grant/revocation or Admin status change       | Target Admin: mandatory email and in-app where accessible; actor: in-app receipt; required management/security recipients: in-app | Permission names, effective time, safe actor/business contact. Internal reason and unrelated grants remain protected.          |
+| High-risk authorization denial                                 | Affected actor only when owner policy says actionable; authorized security queue where Module 02/03 requires                      | No target-record existence disclosure or repeated denial spam.                                                                 |
 
 Authentication owns dispatch timing, token redaction and its distinct retry/rate limits. Notifications may transport its approved content but cannot regenerate/inspect secrets or send a new token on generic delivery retry. Resend is a new authorized Authentication event.
 
 ### 5.2 Customer, Agent, and assignment lifecycle
 
-| Event | Recipients and initial channels | Required content boundary |
-| --- | --- | --- |
-| Registration commit | Creating Agent/Admin: in-app receipt; new account receives Authentication invitation email | Registered, invited and delivery states remain distinct; no duplicate “welcome” email initially. |
-| Routine profile change | Affected activated user and current assigned Agent where applicable: in-app; security-sensitive identity change uses owner email | Changed field categories and safe actor type, never full old/new address, next-of-kin data or internal note. |
-| Staff name correction proposal/outcome | Customer: in-app and email for proposal; requesting/current authorized staff: in-app | Authenticated review/expiry/outcome; email is not one-click approval. Former Agent loses proposal detail. |
-| Customer status/archive/restore | Customer: mandatory in-app where accessible and email; current Agent/actor: in-app | Effective state/time, Customer-facing explanation/consequence and next step; omit internal reason. |
-| Customer reassignment | Customer: mandatory in-app/email; replacement Agent: in-app; former Agent: minimal own-access removal receipt; actor: in-app | Replacement business contact and effective time. Former notice has no Customer detail/link/financial data. |
-| Agent readiness/inactivity/suspension/offboarding/reactivation | Agent: mandatory email and in-app where accessible; Admins with `agents.manage`: in-app | Separate account/operational state, effective time and safe next step; omit personnel/security/cash allegations. |
-| Assigned Agent unavailable/service restored | Affected non-archived Customers: minimal mandatory email/in-app; eligible `agents.manage`/`customers.reassign` queues: in-app | Service interruption/contact action only; no Agent private reason. Deduplicate until meaningful state change. |
-| Internal-note/reference/case-owner change | Actor and eligible new owner/management queue: in-app only | No Customer/Agent self-service disclosure of private note contents. |
+| Event                                                          | Recipients and initial channels                                                                                                  | Required content boundary                                                                                        |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Registration commit                                            | Creating Agent/Admin: in-app receipt; new account receives Authentication invitation email                                       | Registered, invited and delivery states remain distinct; no duplicate “welcome” email initially.                 |
+| Routine profile change                                         | Affected activated user and current assigned Agent where applicable: in-app; security-sensitive identity change uses owner email | Changed field categories and safe actor type, never full old/new address, next-of-kin data or internal note.     |
+| Staff name correction proposal/outcome                         | Customer: in-app and email for proposal; requesting/current authorized staff: in-app                                             | Authenticated review/expiry/outcome; email is not one-click approval. Former Agent loses proposal detail.        |
+| Customer status/archive/restore                                | Customer: mandatory in-app where accessible and email; current Agent/actor: in-app                                               | Effective state/time, Customer-facing explanation/consequence and next step; omit internal reason.               |
+| Customer reassignment                                          | Customer: mandatory in-app/email; replacement Agent: in-app; former Agent: minimal own-access removal receipt; actor: in-app     | Replacement business contact and effective time. Former notice has no Customer detail/link/financial data.       |
+| Agent readiness/inactivity/suspension/offboarding/reactivation | Agent: mandatory email and in-app where accessible; Admins with `agents.manage`: in-app                                          | Separate account/operational state, effective time and safe next step; omit personnel/security/cash allegations. |
+| Assigned Agent unavailable/service restored                    | Affected non-archived Customers: minimal mandatory email/in-app; eligible `agents.manage`/`customers.reassign` queues: in-app    | Service interruption/contact action only; no Agent private reason. Deduplicate until meaningful state change.    |
+| Internal-note/reference/case-owner change                      | Actor and eligible new owner/management queue: in-app only                                                                       | No Customer/Agent self-service disclosure of private note contents.                                              |
 
 ### 5.3 Plans, collections, fees, and reconciliation
 
-| Event | Recipients and initial channels | Required content boundary |
-| --- | --- | --- |
-| Plan creation/renewal/material terms amendment | Customer: mandatory in-app/email; current Agent/actor: in-app | Agreed amount, schedule/date, fee summary, state and reference; no claim that money was collected. |
-| Plan pause/resume/cancel/complete/close/early termination/correction shortfall | Customer: mandatory in-app; email for lifecycle state change except routine progress; current Agent: in-app | Effective state, safe reason/consequence and next action; no payout/fee-approval promise. |
-| Contribution or mixed savings/fee receipt posted | Customer: mandatory in-app/email; recording/current Agent: in-app receipt/work item as applicable | Receipt reference, received/posted date, gross savings, separate fee component, method mask and resulting savings as-of. No raw evidence. |
-| Missed/skipped/partial/advance card update | Customer/current Agent: in-app only when owner emits meaningful event; routine daily reminder deferred/optional | Nonfinancial status and residual; never describe missed money as debt or reduce balance. |
-| Fee assessment/application/external settlement/waiver/correction/refund or other deduction | Customer: mandatory in-app/email when obligation or savings/entitlement changes; actor/current Agent: in-app as owner permits | Fee/deduction type, amount, source, outstanding/settled effect and safe explanation. Keep external fee receipt separate from savings debit. |
-| Fee-earnings business draw | Acting/reviewing authorized staff: in-app receipt; no Customer | Business-only amount/reference; never presented as Customer withdrawal. |
-| Reconciliation batch ready/exception/remittance/result | Original Agent: scoped in-app own status; Admins with `reconciliation.manage`: in-app task; Customer only if owning correction changes their transaction | Batch/amount/status within scope. No other Customer data, raw settlement evidence or allegation in Agent notice. |
+| Event                                                                                      | Recipients and initial channels                                                                                                                          | Required content boundary                                                                                                                   |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plan creation/renewal/material terms amendment                                             | Customer: mandatory in-app/email; current Agent/actor: in-app                                                                                            | Agreed amount, schedule/date, fee summary, state and reference; no claim that money was collected.                                          |
+| Plan pause/resume/cancel/complete/close/early termination/correction shortfall             | Customer: mandatory in-app; email for lifecycle state change except routine progress; current Agent: in-app                                              | Effective state, safe reason/consequence and next action; no payout/fee-approval promise.                                                   |
+| Contribution or mixed savings/fee receipt posted                                           | Customer: mandatory in-app/email; recording/current Agent: in-app receipt/work item as applicable                                                        | Receipt reference, received/posted date, gross savings, separate fee component, method mask and resulting savings as-of. No raw evidence.   |
+| Missed/skipped/partial/advance card update                                                 | Customer/current Agent: in-app only when owner emits meaningful event; routine daily reminder deferred/optional                                          | Nonfinancial status and residual; never describe missed money as debt or reduce balance.                                                    |
+| Fee assessment/application/external settlement/waiver/correction/refund or other deduction | Customer: mandatory in-app/email when obligation or savings/entitlement changes; actor/current Agent: in-app as owner permits                            | Fee/deduction type, amount, source, outstanding/settled effect and safe explanation. Keep external fee receipt separate from savings debit. |
+| Fee-earnings business draw                                                                 | Acting/reviewing authorized staff: in-app receipt; no Customer                                                                                           | Business-only amount/reference; never presented as Customer withdrawal.                                                                     |
+| Reconciliation batch ready/exception/remittance/result                                     | Original Agent: scoped in-app own status; Admins with `reconciliation.manage`: in-app task; Customer only if owning correction changes their transaction | Batch/amount/status within scope. No other Customer data, raw settlement evidence or allegation in Agent notice.                            |
 
 ### 5.4 Withdrawals, reversals, statements, dashboards, and reports
 
-| Event | Recipients and initial channels | Required content boundary |
-| --- | --- | --- |
-| Withdrawal submitted | Customer/current Agent: mandatory in-app; proposed Customer email; `withdrawals.review` queue: in-app | G/F/D/P, plan, method mask, reservation/expiry and Pending review; no approval/payment promise. |
-| Withdrawal approved/rejected/cancelled/expired or hold applied/lifted | Customer/current Agent: mandatory in-app/email; reviewer/queue receipt: in-app | Actual primary state and hold status, safe reason, reservation consequence and next step; omit internal review reason. |
-| Withdrawal processing/failed/outcome unknown | Customer/current Agent: mandatory in-app; email only for material action-required/final failure under Module 08; authorized operations queue: in-app | Distinguish attempted, unknown, failed and posted. Never call provider acceptance payment success. |
-| Withdrawal posted | Customer/current Agent: mandatory in-app/email; relevant actor/reviewer receipt: in-app | Receipt, G/F/D/P, method mask, occurrence/post date and resulting balances/as-of. |
-| Reversal submitted/rejected/cancelled/blocked | Requester/current Agent and review queue: in-app; Customer only when an earlier error notice needs safe progress | Original/request reference, workflow state and safe next step. Original remains effective until posting. |
-| Reversal Approved and posted | Customer/current Agent and reviewer: mandatory in-app; Customer email | Original/correction references, full net effect, actual posting date and Customer-facing explanation; no physical-return claim without evidence. |
-| Statement generated/failed | Requester: in-app only; Customer also when another authorized actor requested an issued statement | Period, statement reference, cutoff/status and authorized view link; no statement attachment. |
-| Statement superseded/corrected | Customer and requester: mandatory in-app; Customer email proposed for material financial correction | Old/new references and cutoff/correction explanation; never silently replace old artifact or claim Final. |
-| Dashboard operational alert | Currently scoped affected user or exact permission queue: in-app only | Metric/as-of and action link from Module 11. A notification cannot convert analytics into financial truth. |
-| Report/export queued/ready/failed/cancelled/nearing expiry/expired | Requester only if still authorized: in-app | Job/reference, filters/scope/cutoff, status and authorized job-centre route. At most one proposed approaching-expiry reminder. No file attachment, signed/public URL or recipient expansion; delivery never extends seven-day artifact retention. |
+| Event                                                                 | Recipients and initial channels                                                                                                                      | Required content boundary                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Withdrawal submitted                                                  | Customer/current Agent: mandatory in-app; proposed Customer email; `withdrawals.review` queue: in-app                                                | G/F/D/P, plan, method mask, reservation/expiry and Pending review; no approval/payment promise.                                                                                                                                                   |
+| Withdrawal approved/rejected/cancelled/expired or hold applied/lifted | Customer/current Agent: mandatory in-app/email; reviewer/queue receipt: in-app                                                                       | Actual primary state and hold status, safe reason, reservation consequence and next step; omit internal review reason.                                                                                                                            |
+| Withdrawal processing/failed/outcome unknown                          | Customer/current Agent: mandatory in-app; email only for material action-required/final failure under Module 08; authorized operations queue: in-app | Distinguish attempted, unknown, failed and posted. Never call provider acceptance payment success.                                                                                                                                                |
+| Withdrawal posted                                                     | Customer/current Agent: mandatory in-app/email; relevant actor/reviewer receipt: in-app                                                              | Receipt, G/F/D/P, method mask, occurrence/post date and resulting balances/as-of.                                                                                                                                                                 |
+| Reversal submitted/rejected/cancelled/blocked                         | Requester/current Agent and review queue: in-app; Customer only when an earlier error notice needs safe progress                                     | Original/request reference, workflow state and safe next step. Original remains effective until posting.                                                                                                                                          |
+| Reversal Approved and posted                                          | Customer/current Agent and reviewer: mandatory in-app; Customer email                                                                                | Original/correction references, full net effect, actual posting date and Customer-facing explanation; no physical-return claim without evidence.                                                                                                  |
+| Statement generated/failed                                            | Requester: in-app only; Customer also when another authorized actor requested an issued statement                                                    | Period, statement reference, cutoff/status and authorized view link; no statement attachment.                                                                                                                                                     |
+| Statement superseded/corrected                                        | Customer and requester: mandatory in-app; Customer email proposed for material financial correction                                                  | Old/new references and cutoff/correction explanation; never silently replace old artifact or claim Final.                                                                                                                                         |
+| Dashboard operational alert                                           | Currently scoped affected user or exact permission queue: in-app only                                                                                | Metric/as-of and action link from Module 11. A notification cannot convert analytics into financial truth.                                                                                                                                        |
+| Report/export queued/ready/failed/cancelled/nearing expiry/expired    | Requester only if still authorized: in-app                                                                                                           | Job/reference, filters/scope/cutoff, status and authorized job-centre route. At most one proposed approaching-expiry reminder. No file attachment, signed/public URL or recipient expansion; delivery never extends seven-day artifact retention. |
 
 Report/statement emails are not enabled initially. A later “ready” email must be separately approved and still contain no attachment or bearer download URL.
 
@@ -259,15 +259,15 @@ Loading has no fake unread count; authoritative empty says No notifications. Dis
 
 Proposed channel-intent states:
 
-| State | Meaning |
-| --- | --- |
-| Pending | Durable intent exists; not yet attempted or awaiting safe retry/reconciliation. |
-| Attempting | One worker owns a leased attempt; lease expiry is recoverable and does not imply failure. |
-| Provider accepted | Provider accepted the request and returned a reference; not proof of inbox placement or human reading. |
-| Delivered | Reliable provider webhook confirms delivery under the approved provider contract. If unavailable, do not infer this state. |
-| Failed | Transient or permanent failure is known; transient may retry within policy. |
-| Suppressed | Scope/preference/channel/destination/supersession rule intentionally prevented dispatch. |
-| Dead-letter | Bounded attempts/reconciliation exhausted or contract error needs authorized investigation. |
+| State             | Meaning                                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Pending           | Durable intent exists; not yet attempted or awaiting safe retry/reconciliation.                                            |
+| Attempting        | One worker owns a leased attempt; lease expiry is recoverable and does not imply failure.                                  |
+| Provider accepted | Provider accepted the request and returned a reference; not proof of inbox placement or human reading.                     |
+| Delivered         | Reliable provider webhook confirms delivery under the approved provider contract. If unavailable, do not infer this state. |
+| Failed            | Transient or permanent failure is known; transient may retry within policy.                                                |
+| Suppressed        | Scope/preference/channel/destination/supersession rule intentionally prevented dispatch.                                   |
+| Dead-letter       | Bounded attempts/reconciliation exhausted or contract error needs authorized investigation.                                |
 
 In-app creation normally becomes Available after authorization and persistence; Read remains a separate recipient state. Email providers without reliable delivery webhooks stop at Provider accepted. A late webhook appends the actual result and cannot change the source business event.
 
@@ -318,13 +318,13 @@ Users can view their current preference values and own delivery status at a safe
 
 ## 13. Screens and accessibility
 
-| Surface | Requirements |
-| --- | --- |
-| Notification centre | Inbox list/unread badge, Section 9 filters/search/pagination, category/state text, read controls and current authorized deep link. |
-| Notification detail | Safe immutable event snapshot, time/channel status, current action availability and supersession link; no internal payload/debug fields. |
-| Preferences | Mandatory categories explained/read-only; optional supported category/channel toggles, last update and immediate prospective effect. |
-| Source workflow delivery panel | Permission-scoped safe recipient mask/status/attempts and owner-authorized retry/suppress resolution; distinct from business outcome. |
-| Admin/task queues | Current exact-permission work from owning module; notice opens the queue but does not approve from the inbox. |
+| Surface                        | Requirements                                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Notification centre            | Inbox list/unread badge, Section 9 filters/search/pagination, category/state text, read controls and current authorized deep link.       |
+| Notification detail            | Safe immutable event snapshot, time/channel status, current action availability and supersession link; no internal payload/debug fields. |
+| Preferences                    | Mandatory categories explained/read-only; optional supported category/channel toggles, last update and immediate prospective effect.     |
+| Source workflow delivery panel | Permission-scoped safe recipient mask/status/attempts and owner-authorized retry/suppress resolution; distinct from business outcome.    |
+| Admin/task queues              | Current exact-permission work from owning module; notice opens the queue but does not approve from the inbox.                            |
 
 Unread badge/list/detail must agree at a common cutoff or visibly refresh. Mobile layouts retain title/category/time/unread/action without essential horizontal scrolling. Use semantic headings/lists/buttons, keyboard-accessible filters/menus/dialogs, visible focus, descriptive links, live-region announcements for count/result/error, and text/icons beyond color. Do not auto-mark Read merely because a screen reader announced a list row; open/explicit action governs read state.
 
@@ -376,110 +376,110 @@ Missing owner, event schema, template, recipient rule, verified destination, pro
 
 ## 17. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| NTF-FR-001 | Provide in-app notifications and only explicitly allowlisted transactional email initially. | 2, 5 |
-| NTF-FR-002 | Defer SMS/WhatsApp/push and prohibit arbitrary Admin broadcasts without new authority/policy. | 2 |
-| NTF-FR-003 | Keep notification routing/delivery separate from source business validity and mutation. | 1, 3 |
-| NTF-FR-004 | Validate immutable versioned source event envelopes and safe audience/template data. | 4.1 |
-| NTF-FR-005 | Persist per-recipient logical notifications and channel intent/attempt history. | 4.2 |
-| NTF-FR-006 | Classify security, lifecycle, financial, plan and operational events without preference abuse. | 4.3 |
-| NTF-FR-007 | Route Authentication/security events through Authentication-owned token/channel safeguards. | 5.1 |
-| NTF-FR-008 | Route Customer/Agent lifecycle and assignment events with minimal private content. | 5.2 |
-| NTF-FR-009 | Route plan/collection/fee/reconciliation events with correct financial distinctions. | 5.3 |
-| NTF-FR-010 | Route withdrawal/reversal/statement/dashboard/report events without false finality or attachments. | 5.4 |
-| NTF-FR-011 | Resolve affected-account/current-Agent/actor/exact-permission audiences server-side. | 6.1 |
-| NTF-FR-012 | Revalidate and reroute/suppress on reassignment, permission or account changes. | 6.2 |
-| NTF-FR-013 | Handle Invited/Suspended/Deactivated recipients without granting app access or unsafe fallback. | 6.3 |
-| NTF-FR-014 | Use immutable reviewed channel/event/locale template versions and typed variables. | 7.1 |
-| NTF-FR-015 | Render safe escaped localized currency/date/name content without recalculating owner facts. | 7.1–7.2 |
-| NTF-FR-016 | Exclude secrets, evidence, private reasons, credentials and cross-scope data from content/metadata. | 7.3 |
-| NTF-FR-017 | Keep mandatory security/lifecycle/financial notices outside optional preference suppression. | 8.1 |
-| NTF-FR-018 | Apply versioned prospective preferences only to approved optional operational notices. | 8.2 |
-| NTF-FR-019 | Provide a scoped, cursor-paginated, searchable/filterable recipient inbox and unread count. | 9.1 |
-| NTF-FR-020 | Maintain idempotent per-recipient read/unread state without changing source/content. | 9.2 |
-| NTF-FR-021 | Reauthorize every deep link and distinguish empty/stale/unavailable/expired/scope-loss states. | 9.3 |
-| NTF-FR-022 | Track Pending/Attempting/Accepted/Delivered/Failed/Suppressed/Dead-letter truthfully. | 10.1 |
-| NTF-FR-023 | Commit durable intent with source operation and dispatch asynchronously without rollback. | 10.2 |
+| ID         | Requirement                                                                                                           | Detail         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- | -------------- |
+| NTF-FR-001 | Provide in-app notifications and only explicitly allowlisted transactional email initially.                           | 2, 5           |
+| NTF-FR-002 | Defer SMS/WhatsApp/push and prohibit arbitrary Admin broadcasts without new authority/policy.                         | 2              |
+| NTF-FR-003 | Keep notification routing/delivery separate from source business validity and mutation.                               | 1, 3           |
+| NTF-FR-004 | Validate immutable versioned source event envelopes and safe audience/template data.                                  | 4.1            |
+| NTF-FR-005 | Persist per-recipient logical notifications and channel intent/attempt history.                                       | 4.2            |
+| NTF-FR-006 | Classify security, lifecycle, financial, plan and operational events without preference abuse.                        | 4.3            |
+| NTF-FR-007 | Route Authentication/security events through Authentication-owned token/channel safeguards.                           | 5.1            |
+| NTF-FR-008 | Route Customer/Agent lifecycle and assignment events with minimal private content.                                    | 5.2            |
+| NTF-FR-009 | Route plan/collection/fee/reconciliation events with correct financial distinctions.                                  | 5.3            |
+| NTF-FR-010 | Route withdrawal/reversal/statement/dashboard/report events without false finality or attachments.                    | 5.4            |
+| NTF-FR-011 | Resolve affected-account/current-Agent/actor/exact-permission audiences server-side.                                  | 6.1            |
+| NTF-FR-012 | Revalidate and reroute/suppress on reassignment, permission or account changes.                                       | 6.2            |
+| NTF-FR-013 | Handle Invited/Suspended/Deactivated recipients without granting app access or unsafe fallback.                       | 6.3            |
+| NTF-FR-014 | Use immutable reviewed channel/event/locale template versions and typed variables.                                    | 7.1            |
+| NTF-FR-015 | Render safe escaped localized currency/date/name content without recalculating owner facts.                           | 7.1–7.2        |
+| NTF-FR-016 | Exclude secrets, evidence, private reasons, credentials and cross-scope data from content/metadata.                   | 7.3            |
+| NTF-FR-017 | Keep mandatory security/lifecycle/financial notices outside optional preference suppression.                          | 8.1            |
+| NTF-FR-018 | Apply versioned prospective preferences only to approved optional operational notices.                                | 8.2            |
+| NTF-FR-019 | Provide a scoped, cursor-paginated, searchable/filterable recipient inbox and unread count.                           | 9.1            |
+| NTF-FR-020 | Maintain idempotent per-recipient read/unread state without changing source/content.                                  | 9.2            |
+| NTF-FR-021 | Reauthorize every deep link and distinguish empty/stale/unavailable/expired/scope-loss states.                        | 9.3            |
+| NTF-FR-022 | Track Pending/Attempting/Accepted/Delivered/Failed/Suppressed/Dead-letter truthfully.                                 | 10.1           |
+| NTF-FR-023 | Commit durable intent with source operation and dispatch asynchronously without rollback.                             | 10.2           |
 | NTF-FR-024 | Deduplicate by event/recipient/channel and coalesce multiple audience purposes across retries/workers/provider calls. | 3.2, 6.1, 10.2 |
-| NTF-FR-025 | Reconcile uncertain provider acceptance and never infer Delivered/Read. | 3.2, 10.1–10.2 |
-| NTF-FR-026 | Apply bounded event-appropriate retry/backoff and avoid unsafe permanent/unknown retry. | 10.3 |
-| NTF-FR-027 | Expose safe delivery/dead-letter operations through existing owning permissions only. | 10.4 |
-| NTF-FR-028 | Ensure delivery failure/status never repeats or changes the underlying business mutation. | 3.2, 10.4 |
-| NTF-FR-029 | Handle assignment/preference/template/webhook/read races with current versions and truthful history. | 11 |
-| NTF-FR-030 | Rebuild inbox/delivery projections without unauthorized historical resend or lost read state. | 11 |
-| NTF-FR-031 | Enforce recipient-only inbox access and separate audit/delivery metadata authority. | 12 |
-| NTF-FR-032 | Retain/expire communication records under approved privacy policy without deleting sources/audit. | 12 |
-| NTF-FR-033 | Provide accessible responsive inbox, detail, preferences and delivery panels. | 13 |
-| NTF-FR-034 | Keep inbox CTAs informational until the destination independently authorizes the action. | 3.2, 9.3, 13 |
-| NTF-FR-035 | Audit event/routing/template/preference/delivery/suppression/retry/security outcomes safely. | 14 |
-| NTF-FR-036 | Monitor delivery/inbox health without logging message bodies/secrets/personal financial data. | 14 |
-| NTF-FR-037 | Meet reviewed inbox/delivery service objectives without weakening durability/finality. | 15 |
-| NTF-FR-038 | Back up and recover events/intents/read/preferences/templates/attempts without duplicates or unsafe resend. | 15 |
-| NTF-FR-039 | Protect storage, provider credentials, webhooks, state changes and endpoints with least privilege. | 15 |
-| NTF-FR-040 | Block an event/channel when owner, schema, audience, template, provider or policy gate is missing. | 16 |
+| NTF-FR-025 | Reconcile uncertain provider acceptance and never infer Delivered/Read.                                               | 3.2, 10.1–10.2 |
+| NTF-FR-026 | Apply bounded event-appropriate retry/backoff and avoid unsafe permanent/unknown retry.                               | 10.3           |
+| NTF-FR-027 | Expose safe delivery/dead-letter operations through existing owning permissions only.                                 | 10.4           |
+| NTF-FR-028 | Ensure delivery failure/status never repeats or changes the underlying business mutation.                             | 3.2, 10.4      |
+| NTF-FR-029 | Handle assignment/preference/template/webhook/read races with current versions and truthful history.                  | 11             |
+| NTF-FR-030 | Rebuild inbox/delivery projections without unauthorized historical resend or lost read state.                         | 11             |
+| NTF-FR-031 | Enforce recipient-only inbox access and separate audit/delivery metadata authority.                                   | 12             |
+| NTF-FR-032 | Retain/expire communication records under approved privacy policy without deleting sources/audit.                     | 12             |
+| NTF-FR-033 | Provide accessible responsive inbox, detail, preferences and delivery panels.                                         | 13             |
+| NTF-FR-034 | Keep inbox CTAs informational until the destination independently authorizes the action.                              | 3.2, 9.3, 13   |
+| NTF-FR-035 | Audit event/routing/template/preference/delivery/suppression/retry/security outcomes safely.                          | 14             |
+| NTF-FR-036 | Monitor delivery/inbox health without logging message bodies/secrets/personal financial data.                         | 14             |
+| NTF-FR-037 | Meet reviewed inbox/delivery service objectives without weakening durability/finality.                                | 15             |
+| NTF-FR-038 | Back up and recover events/intents/read/preferences/templates/attempts without duplicates or unsafe resend.           | 15             |
+| NTF-FR-039 | Protect storage, provider credentials, webhooks, state changes and endpoints with least privilege.                    | 15             |
+| NTF-FR-040 | Block an event/channel when owner, schema, audience, template, provider or policy gate is missing.                    | 16             |
 
 ## 18. Acceptance scenarios and release evidence
 
 Use fixtures with Customer accounts in Invited/Active/Suspended/Deactivated access states and Active/Inactive/Restricted/Archived operational states; two Agents before/after reassignment and temporary lock/suspension; Admins with different exact grants; optional preferences; verified/invalid email; provider acceptance/delivery/failure/unknown callbacks; plan/contribution/fee/withdrawal/reversal/reconciliation/statement/report events; and stale/dead-letter/rebuilt delivery records. Evidence records requirement/scenario IDs, event/schema/template versions, recipient/scope/account/preference state, expected/observed content class/channel/status, attempt/provider references, source invariants and audit outcome.
 
-| ID | Requirement mapping | Testable expected result |
-| --- | --- | --- |
-| NTF-AC-001 | NTF-FR-001, NTF-FR-002 | Defined event creates only catalogue in-app/email intents; SMS/WhatsApp/push/free-form Admin broadcast endpoints are absent/denied. |
-| NTF-AC-002 | NTF-FR-003 | Clicking/retrying/reading a notice cannot create, approve, pay, reverse, reassign or change the source event. |
-| NTF-AC-003 | NTF-FR-004 | Valid versioned envelope is accepted once; unknown schema, unexpected variable or arbitrary recipient fails without raw-payload fallback. |
-| NTF-AC-004 | NTF-FR-005 | Logical notification, recipient read state, email intent and append-only attempts retain stable links/versions independently. |
-| NTF-AC-005 | NTF-FR-006, NTF-FR-017 | Security/mandatory financial event cannot be relabelled optional by producer/preference; approved routine progress can be optional. |
-| NTF-AC-006 | NTF-FR-007 | Invitation/password/MFA/recovery event uses Authentication template/token path; generic retry cannot reveal/regenerate token or send duplicate challenge. |
-| NTF-AC-007 | NTF-FR-007 | Permission/security change reaches target through required safe channels and contains no credential/session/secret. |
-| NTF-AC-008 | NTF-FR-008 | Customer reassignment sends Customer/replacement notices and minimal former-Agent receipt with no Customer link/data. |
-| NTF-AC-009 | NTF-FR-008 | Status/suspension/offboarding/service-interruption notices expose safe consequence, not internal reason/allegation/private case details. |
-| NTF-AC-010 | NTF-FR-009 | Mixed NGN 6,000 savings/500 fee receipt shows distinct components once and no evidence/false 6,500 savings. |
-| NTF-AC-011 | NTF-FR-009 | Missed/partial/advance and reconciliation messages preserve nonfinancial/custody distinctions and never change Customer balance. |
-| NTF-AC-012 | NTF-FR-010 | Withdrawal Submitted/Unknown/Failed/Posted messages state actual phase and G/F/D/P; Provider accepted is never called paid. |
-| NTF-AC-013 | NTF-FR-010 | Reversal pending leaves original effective; Approved-and-posted notice links full compensation and makes no unsupported cash-return claim. |
-| NTF-AC-014 | NTF-FR-010 | Statement/report ready notice contains authorized route/reference/cutoff but no artifact attachment/bearer URL; notification does not generate artifact. |
-| NTF-AC-015 | NTF-FR-011 | Affected account/current Agent/initiator/exact-permission recipients resolve correctly; baseline Admin and unrelated users are excluded. |
-| NTF-AC-016 | NTF-FR-012 | Reassignment before dispatch suppresses former-Agent content and creates one replacement intent; after delivery former inbox access ends. |
-| NTF-AC-017 | NTF-FR-012 | Permission revocation/suspension before retry blocks protected delivery/retrieval; newly granted Admin gets queue access but no retrospective email. |
-| NTF-AC-018 | NTF-FR-013 | Invited Customer receives only allowlisted safe email/retained inaccessible inbox; link does not activate or reveal history. |
-| NTF-AC-019 | NTF-FR-013 | Suspended/Deactivated user cannot open inbox; lifecycle/security email grants no session and invalid address triggers owner issue, not next-of-kin fallback. |
-| NTF-AC-020 | NTF-FR-014 | Template update creates a new version for future render; prior sent snapshot/hash/content remains reproducible. |
-| NTF-AC-021 | NTF-FR-015 | `en-NG` amount/date/time and escaped Unicode name render consistently in app/plain/HTML without rounding or script execution. |
-| NTF-AC-022 | NTF-FR-015 | Notification uses owner-supplied exact amount/state/version and cannot recalculate from stale dashboard/cache. |
-| NTF-AC-023 | NTF-FR-016 | Fuzz event variables with secrets, evidence, private reasons, credentials and other-Customer fields; validation/render/provider logs reject or redact them. |
-| NTF-AC-024 | NTF-FR-017 | User cannot disable required security/lifecycle/posted-financial channels; invalid destination remains visibly failed rather than “opted out.” |
-| NTF-AC-025 | NTF-FR-018 | Optional progress preference applies only prospectively to that user/category/channel and never hides owning task/source/audit. |
-| NTF-AC-026 | NTF-FR-019 | Inbox search/filter/count/pagination operates after scope with stable cursors, no gaps/duplicates and no other-recipient suggestions/counts. |
-| NTF-AC-027 | NTF-FR-019 | 25/50/100 page choices and 366-day validation produce full scoped results; unread badge agrees at stated cutoff. |
-| NTF-AC-028 | NTF-FR-020 | Read/unread/page-read actions are idempotent per recipient and alter no content/event/email state or another user's state. |
-| NTF-AC-029 | NTF-FR-021, NTF-FR-034 | Deep link reauthenticates/rechecks current state; completed action is read-only, lost scope is generic unavailable, and CTA never performs direct approval. |
-| NTF-AC-030 | NTF-FR-021 | Loading, empty, no-match, stale, unavailable, expired, superseded and scope-loss states are distinct and retrying reads emits nothing. |
-| NTF-AC-031 | NTF-FR-022 | Provider without delivery webhook stops at Provider accepted; verified callback yields Delivered; neither yields in-app Read. |
-| NTF-AC-032 | NTF-FR-022, NTF-FR-025 | Timeout after provider request remains uncertain Pending/Dead-letter until reconciliation; UI never asserts Failed/Delivered without evidence. |
-| NTF-AC-033 | NTF-FR-023, NTF-FR-028 | Source commits with durable intent, then provider outage leaves mutation intact; delivery recovery cannot repeat transaction/reservation/status. |
-| NTF-AC-034 | NTF-FR-023 | Failure before required durable local intent follows owner's atomic failure rule; urgent suspension can commit with recoverable local outbox during remote outage. |
-| NTF-AC-035 | NTF-FR-024 | Duplicate event/broker/workers/restart and multiple audience matches produce one coalesced logical item and one safe provider operation per event/recipient/channel. |
-| NTF-AC-036 | NTF-FR-024, NTF-FR-025 | Same provider callback/reconciliation replay is idempotent and out-of-order older status cannot downgrade Delivered. |
-| NTF-AC-037 | NTF-FR-026 | Transient operational email attempts initial+two retries near 5/15 minutes with jitter; permanent/scope-loss/superseded events do not retry. |
-| NTF-AC-038 | NTF-FR-026 | Expired Authentication challenge cannot be generically retried; authorized resend creates distinct Authentication event under its limits. |
-| NTF-AC-039 | NTF-FR-027 | Delivery issue visible/retryable only via exact owner permission/current Agent scope; no `notifications.manage` or baseline Admin override exists. |
-| NTF-AC-040 | NTF-FR-027, NTF-FR-028 | Dead-letter resolution records safe status and never changes money/profile/access/report or claims recipient delivery. |
-| NTF-AC-041 | NTF-FR-029 | Race reassignment, permission/preference/destination/template change and worker lease; final outcome has truthful attempt and no unauthorized new send. |
-| NTF-AC-042 | NTF-FR-029 | Concurrent read/unread actions preserve content and recipient isolation; expected-version conflict cannot mark another item. |
-| NTF-AC-043 | NTF-FR-030 | Rebuild exactly restores IDs, intents, read/preference/suppression/status without emailing already delivered/expired historical events. |
-| NTF-AC-044 | NTF-FR-031 | User cannot access another inbox; Admin/auditor/owner delivery panel reveals only its separately authorized metadata and not read/private body. |
-| NTF-AC-045 | NTF-FR-032 | Proposed expiry removes normal inbox availability but preserves canonical business/audit/financial record; delivered email is not claimed recalled. |
-| NTF-AC-046 | NTF-FR-032 | Data request applies approved retention/masking without breaking source references; historical destination changes are not rewritten. |
-| NTF-AC-047 | NTF-FR-033 | Mobile, keyboard and screen reader users can navigate/filter/read/change permitted preferences with focus/status text and no color-only meaning. |
-| NTF-AC-048 | NTF-FR-033 | Email has plain-text alternative/descriptive CTA/logical reading order and remains understandable without images. |
-| NTF-AC-049 | NTF-FR-034 | Inbox approve/pay/download action always opens independently authorized current owner screen; stale notification grants nothing. |
-| NTF-AC-050 | NTF-FR-035 | Event/routing/template/preference/attempt/suppression/retry/access denial has safe durable audit linkage and no secret/raw provider payload. |
-| NTF-AC-051 | NTF-FR-036 | Metrics/alerts show backlog/latency/state/error health without bodies, raw addresses, secrets or identifiable amount logs. |
-| NTF-AC-052 | NTF-FR-037 | Documented representative load meets/reports proposed inbox/count/dispatch/webhook targets without early business success or false delivery. |
-| NTF-AC-053 | NTF-FR-038 | Backup/PITR reconciliation restores durable cutoff with zero lost mandatory intent/duplicate logical notice/unauthorized historical resend. |
-| NTF-AC-054 | NTF-FR-039 | Forged webhook, CSRF state change, enumeration, provider-secret/log exposure and unauthorized retry/download are rejected and audited safely. |
-| NTF-AC-055 | NTF-FR-040 | Remove each owner/schema/audience/template/destination/provider/privacy dependency: affected event/channel is Blocked without generic/raw/fallback send. |
+| ID         | Requirement mapping    | Testable expected result                                                                                                                                             |
+| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NTF-AC-001 | NTF-FR-001, NTF-FR-002 | Defined event creates only catalogue in-app/email intents; SMS/WhatsApp/push/free-form Admin broadcast endpoints are absent/denied.                                  |
+| NTF-AC-002 | NTF-FR-003             | Clicking/retrying/reading a notice cannot create, approve, pay, reverse, reassign or change the source event.                                                        |
+| NTF-AC-003 | NTF-FR-004             | Valid versioned envelope is accepted once; unknown schema, unexpected variable or arbitrary recipient fails without raw-payload fallback.                            |
+| NTF-AC-004 | NTF-FR-005             | Logical notification, recipient read state, email intent and append-only attempts retain stable links/versions independently.                                        |
+| NTF-AC-005 | NTF-FR-006, NTF-FR-017 | Security/mandatory financial event cannot be relabelled optional by producer/preference; approved routine progress can be optional.                                  |
+| NTF-AC-006 | NTF-FR-007             | Invitation/password/MFA/recovery event uses Authentication template/token path; generic retry cannot reveal/regenerate token or send duplicate challenge.            |
+| NTF-AC-007 | NTF-FR-007             | Permission/security change reaches target through required safe channels and contains no credential/session/secret.                                                  |
+| NTF-AC-008 | NTF-FR-008             | Customer reassignment sends Customer/replacement notices and minimal former-Agent receipt with no Customer link/data.                                                |
+| NTF-AC-009 | NTF-FR-008             | Status/suspension/offboarding/service-interruption notices expose safe consequence, not internal reason/allegation/private case details.                             |
+| NTF-AC-010 | NTF-FR-009             | Mixed NGN 6,000 savings/500 fee receipt shows distinct components once and no evidence/false 6,500 savings.                                                          |
+| NTF-AC-011 | NTF-FR-009             | Missed/partial/advance and reconciliation messages preserve nonfinancial/custody distinctions and never change Customer balance.                                     |
+| NTF-AC-012 | NTF-FR-010             | Withdrawal Submitted/Unknown/Failed/Posted messages state actual phase and G/F/D/P; Provider accepted is never called paid.                                          |
+| NTF-AC-013 | NTF-FR-010             | Reversal pending leaves original effective; Approved-and-posted notice links full compensation and makes no unsupported cash-return claim.                           |
+| NTF-AC-014 | NTF-FR-010             | Statement/report ready notice contains authorized route/reference/cutoff but no artifact attachment/bearer URL; notification does not generate artifact.             |
+| NTF-AC-015 | NTF-FR-011             | Affected account/current Agent/initiator/exact-permission recipients resolve correctly; baseline Admin and unrelated users are excluded.                             |
+| NTF-AC-016 | NTF-FR-012             | Reassignment before dispatch suppresses former-Agent content and creates one replacement intent; after delivery former inbox access ends.                            |
+| NTF-AC-017 | NTF-FR-012             | Permission revocation/suspension before retry blocks protected delivery/retrieval; newly granted Admin gets queue access but no retrospective email.                 |
+| NTF-AC-018 | NTF-FR-013             | Invited Customer receives only allowlisted safe email/retained inaccessible inbox; link does not activate or reveal history.                                         |
+| NTF-AC-019 | NTF-FR-013             | Suspended/Deactivated user cannot open inbox; lifecycle/security email grants no session and invalid address triggers owner issue, not next-of-kin fallback.         |
+| NTF-AC-020 | NTF-FR-014             | Template update creates a new version for future render; prior sent snapshot/hash/content remains reproducible.                                                      |
+| NTF-AC-021 | NTF-FR-015             | `en-NG` amount/date/time and escaped Unicode name render consistently in app/plain/HTML without rounding or script execution.                                        |
+| NTF-AC-022 | NTF-FR-015             | Notification uses owner-supplied exact amount/state/version and cannot recalculate from stale dashboard/cache.                                                       |
+| NTF-AC-023 | NTF-FR-016             | Fuzz event variables with secrets, evidence, private reasons, credentials and other-Customer fields; validation/render/provider logs reject or redact them.          |
+| NTF-AC-024 | NTF-FR-017             | User cannot disable required security/lifecycle/posted-financial channels; invalid destination remains visibly failed rather than “opted out.”                       |
+| NTF-AC-025 | NTF-FR-018             | Optional progress preference applies only prospectively to that user/category/channel and never hides owning task/source/audit.                                      |
+| NTF-AC-026 | NTF-FR-019             | Inbox search/filter/count/pagination operates after scope with stable cursors, no gaps/duplicates and no other-recipient suggestions/counts.                         |
+| NTF-AC-027 | NTF-FR-019             | 25/50/100 page choices and 366-day validation produce full scoped results; unread badge agrees at stated cutoff.                                                     |
+| NTF-AC-028 | NTF-FR-020             | Read/unread/page-read actions are idempotent per recipient and alter no content/event/email state or another user's state.                                           |
+| NTF-AC-029 | NTF-FR-021, NTF-FR-034 | Deep link reauthenticates/rechecks current state; completed action is read-only, lost scope is generic unavailable, and CTA never performs direct approval.          |
+| NTF-AC-030 | NTF-FR-021             | Loading, empty, no-match, stale, unavailable, expired, superseded and scope-loss states are distinct and retrying reads emits nothing.                               |
+| NTF-AC-031 | NTF-FR-022             | Provider without delivery webhook stops at Provider accepted; verified callback yields Delivered; neither yields in-app Read.                                        |
+| NTF-AC-032 | NTF-FR-022, NTF-FR-025 | Timeout after provider request remains uncertain Pending/Dead-letter until reconciliation; UI never asserts Failed/Delivered without evidence.                       |
+| NTF-AC-033 | NTF-FR-023, NTF-FR-028 | Source commits with durable intent, then provider outage leaves mutation intact; delivery recovery cannot repeat transaction/reservation/status.                     |
+| NTF-AC-034 | NTF-FR-023             | Failure before required durable local intent follows owner's atomic failure rule; urgent suspension can commit with recoverable local outbox during remote outage.   |
+| NTF-AC-035 | NTF-FR-024             | Duplicate event/broker/workers/restart and multiple audience matches produce one coalesced logical item and one safe provider operation per event/recipient/channel. |
+| NTF-AC-036 | NTF-FR-024, NTF-FR-025 | Same provider callback/reconciliation replay is idempotent and out-of-order older status cannot downgrade Delivered.                                                 |
+| NTF-AC-037 | NTF-FR-026             | Transient operational email attempts initial+two retries near 5/15 minutes with jitter; permanent/scope-loss/superseded events do not retry.                         |
+| NTF-AC-038 | NTF-FR-026             | Expired Authentication challenge cannot be generically retried; authorized resend creates distinct Authentication event under its limits.                            |
+| NTF-AC-039 | NTF-FR-027             | Delivery issue visible/retryable only via exact owner permission/current Agent scope; no `notifications.manage` or baseline Admin override exists.                   |
+| NTF-AC-040 | NTF-FR-027, NTF-FR-028 | Dead-letter resolution records safe status and never changes money/profile/access/report or claims recipient delivery.                                               |
+| NTF-AC-041 | NTF-FR-029             | Race reassignment, permission/preference/destination/template change and worker lease; final outcome has truthful attempt and no unauthorized new send.              |
+| NTF-AC-042 | NTF-FR-029             | Concurrent read/unread actions preserve content and recipient isolation; expected-version conflict cannot mark another item.                                         |
+| NTF-AC-043 | NTF-FR-030             | Rebuild exactly restores IDs, intents, read/preference/suppression/status without emailing already delivered/expired historical events.                              |
+| NTF-AC-044 | NTF-FR-031             | User cannot access another inbox; Admin/auditor/owner delivery panel reveals only its separately authorized metadata and not read/private body.                      |
+| NTF-AC-045 | NTF-FR-032             | Proposed expiry removes normal inbox availability but preserves canonical business/audit/financial record; delivered email is not claimed recalled.                  |
+| NTF-AC-046 | NTF-FR-032             | Data request applies approved retention/masking without breaking source references; historical destination changes are not rewritten.                                |
+| NTF-AC-047 | NTF-FR-033             | Mobile, keyboard and screen reader users can navigate/filter/read/change permitted preferences with focus/status text and no color-only meaning.                     |
+| NTF-AC-048 | NTF-FR-033             | Email has plain-text alternative/descriptive CTA/logical reading order and remains understandable without images.                                                    |
+| NTF-AC-049 | NTF-FR-034             | Inbox approve/pay/download action always opens independently authorized current owner screen; stale notification grants nothing.                                     |
+| NTF-AC-050 | NTF-FR-035             | Event/routing/template/preference/attempt/suppression/retry/access denial has safe durable audit linkage and no secret/raw provider payload.                         |
+| NTF-AC-051 | NTF-FR-036             | Metrics/alerts show backlog/latency/state/error health without bodies, raw addresses, secrets or identifiable amount logs.                                           |
+| NTF-AC-052 | NTF-FR-037             | Documented representative load meets/reports proposed inbox/count/dispatch/webhook targets without early business success or false delivery.                         |
+| NTF-AC-053 | NTF-FR-038             | Backup/PITR reconciliation restores durable cutoff with zero lost mandatory intent/duplicate logical notice/unauthorized historical resend.                          |
+| NTF-AC-054 | NTF-FR-039             | Forged webhook, CSRF state change, enumeration, provider-secret/log exposure and unauthorized retry/download are rejected and audited safely.                        |
+| NTF-AC-055 | NTF-FR-040             | Remove each owner/schema/audience/template/destination/provider/privacy dependency: affected event/channel is Blocked without generic/raw/fallback send.             |
 
 ## 19. Worked examples
 

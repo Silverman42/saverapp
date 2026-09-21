@@ -31,6 +31,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $email_normalized
  * @property UserType $user_type
  * @property AccountState $account_state
+ * @property int $permission_version
  * @property AuthenticatorState $authenticator_state
  * @property Carbon|null $locked_until
  * @property string|null $lock_category
@@ -56,6 +57,7 @@ use Spatie\Permission\Traits\HasRoles;
     'password',
     'user_type',
     'account_state',
+    'permission_version',
     'authenticator_state',
     'locked_until',
     'lock_category',
@@ -69,7 +71,7 @@ use Spatie\Permission\Traits\HasRoles;
     'two_factor_pending_last_used_timestep',
     'recovery_codes_acknowledged_at',
 ])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_pending_secret', 'remember_token'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_pending_secret', 'remember_token', 'roles', 'permissions', 'authorizationRestrictions'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -422,6 +424,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the authorization restrictions for the user.
+     *
+     * @return HasMany<AuthorizationRestriction, $this>
+     */
+    public function authorizationRestrictions(): HasMany
+    {
+        return $this->hasMany(AuthorizationRestriction::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -438,6 +450,7 @@ class User extends Authenticatable
             'recovery_codes_acknowledged_at' => 'datetime',
             'user_type' => UserType::class,
             'account_state' => AccountState::class,
+            'permission_version' => 'integer',
             'authenticator_state' => AuthenticatorState::class,
             'locked_until' => 'datetime',
         ];

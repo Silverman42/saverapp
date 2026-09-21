@@ -34,10 +34,18 @@ const props = withDefaults(defineProps<Props>(), {
 
 const getDeviceIcon = (deviceName: string) => {
     const lower = deviceName.toLowerCase();
-    if (lower.includes('ios') || lower.includes('iphone') || lower.includes('android')) {
+    if (
+        lower.includes('ios') ||
+        lower.includes('iphone') ||
+        lower.includes('android')
+    ) {
         return Smartphone;
     }
-    if (lower.includes('mac') || lower.includes('windows') || lower.includes('linux')) {
+    if (
+        lower.includes('mac') ||
+        lower.includes('windows') ||
+        lower.includes('linux')
+    ) {
         return Laptop;
     }
     return Monitor;
@@ -58,7 +66,9 @@ const formatTime = (isoString: string): string => {
 
 <template>
     <div class="space-y-6">
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div
+            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        >
             <Heading
                 variant="small"
                 title="Active Sessions & Devices"
@@ -67,7 +77,10 @@ const formatTime = (isoString: string): string => {
 
             <div class="flex flex-wrap items-center gap-2">
                 <Form
-                    v-if="props.sessions.filter((s) => !s.is_current_device).length > 0"
+                    v-if="
+                        props.sessions.filter((s) => !s.is_current_device)
+                            .length > 0
+                    "
                     action="/sessions/revoke-others"
                     method="post"
                     #default="{ processing }"
@@ -84,7 +97,11 @@ const formatTime = (isoString: string): string => {
                     </Button>
                 </Form>
 
-                <Form action="/sessions/revoke-all" method="post" #default="{ processing }">
+                <Form
+                    action="/sessions/revoke-all"
+                    method="post"
+                    #default="{ processing }"
+                >
                     <Button
                         variant="destructive"
                         size="sm"
@@ -99,20 +116,27 @@ const formatTime = (isoString: string): string => {
             </div>
         </div>
 
-        <div class="border-border divide-border overflow-hidden rounded-xl border divide-y">
+        <div
+            class="border-border divide-border divide-y overflow-hidden rounded-xl border"
+        >
             <div
                 v-for="session in props.sessions"
                 :key="session.id"
                 class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
             >
                 <div class="flex items-start gap-3.5">
-                    <div class="bg-muted mt-0.5 rounded-lg p-2 text-muted-foreground">
-                        <component :is="getDeviceIcon(session.device_name)" class="size-5" />
+                    <div
+                        class="bg-muted text-muted-foreground mt-0.5 rounded-lg p-2"
+                    >
+                        <component
+                            :is="getDeviceIcon(session.device_name)"
+                            class="size-5"
+                        />
                     </div>
 
                     <div class="space-y-1">
                         <div class="flex items-center gap-2">
-                            <span class="font-medium text-sm">
+                            <span class="text-sm font-medium">
                                 {{ session.device_name }}
                             </span>
                             <Badge
@@ -124,10 +148,20 @@ const formatTime = (isoString: string): string => {
                             </Badge>
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>Approx. network: {{ session.masked_ip }}</span>
-                            <span>First sign-in: {{ formatTime(session.first_sign_in_at) }}</span>
-                            <span>Last active: {{ formatTime(session.last_active_at) }}</span>
+                        <div
+                            class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
+                        >
+                            <span
+                                >Approx. network: {{ session.masked_ip }}</span
+                            >
+                            <span
+                                >First sign-in:
+                                {{ formatTime(session.first_sign_in_at) }}</span
+                            >
+                            <span
+                                >Last active:
+                                {{ formatTime(session.last_active_at) }}</span
+                            >
                         </div>
                     </div>
                 </div>
@@ -153,7 +187,7 @@ const formatTime = (isoString: string): string => {
 
             <div
                 v-if="props.sessions.length === 0"
-                class="p-6 text-center text-sm text-muted-foreground"
+                class="text-muted-foreground p-6 text-center text-sm"
             >
                 No active sessions found.
             </div>

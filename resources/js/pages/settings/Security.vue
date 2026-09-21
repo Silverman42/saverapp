@@ -7,6 +7,7 @@ import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
+import { dashboard } from '@/routes';
 import type { Props as ManageTwoFactorProps } from '@/components/ManageTwoFactor.vue';
 import ManageTwoFactor from '@/components/ManageTwoFactor.vue';
 import type { SessionItem } from '@/components/ActiveSessions.vue';
@@ -24,6 +25,10 @@ const props = defineProps<Props>();
 defineOptions({
     layout: {
         breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
             {
                 title: 'Security settings',
                 href: edit(),

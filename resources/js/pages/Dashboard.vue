@@ -83,7 +83,7 @@ const refreshDashboard = (): void => {
 <template>
     <Head title="Dashboard" />
 
-    <div class="flex flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div class="flex flex-1 flex-col gap-6">
         <div
             class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
         >
@@ -94,9 +94,7 @@ const refreshDashboard = (): void => {
                 >
                     Operations overview
                 </Badge>
-                <h1 class="text-3xl font-semibold tracking-[-0.035em]">
-                    Dashboard
-                </h1>
+                <h1 class="text-3xl font-semibold tracking-tight">Dashboard</h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
                     A source-aware view of savings operations and account
                     activity.

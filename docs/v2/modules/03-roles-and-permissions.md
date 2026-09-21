@@ -238,49 +238,49 @@ The `Yes` values shown for Admins in the User Types capability baseline identify
 
 Version 2 uses the following closed permission catalogue.
 
-| Permission code | Display name | Authority granted |
-| --- | --- | --- |
-| `admins.manage` | Admin management | Invite Admins; assign initial Admin permissions; change another Admin's permissions; suspend, reactivate, or deactivate another Admin; manage Admin invitations; and perform the Admin-recovery actions assigned to this permission. |
-| `agents.manage` | Agent management | Register, invite, update, suspend, reactivate, deactivate, and manage invitation actions for Agents. Agent assisted recovery remains a security operation. |
-| `customers.manage` | Customer management | Update existing Customer profiles and statuses business-wide and manage existing Customer invitations. It does not allow an Admin to create a Customer. |
-| `customers.reassign` | Customer reassignment | Reassign a Customer from one Agent to another through the approved reassignment workflow. |
-| `withdrawals.review` | Withdrawal approval | Review, approve, or reject Customer withdrawal requests. It does not record a collection or bypass withdrawal validation. |
-| `reversals.review` | Transaction-reversal approval | Review, approve, or reject transaction-reversal requests. It does not silently edit the original transaction. |
-| `fees.manage` | Fee management | Configure fee rules and perform the Admin fee actions defined by the Fees module. It does not merge fee earnings with Customer liabilities. |
-| `deductions.manage` | Deduction management | Perform the Admin deduction actions defined by the Deductions module, subject to confirmation and audit rules. |
-| `reconciliation.manage` | Reconciliation management | Review Agent collection submissions, record reconciliation outcomes, and resolve reconciliation exceptions through the approved workflow. |
-| `business.settings.manage` | Business configuration | Update general and operational business settings. Security-sensitive changes require fresh authentication. |
-| `security.operations.manage` | Security operations | View non-secret security events, review Customer assisted recovery, manage permitted authentication locks, and perform the Agent security operations assigned to this permission. |
-| `audit.view` | Audit-log access | Search and view business audit events, subject to masking and export restrictions. |
-| `reports.export` | Report export | Export business reports and statements containing business-wide or multi-Customer information. |
+| Permission code              | Display name                  | Authority granted                                                                                                                                                                                                                    |
+| ---------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `admins.manage`              | Admin management              | Invite Admins; assign initial Admin permissions; change another Admin's permissions; suspend, reactivate, or deactivate another Admin; manage Admin invitations; and perform the Admin-recovery actions assigned to this permission. |
+| `agents.manage`              | Agent management              | Register, invite, update, suspend, reactivate, deactivate, and manage invitation actions for Agents. Agent assisted recovery remains a security operation.                                                                           |
+| `customers.manage`           | Customer management           | Update existing Customer profiles and statuses business-wide and manage existing Customer invitations. It does not allow an Admin to create a Customer.                                                                              |
+| `customers.reassign`         | Customer reassignment         | Reassign a Customer from one Agent to another through the approved reassignment workflow.                                                                                                                                            |
+| `withdrawals.review`         | Withdrawal approval           | Review, approve, or reject Customer withdrawal requests. It does not record a collection or bypass withdrawal validation.                                                                                                            |
+| `reversals.review`           | Transaction-reversal approval | Review, approve, or reject transaction-reversal requests. It does not silently edit the original transaction.                                                                                                                        |
+| `fees.manage`                | Fee management                | Configure fee rules and perform the Admin fee actions defined by the Fees module. It does not merge fee earnings with Customer liabilities.                                                                                          |
+| `deductions.manage`          | Deduction management          | Perform the Admin deduction actions defined by the Deductions module, subject to confirmation and audit rules.                                                                                                                       |
+| `reconciliation.manage`      | Reconciliation management     | Review Agent collection submissions, record reconciliation outcomes, and resolve reconciliation exceptions through the approved workflow.                                                                                            |
+| `business.settings.manage`   | Business configuration        | Update general and operational business settings. Security-sensitive changes require fresh authentication.                                                                                                                           |
+| `security.operations.manage` | Security operations           | View non-secret security events, review Customer assisted recovery, manage permitted authentication locks, and perform the Agent security operations assigned to this permission.                                                    |
+| `audit.view`                 | Audit-log access              | Search and view business audit events, subject to masking and export restrictions.                                                                                                                                                   |
+| `reports.export`             | Report export                 | Export business reports and statements containing business-wide or multi-Customer information.                                                                                                                                       |
 
 Permission codes are stable identifiers. Display names may change without changing the stored code.
 
 ### 7.3 Effective capability matrix
 
-| Capability | Customer | Agent | Admin |
-| --- | --- | --- | --- |
-| View Customer profile and finances | Own records | Assigned Customers | Business-wide baseline |
-| Create a Customer | No | Yes; Agent becomes assignee | No |
-| Manage an existing Customer | Limited approved self-service | Assigned Customers; permitted fields | `customers.manage` |
-| Reassign a Customer | No | No | `customers.reassign` |
-| Create or manage a thrift plan | No | Assigned Customers | No |
-| Perform and record collections | No | Assigned Customers | No |
-| View collection activity | Contributions recorded for the Customer | Own collection activity | Business-wide baseline |
-| Initiate withdrawal processing | No | Assigned Customers | No |
-| Approve or reject a withdrawal | No | No | `withdrawals.review` |
-| Initiate a transaction reversal | No | Accessible assigned-Customer transactions | No |
-| Approve or reject a reversal | No | No | `reversals.review` |
-| Manage Agents | No | No | `agents.manage` |
-| Manage Admins and Admin permissions | No | No | `admins.manage` |
-| Manage fee rules | No | No | `fees.manage` |
-| Manage deductions | No | No | `deductions.manage` |
-| Manage reconciliation | No | View own status | `reconciliation.manage` |
-| Update business configuration | No | No | `business.settings.manage` |
-| Perform privileged security operations | No | Initiate assigned-Customer recovery only | `security.operations.manage` |
-| View detailed audit log | No | No | `audit.view` |
-| View business-wide reports | No | No | Business-wide baseline |
-| Export business-wide reports | No | No | `reports.export` |
+| Capability                             | Customer                                | Agent                                     | Admin                        |
+| -------------------------------------- | --------------------------------------- | ----------------------------------------- | ---------------------------- |
+| View Customer profile and finances     | Own records                             | Assigned Customers                        | Business-wide baseline       |
+| Create a Customer                      | No                                      | Yes; Agent becomes assignee               | No                           |
+| Manage an existing Customer            | Limited approved self-service           | Assigned Customers; permitted fields      | `customers.manage`           |
+| Reassign a Customer                    | No                                      | No                                        | `customers.reassign`         |
+| Create or manage a thrift plan         | No                                      | Assigned Customers                        | No                           |
+| Perform and record collections         | No                                      | Assigned Customers                        | No                           |
+| View collection activity               | Contributions recorded for the Customer | Own collection activity                   | Business-wide baseline       |
+| Initiate withdrawal processing         | No                                      | Assigned Customers                        | No                           |
+| Approve or reject a withdrawal         | No                                      | No                                        | `withdrawals.review`         |
+| Initiate a transaction reversal        | No                                      | Accessible assigned-Customer transactions | No                           |
+| Approve or reject a reversal           | No                                      | No                                        | `reversals.review`           |
+| Manage Agents                          | No                                      | No                                        | `agents.manage`              |
+| Manage Admins and Admin permissions    | No                                      | No                                        | `admins.manage`              |
+| Manage fee rules                       | No                                      | No                                        | `fees.manage`                |
+| Manage deductions                      | No                                      | No                                        | `deductions.manage`          |
+| Manage reconciliation                  | No                                      | View own status                           | `reconciliation.manage`      |
+| Update business configuration          | No                                      | No                                        | `business.settings.manage`   |
+| Perform privileged security operations | No                                      | Initiate assigned-Customer recovery only  | `security.operations.manage` |
+| View detailed audit log                | No                                      | No                                        | `audit.view`                 |
+| View business-wide reports             | No                                      | No                                        | Business-wide baseline       |
+| Export business-wide reports           | No                                      | No                                        | `reports.export`             |
 
 The detailed domain modules may add status and workflow prerequisites, but they cannot grant a role an action marked **No** without an explicit revision to this module and the User Types baseline.
 
@@ -311,21 +311,21 @@ Adding, renaming, splitting, or retiring a permission is a controlled product an
 
 The following table resolves authorization terms used by the Authentication module.
 
-| Authentication action | Required role or permission | Additional restriction |
-| --- | --- | --- |
-| Invite or manage an Admin invitation | `admins.manage` | Fresh password-and-MFA authentication; actor cannot be under the post-recovery Admin-management restriction. |
-| Assign or change Admin permissions | `admins.manage` | Fresh authentication; no self-change; final-capable-Admin safeguards apply. |
-| Suspend, reactivate, or deactivate an Admin | `admins.manage` | Fresh authentication; no self-action; final-active-Admin safeguards apply. |
-| Initiate or approve another Admin's assisted recovery | `admins.manage` | No self-approval; distinct approvers; two approvers when two eligible Admin approvers are available. |
-| Register or manage an Agent invitation | `agents.manage` | Agent must be active before receiving Customer assignments. |
-| Initiate or control Agent assisted recovery | `security.operations.manage` | Actor must not learn or set the Agent's password, authenticator secret, or recovery codes. |
-| Manage an existing Customer invitation as an Admin | `customers.manage` | Admin still cannot create the Customer. |
-| Approve or reject Customer assisted recovery | `security.operations.manage` | The initiating Agent cannot approve the request. |
-| View authentication-abuse and lockout context | `security.operations.manage` | Submitted credentials and authentication secrets remain hidden. |
-| Manually unlock a Customer or Agent | `security.operations.manage` | Identity verification and a recorded reason are required. |
-| Manually unlock another Admin | `security.operations.manage` | No self-unlock; final-Admin rules remain effective. |
-| Receive privileged security notifications | `security.operations.manage` | Admin must be active at notification time. |
-| Change security-sensitive business configuration | `business.settings.manage` | Fresh password-and-MFA authentication is required. |
+| Authentication action                                 | Required role or permission  | Additional restriction                                                                                       |
+| ----------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Invite or manage an Admin invitation                  | `admins.manage`              | Fresh password-and-MFA authentication; actor cannot be under the post-recovery Admin-management restriction. |
+| Assign or change Admin permissions                    | `admins.manage`              | Fresh authentication; no self-change; final-capable-Admin safeguards apply.                                  |
+| Suspend, reactivate, or deactivate an Admin           | `admins.manage`              | Fresh authentication; no self-action; final-active-Admin safeguards apply.                                   |
+| Initiate or approve another Admin's assisted recovery | `admins.manage`              | No self-approval; distinct approvers; two approvers when two eligible Admin approvers are available.         |
+| Register or manage an Agent invitation                | `agents.manage`              | Agent must be active before receiving Customer assignments.                                                  |
+| Initiate or control Agent assisted recovery           | `security.operations.manage` | Actor must not learn or set the Agent's password, authenticator secret, or recovery codes.                   |
+| Manage an existing Customer invitation as an Admin    | `customers.manage`           | Admin still cannot create the Customer.                                                                      |
+| Approve or reject Customer assisted recovery          | `security.operations.manage` | The initiating Agent cannot approve the request.                                                             |
+| View authentication-abuse and lockout context         | `security.operations.manage` | Submitted credentials and authentication secrets remain hidden.                                              |
+| Manually unlock a Customer or Agent                   | `security.operations.manage` | Identity verification and a recorded reason are required.                                                    |
+| Manually unlock another Admin                         | `security.operations.manage` | No self-unlock; final-Admin rules remain effective.                                                          |
+| Receive privileged security notifications             | `security.operations.manage` | Admin must be active at notification time.                                                                   |
+| Change security-sensitive business configuration      | `business.settings.manage`   | Fresh password-and-MFA authentication is required.                                                           |
 
 Where the Authentication module specifically requires `admins.manage`, `security.operations.manage` alone is not a substitute.
 
@@ -442,14 +442,14 @@ The system must not silently change a role to resolve a duplicate email address.
 
 ### 11.2 Account-state interaction
 
-| Account state | Authorization effect |
-| --- | --- |
-| Invited | Account and initial grants may exist, but no application capability is usable. |
-| MFA setup required | Admin or Agent may access only the mandatory MFA setup flow. |
-| Active | Role capabilities and current Admin permissions are usable, subject to resource scope and restrictions. |
+| Account state      | Authorization effect                                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Invited            | Account and initial grants may exist, but no application capability is usable.                                                                                       |
+| MFA setup required | Admin or Agent may access only the mandatory MFA setup flow.                                                                                                         |
+| Active             | Role capabilities and current Admin permissions are usable, subject to resource scope and restrictions.                                                              |
 | Temporarily locked | The affected new authentication path is blocked; legitimate existing sessions retain their current authorization unless compromise handling separately revokes them. |
-| Suspended | All application authorization is denied and active sessions are revoked. |
-| Deactivated | All application authorization is denied; historical attribution and permission history are retained. |
+| Suspended          | All application authorization is denied and active sessions are revoked.                                                                                             |
+| Deactivated        | All application authorization is denied; historical attribution and permission history are retained.                                                                 |
 
 Account state is checked before role, permission, and resource scope on every protected request.
 

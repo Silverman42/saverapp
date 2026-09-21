@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\AccountState;
+use App\Enums\AdminPermission;
+use App\Enums\UnlockVerificationMethod;
 use App\Enums\UserType;
 use App\Models\AuthenticationLock;
 use App\Models\User;
@@ -13,12 +15,12 @@ use App\Notifications\Auth\RecoveryCodeCooldownNotification;
 use App\Notifications\Auth\TwoFactorFailedAttemptsExceededNotification;
 use App\Services\AuthenticationAbuseService;
 use App\Support\IdentityNormalizer;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
@@ -405,11 +407,12 @@ test('suspended and deactivated accounts do not become active upon lock expiry o
     ]);
 
     $admin = User::factory()->admin()->active()->create();
+    $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
 
     $user->lockTemporarily(15, 'password', 'Test lock');
 
     $service = app(AuthenticationAbuseService::class);
-    $service->manualUnlock($user, $admin);
+    $service->manualUnlock($user, $admin, 'password', UnlockVerificationMethod::InPerson, 'Valid protocol verification');
 
     $user->refresh();
     expect($user->account_state)->toBe($state);
@@ -446,6 +449,7 @@ test('non-admin users cannot access admin lockout endpoints', function () {
 
 test('admin can view lockout records with masked IPs and non-secret details', function () {
     $admin = User::factory()->admin()->active()->create();
+    $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
     $victim = User::factory()->customer()->active()->create([
         'email' => 'target@example.com',
     ]);
@@ -469,6 +473,7 @@ test('admin can view lockout records with masked IPs and non-secret details', fu
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/Lockouts')
             ->has('locks.data', 1)
+            ->has('verification_methods')
             ->where('locks.data.0.masked_ip', '203.0.***.***')
             ->where('locks.data.0.failed_attempts_count', 10)
             ->where('locks.data.0.lock_category', 'password')
@@ -480,6 +485,7 @@ test('admin can manually unlock user account clearing restrictions and queuing n
     Notification::fake();
 
     $admin = User::factory()->admin()->active()->create();
+    $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
     $targetUser = User::factory()->customer()->active()->create([
         'email' => 'target@example.com',
     ]);
@@ -498,8 +504,9 @@ test('admin can manually unlock user account clearing restrictions and queuing n
     ]);
 
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
-        'reason' => 'Identity verified via video call',
         'category' => 'password',
+        'verification_method' => 'approved_video_call',
+        'reason' => 'Identity verified via video call',
     ]);
 
     $response->assertRedirect();
@@ -511,19 +518,23 @@ test('admin can manually unlock user account clearing restrictions and queuing n
     expect($lock->unlocked_at)->not->toBeNull();
     expect($lock->unlocked_by_user_id)->toBe($admin->id);
     expect($lock->unlock_reason)->toBe('Identity verified via video call');
+    expect($lock->unlock_verification_method)->toBe(UnlockVerificationMethod::ApprovedVideoCall);
 
     Notification::assertSentTo($targetUser, AccountUnlockedNotification::class);
 });
 
 test('admin cannot manually unlock their own account', function () {
     $admin = User::factory()->admin()->active()->create();
+    $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
     $admin->lockTemporarily(15, 'password', 'Self lock');
 
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $admin), [
-        'reason' => 'Self verification',
+        'category' => 'password',
+        'verification_method' => 'in_person',
+        'reason' => 'Self verification attempt',
     ]);
 
-    $response->assertSessionHasErrors('user');
+    $response->assertForbidden();
     expect($admin->fresh()->isTemporarilyLocked('password'))->toBeTrue();
 });
 
@@ -551,8 +562,8 @@ test('final active admin cannot be manually unlocked', function () {
 
     $service = app(AuthenticationAbuseService::class);
 
-    expect(fn () => $service->manualUnlock($finalAdminSolo, $anotherAdmin))
-        ->toThrow(ValidationException::class);
+    expect(fn () => $service->manualUnlock($finalAdminSolo, $anotherAdmin, 'password', UnlockVerificationMethod::InPerson, 'Emergency unlock attempt'))
+        ->toThrow(AuthorizationException::class);
 });
 
 test('suspected compromise session revocation terminates sessions, trusted devices, and queues notification', function () {

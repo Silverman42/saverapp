@@ -105,12 +105,12 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                         <Checkbox id="trust_device" v-model="trustDevice" />
                         <Label
                             for="trust_device"
-                            class="text-sm font-normal cursor-pointer select-none"
+                            class="cursor-pointer text-sm font-normal select-none"
                         >
                             Trust this device for 30 days
                         </Label>
                     </div>
-                    <p class="text-muted-foreground text-xs pl-6">
+                    <p class="text-muted-foreground pl-6 text-xs">
                         Do not select this on a shared or public device.
                     </p>
                 </div>

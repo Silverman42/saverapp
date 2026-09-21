@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UnlockVerificationMethod;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $unlocked_at
  * @property int|null $unlocked_by_user_id
  * @property string|null $unlock_reason
+ * @property UnlockVerificationMethod|null $unlock_verification_method
  * @property bool $notification_sent
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -52,6 +54,7 @@ class AuthenticationLock extends Model
         'unlocked_at',
         'unlocked_by_user_id',
         'unlock_reason',
+        'unlock_verification_method',
         'notification_sent',
     ];
 
@@ -69,11 +72,14 @@ class AuthenticationLock extends Model
             'requires_review' => 'boolean',
             'notification_sent' => 'boolean',
             'failed_attempts_count' => 'integer',
+            'unlock_verification_method' => UnlockVerificationMethod::class,
         ];
     }
 
     /**
      * The user account associated with the lock.
+     *
+     * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {
@@ -82,6 +88,8 @@ class AuthenticationLock extends Model
 
     /**
      * The administrator who manually unlocked the account.
+     *
+     * @return BelongsTo<User, $this>
      */
     public function unlockedBy(): BelongsTo
     {
@@ -193,12 +201,20 @@ class AuthenticationLock extends Model
     /**
      * Mark this lock as manually unlocked.
      */
-    public function markUnlocked(User $admin, ?string $reason = null): void
-    {
+    public function markUnlocked(
+        User $admin,
+        ?string $reason = null,
+        UnlockVerificationMethod|string|null $verificationMethod = null,
+    ): void {
+        if (is_string($verificationMethod)) {
+            $verificationMethod = UnlockVerificationMethod::from($verificationMethod);
+        }
+
         $this->update([
             'unlocked_at' => Carbon::now(),
             'unlocked_by_user_id' => $admin->id,
             'unlock_reason' => $reason ?? 'Manually unlocked by administrator after identity verification',
+            'unlock_verification_method' => $verificationMethod,
         ]);
     }
 }

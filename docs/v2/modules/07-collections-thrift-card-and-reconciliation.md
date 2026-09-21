@@ -18,32 +18,32 @@ An Agent recording a receipt is attesting that the stated money was received thr
 
 Initial scope includes online individual receipt recording for daily plans; partial, catch-up, multiple-slot and advance allocation; separate fee-payment tender allocation; digital thrift cards; daily workspaces and summaries; immutable accounting references; system-created collection batches; Admin reconciliation and exception records; and contribution-reversal requests with one authorized Admin review.
 
-| Included | Deferred or owned elsewhere |
-| --- | --- |
-| Cash, manually evidenced bank transfer/POS, and configured Other methods with explicit custody mapping | Payment gateways, automatic bank feeds, automatic transfer verification, chargeback integration |
-| Current-day receipts and explicitly identified late-recorded past receipts | Future-dated receipts, arbitrary backdated ledger periods, opening-balance migration |
-| One receipt with one or more explicit savings/fee components for one Customer | Multi-Customer bulk posting, bulk import, offline financial queue, cross-currency receipts |
-| System-created daily Agent/method batches, remittance confirmation, exceptions and settlement evidence | Agent financial submission/edit authority without a reviewed Module 03 baseline change |
-| Full reversal of an eligible original receipt and its required dependent compensation | Partial receipt reversals, independent adjustments, bad-debt write-offs, fee refunds or external payouts without owning authority |
-| Read-only withdrawal/reservation integration in balances and summaries | Withdrawal approval, reservation creation, cash payout and execution mechanics: future Withdrawals module |
-| Event/notification requirements and operational receipts | Detailed retention, reveal/export policy and dispute resolution: owning Audit, Reporting and Notifications modules |
+| Included                                                                                               | Deferred or owned elsewhere                                                                                                       |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Cash, manually evidenced bank transfer/POS, and configured Other methods with explicit custody mapping | Payment gateways, automatic bank feeds, automatic transfer verification, chargeback integration                                   |
+| Current-day receipts and explicitly identified late-recorded past receipts                             | Future-dated receipts, arbitrary backdated ledger periods, opening-balance migration                                              |
+| One receipt with one or more explicit savings/fee components for one Customer                          | Multi-Customer bulk posting, bulk import, offline financial queue, cross-currency receipts                                        |
+| System-created daily Agent/method batches, remittance confirmation, exceptions and settlement evidence | Agent financial submission/edit authority without a reviewed Module 03 baseline change                                            |
+| Full reversal of an eligible original receipt and its required dependent compensation                  | Partial receipt reversals, independent adjustments, bad-debt write-offs, fee refunds or external payouts without owning authority |
+| Read-only withdrawal/reservation integration in balances and summaries                                 | Withdrawal approval, reservation creation, cash payout and execution mechanics: future Withdrawals module                         |
+| Event/notification requirements and operational receipts                                               | Detailed retention, reveal/export policy and dispute resolution: owning Audit, Reporting and Notifications modules                |
 
 A deferred feature has no fallback endpoint or manual balance override. A missing prerequisite leaves the relevant action unavailable with a clear explanation. Agent suspension remains available through Module 04 even while financial exceptions are unresolved.
 
 ## 3. Terms and ownership
 
-| Term | Meaning and owner |
-| --- | --- |
-| Receipt | Immutable money-received event, recording Agent, Customer, tender components, receipt date and posting references; this module owns collection recording. |
-| Contribution | Savings portion of a posted receipt that increases the Customer liability; excludes separately collected fees. |
-| Allocation | Link from a live contribution amount to an immutable plan slot; this module owns funding allocation, Module 06 owns slot terms. |
-| Slot | Dated scheduled contribution expectation with immutable ID/target and versioned terms from Module 06. |
-| Thrift card | Projection of slot terms, live allocations, annotations and eligibility intervals; never the accounting source of truth. |
-| Remittance | Transfer of previously recorded Agent-held money into business custody; not a second Customer contribution. |
-| Reconciliation | Comparison of immutable recorded amounts, remittances and verified evidence; does not rewrite contribution balances. |
-| Agent receivable | Amount due from a recording Agent for money entrusted to them; separate from Customer savings liability and fee earnings. |
-| Posted | Receipt and balanced accounting committed durably; independent of reconciliation outcome. |
-| Reversed | Original remains readable; one approved linked compensating posting removes its live effect. |
+| Term             | Meaning and owner                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Receipt          | Immutable money-received event, recording Agent, Customer, tender components, receipt date and posting references; this module owns collection recording. |
+| Contribution     | Savings portion of a posted receipt that increases the Customer liability; excludes separately collected fees.                                            |
+| Allocation       | Link from a live contribution amount to an immutable plan slot; this module owns funding allocation, Module 06 owns slot terms.                           |
+| Slot             | Dated scheduled contribution expectation with immutable ID/target and versioned terms from Module 06.                                                     |
+| Thrift card      | Projection of slot terms, live allocations, annotations and eligibility intervals; never the accounting source of truth.                                  |
+| Remittance       | Transfer of previously recorded Agent-held money into business custody; not a second Customer contribution.                                               |
+| Reconciliation   | Comparison of immutable recorded amounts, remittances and verified evidence; does not rewrite contribution balances.                                      |
+| Agent receivable | Amount due from a recording Agent for money entrusted to them; separate from Customer savings liability and fee earnings.                                 |
+| Posted           | Receipt and balanced accounting committed durably; independent of reconciliation outcome.                                                                 |
+| Reversed         | Original remains readable; one approved linked compensating posting removes its live effect.                                                              |
 
 Module 05 owns fee assessment, obligation balances, recognition, payments and savings deductions. Module 06 owns schedule generation, daily targets, lifecycle and completion/closure gates. This module consumes those contracts and cannot invent fee charges, change plan terms or grant permissions.
 
@@ -51,16 +51,16 @@ Module 05 owns fee assessment, obligation balances, recognition, payments and sa
 
 ### 4.1 Authority matrix
 
-| Action | Customer | Agent | Admin |
-| --- | --- | --- | --- |
-| Record a savings collection or external fee receipt | No | Current assigned eligible Agent only | Prohibited, including with `reconciliation.manage` or `fees.manage` |
-| View Customer card, receipts and balance | Own records only | Currently assigned Customers | Business-wide baseline read access |
-| Mark an eligible unfunded slot missed/skipped | No | Current assigned eligible Agent under Section 8 | No collection annotation mutation introduced here |
-| Initiate receipt reversal | No | Accessible currently assigned Customer transaction | Prohibited; review does not imply initiation |
-| Approve/reject reversal | No | No | One authorized Admin with `reversals.review`, irrespective of value |
-| View Agent reconciliation | No business settlement details | Own scoped summaries only | Baseline business read summaries; protected evidence follows Section 12 |
-| Record remittance evidence, reconcile, resolve exception | No | No new mutation capability | `reconciliation.manage` through this module's workflow |
-| Export business or multiple-Customer reports | No | No new export grant | `reports.export`; separate audit access remains required |
+| Action                                                   | Customer                       | Agent                                              | Admin                                                                   |
+| -------------------------------------------------------- | ------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| Record a savings collection or external fee receipt      | No                             | Current assigned eligible Agent only               | Prohibited, including with `reconciliation.manage` or `fees.manage`     |
+| View Customer card, receipts and balance                 | Own records only               | Currently assigned Customers                       | Business-wide baseline read access                                      |
+| Mark an eligible unfunded slot missed/skipped            | No                             | Current assigned eligible Agent under Section 8    | No collection annotation mutation introduced here                       |
+| Initiate receipt reversal                                | No                             | Accessible currently assigned Customer transaction | Prohibited; review does not imply initiation                            |
+| Approve/reject reversal                                  | No                             | No                                                 | One authorized Admin with `reversals.review`, irrespective of value     |
+| View Agent reconciliation                                | No business settlement details | Own scoped summaries only                          | Baseline business read summaries; protected evidence follows Section 12 |
+| Record remittance evidence, reconcile, resolve exception | No                             | No new mutation capability                         | `reconciliation.manage` through this module's workflow                  |
+| Export business or multiple-Customer reports             | No                             | No new export grant                                | `reports.export`; separate audit access remains required                |
 
 Module 03 grants Agents **view own reconciliation status**, not reconciliation-management authority. System-created batches are the default collection-submission source. An Admin with `reconciliation.manage` may record evidence received from the Agent through an authorized external process, preserving the source and entering actor separately. A proposed Agent attachment/submission feature requires an explicit reviewed Module 03 capability extension before enablement; this module does not silently grant it. Read-only access must not be presented as a submit button.
 
@@ -74,19 +74,19 @@ Previously posted receipts can be reconciled while the Customer is Inactive or R
 
 ## 5. Receipt fields and validation
 
-| Field | Required and validation |
-| --- | --- |
-| Customer and plan references | Customer required; savings component requires one eligible plan belonging to that Customer. Fee-only receipt uses the named fee obligation instead of fictitious plan slots. |
-| Amounts and currency | NGN, positive integer kobo; proposed maximum receipt/tender and individual component value 999,999,999,999 kobo, consistent with Module 05. User entry accepts at most two decimal places and converts exactly. Module 06's per-slot target range and finite residual plan capacity still constrain savings allocations. Reject zero, negative, non-finite, above-cap, overflow, exponent-form API values and unsupported currencies. Cumulative totals use overflow-safe integer arithmetic without truncating to the single-entry cap. No floating-point financial arithmetic. |
-| Tender total | Must equal savings component plus external fee-payment components exactly. Savings deductions after posting are separate ledger actions, not a second tender receipt. |
-| Payment method | Required proposed choice: Cash, Bank transfer, POS or Other configured method. Method must resolve to an approved custody/asset/clearing account; Other requires a 1–100-character description. |
-| Received date | Required business calendar date, default today. Proposed initial lookback: today and the prior 30 local calendar dates in the captured receipt business timezone. No future date. A past date requires a 1–500-character late-recording reason and must pass supported/open period controls; lookback does not override a closed period. |
-| Non-cash reference | Required 1–150-character normalized provider/bank reference for transfer/POS and a declared destination/custody mapping. Never collect card numbers, CVV, PIN, login credentials or unrelated bank-statement history. |
-| Non-cash evidence | Required attestation of receipt plus permitted evidence reference under Section 12. Pending or merely promised transfer cannot be marked received. |
-| Slot allocation | Required for all savings kobo; positive allocations must equal the savings component, not exceed slot residual capacity or cross Customer/plan. |
-| Fee allocations | Required for fee components; each references a payable obligation/version and respects Module 05 remaining amount/status. |
-| Notes | Optional, trimmed, at most 500 characters. Customer-visible receipt description and private reconciliation notes are separate; never expose internal investigation notes through receipt descriptions. |
-| Immutable system fields | Receipt/public transaction references, actor, current assignment reference, UTC recorded-at, business timezone/date, policy versions, tender mapping, posting group, request key, audit reference. Cannot be client-overwritten. |
+| Field                        | Required and validation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Customer and plan references | Customer required; savings component requires one eligible plan belonging to that Customer. Fee-only receipt uses the named fee obligation instead of fictitious plan slots.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Amounts and currency         | NGN, positive integer kobo; proposed maximum receipt/tender and individual component value 999,999,999,999 kobo, consistent with Module 05. User entry accepts at most two decimal places and converts exactly. Module 06's per-slot target range and finite residual plan capacity still constrain savings allocations. Reject zero, negative, non-finite, above-cap, overflow, exponent-form API values and unsupported currencies. Cumulative totals use overflow-safe integer arithmetic without truncating to the single-entry cap. No floating-point financial arithmetic. |
+| Tender total                 | Must equal savings component plus external fee-payment components exactly. Savings deductions after posting are separate ledger actions, not a second tender receipt.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Payment method               | Required proposed choice: Cash, Bank transfer, POS or Other configured method. Method must resolve to an approved custody/asset/clearing account; Other requires a 1–100-character description.                                                                                                                                                                                                                                                                                                                                                                                  |
+| Received date                | Required business calendar date, default today. Proposed initial lookback: today and the prior 30 local calendar dates in the captured receipt business timezone. No future date. A past date requires a 1–500-character late-recording reason and must pass supported/open period controls; lookback does not override a closed period.                                                                                                                                                                                                                                         |
+| Non-cash reference           | Required 1–150-character normalized provider/bank reference for transfer/POS and a declared destination/custody mapping. Never collect card numbers, CVV, PIN, login credentials or unrelated bank-statement history.                                                                                                                                                                                                                                                                                                                                                            |
+| Non-cash evidence            | Required attestation of receipt plus permitted evidence reference under Section 12. Pending or merely promised transfer cannot be marked received.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Slot allocation              | Required for all savings kobo; positive allocations must equal the savings component, not exceed slot residual capacity or cross Customer/plan.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Fee allocations              | Required for fee components; each references a payable obligation/version and respects Module 05 remaining amount/status.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Notes                        | Optional, trimmed, at most 500 characters. Customer-visible receipt description and private reconciliation notes are separate; never expose internal investigation notes through receipt descriptions.                                                                                                                                                                                                                                                                                                                                                                           |
+| Immutable system fields      | Receipt/public transaction references, actor, current assignment reference, UTC recorded-at, business timezone/date, policy versions, tender mapping, posting group, request key, audit reference. Cannot be client-overwritten.                                                                                                                                                                                                                                                                                                                                                 |
 
 The proposed receipt/tender cap is 999,999,999,999 kobo; any smaller operational cap must be explicit, versioned and displayed. Proposed initial late-recording lookback is today and the prior 30 local calendar dates, always subject to authoritative open-period controls. Method mappings, timezone and those period controls must exist before enablement; an undefined period service is not an unlimited default. Proposed receipt references follow the PRD's human-readable transaction reference pattern, with a server unique key independent of presentation date and non-reusable references across reversals.
 
@@ -106,14 +106,14 @@ Initial scope excludes locked financial-period edits. If a past receipt cannot b
 
 Proposed default: allocate savings to the oldest unfilled eligible slots in the chosen plan, completing partial slots first, then continuing through later slots, including future slots when money remains. The Agent may choose a different explicit allocation within eligible residual capacities after reviewing the dates and amounts. Validate the active schedule revision and slot version: superseded/removed slots cannot receive allocations, and IDs are never reused. Module 06 permits pre-activity revision with retained history; after any financial activity, including reversed activity, contribution terms are locked. No future slot outside the generated schedule may be fabricated. Every kobo must be allocated; unallocated overpayment and cross-plan automatic spillover are deferred.
 
-| Pattern | Result |
-| --- | --- |
-| Normal daily payment | Funds one target slot; receipt count and funded-slot count each increase by one. |
-| Partial | Funds less than the target; later receipts may fill exactly the residual. No penalty or balance reduction occurs merely because partial. |
-| Multiple-day | One receipt funds several slots; receipt count increases by one, fully funded-slot count by the number completed. |
-| Advance | Receipt received now funds future dated slots; cash/savings recognized now, future expectation covered. |
-| Catch-up | Late receipt funds an earlier missed/partial/skipped slot; retains earlier slot date and actual receipt dates. |
-| Exceeds remaining plan capacity | Reject before posting; propose a smaller savings component or separate payable fee component, never silently convert excess to fees. |
+| Pattern                         | Result                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Normal daily payment            | Funds one target slot; receipt count and funded-slot count each increase by one.                                                         |
+| Partial                         | Funds less than the target; later receipts may fill exactly the residual. No penalty or balance reduction occurs merely because partial. |
+| Multiple-day                    | One receipt funds several slots; receipt count increases by one, fully funded-slot count by the number completed.                        |
+| Advance                         | Receipt received now funds future dated slots; cash/savings recognized now, future expectation covered.                                  |
+| Catch-up                        | Late receipt funds an earlier missed/partial/skipped slot; retains earlier slot date and actual receipt dates.                           |
+| Exceeds remaining plan capacity | Reject before posting; propose a smaller savings component or separate payable fee component, never silently convert excess to fees.     |
 
 Preserve allocation IDs, original receipt, slot IDs, amounts and timestamps. No receipt-edit or drag-and-drop card interaction may move posted money between slots. An incorrect allocation follows the reviewed reversal/re-recording process, subject to downstream dependency checks. A receipt may fund only one plan in initial scope; separate plan receipts remain separately confirmed operations.
 
@@ -127,14 +127,14 @@ A pause or Customer/Agent unavailability preserves schedule IDs, dates and fundi
 
 ### 8.1 Slot display
 
-| Primary display | Rule |
-| --- | --- |
-| Paid | Net live allocated amount equals target; never more than target. |
-| Partial | Net amount is positive and below target, regardless of slot date; show exact residual and overdue indicator where applicable. |
-| Pending | No live funding for a current/future eligible slot, or an explicit same-day pending annotation. |
-| Missed | Past unfunded slot that was eligible for collection at its due time; an eligible Agent may also explicitly mark a due-day slot missed with a reason. |
-| Skipped | Explicit Agent annotation on an unfunded eligible due/past slot with a reason; not a monetary transaction, waived target or funded day. |
-| Blocked/paused expectation | Separate overlay indicating an eligibility or plan-pause interval; no automatic missed/skip label solely because work was blocked. |
+| Primary display            | Rule                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Paid                       | Net live allocated amount equals target; never more than target.                                                                                     |
+| Partial                    | Net amount is positive and below target, regardless of slot date; show exact residual and overdue indicator where applicable.                        |
+| Pending                    | No live funding for a current/future eligible slot, or an explicit same-day pending annotation.                                                      |
+| Missed                     | Past unfunded slot that was eligible for collection at its due time; an eligible Agent may also explicitly mark a due-day slot missed with a reason. |
+| Skipped                    | Explicit Agent annotation on an unfunded eligible due/past slot with a reason; not a monetary transaction, waived target or funded day.              |
+| Blocked/paused expectation | Separate overlay indicating an eligibility or plan-pause interval; no automatic missed/skip label solely because work was blocked.                   |
 
 Paid/Partial funding takes precedence over attendance annotations; preserve previous annotation history when catch-up replaces the display. Advance is a secondary tag on funding allocated before the slot date, not a second financial state. Reversed funding is removed from net funding and linked visibly in transaction history; the original receipt never disappears.
 
@@ -152,15 +152,15 @@ Views require accessible text labels and amount/date descriptions in addition to
 
 Before enablement a durable ledger service must support immutable balanced posting groups, unique posting keys, integer-kobo accounts, atomic receipt/allocation/fee application, durable audit and replay-safe result lookup. The account mapping, payout reservation service, correction bundle and period controls must be specified and verified. A page with computed totals is not sufficient evidence that these dependencies exist.
 
-| Event | Required effect; conceptual debit/credit |
-| --- | --- |
-| Cash savings receipt | Debit recording Agent receivable; credit Customer savings liability for the gross savings component. |
-| Evidenced transfer directly to business bank | Debit mapped business bank/clearing asset; credit Customer savings liability. Verification status stays separate; mapping/evidence must support recording as received. |
-| Receipt to Agent-controlled approved destination | Debit that Agent's custody receivable; credit Customer liability. Do not treat it as already business-held cash. |
-| External fee payment | Debit mapped custody/asset for the fee component; apply obligation/recognition entries from Module 05. No Customer savings credit. |
-| Authorized fee savings application | Separate linked debit of Customer liability and Module 05 fee entries; gross contribution and fee remain individually visible. |
-| Confirmed cash remittance | Debit mapped business custody asset; credit original Agent receivable; Customer liability unchanged. |
-| Receipt reversal | Balanced compensation linked to original entries and dependent authorized bundle; preserve the original and recompute live allocations. |
+| Event                                            | Required effect; conceptual debit/credit                                                                                                                               |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cash savings receipt                             | Debit recording Agent receivable; credit Customer savings liability for the gross savings component.                                                                   |
+| Evidenced transfer directly to business bank     | Debit mapped business bank/clearing asset; credit Customer savings liability. Verification status stays separate; mapping/evidence must support recording as received. |
+| Receipt to Agent-controlled approved destination | Debit that Agent's custody receivable; credit Customer liability. Do not treat it as already business-held cash.                                                       |
+| External fee payment                             | Debit mapped custody/asset for the fee component; apply obligation/recognition entries from Module 05. No Customer savings credit.                                     |
+| Authorized fee savings application               | Separate linked debit of Customer liability and Module 05 fee entries; gross contribution and fee remain individually visible.                                         |
+| Confirmed cash remittance                        | Debit mapped business custody asset; credit original Agent receivable; Customer liability unchanged.                                                                   |
+| Receipt reversal                                 | Balanced compensation linked to original entries and dependent authorized bundle; preserve the original and recompute live allocations.                                |
 
 Every posting group's debits equal credits in NGN. Asset/Agent-custody totals, Customer liability, revenue, fee obligation, earnings and earnings payouts remain separately named. Bank transfer/POS settlement fees must not reduce a Customer's gross credited amount silently; processor fees require a separately approved business-expense policy, otherwise that method cannot be enabled with such deductions.
 
@@ -184,17 +184,17 @@ The client creates one stable request key per confirmed attempt. The server bind
 
 Do not silently merge legitimate identical cash receipts by Customer/amount/day. Distinct confirmed keys may represent distinct payments, subject to capacity checks. Warn about close apparent duplicates. Non-cash method/provider/destination/reference collisions trigger a safe investigation/conflict check; provider IDs have a defined namespace, and arbitrary reference normalization must not incorrectly equate distinct transfers. Uniqueness applies to the underlying transfer, not independently per Customer: two Customers cannot each be credited with the same transfer's full amount. Multi-Customer transfer splitting is deferred; any future implementation must verify the actual transfer once and atomically allocate no more than its amount across all linked receipts.
 
-| Failure/race | Required result |
-| --- | --- |
-| Validation, permission or status failure | No committed receipt/fee/slot/batch effect; safe specific explanation within actor scope. |
-| Lost response after possible commit | Show unresolved submission, retrieve by original request key and re-check retrieval scope; never prompt a new key until the outcome is resolved. |
-| Server failure before commit | No partial receipt or successful notice; retry same key after safe result check. |
-| Concurrent funding of same residual | Serialize/revalidate slot capacities; one succeeds or both fit, never overfund. |
-| Reassignment/status/pause first | Old Agent or blocked-plan submission fails without posting. |
-| Receipt first | Preserve recording Agent and amounts; later handover/lifecycle uses committed state. |
-| Concurrent archival | Customer/financial gate coordination prevents a receipt entering after archival checks. |
-| Concurrent deduction/reversal/reservation | Current liability/available checks prevent negative savings and double spending. |
-| Offline/lost connectivity | No financial success, offline queue or locally paid card; unresolved online attempts keep same key and disclose unknown outcome. |
+| Failure/race                              | Required result                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Validation, permission or status failure  | No committed receipt/fee/slot/batch effect; safe specific explanation within actor scope.                                                        |
+| Lost response after possible commit       | Show unresolved submission, retrieve by original request key and re-check retrieval scope; never prompt a new key until the outcome is resolved. |
+| Server failure before commit              | No partial receipt or successful notice; retry same key after safe result check.                                                                 |
+| Concurrent funding of same residual       | Serialize/revalidate slot capacities; one succeeds or both fit, never overfund.                                                                  |
+| Reassignment/status/pause first           | Old Agent or blocked-plan submission fails without posting.                                                                                      |
+| Receipt first                             | Preserve recording Agent and amounts; later handover/lifecycle uses committed state.                                                             |
+| Concurrent archival                       | Customer/financial gate coordination prevents a receipt entering after archival checks.                                                          |
+| Concurrent deduction/reversal/reservation | Current liability/available checks prevent negative savings and double spending.                                                                 |
+| Offline/lost connectivity                 | No financial success, offline queue or locally paid card; unresolved online attempts keep same key and disclose unknown outcome.                 |
 
 Local draft storage, if provided, excludes raw evidence/secrets and carries no posted meaning. A replayed background operation cannot substitute another Agent's identity. A receipt draft is not a cash liability record or valid printed confirmation.
 
@@ -208,17 +208,17 @@ A separate read-only blocked-work filter shows Customer inactivity/restriction, 
 
 ### 11.2 Required metrics and date basis
 
-| Metric | Calculation and qualifier |
-| --- | --- |
-| Scheduled target | Sum of plan targets for dated slots; show eligible actionable target separately from blocked targets. |
-| Covered due amount | Sum of net live allocations toward that day's eligible slots, including earlier advance receipts, capped per slot. |
-| Outstanding due | Eligible target minus covered due; skipped remains unfunded and separately labelled. |
-| Money received that day | Receipt savings/fee tender received on that date, split by method and component. Show gross receipts, reversals and net separately. |
-| Posting activity | Recorded-at date receipts and late-recorded events; never add again to received-date totals. |
-| Receipt count | Count posted receipts, with reversed count separate; distinct from funded-slot/Customer count. |
-| Missed/partial/paid Customers | Distinct Customers for the selected slot-date scope with explicit status-count rules. Blocked and skipped are separate counts. |
-| Cash held/remitted/outstanding | Ledger-derived original-Agent cash receivable, confirmed remittances and unresolved balance; not Customer available savings. |
-| Withdrawals and fee income | Read-only owning-module posted amounts, reservation exclusions and stated date basis; external fee receipts distinct from savings deductions. |
+| Metric                         | Calculation and qualifier                                                                                                                     |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scheduled target               | Sum of plan targets for dated slots; show eligible actionable target separately from blocked targets.                                         |
+| Covered due amount             | Sum of net live allocations toward that day's eligible slots, including earlier advance receipts, capped per slot.                            |
+| Outstanding due                | Eligible target minus covered due; skipped remains unfunded and separately labelled.                                                          |
+| Money received that day        | Receipt savings/fee tender received on that date, split by method and component. Show gross receipts, reversals and net separately.           |
+| Posting activity               | Recorded-at date receipts and late-recorded events; never add again to received-date totals.                                                  |
+| Receipt count                  | Count posted receipts, with reversed count separate; distinct from funded-slot/Customer count.                                                |
+| Missed/partial/paid Customers  | Distinct Customers for the selected slot-date scope with explicit status-count rules. Blocked and skipped are separate counts.                |
+| Cash held/remitted/outstanding | Ledger-derived original-Agent cash receivable, confirmed remittances and unresolved balance; not Customer available savings.                  |
+| Withdrawals and fee income     | Read-only owning-module posted amounts, reservation exclusions and stated date basis; external fee receipts distinct from savings deductions. |
 
 Do not calculate shortfall as all money received today minus today's expected target: advance/catch-up and fee payments make them incomparable. Historical reports retain assignment/status intervals and label scheduled, eligible and received-date bases. Current eligibility totals may change after status transitions; dated finalized snapshots retain their as-of/version and correction history instead of silently losing previously collected money.
 
@@ -256,15 +256,15 @@ For each version, compare net posted receipts with method-specific verified cust
 
 An authorized reviewer records expected, verified/remitted, outstanding and variance amounts, evidence, outcome, date, actor, reason and version. Proposed closure gate: all included receipts matched to permitted method evidence, all cash custody amounts confirmed, no unexplained variance, no pending correction that changes the batch, and no unresolved linked exception. Matching difference tolerance is zero kobo initially. A reviewer cannot close by accepting an unexplained shortage within a guessed tolerance.
 
-| Exception | Required handling |
-| --- | --- |
-| Cash shortage | Retain full original Agent receivable and full Customer savings credit; record shortage case and recovery/remittance work. No Customer fee or savings reduction. |
-| Cash overage | Record separately identified business custody/suspense and investigation under an approved account contract; do not assign to a Customer or recognize fee income without an authorized matched receipt. If suspense posting authority is undefined, keep evidence unresolved and block settlement. |
-| Missing/duplicate transfer reference | Preserve posted contribution; investigate evidence and request an eligible correction if original recording was erroneous. |
-| Failed/returned non-cash payment | Exception with original receipt intact; correction requires approved reversal, not reconciliation status change. |
-| Misallocated/incorrect receipt | Current assigned Agent initiates linked reversal under Section 14; reconciliation permission cannot post correction. |
-| Late-recorded payment or new evidence | Supplemental batch/reopened version, appended evidence and new review; retained previous closure. |
-| Agent unavailable/offboarding | Authorized staff continue evidence review; original Agent responsibility preserved and unresolved gate reported to Module 04. |
+| Exception                             | Required handling                                                                                                                                                                                                                                                                                  |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cash shortage                         | Retain full original Agent receivable and full Customer savings credit; record shortage case and recovery/remittance work. No Customer fee or savings reduction.                                                                                                                                   |
+| Cash overage                          | Record separately identified business custody/suspense and investigation under an approved account contract; do not assign to a Customer or recognize fee income without an authorized matched receipt. If suspense posting authority is undefined, keep evidence unresolved and block settlement. |
+| Missing/duplicate transfer reference  | Preserve posted contribution; investigate evidence and request an eligible correction if original recording was erroneous.                                                                                                                                                                         |
+| Failed/returned non-cash payment      | Exception with original receipt intact; correction requires approved reversal, not reconciliation status change.                                                                                                                                                                                   |
+| Misallocated/incorrect receipt        | Current assigned Agent initiates linked reversal under Section 14; reconciliation permission cannot post correction.                                                                                                                                                                               |
+| Late-recorded payment or new evidence | Supplemental batch/reopened version, appended evidence and new review; retained previous closure.                                                                                                                                                                                                  |
+| Agent unavailable/offboarding         | Authorized staff continue evidence review; original Agent responsibility preserved and unresolved gate reported to Module 04.                                                                                                                                                                      |
 
 ### 13.2 Exception lifecycle and resolution
 
@@ -300,15 +300,15 @@ Customer archival queries settled liability/reservations, plans, fees, pending c
 
 ## 16. Screen and interaction requirements
 
-| Surface | Required contents and actions |
-| --- | --- |
-| Agent record-payment form | Current Customer/plan, target/residual suggestions, exact savings/fee split, method/date/evidence, allocation preview, confirmation and durable receipt/unknown-outcome status. |
+| Surface                    | Required contents and actions                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent record-payment form  | Current Customer/plan, target/residual suggestions, exact savings/fee split, method/date/evidence, allocation preview, confirmation and durable receipt/unknown-outcome status.             |
 | Customer/Agent thrift card | Accessible dated grid/list, primary funding and secondary advance/blocked tags, drill-down and distinct plan versus lifetime/available balances. Customer has no financial mutation action. |
-| Agent activity | Received-date/recorded-at filters, own totals, distinct reversed transactions and masked past-customer settlement aggregates. |
-| Admin collections | Business read-only collection filters, original/current Agent distinction, linked fee/ledger views; no record-payment control. |
-| Admin reconciliation | Versioned queue, batch totals, protected evidence, remittance confirmation, exception work, outstanding custody and permission-gated review actions. |
-| Reversal review | Original/compensation bundle, reasons/evidence, resulting balances/reservations, dependent blocks and permission/fresh-auth checks. |
-| Receipt detail | Durable unique reference, actor, method, received/recorded dates, amounts/allocations, fees, posting/reversal and reconciliation states clearly separated. |
+| Agent activity             | Received-date/recorded-at filters, own totals, distinct reversed transactions and masked past-customer settlement aggregates.                                                               |
+| Admin collections          | Business read-only collection filters, original/current Agent distinction, linked fee/ledger views; no record-payment control.                                                              |
+| Admin reconciliation       | Versioned queue, batch totals, protected evidence, remittance confirmation, exception work, outstanding custody and permission-gated review actions.                                        |
+| Reversal review            | Original/compensation bundle, reasons/evidence, resulting balances/reservations, dependent blocks and permission/fresh-auth checks.                                                         |
+| Receipt detail             | Durable unique reference, actor, method, received/recorded dates, amounts/allocations, fees, posting/reversal and reconciliation states clearly separated.                                  |
 
 Authorized Agents can open the same validated record-payment form from their dashboard, the assigned Customer profile, daily collection list and thrift card. Preselect the currently permitted Customer/plan where context exists, then load live eligibility, residuals and policy. An entry point, saved URL or previous preview cannot bypass the same server-side validation/confirmation requirements.
 
@@ -336,118 +336,118 @@ Enable only after: reviewed accounting chart/method mappings and the proposed 99
 
 The following requirements summarize Sections 4–18; the detailed sections supply constraints, fields and state transitions. Every requirement has release evidence in Section 20.
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| COL-001 | Enforce Agent-only receipt recording and default-deny other financial actions. | 4.1 |
-| COL-002 | Revalidate current assignment, Agent readiness and Customer/plan collection eligibility at commit. | 4.2, 10 |
-| COL-003 | Preserve independent authentication and operational states, with invited Active Customers eligible. | 4.2 |
-| COL-004 | Validate exact positive NGN kobo values, currency and configured bounds. | 5 |
-| COL-005 | Require method/custody mapping, safe non-cash reference and evidence of actual receipt. | 5, 12.1 |
-| COL-006 | Retain received date, UTC recorded-at and immutable timezone/version; reject future/unsupported dates. | 6 |
-| COL-007 | Require explicit tender allocation to savings and named fee obligations without silent deductions. | 5, 9 |
-| COL-008 | Allocate every savings kobo to valid residual slot capacity in one plan. | 7.1 |
-| COL-009 | Support partial, multiple-day, catch-up and advance funding with a reviewable default/override. | 7.1 |
-| COL-010 | Keep allocation history immutable and reject cross-Customer/plan or overcapacity funding. | 7.1, 10 |
-| COL-011 | Coordinate funded-slot completion/correction with Module 06 and preserve schedule dates. | 7.2 |
-| COL-012 | Derive card statuses from live funding/date/eligibility with accessible advance/blocked tags. | 8.1 |
-| COL-013 | Allow only eligible nonfinancial missed/skipped annotations with reason/version/history. | 8.1 |
-| COL-014 | Separate card/plan totals, lifetime liability, reservations and available savings. | 8.2, 9.2 |
-| COL-015 | Commit immutable balanced ledger groups using approved custody/liability/fee mappings. | 9.1 |
-| COL-016 | Keep Customer funds, Agent receivables, fee obligations/revenue and earnings separate. | 9.1–9.2 |
-| COL-017 | Enforce authoritative liability minus live reservations and prevent double debit/negative savings. | 9.2 |
-| COL-018 | Commit receipt, slots, fee bundle, ledger, lifecycle, batch, audit and durable notices consistently. | 9.3 |
-| COL-019 | Implement persistent replay-safe receipt/financial keys and conflicts for changed payload. | 10 |
-| COL-020 | Resolve unknown outcomes by original key and prevent false offline success. | 10 |
-| COL-021 | Coordinate capacity, fee, reservation, reassignment, lifecycle and archival races. | 10, 15 |
-| COL-022 | Provide eligible daily work and separately labelled blocked/history views within current scope. | 11.1 |
-| COL-023 | Compute independently scoped received-date/slot-date/posting-date metrics without duplicate totals. | 11.2 |
-| COL-024 | Protect evidence uploads, private content and current authorization at retrieval. | 12.1 |
-| COL-025 | System-create uniquely attributed method/date batches and freeze versioned submissions. | 12.2 |
-| COL-026 | Retain late supplements/reopened history without changing a reconciled version. | 12.2, 13 |
-| COL-027 | Require `reconciliation.manage` for remittance verification and replay-safe balanced custody transfer. | 12.3 |
-| COL-028 | Allocate partial remittances once without cross-Agent netting or unsupported payout/earnings offsets. | 12.3 |
-| COL-029 | Reconcile method evidence/amounts with zero unexplained variance and pending-item closure gates. | 13.1 |
-| COL-030 | Preserve Customer posted balances through shortages, overages and reconciliation-state changes. | 13 |
-| COL-031 | Maintain versioned reasoned exceptions and block unsupported write-offs/adjustments. | 13.2 |
-| COL-032 | Let current assigned Agents initiate idempotent full receipt reversal requests, without approval powers. | 14.1 |
-| COL-033 | Require one `reversals.review` Admin, confirmation and proposed fresh authentication for approval. | 14.1 |
-| COL-034 | Atomically post only eligible linked compensation bundles with current reservations/dependencies. | 14.2 |
-| COL-035 | Preserve original receipt/actor/history and require separate current-authority replacement recording. | 14.2 |
-| COL-036 | Preserve original Agent cash responsibility and immediately apply reassignment/privacy/lifecycle gates. | 15 |
-| COL-037 | Deliver role-appropriate accessible screens, safe stale/empty/error states and authorized receipts. | 16 |
-| COL-038 | Queue deduplicated scope-checked financial/operational notices without rolling back posting. | 17 |
-| COL-039 | Durably audit financial/annotation/review attempts and protect append-only audit/evidence access. | 17 |
-| COL-040 | Gate enablement on explicit dependencies and verify performance, recovery and invariants. | 18 |
+| ID      | Requirement                                                                                              | Detail   |
+| ------- | -------------------------------------------------------------------------------------------------------- | -------- |
+| COL-001 | Enforce Agent-only receipt recording and default-deny other financial actions.                           | 4.1      |
+| COL-002 | Revalidate current assignment, Agent readiness and Customer/plan collection eligibility at commit.       | 4.2, 10  |
+| COL-003 | Preserve independent authentication and operational states, with invited Active Customers eligible.      | 4.2      |
+| COL-004 | Validate exact positive NGN kobo values, currency and configured bounds.                                 | 5        |
+| COL-005 | Require method/custody mapping, safe non-cash reference and evidence of actual receipt.                  | 5, 12.1  |
+| COL-006 | Retain received date, UTC recorded-at and immutable timezone/version; reject future/unsupported dates.   | 6        |
+| COL-007 | Require explicit tender allocation to savings and named fee obligations without silent deductions.       | 5, 9     |
+| COL-008 | Allocate every savings kobo to valid residual slot capacity in one plan.                                 | 7.1      |
+| COL-009 | Support partial, multiple-day, catch-up and advance funding with a reviewable default/override.          | 7.1      |
+| COL-010 | Keep allocation history immutable and reject cross-Customer/plan or overcapacity funding.                | 7.1, 10  |
+| COL-011 | Coordinate funded-slot completion/correction with Module 06 and preserve schedule dates.                 | 7.2      |
+| COL-012 | Derive card statuses from live funding/date/eligibility with accessible advance/blocked tags.            | 8.1      |
+| COL-013 | Allow only eligible nonfinancial missed/skipped annotations with reason/version/history.                 | 8.1      |
+| COL-014 | Separate card/plan totals, lifetime liability, reservations and available savings.                       | 8.2, 9.2 |
+| COL-015 | Commit immutable balanced ledger groups using approved custody/liability/fee mappings.                   | 9.1      |
+| COL-016 | Keep Customer funds, Agent receivables, fee obligations/revenue and earnings separate.                   | 9.1–9.2  |
+| COL-017 | Enforce authoritative liability minus live reservations and prevent double debit/negative savings.       | 9.2      |
+| COL-018 | Commit receipt, slots, fee bundle, ledger, lifecycle, batch, audit and durable notices consistently.     | 9.3      |
+| COL-019 | Implement persistent replay-safe receipt/financial keys and conflicts for changed payload.               | 10       |
+| COL-020 | Resolve unknown outcomes by original key and prevent false offline success.                              | 10       |
+| COL-021 | Coordinate capacity, fee, reservation, reassignment, lifecycle and archival races.                       | 10, 15   |
+| COL-022 | Provide eligible daily work and separately labelled blocked/history views within current scope.          | 11.1     |
+| COL-023 | Compute independently scoped received-date/slot-date/posting-date metrics without duplicate totals.      | 11.2     |
+| COL-024 | Protect evidence uploads, private content and current authorization at retrieval.                        | 12.1     |
+| COL-025 | System-create uniquely attributed method/date batches and freeze versioned submissions.                  | 12.2     |
+| COL-026 | Retain late supplements/reopened history without changing a reconciled version.                          | 12.2, 13 |
+| COL-027 | Require `reconciliation.manage` for remittance verification and replay-safe balanced custody transfer.   | 12.3     |
+| COL-028 | Allocate partial remittances once without cross-Agent netting or unsupported payout/earnings offsets.    | 12.3     |
+| COL-029 | Reconcile method evidence/amounts with zero unexplained variance and pending-item closure gates.         | 13.1     |
+| COL-030 | Preserve Customer posted balances through shortages, overages and reconciliation-state changes.          | 13       |
+| COL-031 | Maintain versioned reasoned exceptions and block unsupported write-offs/adjustments.                     | 13.2     |
+| COL-032 | Let current assigned Agents initiate idempotent full receipt reversal requests, without approval powers. | 14.1     |
+| COL-033 | Require one `reversals.review` Admin, confirmation and proposed fresh authentication for approval.       | 14.1     |
+| COL-034 | Atomically post only eligible linked compensation bundles with current reservations/dependencies.        | 14.2     |
+| COL-035 | Preserve original receipt/actor/history and require separate current-authority replacement recording.    | 14.2     |
+| COL-036 | Preserve original Agent cash responsibility and immediately apply reassignment/privacy/lifecycle gates.  | 15       |
+| COL-037 | Deliver role-appropriate accessible screens, safe stale/empty/error states and authorized receipts.      | 16       |
+| COL-038 | Queue deduplicated scope-checked financial/operational notices without rolling back posting.             | 17       |
+| COL-039 | Durably audit financial/annotation/review attempts and protect append-only audit/evidence access.        | 17       |
+| COL-040 | Gate enablement on explicit dependencies and verify performance, recovery and invariants.                | 18       |
 
 ## 20. Acceptance scenarios and release evidence
 
 Use fixtures with at least two Agents, active/unavailable Agents, two current assignments, different Customer operational/account states, daily plans with partial/advance slots, named fee obligations, live reservations, remitted/unremitted receipts and reconciled/supplemental batches. Each scenario records build, fixture, exact pre/post ledger totals, role/permission/version, expected result and actual evidence. These are future verification scenarios; documentation does not assert they have passed.
 
-| ID | Requirement mapping | Testable expected result |
-| --- | --- | --- |
-| COL-AC-001 | COL-001 | Customer and Admin collection API calls, including privileged Admins, are denied with no money/slot effect. |
-| COL-AC-002 | COL-002 | Assigned ready Agent posts; another Agent or stale former assignee cannot post against the same Customer. |
-| COL-AC-003 | COL-002, COL-003 | Active Invited Customer can receive an Agent collection; Inactive/Restricted/Archived Customer cannot. |
-| COL-AC-004 | COL-002, COL-003 | Inactive/Suspended/MFA-incomplete Agent and Paused/Completed/Closed/Cancelled plan fail collection checks. Temporarily locked Active Agent with legitimate unrevoked session may collect for an existing eligible assignee but cannot receive a new/reassigned Customer; invalid/revoked session still fails. |
-| COL-AC-005 | COL-004, COL-008 | NGN 2,000.01 becomes exactly 200001 kobo; validate the proposed 999,999,999,999-kobo tender cap and reject cap+1, zero/negative/extra decimals/overflow/unsupported currency without posting. Savings also obeys Module 06 per-slot cap and total residual capacity; cumulative totals can exceed the single-entry cap safely. |
-| COL-AC-006 | COL-005 | Missing custody mapping or promised transfer fails; valid evidence/reference maps gross savings to declared asset/Agent receivable. |
-| COL-AC-007 | COL-006, COL-012 | Today received timestamp, yesterday late receipt and future advance allocations retain distinct dates; future received date fails. Change business timezone for a new receipt: existing plan due-day/missed/advance comparisons retain plan timezone, while new receipt/batch retains its captured business timezone; historical dates do not shift. Cross-zone date-only ambiguity cannot silently choose a status. |
-| COL-AC-008 | COL-006 | Past receipt requires reason: today−30 calendar dates is within the proposed lookback, today−31 is rejected; closed/unsupported period still fails within the lookback. New Agent cannot relabel former Agent-held money as their receipt. |
-| COL-AC-009 | COL-007 | NGN 6,500 tender split as 6,000 savings and 500 fee credits only 6,000 savings; fee obligation settles under Module 05. |
-| COL-AC-010 | COL-007, COL-018 | Changed fee/slot policy after preview requires re-confirmation, not silent adjusted posting. |
-| COL-AC-011 | COL-008, COL-009 | NGN 3,000 against a NGN 5,000 slot creates Partial/residual 2,000; another 2,000 makes exactly Paid. |
-| COL-AC-012 | COL-009 | One NGN 6,000 receipt funds three NGN 2,000 slots; one receipt count and three funded slots. |
-| COL-AC-013 | COL-009 | NGN 10,000 today funds five future NGN 2,000 slots and increases today's received money once. |
-| COL-AC-014 | COL-009 | Oldest-unfilled suggestion completes partial first; explicit valid override preserves chosen dates and exact total. |
-| COL-AC-015 | COL-010 | Excess capacity, cross-Customer, different-plan slot, negative allocation and unallocated kobo reject the entire receipt. |
-| COL-AC-016 | COL-011 | Final required slot completes count consistently; several partial receipts and calendar expiry alone do not complete plan. |
-| COL-AC-017 | COL-011 | Pause/resume preserves IDs/dates; funded-completion reversal uses Module 06 correction state and does not reopen Closed silently. |
-| COL-AC-018 | COL-012 | Fully/partly/unfunded past/today/future slots render Paid/Partial/Missed/Pending by documented rules, with accessible text. |
-| COL-AC-019 | COL-012 | A blocked eligible-history interval renders blocked overlay rather than invented missed/skipped/payment. |
-| COL-AC-020 | COL-013 | Skip/miss append reasoned versioned annotation with no ledger effect; skip cannot complete the cycle. |
-| COL-AC-021 | COL-013 | Paid/Partial/future skip, unauthorized annotation and stale annotation change fail without money/status change. |
-| COL-AC-022 | COL-012, COL-014 | Catch-up funds a skipped/missed slot, replacing primary display while retaining annotation and receipt-date history. |
-| COL-AC-023 | COL-014 | Posted payout reduces lifetime savings but does not unfund prior Paid slots; plan contribution total remains distinct. |
-| COL-AC-024 | COL-015, COL-016 | Cash savings posts equal Agent-receivable debit/Customer-liability credit; separate fee component is not savings. |
-| COL-AC-025 | COL-015 | Each transfer/POS method produces balanced approved entries; disabled mapping/unknown processor deduction prevents enablement. |
-| COL-AC-026 | COL-017 | Liability 10,000 with reservation 3,000 shows available 7,000; payout reservation consumption avoids double subtraction. |
-| COL-AC-027 | COL-017 | Unpaid registration fee creates no silent hold/deduction; unaffordable configured full application remains outstanding, without negative savings. |
-| COL-AC-028 | COL-018 | Fault before atomic commit leaves no receipt, slots, fee entries, batch amount or successful notice. |
-| COL-AC-029 | COL-018 | Required fee/ledger/audit dependency outage blocks write; post-commit search/notice outage retains one durable valid receipt. |
-| COL-AC-030 | COL-019 | Repeated key/same payload returns one receipt/bundle; changed payload conflicts; reversal does not allow key reuse. |
-| COL-AC-031 | COL-019 | Two legitimate identical cash receipts with separate keys fit only residual capacity; repeated non-cash reference is investigated safely. |
-| COL-AC-032 | COL-020 | Response loss after commit resolves original key to one receipt; scope loss denies Customer result without a second posting. |
-| COL-AC-033 | COL-020 | No connectivity creates no paid card/receipt/offline success; unresolved online submission keeps original key. |
-| COL-AC-034 | COL-021 | Concurrent partials cannot overfund a slot; exactly fitting independent receipts can both commit with balanced entries. |
-| COL-AC-035 | COL-021 | Reassignment/hold/pause/archival races produce ordered valid outcomes and retain actor without partial postings. |
-| COL-AC-036 | COL-021, COL-017 | Reservation/deduction/reversal race cannot produce negative available savings or consume a reservation twice. |
-| COL-AC-037 | COL-022 | Agent workspace includes eligible assigned due slots and advance-covered rows; blocked view excludes unauthorized Customers. |
-| COL-AC-038 | COL-023 | Today 2,000 advance-covered and 6,000 catch-up received show covered due and money received separately, not an incorrect 4,000 surplus. |
-| COL-AC-039 | COL-023 | Pagination/filter changes preserve total calculation across all scoped rows; late recording is not counted twice. |
-| COL-AC-040 | COL-024 | Unsupported/oversize/infected evidence and public/stale signed-link retrieval fail; safe references do not disclose credentials. |
-| COL-AC-041 | COL-024, COL-036 | Reassigned Customer evidence disappears for former Agent while masked own settlement balance remains permitted. |
-| COL-AC-042 | COL-025 | Each posted receipt enters one actor/date/method batch; freeze is replay-safe with accurate separate savings/fee totals. |
-| COL-AC-043 | COL-025 | Agent has read own status only; financial reconciliation/evidence-submit endpoint remains denied without reviewed capability extension. |
-| COL-AC-044 | COL-026 | Late prior-date receipt creates linked supplement; previous reconciled revision/evidence stays immutable and new amount is outstanding. |
-| COL-AC-045 | COL-027 | Reconciliation Admin confirms evidenced remittance once; baseline Admin and Agent cannot confirm; Customer liability unchanged. |
-| COL-AC-046 | COL-028 | Partial cash remittance reduces only original Agent receivable by confirmed amount; cross-Agent/earnings/unposted payout netting fails. |
-| COL-AC-047 | COL-029 | Zero matched variance with adequate evidence can close; missing evidence, clearing settlement or pending correction blocks closure. |
-| COL-AC-048 | COL-030 | Shortage 500 retains original credited savings and Agent 500 debt; changing batch to Exception changes no Customer balance. |
-| COL-AC-049 | COL-030, COL-031 | Overage/missing transfer creates investigation; cannot be silently assigned to a Customer, fees or unsupported suspense income. |
-| COL-AC-050 | COL-031 | Reasoned evidence-backed resolution/reopening retains earlier review; write-off/manual adjustment action is unavailable. |
-| COL-AC-051 | COL-032 | Current Agent requests full reversal of permitted receipt once; requester cannot approve or initiate against unassigned Customer. |
-| COL-AC-052 | COL-033 | One fresh-authenticated `reversals.review` Admin approves any value; missing grant/freshness fails without compensation. |
-| COL-AC-053 | COL-034 | Approved original/dependent fee bundle is balanced and atomic; independent waiver/deduction authority is not inherited. |
-| COL-AC-054 | COL-034 | Settled payout/live reservation/withdrawn fee earnings/unsupported remitted-cash dependency blocks unsafe compensation. |
-| COL-AC-055 | COL-034, COL-035 | Posted reversal retains original/compensation history and recomputes slots/net totals once; reject/cancel has no effect. |
-| COL-AC-056 | COL-035, COL-036 | Replacement Agent retains legitimate pending reversal follow-up; original actor/cash debt stays original; new corrected receipt needs separate eligibility/confirmation. |
-| COL-AC-057 | COL-036 | Agent suspension immediately stops new money recording; Admin historical reconciliation and offboarding unresolved gates remain accurate. |
-| COL-AC-058 | COL-036 | Customer archival is blocked by linked pending correction/exception; unrelated Agent issue alone does not block settled Customer. |
-| COL-AC-059 | COL-037 | Dashboard, assigned Customer profile, daily list and thrift card Agent entry points open the same current validated payment form; saved links cannot bypass eligibility. Role surfaces show correct actions/states on mobile/keyboard/screen reader; unavailable ledger data never becomes zero. |
-| COL-AC-060 | COL-038 | Repeated financial notice delivery is deduplicated; changed assignment masks former-Agent payload and failure never repeats money. |
-| COL-AC-061 | COL-039 | Receipt/remittance/reversal/annotation have durable immutable actor/version/events; audit requires `audit.view` and exposes no payment/auth secrets. |
-| COL-AC-062 | COL-040 | Restart/replay reconstructs cards/batches/net balances without duplicate posting; agreed p95/load/accessibility profiles have documented evidence. |
-| COL-AC-063 | COL-040 | Missing accounting/reservation/fee/lifecycle/period/evidence contract reports dependent scenarios Blocked and feature unavailable. |
+| ID         | Requirement mapping | Testable expected result                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| COL-AC-001 | COL-001             | Customer and Admin collection API calls, including privileged Admins, are denied with no money/slot effect.                                                                                                                                                                                                                                                                                                          |
+| COL-AC-002 | COL-002             | Assigned ready Agent posts; another Agent or stale former assignee cannot post against the same Customer.                                                                                                                                                                                                                                                                                                            |
+| COL-AC-003 | COL-002, COL-003    | Active Invited Customer can receive an Agent collection; Inactive/Restricted/Archived Customer cannot.                                                                                                                                                                                                                                                                                                               |
+| COL-AC-004 | COL-002, COL-003    | Inactive/Suspended/MFA-incomplete Agent and Paused/Completed/Closed/Cancelled plan fail collection checks. Temporarily locked Active Agent with legitimate unrevoked session may collect for an existing eligible assignee but cannot receive a new/reassigned Customer; invalid/revoked session still fails.                                                                                                        |
+| COL-AC-005 | COL-004, COL-008    | NGN 2,000.01 becomes exactly 200001 kobo; validate the proposed 999,999,999,999-kobo tender cap and reject cap+1, zero/negative/extra decimals/overflow/unsupported currency without posting. Savings also obeys Module 06 per-slot cap and total residual capacity; cumulative totals can exceed the single-entry cap safely.                                                                                       |
+| COL-AC-006 | COL-005             | Missing custody mapping or promised transfer fails; valid evidence/reference maps gross savings to declared asset/Agent receivable.                                                                                                                                                                                                                                                                                  |
+| COL-AC-007 | COL-006, COL-012    | Today received timestamp, yesterday late receipt and future advance allocations retain distinct dates; future received date fails. Change business timezone for a new receipt: existing plan due-day/missed/advance comparisons retain plan timezone, while new receipt/batch retains its captured business timezone; historical dates do not shift. Cross-zone date-only ambiguity cannot silently choose a status. |
+| COL-AC-008 | COL-006             | Past receipt requires reason: today−30 calendar dates is within the proposed lookback, today−31 is rejected; closed/unsupported period still fails within the lookback. New Agent cannot relabel former Agent-held money as their receipt.                                                                                                                                                                           |
+| COL-AC-009 | COL-007             | NGN 6,500 tender split as 6,000 savings and 500 fee credits only 6,000 savings; fee obligation settles under Module 05.                                                                                                                                                                                                                                                                                              |
+| COL-AC-010 | COL-007, COL-018    | Changed fee/slot policy after preview requires re-confirmation, not silent adjusted posting.                                                                                                                                                                                                                                                                                                                         |
+| COL-AC-011 | COL-008, COL-009    | NGN 3,000 against a NGN 5,000 slot creates Partial/residual 2,000; another 2,000 makes exactly Paid.                                                                                                                                                                                                                                                                                                                 |
+| COL-AC-012 | COL-009             | One NGN 6,000 receipt funds three NGN 2,000 slots; one receipt count and three funded slots.                                                                                                                                                                                                                                                                                                                         |
+| COL-AC-013 | COL-009             | NGN 10,000 today funds five future NGN 2,000 slots and increases today's received money once.                                                                                                                                                                                                                                                                                                                        |
+| COL-AC-014 | COL-009             | Oldest-unfilled suggestion completes partial first; explicit valid override preserves chosen dates and exact total.                                                                                                                                                                                                                                                                                                  |
+| COL-AC-015 | COL-010             | Excess capacity, cross-Customer, different-plan slot, negative allocation and unallocated kobo reject the entire receipt.                                                                                                                                                                                                                                                                                            |
+| COL-AC-016 | COL-011             | Final required slot completes count consistently; several partial receipts and calendar expiry alone do not complete plan.                                                                                                                                                                                                                                                                                           |
+| COL-AC-017 | COL-011             | Pause/resume preserves IDs/dates; funded-completion reversal uses Module 06 correction state and does not reopen Closed silently.                                                                                                                                                                                                                                                                                    |
+| COL-AC-018 | COL-012             | Fully/partly/unfunded past/today/future slots render Paid/Partial/Missed/Pending by documented rules, with accessible text.                                                                                                                                                                                                                                                                                          |
+| COL-AC-019 | COL-012             | A blocked eligible-history interval renders blocked overlay rather than invented missed/skipped/payment.                                                                                                                                                                                                                                                                                                             |
+| COL-AC-020 | COL-013             | Skip/miss append reasoned versioned annotation with no ledger effect; skip cannot complete the cycle.                                                                                                                                                                                                                                                                                                                |
+| COL-AC-021 | COL-013             | Paid/Partial/future skip, unauthorized annotation and stale annotation change fail without money/status change.                                                                                                                                                                                                                                                                                                      |
+| COL-AC-022 | COL-012, COL-014    | Catch-up funds a skipped/missed slot, replacing primary display while retaining annotation and receipt-date history.                                                                                                                                                                                                                                                                                                 |
+| COL-AC-023 | COL-014             | Posted payout reduces lifetime savings but does not unfund prior Paid slots; plan contribution total remains distinct.                                                                                                                                                                                                                                                                                               |
+| COL-AC-024 | COL-015, COL-016    | Cash savings posts equal Agent-receivable debit/Customer-liability credit; separate fee component is not savings.                                                                                                                                                                                                                                                                                                    |
+| COL-AC-025 | COL-015             | Each transfer/POS method produces balanced approved entries; disabled mapping/unknown processor deduction prevents enablement.                                                                                                                                                                                                                                                                                       |
+| COL-AC-026 | COL-017             | Liability 10,000 with reservation 3,000 shows available 7,000; payout reservation consumption avoids double subtraction.                                                                                                                                                                                                                                                                                             |
+| COL-AC-027 | COL-017             | Unpaid registration fee creates no silent hold/deduction; unaffordable configured full application remains outstanding, without negative savings.                                                                                                                                                                                                                                                                    |
+| COL-AC-028 | COL-018             | Fault before atomic commit leaves no receipt, slots, fee entries, batch amount or successful notice.                                                                                                                                                                                                                                                                                                                 |
+| COL-AC-029 | COL-018             | Required fee/ledger/audit dependency outage blocks write; post-commit search/notice outage retains one durable valid receipt.                                                                                                                                                                                                                                                                                        |
+| COL-AC-030 | COL-019             | Repeated key/same payload returns one receipt/bundle; changed payload conflicts; reversal does not allow key reuse.                                                                                                                                                                                                                                                                                                  |
+| COL-AC-031 | COL-019             | Two legitimate identical cash receipts with separate keys fit only residual capacity; repeated non-cash reference is investigated safely.                                                                                                                                                                                                                                                                            |
+| COL-AC-032 | COL-020             | Response loss after commit resolves original key to one receipt; scope loss denies Customer result without a second posting.                                                                                                                                                                                                                                                                                         |
+| COL-AC-033 | COL-020             | No connectivity creates no paid card/receipt/offline success; unresolved online submission keeps original key.                                                                                                                                                                                                                                                                                                       |
+| COL-AC-034 | COL-021             | Concurrent partials cannot overfund a slot; exactly fitting independent receipts can both commit with balanced entries.                                                                                                                                                                                                                                                                                              |
+| COL-AC-035 | COL-021             | Reassignment/hold/pause/archival races produce ordered valid outcomes and retain actor without partial postings.                                                                                                                                                                                                                                                                                                     |
+| COL-AC-036 | COL-021, COL-017    | Reservation/deduction/reversal race cannot produce negative available savings or consume a reservation twice.                                                                                                                                                                                                                                                                                                        |
+| COL-AC-037 | COL-022             | Agent workspace includes eligible assigned due slots and advance-covered rows; blocked view excludes unauthorized Customers.                                                                                                                                                                                                                                                                                         |
+| COL-AC-038 | COL-023             | Today 2,000 advance-covered and 6,000 catch-up received show covered due and money received separately, not an incorrect 4,000 surplus.                                                                                                                                                                                                                                                                              |
+| COL-AC-039 | COL-023             | Pagination/filter changes preserve total calculation across all scoped rows; late recording is not counted twice.                                                                                                                                                                                                                                                                                                    |
+| COL-AC-040 | COL-024             | Unsupported/oversize/infected evidence and public/stale signed-link retrieval fail; safe references do not disclose credentials.                                                                                                                                                                                                                                                                                     |
+| COL-AC-041 | COL-024, COL-036    | Reassigned Customer evidence disappears for former Agent while masked own settlement balance remains permitted.                                                                                                                                                                                                                                                                                                      |
+| COL-AC-042 | COL-025             | Each posted receipt enters one actor/date/method batch; freeze is replay-safe with accurate separate savings/fee totals.                                                                                                                                                                                                                                                                                             |
+| COL-AC-043 | COL-025             | Agent has read own status only; financial reconciliation/evidence-submit endpoint remains denied without reviewed capability extension.                                                                                                                                                                                                                                                                              |
+| COL-AC-044 | COL-026             | Late prior-date receipt creates linked supplement; previous reconciled revision/evidence stays immutable and new amount is outstanding.                                                                                                                                                                                                                                                                              |
+| COL-AC-045 | COL-027             | Reconciliation Admin confirms evidenced remittance once; baseline Admin and Agent cannot confirm; Customer liability unchanged.                                                                                                                                                                                                                                                                                      |
+| COL-AC-046 | COL-028             | Partial cash remittance reduces only original Agent receivable by confirmed amount; cross-Agent/earnings/unposted payout netting fails.                                                                                                                                                                                                                                                                              |
+| COL-AC-047 | COL-029             | Zero matched variance with adequate evidence can close; missing evidence, clearing settlement or pending correction blocks closure.                                                                                                                                                                                                                                                                                  |
+| COL-AC-048 | COL-030             | Shortage 500 retains original credited savings and Agent 500 debt; changing batch to Exception changes no Customer balance.                                                                                                                                                                                                                                                                                          |
+| COL-AC-049 | COL-030, COL-031    | Overage/missing transfer creates investigation; cannot be silently assigned to a Customer, fees or unsupported suspense income.                                                                                                                                                                                                                                                                                      |
+| COL-AC-050 | COL-031             | Reasoned evidence-backed resolution/reopening retains earlier review; write-off/manual adjustment action is unavailable.                                                                                                                                                                                                                                                                                             |
+| COL-AC-051 | COL-032             | Current Agent requests full reversal of permitted receipt once; requester cannot approve or initiate against unassigned Customer.                                                                                                                                                                                                                                                                                    |
+| COL-AC-052 | COL-033             | One fresh-authenticated `reversals.review` Admin approves any value; missing grant/freshness fails without compensation.                                                                                                                                                                                                                                                                                             |
+| COL-AC-053 | COL-034             | Approved original/dependent fee bundle is balanced and atomic; independent waiver/deduction authority is not inherited.                                                                                                                                                                                                                                                                                              |
+| COL-AC-054 | COL-034             | Settled payout/live reservation/withdrawn fee earnings/unsupported remitted-cash dependency blocks unsafe compensation.                                                                                                                                                                                                                                                                                              |
+| COL-AC-055 | COL-034, COL-035    | Posted reversal retains original/compensation history and recomputes slots/net totals once; reject/cancel has no effect.                                                                                                                                                                                                                                                                                             |
+| COL-AC-056 | COL-035, COL-036    | Replacement Agent retains legitimate pending reversal follow-up; original actor/cash debt stays original; new corrected receipt needs separate eligibility/confirmation.                                                                                                                                                                                                                                             |
+| COL-AC-057 | COL-036             | Agent suspension immediately stops new money recording; Admin historical reconciliation and offboarding unresolved gates remain accurate.                                                                                                                                                                                                                                                                            |
+| COL-AC-058 | COL-036             | Customer archival is blocked by linked pending correction/exception; unrelated Agent issue alone does not block settled Customer.                                                                                                                                                                                                                                                                                    |
+| COL-AC-059 | COL-037             | Dashboard, assigned Customer profile, daily list and thrift card Agent entry points open the same current validated payment form; saved links cannot bypass eligibility. Role surfaces show correct actions/states on mobile/keyboard/screen reader; unavailable ledger data never becomes zero.                                                                                                                     |
+| COL-AC-060 | COL-038             | Repeated financial notice delivery is deduplicated; changed assignment masks former-Agent payload and failure never repeats money.                                                                                                                                                                                                                                                                                   |
+| COL-AC-061 | COL-039             | Receipt/remittance/reversal/annotation have durable immutable actor/version/events; audit requires `audit.view` and exposes no payment/auth secrets.                                                                                                                                                                                                                                                                 |
+| COL-AC-062 | COL-040             | Restart/replay reconstructs cards/batches/net balances without duplicate posting; agreed p95/load/accessibility profiles have documented evidence.                                                                                                                                                                                                                                                                   |
+| COL-AC-063 | COL-040             | Missing accounting/reservation/fee/lifecycle/period/evidence contract reports dependent scenarios Blocked and feature unavailable.                                                                                                                                                                                                                                                                                   |
 
 ## 21. Worked examples
 

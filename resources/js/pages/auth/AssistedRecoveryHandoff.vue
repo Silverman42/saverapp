@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { Head, Link } from "@inertiajs/vue3";
-import { ArrowLeft, LifeBuoy, ShieldAlert, UserCheck } from "@lucide/vue";
-import { Button } from "@/components/ui/button";
+import { Head, Link } from '@inertiajs/vue3';
+import { ArrowLeft, LifeBuoy, ShieldAlert, UserCheck } from '@lucide/vue';
+import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-} from "@/components/ui/card";
-import AuthLayout from "@/layouts/AuthLayout.vue";
-import { login } from "@/routes";
+} from '@/components/ui/card';
+import AuthLayout from '@/layouts/AuthLayout.vue';
+import { login } from '@/routes';
 </script>
 
 <template>
@@ -18,7 +18,7 @@ import { login } from "@/routes";
 
     <div class="space-y-6">
         <div
-            class="bg-amber-500/10 border-amber-500/20 text-amber-950 dark:text-amber-200 flex items-start gap-3 rounded-lg border p-4 text-sm"
+            class="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-200"
         >
             <ShieldAlert
                 class="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400"
@@ -39,7 +39,7 @@ import { login } from "@/routes";
                     <CardTitle
                         class="flex items-center gap-2 text-base font-semibold"
                     >
-                        <UserCheck class="size-4 text-primary" />
+                        <UserCheck class="text-primary size-4" />
                         Agents
                     </CardTitle>
                     <CardDescription class="text-xs">
@@ -70,7 +70,7 @@ import { login } from "@/routes";
                     <CardTitle
                         class="flex items-center gap-2 text-base font-semibold"
                     >
-                        <LifeBuoy class="size-4 text-primary" />
+                        <LifeBuoy class="text-primary size-4" />
                         Administrators
                     </CardTitle>
                     <CardDescription class="text-xs">

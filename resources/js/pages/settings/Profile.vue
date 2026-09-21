@@ -10,11 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/profile';
+import { dashboard } from '@/routes';
 import { send } from '@/routes/verification';
 
 defineOptions({
     layout: {
         breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
             {
                 title: 'Profile settings',
                 href: edit(),

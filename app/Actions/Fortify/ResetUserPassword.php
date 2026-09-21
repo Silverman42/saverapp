@@ -3,11 +3,13 @@
 namespace App\Actions\Fortify;
 
 use App\Enums\AccountState;
+use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Models\User;
 use App\Notifications\Auth\AdminPasswordResetNotification;
 use App\Notifications\Auth\PasswordResetSuccessNotification;
 use App\Services\AuthenticationAbuseService;
+use App\Services\AuthorizationService;
 use App\Services\TwoFactorService;
 use App\Support\IdentityNormalizer;
 use App\Support\PasswordPolicy;
@@ -145,15 +147,19 @@ class ResetUserPassword implements ResetsUserPasswords
         // Notify the account owner
         $user->notify(new PasswordResetSuccessNotification);
 
-        // Section 7.4 & AUTH-016: If Admin password was reset, notify other active Admins
+        // Section 7.4, AUTH-016 & AUTHZ-019: If Admin password was reset, notify active Admins holding effective security.operations.manage
         if ($user->user_type === UserType::Admin) {
-            $otherAdmins = User::where('user_type', UserType::Admin)
+            $authService = app(AuthorizationService::class);
+
+            $securityAdmins = User::query()
+                ->where('user_type', UserType::Admin)
                 ->where('account_state', AccountState::Active)
                 ->where('id', '!=', $user->id)
-                ->get();
+                ->get()
+                ->filter(fn (User $admin) => $authService->allows($admin, AdminPermission::SecurityOperationsManage));
 
-            if ($otherAdmins->isNotEmpty()) {
-                Notification::send($otherAdmins, new AdminPasswordResetNotification($user));
+            if ($securityAdmins->isNotEmpty()) {
+                Notification::send($securityAdmins, new AdminPasswordResetNotification($user));
             }
         }
     }

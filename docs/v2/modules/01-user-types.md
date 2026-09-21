@@ -21,11 +21,11 @@ These terms should be used consistently throughout the Version 2 documentation a
 
 ## 3. User Type Summary
 
-| User type | Business role | Primary responsibility | Scope of knowledge and control |
-| --- | --- | --- | --- |
-| Customer | Saver | Participates in thrift savings | Their own profile, plans, savings, and transactions |
-| Agent | Thrift collector | Manages assigned customers and records collections | Operational information required to perform collections |
-| Admin | Business administrator | Manages customers, registers agents, and oversees the business | Business-wide operations, finances, users, and controls |
+| User type | Business role          | Primary responsibility                                         | Scope of knowledge and control                          |
+| --------- | ---------------------- | -------------------------------------------------------------- | ------------------------------------------------------- |
+| Customer  | Saver                  | Participates in thrift savings                                 | Their own profile, plans, savings, and transactions     |
+| Agent     | Thrift collector       | Manages assigned customers and records collections             | Operational information required to perform collections |
+| Admin     | Business administrator | Manages customers, registers agents, and oversees the business | Business-wide operations, finances, users, and controls |
 
 ## 4. Customer
 
@@ -164,25 +164,25 @@ This hierarchy describes breadth of access, not ownership of Customer funds. Cus
 
 ## 8. Confirmed Capability Baseline
 
-| Capability | Customer | Agent | Admin |
-| --- | :---: | :---: | :---: |
-| Log in to the system | Yes | Yes | Yes |
-| View own savings and transactions | Yes | No | No |
-| Add Customers | No | Yes | No |
-| View full balances and transaction histories for assigned Customers | No | Yes | Yes |
-| Create Customer thrift plans | No | Yes | No |
-| Perform and record collections | No | Yes | No |
-| Initiate withdrawal processing | No | Yes | No |
-| Approve withdrawal processing | No | No | Yes |
-| Initiate a transaction reversal | No | Yes | No |
-| Approve a transaction reversal | No | No | Yes |
-| Reassign Customers between Agents | No | No | Yes |
-| Register Agents | No | No | Yes |
-| Add, suspend, or remove Admins | No | No | With permission |
-| Manage Customers business-wide | No | No | Yes |
-| View business-wide finances | No | No | Yes |
-| Update business configuration | No | No | Yes |
-| Control the business account and system settings | No | No | Yes |
+| Capability                                                          | Customer | Agent |      Admin      |
+| ------------------------------------------------------------------- | :------: | :---: | :-------------: |
+| Log in to the system                                                |   Yes    |  Yes  |       Yes       |
+| View own savings and transactions                                   |   Yes    |  No   |       No        |
+| Add Customers                                                       |    No    |  Yes  |       No        |
+| View full balances and transaction histories for assigned Customers |    No    |  Yes  |       Yes       |
+| Create Customer thrift plans                                        |    No    |  Yes  |       No        |
+| Perform and record collections                                      |    No    |  Yes  |       No        |
+| Initiate withdrawal processing                                      |    No    |  Yes  |       No        |
+| Approve withdrawal processing                                       |    No    |  No   |       Yes       |
+| Initiate a transaction reversal                                     |    No    |  Yes  |       No        |
+| Approve a transaction reversal                                      |    No    |  No   |       Yes       |
+| Reassign Customers between Agents                                   |    No    |  No   |       Yes       |
+| Register Agents                                                     |    No    |  No   |       Yes       |
+| Add, suspend, or remove Admins                                      |    No    |  No   | With permission |
+| Manage Customers business-wide                                      |    No    |  No   |       Yes       |
+| View business-wide finances                                         |    No    |  No   |       Yes       |
+| Update business configuration                                       |    No    |  No   |       Yes       |
+| Control the business account and system settings                    |    No    |  No   |       Yes       |
 
 This table contains the confirmed Version 2 capability baseline. For Admins, **Yes** means the Admin role is eligible for the capability; protected actions may additionally require a granular permission under [Roles, Permissions, and Authorization](./03-roles-and-permissions.md). Detailed workflow rules will be expanded in their respective modules.
 

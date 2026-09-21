@@ -23,7 +23,11 @@ withDefaults(defineProps<Props>(), {
             class="bg-background min-w-0 overflow-x-clip"
         >
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
-            <slot />
+            <div
+                class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+            >
+                <slot />
+            </div>
         </AppContent>
         <Toaster />
     </AppShell>

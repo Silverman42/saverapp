@@ -42,13 +42,13 @@ Missing retention/legal/export policy leaves the dependent operation unavailable
 
 ### 3.1 Canonical event versus search index
 
-| Component | Role | Authority |
-| --- | --- | --- |
-| Canonical audit event store | Durable ordered append-only evidence of material event and protected-payload references | Source of truth for audit existence/content; cannot be edited through application interfaces. |
-| Protected change store | Encrypted sensitive before/after values or evidence references needed for accountability | Separately authorized and masked; not copied into ordinary index/logs. |
-| Search index | Derived fields optimized for authorized filter/search | Rebuildable and non-authoritative; missing/stale index cannot erase or alter canonical evidence. |
-| Security case store | Mutable-by-transition operational workflow whose every change emits canonical audit | Source for current triage state, not a replacement for source security events. |
-| Application/infra telemetry | Health/debug/security signals with independent retention | May create audit/security events after classification; never used to rewrite canonical records. |
+| Component                   | Role                                                                                     | Authority                                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Canonical audit event store | Durable ordered append-only evidence of material event and protected-payload references  | Source of truth for audit existence/content; cannot be edited through application interfaces.    |
+| Protected change store      | Encrypted sensitive before/after values or evidence references needed for accountability | Separately authorized and masked; not copied into ordinary index/logs.                           |
+| Search index                | Derived fields optimized for authorized filter/search                                    | Rebuildable and non-authoritative; missing/stale index cannot erase or alter canonical evidence. |
+| Security case store         | Mutable-by-transition operational workflow whose every change emits canonical audit      | Source for current triage state, not a replacement for source security events.                   |
+| Application/infra telemetry | Health/debug/security signals with independent retention                                 | May create audit/security events after classification; never used to rewrite canonical records.  |
 
 Canonical events receive an immutable server-generated ID and committed time. Search documents retain canonical event ID, indexed-at, canonical watermark, schema/index version and masking class. Search results display index freshness. Opening detail reads canonical permitted fields or a cryptographically verified projection; an index snippet alone is never treated as complete evidence.
 
@@ -109,19 +109,19 @@ Final IP/location lawful basis, notice, exact retention and reveal policy are re
 
 ## 5. Event catalogue
 
-| Category | Required material events |
-| --- | --- |
-| Authentication | Invitation issue/resend/correction/cancel/expire/accept; activation; login success/failure categories; password reset/change; email change; MFA enrol/replace/remove through approved recovery; recovery-code use/regeneration; session/trusted-device create/revoke/expire; locks/cooldowns/unlocks; suspected compromise; assisted recovery lifecycle; security notification result. |
-| Authorization/admin | Admin invitation; grant/revoke; permission/version/restriction change; final-Admin safeguard; fresh-auth result; high-risk deny; self-management/separation-of-duty denial; catalogue migration. |
-| Customer/Agent lifecycle | Registration, field/status/assignment change, archive/restore, Agent readiness/inactivity/suspension/reactivation/offboarding/deactivation, task handover and gate failure. |
-| Plans and fees | Plan create/revise/pause/resume/complete/close/cancel/renew and gate failures; fee rule publish/retire/snapshot; assessment/application/receipt/waiver/refund/draw/deduction and failed protected action. |
-| Collections/reconciliation | Receipt/post/allocation/annotation; batch/freeze/supplement; remittance/evidence/review/exception/resolution; duplicate/idempotency/conflict and unavailable owner. |
-| Withdrawals/reversals | Request/reservation/review/hold/reject/cancel/payout/failure; reversal initiation/evidence/decision/compensation; dependency/physical-money/closed-plan exception. |
-| Ledger/statements | Posting/compensation group, mapping/schema change, integrity mismatch/freeze/rebuild/promotion; statement generate/download; protected transaction detail where required. |
-| Reports/exports | Export request/authorization/start/complete/fail/expire/download/deny; report definition/configuration change. Ordinary dashboard refresh is telemetry unless protected. |
-| Protected reads | Audit detail/payload reveal, security-event/case/evidence access, recovery evidence, private management/offboarding notes and other catalogue-designated high-risk reads. Do not emit one event per ordinary list row. |
-| Security operations | Manual unlock, session revocation for compromise, recovery approval/rejection, Agent security action, security case create/assign/state/escalate/close/reopen and attempted unauthorized action. |
-| Audit/retention | Index/replay/rebuild, integrity checkpoint/verification failure, retention transition/expiry, legal/business hold place/release, restoration verification and audit configuration change. |
+| Category                   | Required material events                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication             | Invitation issue/resend/correction/cancel/expire/accept; activation; login success/failure categories; password reset/change; email change; MFA enrol/replace/remove through approved recovery; recovery-code use/regeneration; session/trusted-device create/revoke/expire; locks/cooldowns/unlocks; suspected compromise; assisted recovery lifecycle; security notification result. |
+| Authorization/admin        | Admin invitation; grant/revoke; permission/version/restriction change; final-Admin safeguard; fresh-auth result; high-risk deny; self-management/separation-of-duty denial; catalogue migration.                                                                                                                                                                                       |
+| Customer/Agent lifecycle   | Registration, field/status/assignment change, archive/restore, Agent readiness/inactivity/suspension/reactivation/offboarding/deactivation, task handover and gate failure.                                                                                                                                                                                                            |
+| Plans and fees             | Plan create/revise/pause/resume/complete/close/cancel/renew and gate failures; fee rule publish/retire/snapshot; assessment/application/receipt/waiver/refund/draw/deduction and failed protected action.                                                                                                                                                                              |
+| Collections/reconciliation | Receipt/post/allocation/annotation; batch/freeze/supplement; remittance/evidence/review/exception/resolution; duplicate/idempotency/conflict and unavailable owner.                                                                                                                                                                                                                    |
+| Withdrawals/reversals      | Request/reservation/review/hold/reject/cancel/payout/failure; reversal initiation/evidence/decision/compensation; dependency/physical-money/closed-plan exception.                                                                                                                                                                                                                     |
+| Ledger/statements          | Posting/compensation group, mapping/schema change, integrity mismatch/freeze/rebuild/promotion; statement generate/download; protected transaction detail where required.                                                                                                                                                                                                              |
+| Reports/exports            | Export request/authorization/start/complete/fail/expire/download/deny; report definition/configuration change. Ordinary dashboard refresh is telemetry unless protected.                                                                                                                                                                                                               |
+| Protected reads            | Audit detail/payload reveal, security-event/case/evidence access, recovery evidence, private management/offboarding notes and other catalogue-designated high-risk reads. Do not emit one event per ordinary list row.                                                                                                                                                                 |
+| Security operations        | Manual unlock, session revocation for compromise, recovery approval/rejection, Agent security action, security case create/assign/state/escalate/close/reopen and attempted unauthorized action.                                                                                                                                                                                       |
+| Audit/retention            | Index/replay/rebuild, integrity checkpoint/verification failure, retention transition/expiry, legal/business hold place/release, restoration verification and audit configuration change.                                                                                                                                                                                              |
 
 Equivalent repeated low-risk denials may aggregate into one security event with first/last times, exact count, dimensions and severity, but distinct successful/protected mutations, targets or materially different sources must not be collapsed. Aggregation must retain evidence needed for thresholds and never disclose account existence publicly.
 
@@ -197,14 +197,14 @@ Deduplication uses stable rule/account/source/time-window key and appends occurr
 
 ### 9.1 Proposed retention classes
 
-| Class | Examples | Proposed default |
-| --- | --- | --- |
+| Class                                      | Examples                                                                                                                        | Proposed default                                                                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Financial/lifecycle/authorization evidence | Posted financial actions/corrections, plan/customer/Agent lifecycle, permissions, approvals, reconciliation, statements/exports | Seven years after business record/cycle closure or later linked settlement, subject to approved law/business policy; canonical event and essential payload references. |
-| Authentication/security material | Login/lock/session/recovery/security operations and cases | Two years from event/case closure; exact IP, raw user agent and high-granularity network context proposed 90 days unless active hold/case requires approved extension. |
-| Protected read/export access | Audit/security/evidence access, export/download events | Two years from access or longer when linked to active case/financial evidence. |
-| Delivery/operational diagnostics | Notification attempts, index delivery/replay and non-security failures | One year; canonical material result may inherit its parent evidence class. |
-| Routine access telemetry | Ordinary dashboard/page access not designated protected | 90 days proposed, aggregated thereafter only if de-identified under approved policy. |
-| Integrity checkpoints/retention actions | Chain checkpoints, verification, hold/expiry/restore events | At least as long as the latest covered retained event plus seven years for expiry evidence, subject to policy. |
+| Authentication/security material           | Login/lock/session/recovery/security operations and cases                                                                       | Two years from event/case closure; exact IP, raw user agent and high-granularity network context proposed 90 days unless active hold/case requires approved extension. |
+| Protected read/export access               | Audit/security/evidence access, export/download events                                                                          | Two years from access or longer when linked to active case/financial evidence.                                                                                         |
+| Delivery/operational diagnostics           | Notification attempts, index delivery/replay and non-security failures                                                          | One year; canonical material result may inherit its parent evidence class.                                                                                             |
+| Routine access telemetry                   | Ordinary dashboard/page access not designated protected                                                                         | 90 days proposed, aggregated thereafter only if de-identified under approved policy.                                                                                   |
+| Integrity checkpoints/retention actions    | Chain checkpoints, verification, hold/expiry/restore events                                                                     | At least as long as the latest covered retained event plus seven years for expiry evidence, subject to policy.                                                         |
 
 These periods require legal/privacy/business approval and configuration migration rules before release. Choose the longer applicable class when one event supports multiple retained records. Retention begins from the documented trigger, not arbitrary last-view time; access must not perpetually reset it.
 
@@ -285,74 +285,74 @@ Release requires approved event catalogue/schema registry, producer conformance,
 
 ## 16. Functional requirements
 
-| ID | Requirement | Sections |
-| --- | --- | --- |
-| AUD-FR-001 | Maintain canonical append-only events separate from rebuildable searchable indexes and mutable case projections. | 3.1 |
-| AUD-FR-002 | Persist required audit event/outbox in the same durable boundary as every material successful mutation. | 3.2 |
-| AUD-FR-003 | Permit domain mutation during index outage only with canonical durability; block when canonical capture fails. | 3.2 |
-| AUD-FR-004 | Store immutable schema/actor/service/target/result/authority/time/correlation/classification/integrity fields. | 4.1–4.2 |
-| AUD-FR-005 | Store minimized safe before/after summaries and separately encrypted protected payload references. | 4.3 |
-| AUD-FR-006 | Exclude credentials, secrets, tokens, raw evidence/full requests and payment-authentication data before write. | 4.3 |
-| AUD-FR-007 | Minimize/device/IP context and restrict exact network data retention/reveal. | 4.4 |
-| AUD-FR-008 | Capture the defined authentication, authorization, lifecycle, financial, export, protected-read, security and retention events. | 5 |
-| AUD-FR-009 | Aggregate only equivalent low-risk denials while preserving distinct material/successful events and counts. | 5 |
-| AUD-FR-010 | Restrict detailed audit search/detail to active Admins with `audit.view`, read-only and masked. | 6.1 |
-| AUD-FR-011 | Restrict `security.operations.manage` to defined non-secret security events, recovery, lock and Agent security operations. | 6.2 |
-| AUD-FR-012 | Keep audit view, security operations, Admin management, reports export and protected reveal/export independent. | 6 |
-| AUD-FR-013 | Provide scoped versioned audit search/detail with stable pagination, masking and explicit index completeness. | 7.1–7.2 |
-| AUD-FR-014 | Rebuild/replay indexes deterministically without duplicating canonical events/domain effects. | 7.2 |
-| AUD-FR-015 | Provide security workspace actions only through current Authentication authority/version/identity checks. | 7.3 |
-| AUD-FR-016 | Maintain versioned triage cases/states/ownership/evidence whose changes produce canonical events. | 8.1 |
-| AUD-FR-017 | Prevent detection/case state from inventing financial, suspension, permission, recovery or disclosure authority. | 8.2 |
-| AUD-FR-018 | Apply approved retention classes/triggers and longest applicable policy without access-reset retention. | 9.1 |
-| AUD-FR-019 | Preserve integrity/access during archive and expire only via trusted policy with immutable expiry evidence. | 9.2 |
-| AUD-FR-020 | Enforce external approved holds separately from application grants and audit every placement/release. | 9.3 |
-| AUD-FR-021 | Provide independently reviewed partition hash/checkpoint tamper evidence and verify gaps/modification. | 10 |
-| AUD-FR-022 | Correct descriptions by linked append-only event and handle accidental-secret incidents without general edit/purge. | 10 |
-| AUD-FR-023 | Enforce privacy minimization and separate curated data-subject workflows without raw audit access. | 11 |
-| AUD-FR-024 | Send minimal scoped deduplicated security/integrity notifications and preserve outcomes independently. | 12 |
-| AUD-FR-025 | Make producers, replay, cases, retention and security actions idempotent/version-safe under concurrency. | 13 |
-| AUD-FR-026 | Back up/restore events/payloads/cases/holds/integrity metadata consistently without replaying business actions. | 13 |
-| AUD-FR-027 | Provide accessible responsive audit/security screens and clear stale/archive/integrity states. | 14 |
-| AUD-FR-028 | Meet proposed indexed-search/detail/searchability performance under declared profile and monitor health safely. | 15 |
-| AUD-FR-029 | Block release until storage, masking, cryptography, retention/legal, Authentication and restore contracts pass. | 15 |
+| ID         | Requirement                                                                                                                     | Sections |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| AUD-FR-001 | Maintain canonical append-only events separate from rebuildable searchable indexes and mutable case projections.                | 3.1      |
+| AUD-FR-002 | Persist required audit event/outbox in the same durable boundary as every material successful mutation.                         | 3.2      |
+| AUD-FR-003 | Permit domain mutation during index outage only with canonical durability; block when canonical capture fails.                  | 3.2      |
+| AUD-FR-004 | Store immutable schema/actor/service/target/result/authority/time/correlation/classification/integrity fields.                  | 4.1–4.2  |
+| AUD-FR-005 | Store minimized safe before/after summaries and separately encrypted protected payload references.                              | 4.3      |
+| AUD-FR-006 | Exclude credentials, secrets, tokens, raw evidence/full requests and payment-authentication data before write.                  | 4.3      |
+| AUD-FR-007 | Minimize/device/IP context and restrict exact network data retention/reveal.                                                    | 4.4      |
+| AUD-FR-008 | Capture the defined authentication, authorization, lifecycle, financial, export, protected-read, security and retention events. | 5        |
+| AUD-FR-009 | Aggregate only equivalent low-risk denials while preserving distinct material/successful events and counts.                     | 5        |
+| AUD-FR-010 | Restrict detailed audit search/detail to active Admins with `audit.view`, read-only and masked.                                 | 6.1      |
+| AUD-FR-011 | Restrict `security.operations.manage` to defined non-secret security events, recovery, lock and Agent security operations.      | 6.2      |
+| AUD-FR-012 | Keep audit view, security operations, Admin management, reports export and protected reveal/export independent.                 | 6        |
+| AUD-FR-013 | Provide scoped versioned audit search/detail with stable pagination, masking and explicit index completeness.                   | 7.1–7.2  |
+| AUD-FR-014 | Rebuild/replay indexes deterministically without duplicating canonical events/domain effects.                                   | 7.2      |
+| AUD-FR-015 | Provide security workspace actions only through current Authentication authority/version/identity checks.                       | 7.3      |
+| AUD-FR-016 | Maintain versioned triage cases/states/ownership/evidence whose changes produce canonical events.                               | 8.1      |
+| AUD-FR-017 | Prevent detection/case state from inventing financial, suspension, permission, recovery or disclosure authority.                | 8.2      |
+| AUD-FR-018 | Apply approved retention classes/triggers and longest applicable policy without access-reset retention.                         | 9.1      |
+| AUD-FR-019 | Preserve integrity/access during archive and expire only via trusted policy with immutable expiry evidence.                     | 9.2      |
+| AUD-FR-020 | Enforce external approved holds separately from application grants and audit every placement/release.                           | 9.3      |
+| AUD-FR-021 | Provide independently reviewed partition hash/checkpoint tamper evidence and verify gaps/modification.                          | 10       |
+| AUD-FR-022 | Correct descriptions by linked append-only event and handle accidental-secret incidents without general edit/purge.             | 10       |
+| AUD-FR-023 | Enforce privacy minimization and separate curated data-subject workflows without raw audit access.                              | 11       |
+| AUD-FR-024 | Send minimal scoped deduplicated security/integrity notifications and preserve outcomes independently.                          | 12       |
+| AUD-FR-025 | Make producers, replay, cases, retention and security actions idempotent/version-safe under concurrency.                        | 13       |
+| AUD-FR-026 | Back up/restore events/payloads/cases/holds/integrity metadata consistently without replaying business actions.                 | 13       |
+| AUD-FR-027 | Provide accessible responsive audit/security screens and clear stale/archive/integrity states.                                  | 14       |
+| AUD-FR-028 | Meet proposed indexed-search/detail/searchability performance under declared profile and monitor health safely.                 | 15       |
+| AUD-FR-029 | Block release until storage, masking, cryptography, retention/legal, Authentication and restore contracts pass.                 | 15       |
 
 ## 17. Acceptance scenarios and traceability
 
 Scenarios require production-equivalent storage/index/security-owner contract tests. A missing policy or integration is **Blocked**, not Passed. Record build/schema/key/index versions, actors/grants, operation/event/case IDs, canonical/index checkpoints, expected/result and evidence without exposing secrets.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| AUD-AC-001 | AUD-FR-001 | Compare canonical event, protected payload, index and case records; index/case change cannot modify canonical bytes or domain history. |
-| AUD-AC-002 | AUD-FR-002 | Fault domain mutation before/after canonical/outbox write; exactly one mutation and matching event commit together or neither commits. |
-| AUD-AC-003 | AUD-FR-003 | Stop search index then suspend account/post financial action; durable canonical event permits owner action and indexes later once; stop canonical capture and mutation fails. |
-| AUD-AC-004 | AUD-FR-004 | Verify human initiator, approver, executor, authority, target, result, times/correlation and versions for multi-actor financial/security events. |
-| AUD-AC-005 | AUD-FR-005 | Edit identity/notes/permissions; safe event lists field/status changes while protected prior/new values stay encrypted/masked by policy. |
-| AUD-AC-006 | AUD-FR-006 | Submit credentials/tokens/card data/raw files/error dumps; scanners/schema prevent them entering canonical/index/telemetry. |
-| AUD-AC-007 | AUD-FR-007 | Verify keyed device/IP correlation, masked search, exact-IP protected storage/90-day proposal and key-rotation bounded linkage. |
-| AUD-AC-008 | AUD-FR-008 | Exercise at least one event from every catalogue category; each has correct class/owner/result and no omitted successful protected action. |
-| AUD-AC-009 | AUD-FR-009 | Burst equivalent failed logins and distinct privileged successes/targets; aggregate failures with counts but retain every material distinct event. |
-| AUD-AC-010 | AUD-FR-010 | Baseline Admin/Agent/Customer and Admin without `audit.view` cannot search/detail; authorized Admin sees masked permitted business events only. |
-| AUD-AC-011 | AUD-FR-011 | Security Admin reviews lock/Customer recovery/manual unlock but cannot see secrets, self-unlock, change status/permission or perform finances. |
-| AUD-AC-012 | AUD-FR-012 | Test every combination of `audit.view`, `security.operations.manage`, `reports.export` and management grants; none implies another or audit export/reveal. |
-| AUD-AC-013 | AUD-FR-013 | Search/filter/cursor under stable watermark then revoke grant/change index; old cursor/link denies or expires without leaking counts. |
-| AUD-AC-014 | AUD-FR-013 | Index lags/has gap; UI labels incomplete/as-of and exact authorized canonical lookup does not claim missing events never occurred. |
-| AUD-AC-015 | AUD-FR-014 | Rebuild from canonical events twice; counts/hashes/results match and no domain action or duplicate canonical event occurs. |
-| AUD-AC-016 | AUD-FR-015 | Race lock expiry/account suspension/permission revocation with unlock/recovery action; Authentication current version wins and stale case action fails. |
-| AUD-AC-017 | AUD-FR-016 | Create/assign/investigate/resolve/reopen case concurrently; one versioned transition wins and every episode/note/owner change is audited. |
-| AUD-AC-018 | AUD-FR-017 | Critical case/detection tries automatic suspension, permission change, reversal or recovery approval; deny until separate owner authority performs it. |
-| AUD-AC-019 | AUD-FR-018 | Events with multiple classes retain to longest trigger; viewing does not reset expiry; proposed durations apply only after approved policy. |
-| AUD-AC-020 | AUD-FR-019 | Archive/retrieve/expire eligible partition; IDs/hashes/access persist, expiry emits manifest/tombstone and no Admin manual purge exists. |
-| AUD-AC-021 | AUD-FR-020 | Place hold through approved external authority; expiry skips held data, application grants cannot release it, release is audited and next policy run reevaluates. |
-| AUD-AC-022 | AUD-FR-021 | Modify/remove/reorder event or checkpoint during verification/restore; mark range Unverified, open Critical case and block completeness claim without silent repair. |
-| AUD-AC-023 | AUD-FR-022 | Correct wrong description via linked event; original remains. Inject prohibited secret; quarantine/incident procedure works without exposing general edit tool. |
-| AUD-AC-024 | AUD-FR-023 | Archive/deactivate/data-subject request; retain necessary evidence, curate/mask third-party/security content and never grant raw audit access. |
-| AUD-AC-025 | AUD-FR-024 | Notify eligible responders/user, then revoke permission/fail delivery/retry; current scope applies, duplicates suppressed and source action unchanged. |
-| AUD-AC-026 | AUD-FR-025 | Retry producers/replay/retention and reuse same ID with same/different content; same is idempotent, conflict raises incident, no duplicate expiry/action. |
-| AUD-AC-027 | AUD-FR-026 | Restore backup in isolation across key rotation/hold/expiry/event boundary; verify hashes/domain references and promote without replaying money/security/notifications. |
-| AUD-AC-028 | AUD-FR-027 | Verify mobile/zoom/keyboard/screen-reader/status/error/archive flows; no color-only or blank ambiguous protected value. |
-| AUD-AC-029 | AUD-FR-028 | Load declared 20M-event profile; 31-day search p95≤3s, detail≤2s and searchability targets pass or claims remain unmet. |
-| AUD-AC-030 | AUD-FR-029 | Remove each legal/cryptographic/storage/Auth/restore contract; dependent release stays Blocked and ordinary logs/hidden controls do not count as implementation. |
+| ID         | Requirements | Scenario and expected result                                                                                                                                                  |
+| ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AUD-AC-001 | AUD-FR-001   | Compare canonical event, protected payload, index and case records; index/case change cannot modify canonical bytes or domain history.                                        |
+| AUD-AC-002 | AUD-FR-002   | Fault domain mutation before/after canonical/outbox write; exactly one mutation and matching event commit together or neither commits.                                        |
+| AUD-AC-003 | AUD-FR-003   | Stop search index then suspend account/post financial action; durable canonical event permits owner action and indexes later once; stop canonical capture and mutation fails. |
+| AUD-AC-004 | AUD-FR-004   | Verify human initiator, approver, executor, authority, target, result, times/correlation and versions for multi-actor financial/security events.                              |
+| AUD-AC-005 | AUD-FR-005   | Edit identity/notes/permissions; safe event lists field/status changes while protected prior/new values stay encrypted/masked by policy.                                      |
+| AUD-AC-006 | AUD-FR-006   | Submit credentials/tokens/card data/raw files/error dumps; scanners/schema prevent them entering canonical/index/telemetry.                                                   |
+| AUD-AC-007 | AUD-FR-007   | Verify keyed device/IP correlation, masked search, exact-IP protected storage/90-day proposal and key-rotation bounded linkage.                                               |
+| AUD-AC-008 | AUD-FR-008   | Exercise at least one event from every catalogue category; each has correct class/owner/result and no omitted successful protected action.                                    |
+| AUD-AC-009 | AUD-FR-009   | Burst equivalent failed logins and distinct privileged successes/targets; aggregate failures with counts but retain every material distinct event.                            |
+| AUD-AC-010 | AUD-FR-010   | Baseline Admin/Agent/Customer and Admin without `audit.view` cannot search/detail; authorized Admin sees masked permitted business events only.                               |
+| AUD-AC-011 | AUD-FR-011   | Security Admin reviews lock/Customer recovery/manual unlock but cannot see secrets, self-unlock, change status/permission or perform finances.                                |
+| AUD-AC-012 | AUD-FR-012   | Test every combination of `audit.view`, `security.operations.manage`, `reports.export` and management grants; none implies another or audit export/reveal.                    |
+| AUD-AC-013 | AUD-FR-013   | Search/filter/cursor under stable watermark then revoke grant/change index; old cursor/link denies or expires without leaking counts.                                         |
+| AUD-AC-014 | AUD-FR-013   | Index lags/has gap; UI labels incomplete/as-of and exact authorized canonical lookup does not claim missing events never occurred.                                            |
+| AUD-AC-015 | AUD-FR-014   | Rebuild from canonical events twice; counts/hashes/results match and no domain action or duplicate canonical event occurs.                                                    |
+| AUD-AC-016 | AUD-FR-015   | Race lock expiry/account suspension/permission revocation with unlock/recovery action; Authentication current version wins and stale case action fails.                       |
+| AUD-AC-017 | AUD-FR-016   | Create/assign/investigate/resolve/reopen case concurrently; one versioned transition wins and every episode/note/owner change is audited.                                     |
+| AUD-AC-018 | AUD-FR-017   | Critical case/detection tries automatic suspension, permission change, reversal or recovery approval; deny until separate owner authority performs it.                        |
+| AUD-AC-019 | AUD-FR-018   | Events with multiple classes retain to longest trigger; viewing does not reset expiry; proposed durations apply only after approved policy.                                   |
+| AUD-AC-020 | AUD-FR-019   | Archive/retrieve/expire eligible partition; IDs/hashes/access persist, expiry emits manifest/tombstone and no Admin manual purge exists.                                      |
+| AUD-AC-021 | AUD-FR-020   | Place hold through approved external authority; expiry skips held data, application grants cannot release it, release is audited and next policy run reevaluates.             |
+| AUD-AC-022 | AUD-FR-021   | Modify/remove/reorder event or checkpoint during verification/restore; mark range Unverified, open Critical case and block completeness claim without silent repair.          |
+| AUD-AC-023 | AUD-FR-022   | Correct wrong description via linked event; original remains. Inject prohibited secret; quarantine/incident procedure works without exposing general edit tool.               |
+| AUD-AC-024 | AUD-FR-023   | Archive/deactivate/data-subject request; retain necessary evidence, curate/mask third-party/security content and never grant raw audit access.                                |
+| AUD-AC-025 | AUD-FR-024   | Notify eligible responders/user, then revoke permission/fail delivery/retry; current scope applies, duplicates suppressed and source action unchanged.                        |
+| AUD-AC-026 | AUD-FR-025   | Retry producers/replay/retention and reuse same ID with same/different content; same is idempotent, conflict raises incident, no duplicate expiry/action.                     |
+| AUD-AC-027 | AUD-FR-026   | Restore backup in isolation across key rotation/hold/expiry/event boundary; verify hashes/domain references and promote without replaying money/security/notifications.       |
+| AUD-AC-028 | AUD-FR-027   | Verify mobile/zoom/keyboard/screen-reader/status/error/archive flows; no color-only or blank ambiguous protected value.                                                       |
+| AUD-AC-029 | AUD-FR-028   | Load declared 20M-event profile; 31-day search p95≤3s, detail≤2s and searchability targets pass or claims remain unmet.                                                       |
+| AUD-AC-030 | AUD-FR-029   | Remove each legal/cryptographic/storage/Auth/restore contract; dependent release stays Blocked and ordinary logs/hidden controls do not count as implementation.              |
 
 ## 18. Worked examples
 
@@ -374,20 +374,20 @@ A routine delivery diagnostic reaches one-year proposed expiry, but it is linked
 
 ## 19. Proposed choices and release decisions
 
-| Decision | Draft recommendation / implication |
-| --- | --- |
-| Canonical capture | Same-transaction event/outbox for successful material mutation; index outage tolerated, canonical failure blocks. |
-| Search | `audit.view`, masked, 24-hour default/366-day interactive max, no audit export. |
-| Security operations | Only exact Module 02/03 recovery/lock/Agent-security actions; separate from audit and management permissions. |
-| Cases | Open/Investigating/Resolved/Closed—no action with linked reopen episodes; no automatic broad response authority. |
-| Device/IP | Keyed minimized identifiers; exact IP encrypted security-only with proposed 90 days if legally approved. |
-| Retention | Proposed seven years financial/lifecycle, two years security/protected access, one year diagnostics, 90 days routine telemetry; approve law/business triggers before release. |
-| Holds | External trusted policy authority initially; no application Admin hold controls or manual purge. |
-| Tamper evidence | Partition hash chain plus separately stored signed checkpoints and continuous/restore verification; independent cryptographic review required. |
-| Accidental secrets | Prevent before write; quarantine and approved incident/tombstone remediation if prevention fails, never general edit. |
-| Performance | 20M-event profile, search p95≤3s/detail≤2s; Critical security projection≤10s, general search≤60s after commit. |
-| Privacy requests | Curated separate workflow with masking/exclusions; no raw audit access or automatic archival erasure. |
-| Audit export | Not in initial scope; neither `reports.export` nor combined current grants imply it. Permission/policy decision required. |
+| Decision            | Draft recommendation / implication                                                                                                                                            |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical capture   | Same-transaction event/outbox for successful material mutation; index outage tolerated, canonical failure blocks.                                                             |
+| Search              | `audit.view`, masked, 24-hour default/366-day interactive max, no audit export.                                                                                               |
+| Security operations | Only exact Module 02/03 recovery/lock/Agent-security actions; separate from audit and management permissions.                                                                 |
+| Cases               | Open/Investigating/Resolved/Closed—no action with linked reopen episodes; no automatic broad response authority.                                                              |
+| Device/IP           | Keyed minimized identifiers; exact IP encrypted security-only with proposed 90 days if legally approved.                                                                      |
+| Retention           | Proposed seven years financial/lifecycle, two years security/protected access, one year diagnostics, 90 days routine telemetry; approve law/business triggers before release. |
+| Holds               | External trusted policy authority initially; no application Admin hold controls or manual purge.                                                                              |
+| Tamper evidence     | Partition hash chain plus separately stored signed checkpoints and continuous/restore verification; independent cryptographic review required.                                |
+| Accidental secrets  | Prevent before write; quarantine and approved incident/tombstone remediation if prevention fails, never general edit.                                                         |
+| Performance         | 20M-event profile, search p95≤3s/detail≤2s; Critical security projection≤10s, general search≤60s after commit.                                                                |
+| Privacy requests    | Curated separate workflow with masking/exclusions; no raw audit access or automatic archival erasure.                                                                         |
+| Audit export        | Not in initial scope; neither `reports.export` nor combined current grants imply it. Permission/policy decision required.                                                     |
 
 ## 20. Related modules
 

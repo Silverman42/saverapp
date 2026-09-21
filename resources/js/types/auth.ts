@@ -1,5 +1,20 @@
 export type UserType = 'customer' | 'agent' | 'admin';
 
+export type AdminPermission =
+    | 'admins.manage'
+    | 'agents.manage'
+    | 'customers.manage'
+    | 'customers.reassign'
+    | 'withdrawals.review'
+    | 'reversals.review'
+    | 'fees.manage'
+    | 'deductions.manage'
+    | 'reconciliation.manage'
+    | 'business.settings.manage'
+    | 'security.operations.manage'
+    | 'audit.view'
+    | 'reports.export';
+
 export type AccountState =
     | 'invited'
     | 'mfa_setup_required'
@@ -15,6 +30,7 @@ export type User = {
     email_normalized: string;
     user_type: UserType;
     account_state: AccountState;
+    permission_version: number;
     locked_until?: string | null;
     lock_category?: string | null;
     lock_reason?: string | null;
@@ -28,6 +44,7 @@ export type User = {
 
 export type Auth = {
     user: User;
+    permissions: AdminPermission[];
 };
 
 export type TwoFactorConfigContent = {

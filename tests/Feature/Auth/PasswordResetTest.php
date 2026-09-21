@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AccountState;
+use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Models\User;
 use App\Notifications\Auth\AdminPasswordResetNotification;
@@ -497,17 +498,19 @@ test('password reset preserves user roles and MFA configuration', function () {
     });
 });
 
-// AC 16 & AUTH-016: Security notifications are dispatched upon password reset
+// AC 16 & AUTH-016 & AUTHZ-019: Security notifications are dispatched upon password reset
 test('password reset dispatches queued success notification to user and admin notification to other admins', function () {
     Notification::fake();
 
     $admin = User::factory()->admin()->create();
     $otherAdmin = User::factory()->admin()->create();
+    $otherAdmin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
+    $baselineAdmin = User::factory()->admin()->create();
     $customer = User::factory()->customer()->create();
 
     $this->post(route('password.email'), ['email' => $admin->email]);
 
-    Notification::assertSentTo($admin, ResetPasswordNotification::class, function ($notification) use ($admin, $otherAdmin, $customer) {
+    Notification::assertSentTo($admin, ResetPasswordNotification::class, function ($notification) use ($admin, $otherAdmin, $baselineAdmin, $customer) {
         $this->post(route('password.update'), [
             'token' => $notification->token,
             'email' => $admin->email,
@@ -520,10 +523,13 @@ test('password reset dispatches queued success notification to user and admin no
             return $notif instanceof ShouldQueue;
         });
 
-        // Other active Admin received AdminPasswordResetNotification
+        // Other active Admin with security.operations.manage received AdminPasswordResetNotification
         Notification::assertSentTo($otherAdmin, AdminPasswordResetNotification::class, function ($notif) use ($admin) {
             return $notif instanceof ShouldQueue && $notif->affectedAdmin->id === $admin->id;
         });
+
+        // Baseline Admin without security.operations.manage did not receive admin notification
+        Notification::assertNotSentTo($baselineAdmin, AdminPasswordResetNotification::class);
 
         // Customer did not receive admin notification
         Notification::assertNotSentTo($customer, AdminPasswordResetNotification::class);

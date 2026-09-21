@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { LayoutDashboard, Palette, ShieldCheck, UserRound } from '@lucide/vue';
+import { usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import {
+    LayoutDashboard,
+    Palette,
+    ShieldAlert,
+    ShieldCheck,
+    UserRound,
+    Users,
+} from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import {
@@ -18,6 +26,15 @@ import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
 
+const page = usePage();
+const isAdmin = computed(() => page.props.auth?.user?.user_type === 'admin');
+const hasSecurityOperationsManage = computed(() => {
+    const permissions =
+        (page.props.auth?.user as { permissions?: string[] } | undefined)
+            ?.permissions ?? [];
+    return permissions.includes('security.operations.manage');
+});
+
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
@@ -25,6 +42,30 @@ const mainNavItems: NavItem[] = [
         icon: LayoutDashboard,
     },
 ];
+
+const adminNavItems = computed<NavItem[]>(() => {
+    if (!isAdmin.value) {
+        return [];
+    }
+
+    const items: NavItem[] = [
+        {
+            title: 'Admin Access',
+            href: '/admin/access',
+            icon: Users,
+        },
+    ];
+
+    if (hasSecurityOperationsManage.value) {
+        items.push({
+            title: 'Lockouts',
+            href: '/admin/lockouts',
+            icon: ShieldAlert,
+        });
+    }
+
+    return items;
+});
 
 const accountNavItems: NavItem[] = [
     {
@@ -63,6 +104,11 @@ const accountNavItems: NavItem[] = [
 
         <SidebarContent class="gap-4 py-5">
             <NavMain label="Overview" :items="mainNavItems" />
+            <NavMain
+                v-if="adminNavItems.length > 0"
+                label="Administration"
+                :items="adminNavItems"
+            />
             <NavMain label="Account" :items="accountNavItems" />
         </SidebarContent>
 

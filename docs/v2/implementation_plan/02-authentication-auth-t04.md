@@ -7,19 +7,19 @@ Implement `AUTH-008` and `AUTH-023`–`AUTH-030` by replacing Fortify's optional
 ## Implementation Changes
 
 - Add an `AuthenticatorState` enum and persistence for:
-  - Active-factor last accepted TOTP timestep.
-  - A single encrypted pending enrolment/replacement secret with purpose, expiry, and last accepted timestep.
-  - Ten individually hashed recovery-code records with consumption timestamps.
-  - Recovery-code acknowledgement time.
+    - Active-factor last accepted TOTP timestep.
+    - A single encrypted pending enrolment/replacement secret with purpose, expiry, and last accepted timestep.
+    - Ten individually hashed recovery-code records with consumption timestamps.
+    - Recovery-code acknowledgement time.
 - Use a 10-minute pending-setup lifetime and TOTP configuration of six digits, 30-second periods, and a maximum ±1-period clock window.
 - Fail migration when legacy Fortify factor data exists because plaintext-recoverable codes cannot safely meet the new storage contract. Transition active Admins/Agents without MFA to `mfa_setup_required`; keep Customers password-only.
 - Add focused services for atomic TOTP verification/replay prevention, recovery-code issuance and consumption, factor-attempt limits, pending-factor expiry, and session revocation. Update password reset to use these services instead of Fortify's recoverable-code methods.
 - Dispatch an idempotent delayed job when a pending factor is created; expired jobs clear only the matching pending generation. All lifecycle events and queued notifications are emitted after commit and contain no secrets or submitted codes.
 - Customize Fortify's login pipeline and MFA handlers while preserving its route names:
-  - Password-verified Admins/Agents without MFA receive a restricted setup-only session.
-  - Confirmed factors enter the normal TOTP/recovery challenge.
-  - Five invalid attempts end the current login/setup/replacement context; persistent ten-per-hour cooldowns and broader abuse intelligence remain AUTH-T10.
-  - Successful password-plus-TOTP authentication records non-extendable password and MFA freshness timestamps for later AUTH-T08/T09 enforcement.
+    - Password-verified Admins/Agents without MFA receive a restricted setup-only session.
+    - Confirmed factors enter the normal TOTP/recovery challenge.
+    - Five invalid attempts end the current login/setup/replacement context; persistent ten-per-hour cooldowns and broader abuse intelligence remain AUTH-T10.
+    - Successful password-plus-TOTP authentication records non-extendable password and MFA freshness timestamps for later AUTH-T08/T09 enforcement.
 - Allow `mfa_setup_required` sessions only on enrolment, recovery-code acknowledgement, and logout routes. Other requests redirect to setup; invited, suspended, and deactivated accounts remain signed out.
 - Initial enrolment generates recovery codes only after TOTP confirmation. Codes are returned once, never stored client-side or in session, and dashboard access remains blocked until acknowledgement.
 - Replacement requires the current password and active TOTP. The old authenticator remains active until the pending secret is confirmed; success atomically swaps secrets, invalidates old codes, issues ten new codes, rotates persistent-login state, and revokes every other database session.
@@ -34,10 +34,10 @@ Implement `AUTH-008` and `AUTH-023`–`AUTH-030` by replacing Fortify's optional
 - Change `GET /user/two-factor-recovery-codes` to return no codes; raw recovery codes are available only in the immediate confirmation/regeneration response.
 - Expose only non-secret UI state: authenticator state, pending expiry, acknowledgement requirement, and remaining recovery-code count.
 - Replace the starter settings controls with:
-  - Mandatory enrolment steps: scan/manual key, confirm TOTP, copy/download/print codes, acknowledge.
-  - Authenticator replacement and cancellation.
-  - Password-plus-TOTP recovery-code regeneration.
-  - Remaining-code warnings and lost-authenticator guidance.
+    - Mandatory enrolment steps: scan/manual key, confirm TOTP, copy/download/print codes, acknowledge.
+    - Authenticator replacement and cancellation.
+    - Password-plus-TOTP recovery-code regeneration.
+    - Remaining-code warnings and lost-authenticator guidance.
 - Use Wayfinder, Inertia `useHttp`/forms, Vuelidate, existing Reka controls, Lucide icons, accessible keyboard/focus behavior, light/dark styling, and bottom-center outcome toasts.
 - Mark setup, QR, manual-key, and one-time-code responses `no-store` with `Referrer-Policy: no-referrer`; load no third-party resources.
 

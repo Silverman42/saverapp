@@ -69,10 +69,18 @@ watchEffect(() => {
 
 const getDeviceIcon = (deviceName: string) => {
     const lower = deviceName.toLowerCase();
-    if (lower.includes('ios') || lower.includes('iphone') || lower.includes('android')) {
+    if (
+        lower.includes('ios') ||
+        lower.includes('iphone') ||
+        lower.includes('android')
+    ) {
         return Smartphone;
     }
-    if (lower.includes('mac') || lower.includes('windows') || lower.includes('linux')) {
+    if (
+        lower.includes('mac') ||
+        lower.includes('windows') ||
+        lower.includes('linux')
+    ) {
         return Laptop;
     }
     return Monitor;
@@ -97,14 +105,18 @@ const formatTime = (isoString: string): string => {
 
         <!-- Advisory Banner -->
         <div
-            class="bg-amber-500/10 border-amber-500/20 text-amber-950 dark:text-amber-200 flex items-start gap-3 rounded-lg border p-4 text-sm"
+            class="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-200"
         >
             <ShieldAlert
                 class="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400"
             />
             <div class="space-y-1">
                 <p class="font-medium">
-                    {{ isAdmin ? 'Single Device Policy' : 'Concurrent Device Limit' }}
+                    {{
+                        isAdmin
+                            ? 'Single Device Policy'
+                            : 'Concurrent Device Limit'
+                    }}
                 </p>
                 <p class="text-muted-foreground text-xs leading-relaxed">
                     {{ pageDescription }}
@@ -120,10 +132,16 @@ const formatTime = (isoString: string): string => {
             @submit="v$.$touch()"
             #default="{ processing, errors }"
         >
-            <input type="hidden" name="session_id" :value="formState.session_id" />
+            <input
+                type="hidden"
+                name="session_id"
+                :value="formState.session_id"
+            />
 
             <div class="space-y-3">
-                <Label class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Label
+                    class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                >
                     Select active session to sign out:
                 </Label>
 
@@ -134,7 +152,7 @@ const formatTime = (isoString: string): string => {
                         @click="formState.session_id = session.id"
                         class="border-border flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors"
                         :class="{
-                            'border-primary bg-primary/5 ring-1 ring-primary':
+                            'border-primary bg-primary/5 ring-primary ring-1':
                                 formState.session_id === session.id,
                             'hover:bg-muted/50':
                                 formState.session_id !== session.id,
@@ -155,17 +173,25 @@ const formatTime = (isoString: string): string => {
                             <div class="flex items-center gap-2">
                                 <component
                                     :is="getDeviceIcon(session.device_name)"
-                                    class="size-4 text-muted-foreground"
+                                    class="text-muted-foreground size-4"
                                 />
-                                <span class="font-medium text-sm">
+                                <span class="text-sm font-medium">
                                     {{ session.device_name }}
                                 </span>
                             </div>
 
-                            <div class="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                            <div
+                                class="text-muted-foreground grid grid-cols-1 gap-1 text-xs sm:grid-cols-2"
+                            >
                                 <div>Network: {{ session.masked_ip }}</div>
-                                <div>Last active: {{ formatTime(session.last_active_at) }}</div>
-                                <div class="col-span-full">Signed in: {{ formatTime(session.first_sign_in_at) }}</div>
+                                <div>
+                                    Last active:
+                                    {{ formatTime(session.last_active_at) }}
+                                </div>
+                                <div class="col-span-full">
+                                    Signed in:
+                                    {{ formatTime(session.first_sign_in_at) }}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -194,8 +220,17 @@ const formatTime = (isoString: string): string => {
         </Form>
 
         <!-- Cancel Form -->
-        <Form action="/device-eviction/cancel" method="post" class="text-center">
-            <Button variant="ghost" size="sm" type="submit" class="text-muted-foreground hover:text-foreground gap-1.5">
+        <Form
+            action="/device-eviction/cancel"
+            method="post"
+            class="text-center"
+        >
+            <Button
+                variant="ghost"
+                size="sm"
+                type="submit"
+                class="text-muted-foreground hover:text-foreground gap-1.5"
+            >
                 <XCircle class="size-4" />
                 Cancel Sign In
             </Button>

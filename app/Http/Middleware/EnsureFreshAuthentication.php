@@ -2,9 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\FreshAuthenticationService;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,24 +26,13 @@ class EnsureFreshAuthentication
             return redirect()->route('login');
         }
 
-        $session = $request->session();
-        $freshUntil = $session->get('auth.fresh_until');
-
-        // Check fallback to password_confirmed_at if within 10 minutes
-        if (! $freshUntil) {
-            $confirmedAt = $session->get('auth.password_confirmed_at');
-            if ($confirmedAt && (Carbon::now()->timestamp - $confirmedAt) < self::FRESH_WINDOW_SECONDS) {
-                $freshUntil = $confirmedAt + self::FRESH_WINDOW_SECONDS;
-                $session->put('auth.fresh_until', $freshUntil);
-            }
-        }
-
-        if (! $freshUntil || $freshUntil < Carbon::now()->timestamp) {
+        $user = $request->user();
+        if (! $user || ! app(FreshAuthenticationService::class)->isFresh($user, $request)) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => __('Fresh authentication required.')], 423);
             }
 
-            return redirect()->guest(route('password.confirm'));
+            return redirect()->guest(route('fresh-authentication'));
         }
 
         return $next($request);

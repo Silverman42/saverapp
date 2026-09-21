@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
+import { unlock } from '@/actions/App/Http/Controllers/Admin/LockoutController';
+import { dashboard } from '@/routes';
 import { useVuelidate } from '@vuelidate/core';
 import { minLength, required } from '@vuelidate/validators';
 import {
@@ -36,6 +38,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 export type LockItem = {
     id: number;
@@ -56,7 +65,14 @@ export type LockItem = {
     unlocked_at?: string | null;
     unlocked_by?: string | null;
     unlock_reason?: string | null;
+    unlock_verification_method?: string | null;
+    unlock_verification_method_label?: string | null;
     can_unlock: boolean;
+};
+
+export type VerificationMethodOption = {
+    value: string;
+    label: string;
 };
 
 export type PaginatedLocks = {
@@ -70,11 +86,16 @@ export type PaginatedLocks = {
 
 const props = defineProps<{
     locks: PaginatedLocks;
+    verification_methods: VerificationMethodOption[];
 }>();
 
 defineOptions({
     layout: {
         breadcrumbs: [
+            {
+                title: 'Dashboard',
+                href: dashboard(),
+            },
             {
                 title: 'Security lockouts',
                 href: '/admin/lockouts',
@@ -86,10 +107,12 @@ defineOptions({
 const isUnlockDialogOpen = ref(false);
 const selectedLock = ref<LockItem | null>(null);
 const isSubmitting = ref(false);
+const serverErrors = ref<Record<string, string>>({});
 
 const formState = reactive({
     reason: '',
     category: '',
+    verification_method: '',
 });
 
 const rules = computed(() => ({
@@ -97,14 +120,23 @@ const rules = computed(() => ({
         required,
         minLength: minLength(5),
     },
+    category: {
+        required,
+    },
+    verification_method: {
+        required,
+    },
 }));
 
 const v$ = useVuelidate(rules, formState);
 
 const openUnlockDialog = (lock: LockItem) => {
     selectedLock.value = lock;
-    formState.reason = 'Identity verified following security protocol';
     formState.category = lock.lock_category;
+    formState.verification_method =
+        props.verification_methods?.[0]?.value ?? 'in_person';
+    formState.reason = '';
+    serverErrors.value = {};
     v$.value.$reset();
     isUnlockDialogOpen.value = true;
 };
@@ -112,6 +144,7 @@ const openUnlockDialog = (lock: LockItem) => {
 const closeUnlockDialog = () => {
     isUnlockDialogOpen.value = false;
     selectedLock.value = null;
+    serverErrors.value = {};
     v$.value.$reset();
 };
 
@@ -122,12 +155,14 @@ const submitUnlock = async () => {
     }
 
     isSubmitting.value = true;
+    serverErrors.value = {};
 
     router.post(
-        `/admin/lockouts/${selectedLock.value.user_id}/unlock`,
+        unlock(selectedLock.value.user_id).url,
         {
-            reason: formState.reason,
-            category: formState.category || null,
+            category: formState.category,
+            verification_method: formState.verification_method,
+            reason: formState.reason.trim(),
         },
         {
             preserveScroll: true,
@@ -136,13 +171,20 @@ const submitUnlock = async () => {
                 toast.success('Account restriction cleared successfully.');
             },
             onError: (errors) => {
-                const message = errors.user || Object.values(errors)[0] || 'Failed to unlock account.';
+                serverErrors.value = errors as Record<string, string>;
+                const message =
+                    errors.user ||
+                    errors.category ||
+                    errors.verification_method ||
+                    errors.reason ||
+                    Object.values(errors)[0] ||
+                    'Failed to unlock account.';
                 toast.error(message as string);
             },
             onFinish: () => {
                 isSubmitting.value = false;
             },
-        }
+        },
     );
 };
 
@@ -180,18 +222,24 @@ const refreshData = () => {
 </script>
 
 <template>
-    <div class="flex flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 font-sans">
+    <div class="flex flex-1 flex-col gap-6 font-sans">
         <Head title="Security Lockouts & Abuse Monitoring" />
 
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        >
             <div>
-                <Badge variant="outline" class="mb-3 border-primary/20 bg-accent text-accent-foreground">
-                    Security Operations
-                </Badge>
-                <h1 class="text-3xl font-semibold tracking-tight">Security Lockouts</h1>
-                <p class="mt-1.5 text-sm text-muted-foreground">
-                    Monitor temporary authentication restrictions, sliding abuse counters, and perform authorized manual unlocks.
+                <!-- heading -->
+                <h1 class="text-3xl font-semibold tracking-tight">
+                    Security Lockouts
+                </h1>
+                <!-- heading end  -->
+                <!-- Subtext  -->
+                <p class="text-muted-foreground mt-1.5 text-sm">
+                    Monitor temporary authentication restrictions, sliding abuse
+                    counters, and perform authorized manual unlocks.
                 </p>
+                <!-- Subtext end -->
             </div>
 
             <div class="flex items-center gap-2">
@@ -202,13 +250,23 @@ const refreshData = () => {
             </div>
         </div>
 
-        <div v-if="props.locks.data.length === 0" class="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
-            <div class="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <ShieldCheck class="size-6 text-green-600 dark:text-green-400" />
+        <div
+            v-if="props.locks.data.length === 0"
+            class="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center"
+        >
+            <div
+                class="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full"
+            >
+                <ShieldCheck
+                    class="size-6 text-green-600 dark:text-green-400"
+                />
             </div>
-            <h3 class="mt-4 text-base font-semibold">No Authentication Locks</h3>
-            <p class="mt-1.5 text-sm text-muted-foreground max-w-md">
-                There are currently no active temporary locks or recent abuse incidents recorded in the system.
+            <h3 class="mt-4 text-base font-semibold">
+                No Authentication Locks
+            </h3>
+            <p class="text-muted-foreground mt-1.5 max-w-md text-sm">
+                There are currently no active temporary locks or recent abuse
+                incidents recorded in the system.
             </p>
         </div>
 
@@ -216,26 +274,55 @@ const refreshData = () => {
             <div
                 v-for="lock in props.locks.data"
                 :key="lock.id"
-                class="rounded-xl border bg-card p-5 text-card-foreground shadow-sm transition-colors hover:border-border/80"
+                class="bg-card text-card-foreground hover:border-border/80 rounded-xl border p-5 shadow-sm transition-colors"
             >
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+                >
                     <div class="space-y-2">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="font-semibold text-base">{{ lock.user_name || lock.email }}</span>
-                            <span v-if="lock.user_name" class="text-xs text-muted-foreground">({{ lock.email }})</span>
-                            <Badge v-if="lock.user_type" variant="outline" class="capitalize text-xs">
+                            <span class="text-base font-semibold">{{
+                                lock.user_name || lock.email
+                            }}</span>
+                            <span
+                                v-if="lock.user_name"
+                                class="text-muted-foreground text-xs"
+                                >({{ lock.email }})</span
+                            >
+                            <Badge
+                                v-if="lock.user_type"
+                                variant="outline"
+                                class="text-xs capitalize"
+                            >
                                 {{ lock.user_type }}
                             </Badge>
-                            <Badge :variant="getCategoryBadgeVariant(lock.lock_category)" class="capitalize text-xs">
+                            <Badge
+                                :variant="
+                                    getCategoryBadgeVariant(lock.lock_category)
+                                "
+                                class="text-xs capitalize"
+                            >
                                 {{ lock.lock_category.replace('_', ' ') }} lock
                             </Badge>
-                            <Badge v-if="lock.requires_review" variant="destructive" class="text-xs">
+                            <Badge
+                                v-if="lock.requires_review"
+                                variant="destructive"
+                                class="text-xs"
+                            >
                                 Review Required
                             </Badge>
-                            <Badge v-if="lock.is_active" variant="destructive" class="text-xs">
+                            <Badge
+                                v-if="lock.is_active"
+                                variant="destructive"
+                                class="text-xs"
+                            >
                                 Active restriction
                             </Badge>
-                            <Badge v-else-if="lock.unlocked_at" variant="outline" class="border-green-500/30 text-green-700 dark:text-green-400 text-xs">
+                            <Badge
+                                v-else-if="lock.unlocked_at"
+                                variant="outline"
+                                class="border-green-500/30 text-xs text-green-700 dark:text-green-400"
+                            >
                                 Manually unlocked
                             </Badge>
                             <Badge v-else variant="secondary" class="text-xs">
@@ -243,34 +330,81 @@ const refreshData = () => {
                             </Badge>
                         </div>
 
-                        <p class="text-sm text-foreground/90 font-medium">{{ lock.reason }}</p>
+                        <p class="text-foreground/90 text-sm font-medium">
+                            {{ lock.reason }}
+                        </p>
 
-                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>Attempts: <strong class="text-foreground">{{ lock.failed_attempts_count }}</strong></span>
-                            <span>Source IP: <strong class="font-mono text-foreground">{{ lock.masked_ip }}</strong></span>
-                            <span>Device: <strong class="text-foreground">{{ lock.device_context }}</strong></span>
-                            <span>Locked at: <strong class="text-foreground">{{ formatDateTime(lock.locked_at) }}</strong></span>
-                            <span v-if="lock.locked_until">Expires: <strong class="text-foreground">{{ formatDateTime(lock.locked_until) }}</strong></span>
+                        <div
+                            class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
+                        >
+                            <span
+                                >Attempts:
+                                <strong class="text-foreground">{{
+                                    lock.failed_attempts_count
+                                }}</strong></span
+                            >
+                            <span
+                                >Source IP:
+                                <strong class="text-foreground font-mono">{{
+                                    lock.masked_ip
+                                }}</strong></span
+                            >
+                            <span
+                                >Device:
+                                <strong class="text-foreground">{{
+                                    lock.device_context
+                                }}</strong></span
+                            >
+                            <span
+                                >Locked at:
+                                <strong class="text-foreground">{{
+                                    formatDateTime(lock.locked_at)
+                                }}</strong></span
+                            >
+                            <span v-if="lock.locked_until"
+                                >Expires:
+                                <strong class="text-foreground">{{
+                                    formatDateTime(lock.locked_until)
+                                }}</strong></span
+                            >
                         </div>
 
-                        <div v-if="lock.unlocked_at" class="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-                            Unlocked by <strong>{{ lock.unlocked_by || 'Administrator' }}</strong> on {{ formatDateTime(lock.unlocked_at) }}
-                            <span v-if="lock.unlock_reason"> — Reason: {{ lock.unlock_reason }}</span>
+                        <div
+                            v-if="lock.unlocked_at"
+                            class="bg-muted/50 text-muted-foreground rounded-md p-2 text-xs"
+                        >
+                            Unlocked by
+                            <strong>{{
+                                lock.unlocked_by || 'Administrator'
+                            }}</strong>
+                            on {{ formatDateTime(lock.unlocked_at) }}
+                            <span v-if="lock.unlock_verification_method_label">
+                                via
+                                <strong>{{
+                                    lock.unlock_verification_method_label
+                                }}</strong>
+                            </span>
+                            <span v-if="lock.unlock_reason">
+                                — Detail: {{ lock.unlock_reason }}</span
+                            >
                         </div>
                     </div>
 
-                    <div class="flex sm:flex-col items-end gap-2 shrink-0">
+                    <div class="flex shrink-0 items-end gap-2 sm:flex-col">
                         <Button
                             v-if="lock.can_unlock"
                             variant="outline"
                             size="sm"
-                            class="gap-1.5 border-primary/30 hover:bg-accent"
+                            class="border-primary/30 hover:bg-accent gap-1.5"
                             @click="openUnlockDialog(lock)"
                         >
                             <Unlock class="size-3.5" />
                             Manual Unlock
                         </Button>
-                        <span v-else-if="lock.is_active" class="text-xs text-muted-foreground italic">
+                        <span
+                            v-else-if="lock.is_active"
+                            class="text-muted-foreground text-xs italic"
+                        >
                             Cannot unlock
                         </span>
                     </div>
@@ -278,9 +412,13 @@ const refreshData = () => {
             </div>
 
             <!-- Pagination controls -->
-            <div v-if="props.locks.last_page > 1" class="flex items-center justify-between pt-4">
-                <p class="text-xs text-muted-foreground">
-                    Showing page {{ props.locks.current_page }} of {{ props.locks.last_page }} ({{ props.locks.total }} total)
+            <div
+                v-if="props.locks.last_page > 1"
+                class="flex items-center justify-between pt-4"
+            >
+                <p class="text-muted-foreground text-xs">
+                    Showing page {{ props.locks.current_page }} of
+                    {{ props.locks.last_page }} ({{ props.locks.total }} total)
                 </p>
                 <div class="flex items-center gap-2">
                     <Button
@@ -289,7 +427,11 @@ const refreshData = () => {
                         :disabled="!props.locks.prev_page_url"
                         as-child
                     >
-                        <Link v-if="props.locks.prev_page_url" :href="props.locks.prev_page_url">Previous</Link>
+                        <Link
+                            v-if="props.locks.prev_page_url"
+                            :href="props.locks.prev_page_url"
+                            >Previous</Link
+                        >
                         <span v-else>Previous</span>
                     </Button>
                     <Button
@@ -298,7 +440,11 @@ const refreshData = () => {
                         :disabled="!props.locks.next_page_url"
                         as-child
                     >
-                        <Link v-if="props.locks.next_page_url" :href="props.locks.next_page_url">Next</Link>
+                        <Link
+                            v-if="props.locks.next_page_url"
+                            :href="props.locks.next_page_url"
+                            >Next</Link
+                        >
                         <span v-else>Next</span>
                     </Button>
                 </div>
@@ -306,49 +452,131 @@ const refreshData = () => {
         </div>
 
         <!-- Manual Unlock Confirmation Dialog -->
-        <Dialog :open="isUnlockDialogOpen" @update:open="(val) => { if (!val) closeUnlockDialog(); }">
+        <Dialog
+            :open="isUnlockDialogOpen"
+            @update:open="
+                (val) => {
+                    if (!val) closeUnlockDialog();
+                }
+            "
+        >
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle class="flex items-center gap-2">
-                        <Unlock class="size-5 text-primary" />
+                        <Unlock class="text-primary size-5" />
                         Confirm Manual Unlock
                     </DialogTitle>
                     <DialogDescription>
-                        Manually clear the temporary restriction for <strong>{{ selectedLock?.user_name || selectedLock?.email }}</strong>.
-                        Per security policy, this does not change passwords, MFA, permissions, or account status.
+                        Manually clear the temporary restriction for
+                        <strong>{{
+                            selectedLock?.user_name || selectedLock?.email
+                        }}</strong
+                        >. Per security policy, this does not change passwords,
+                        MFA, permissions, or account status.
                     </DialogDescription>
                 </DialogHeader>
 
                 <form @submit.prevent="submitUnlock" class="space-y-4 py-2">
                     <div class="space-y-2">
-                        <Label for="unlock-reason">Verification Reason <span class="text-destructive">*</span></Label>
-                        <Input
-                            id="unlock-reason"
-                            v-model="formState.reason"
-                            placeholder="e.g. Identity verified via telephone verification"
-                            :class="{ 'border-destructive': v$.reason.$error }"
-                        />
-                        <InputError :message="v$.reason.$errors[0]?.$message as string" />
+                        <Label>Restriction Category</Label>
+                        <div class="flex items-center gap-2">
+                            <Badge
+                                :variant="
+                                    getCategoryBadgeVariant(formState.category)
+                                "
+                                class="font-medium capitalize"
+                            >
+                                {{ formState.category.replace('_', ' ') }}
+                            </Badge>
+                            <span class="text-muted-foreground text-xs">
+                                Only this specific restriction will be cleared.
+                            </span>
+                        </div>
+                        <InputError :message="serverErrors.category" />
                     </div>
 
                     <div class="space-y-2">
-                        <Label for="unlock-category">Restriction Category</Label>
-                        <Input
-                            id="unlock-category"
-                            v-model="formState.category"
-                            placeholder="Leave empty to clear all temporary locks"
+                        <Label for="verification-method"
+                            >Verification Method
+                            <span class="text-destructive">*</span></Label
+                        >
+                        <Select v-model="formState.verification_method">
+                            <SelectTrigger
+                                id="verification-method"
+                                class="w-full"
+                                aria-label="Verification method"
+                            >
+                                <SelectValue
+                                    placeholder="Select verified method"
+                                />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="method in props.verification_methods"
+                                    :key="method.value"
+                                    :value="method.value"
+                                >
+                                    {{ method.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError
+                            v-if="v$.verification_method.$error"
+                            :message="
+                                v$.verification_method.$errors[0]
+                                    ?.$message as string
+                            "
                         />
-                        <p class="text-xs text-muted-foreground">
-                            Target category: <code>password</code>, <code>mfa</code>, or <code>recovery_code</code> (leave blank for all).
+                        <InputError
+                            v-else-if="serverErrors.verification_method"
+                            :message="serverErrors.verification_method"
+                        />
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="unlock-reason"
+                            >Verification Detail & Reason
+                            <span class="text-destructive">*</span></Label
+                        >
+                        <Input
+                            id="unlock-reason"
+                            v-model="formState.reason"
+                            placeholder="e.g. Identity verified via registered phone callback with customer"
+                            maxlength="255"
+                            :class="{
+                                'border-destructive':
+                                    v$.reason.$error || serverErrors.reason,
+                            }"
+                        />
+                        <p class="text-muted-foreground text-xs">
+                            Detail the completed verification protocol (5–255
+                            characters). Do not record secrets, credentials, or
+                            document contents.
                         </p>
+                        <InputError
+                            v-if="v$.reason.$error"
+                            :message="v$.reason.$errors[0]?.$message as string"
+                        />
+                        <InputError
+                            v-else-if="serverErrors.reason"
+                            :message="serverErrors.reason"
+                        />
                     </div>
 
                     <DialogFooter class="mt-4 gap-2 sm:gap-0">
-                        <Button type="button" variant="outline" @click="closeUnlockDialog" :disabled="isSubmitting">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="closeUnlockDialog"
+                            :disabled="isSubmitting"
+                        >
                             Cancel
                         </Button>
-                        <Button type="submit" :disabled="isSubmitting || v$.$invalid">
-                            <Unlock class="size-4 mr-1.5" />
+                        <Button
+                            type="submit"
+                            :disabled="isSubmitting || v$.$invalid"
+                        >
+                            <Unlock class="mr-1.5 size-4" />
                             Confirm Unlock
                         </Button>
                     </DialogFooter>

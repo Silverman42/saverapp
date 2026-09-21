@@ -393,9 +393,9 @@ test('fresh authentication window lasts 10 minutes and requires reauthentication
     // Advance clock past 10 minutes (601 seconds)
     Carbon::setTestNow(Carbon::now()->addSeconds(601));
 
-    // Visiting settings/security redirects to password confirmation
+    // Visiting settings/security redirects to fresh authentication step-up
     $expiredResponse = $this->get(route('security.edit'));
-    $expiredResponse->assertRedirect(route('password.confirm'));
+    $expiredResponse->assertRedirect(route('fresh-authentication'));
 
     Carbon::setTestNow();
 });

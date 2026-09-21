@@ -86,11 +86,11 @@ If the Customer does not activate immediately, their savings profile may still e
 
 There is no public registration. Invitations are the normal mechanism through which additional Admins, Agents, and Customers activate access.
 
-| User being invited | Account created by | Invitation may be managed by |
-| --- | --- | --- |
-| Admin | Admin with Admin-management permission | Any Admin with Admin-management permission |
-| Agent | Authorized Admin | Any authorized Admin |
-| Customer | Agent | The assigned Agent or an authorized Admin |
+| User being invited | Account created by                     | Invitation may be managed by               |
+| ------------------ | -------------------------------------- | ------------------------------------------ |
+| Admin              | Admin with Admin-management permission | Any Admin with Admin-management permission |
+| Agent              | Authorized Admin                       | Any authorized Admin                       |
+| Customer           | Agent                                  | The assigned Agent or an authorized Admin  |
 
 Creating a Customer remains exclusive to Agents. An authorized Admin may manage an existing Customer invitation but cannot create the Customer.
 
@@ -171,13 +171,13 @@ An authorized invitation manager may cancel an invitation before activation.
 
 An email address identifies only one account across the system. When an internal user enters an email that already exists:
 
-| Existing account state | Required behaviour |
-| --- | --- |
-| Invited | Offer an authorized user the appropriate resend, correction, or cancellation actions |
-| Active | Prevent creation of another account |
-| Suspended | Direct the authorized user to account management rather than creating a duplicate |
-| Deactivated | Require the reactivation workflow rather than creating a duplicate |
-| Existing account has another user type | Prevent creation and do not silently change the existing role |
+| Existing account state                 | Required behaviour                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| Invited                                | Offer an authorized user the appropriate resend, correction, or cancellation actions |
+| Active                                 | Prevent creation of another account                                                  |
+| Suspended                              | Direct the authorized user to account management rather than creating a duplicate    |
+| Deactivated                            | Require the reactivation workflow rather than creating a duplicate                   |
+| Existing account has another user type | Prevent creation and do not silently change the existing role                        |
 
 The system must also prevent creation of a Customer when the normalized phone number already belongs to another Customer.
 
@@ -255,9 +255,9 @@ The pre-activation correction flow in Section 3.10 applies only to invited accou
 2. The user enters the proposed new email address.
 3. The system normalizes the address, verifies that it can be used, and temporarily reserves it.
 4. The user completes fresh authentication:
-   - A Customer enters their current password.
-   - An Agent enters their current password and a valid authenticator code.
-   - An Admin enters their current password and a valid authenticator code.
+    - A Customer enters their current password.
+    - An Agent enters their current password and a valid authenticator code.
+    - An Admin enters their current password and a valid authenticator code.
 5. The system sends a unique authorization link to the current email address.
 6. The system sends a different verification link to the proposed email address.
 7. Both links must be confirmed within 30 minutes.
@@ -284,11 +284,11 @@ Until both confirmations succeed:
 
 #### 4.4.3 Role-specific notifications
 
-| Account changed | Additional notification |
-| --- | --- |
-| Customer | Notify the assigned Agent after completion |
-| Agent | Notify active Admins with the relevant security permission |
-| Admin | Notify all active Admins |
+| Account changed | Additional notification                                    |
+| --------------- | ---------------------------------------------------------- |
+| Customer        | Notify the assigned Agent after completion                 |
+| Agent           | Notify active Admins with the relevant security permission |
+| Admin           | Notify all active Admins                                   |
 
 Security notifications should identify the affected account and event without unnecessarily exposing the complete previous and new email addresses.
 
@@ -385,14 +385,14 @@ The Admin or Agent cannot skip enrolment or access protected application feature
 
 An authenticator has one of the following states:
 
-| State | Meaning |
-| --- | --- |
-| Not configured | The account has no confirmed authenticator |
-| Pending confirmation | A secret was generated but has not been confirmed with a valid code |
-| Active | The authenticator can satisfy MFA challenges |
-| Replacement pending | A new authenticator is being configured while the current one remains active |
-| Revoked | The authenticator can no longer satisfy MFA challenges |
-| Recovery required | The user cannot complete normal authenticator verification or replacement |
+| State                | Meaning                                                                      |
+| -------------------- | ---------------------------------------------------------------------------- |
+| Not configured       | The account has no confirmed authenticator                                   |
+| Pending confirmation | A secret was generated but has not been confirmed with a valid code          |
+| Active               | The authenticator can satisfy MFA challenges                                 |
+| Replacement pending  | A new authenticator is being configured while the current one remains active |
+| Revoked              | The authenticator can no longer satisfy MFA challenges                       |
+| Recovery required    | The user cannot complete normal authenticator verification or replacement    |
 
 ### 5.7 Authenticator verification
 
@@ -493,14 +493,14 @@ Audit entries must identify the actor, affected account, time, result, reason, a
 
 Every account must have an explicit access state.
 
-| State | Meaning | Can sign in? |
-| --- | --- | :---: |
-| Invited | Account exists but activation is incomplete | No |
-| MFA setup required | Admin or Agent credentials are valid, but authenticator setup is incomplete | Setup only |
-| Active | Activation is complete and access is allowed | Yes |
+| State              | Meaning                                                                                             |          Can sign in?           |
+| ------------------ | --------------------------------------------------------------------------------------------------- | :-----------------------------: |
+| Invited            | Account exists but activation is incomplete                                                         |               No                |
+| MFA setup required | Admin or Agent credentials are valid, but authenticator setup is incomplete                         |           Setup only            |
+| Active             | Activation is complete and access is allowed                                                        |               Yes               |
 | Temporarily locked | One or more authentication methods are temporarily restricted after suspicious or repeated failures | Not through the affected method |
-| Suspended | An authorized Admin has disabled access | No |
-| Deactivated | Access has ended, but historical attribution is retained | No |
+| Suspended          | An authorized Admin has disabled access                                                             |               No                |
+| Deactivated        | Access has ended, but historical attribution is retained                                            |               No                |
 
 Deleting a user account must not delete Customer records, collections, approvals, audit events, or any other financial history associated with that user.
 
@@ -517,7 +517,7 @@ All user types begin from the same **Forgot password** entry point.
 1. The user enters their email address.
 2. The system displays the same result whether the email belongs to an active, invited, suspended, deactivated, or nonexistent account:
 
-   > If an account exists for this email, we've sent password reset instructions.
+    > If an account exists for this email, we've sent password reset instructions.
 
 3. If the account is eligible, the system sends a single-use password-reset link to its verified email address.
 4. The link expires 15 minutes after it is issued.
@@ -581,17 +581,17 @@ After any successful password reset, the system must:
 
 ### 7.6 Password-reset special cases
 
-| Account or request state | Required behaviour |
-| --- | --- |
-| Invited account | Password reset must not activate the account. The user must request or receive a new invitation. |
-| Suspended account | The password may be reset, but the account remains suspended and cannot sign in. |
-| Deactivated account | The password may be reset, but the account remains deactivated and cannot sign in. |
-| Temporarily locked by password failures | A successful reset clears the temporary password-failure lock. |
-| MFA setup required | The password may be reset, but the Agent or Admin must still complete authenticator setup before dashboard access. |
-| Expired, invalid, or previously used link | The system shows a neutral error and provides a way to request another link. |
-| Newer reset requested | Every older reset link is invalid. |
-| Account email changed | Reset links issued for the previous email address are invalid. |
-| Account role or permissions changed | The reset does not restore previous access or permissions. |
+| Account or request state                  | Required behaviour                                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Invited account                           | Password reset must not activate the account. The user must request or receive a new invitation.                   |
+| Suspended account                         | The password may be reset, but the account remains suspended and cannot sign in.                                   |
+| Deactivated account                       | The password may be reset, but the account remains deactivated and cannot sign in.                                 |
+| Temporarily locked by password failures   | A successful reset clears the temporary password-failure lock.                                                     |
+| MFA setup required                        | The password may be reset, but the Agent or Admin must still complete authenticator setup before dashboard access. |
+| Expired, invalid, or previously used link | The system shows a neutral error and provides a way to request another link.                                       |
+| Newer reset requested                     | Every older reset link is invalid.                                                                                 |
+| Account email changed                     | Reset links issued for the previous email address are invalid.                                                     |
+| Account role or permissions changed       | The reset does not restore previous access or permissions.                                                         |
 
 ### 7.7 Password-reset security controls
 
@@ -613,14 +613,14 @@ Assisted recovery must never allow an Agent or Admin to create, view, or assign 
 
 #### 7.8.1 Recovery scenarios
 
-| Access lost | Required recovery route |
-| --- | --- |
-| Password only | Normal password reset |
-| Authenticator app only | Use an unused recovery code |
-| Email only, while still signed in | Change the email after fresh password and MFA verification |
-| Email and password | Assisted recovery |
-| Authenticator app and recovery codes | Assisted recovery |
-| Email, authenticator app, and recovery codes | High-security assisted recovery |
+| Access lost                                  | Required recovery route                                    |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| Password only                                | Normal password reset                                      |
+| Authenticator app only                       | Use an unused recovery code                                |
+| Email only, while still signed in            | Change the email after fresh password and MFA verification |
+| Email and password                           | Assisted recovery                                          |
+| Authenticator app and recovery codes         | Assisted recovery                                          |
+| Email, authenticator app, and recovery codes | High-security assisted recovery                            |
 
 #### 7.8.2 Customer assisted recovery
 
@@ -717,10 +717,10 @@ Every state transition must record the actor, timestamp, reason, affected accoun
 ### 8.1 Session durations and device limits
 
 | User type | Inactivity timeout | Maximum session lifetime | Maximum concurrent devices |
-| --- | ---: | ---: | ---: |
-| Customer | 7 days | 30 days | 5 |
-| Agent | 1 hour | 24 hours | 2 |
-| Admin | 30 minutes | 24 hours | 1 |
+| --------- | -----------------: | -----------------------: | -------------------------: |
+| Customer  |             7 days |                  30 days |                          5 |
+| Agent     |             1 hour |                 24 hours |                          2 |
+| Admin     |         30 minutes |                 24 hours |                          1 |
 
 Intentional authenticated user activity may extend the inactivity deadline but never extends the maximum session lifetime. Background polling, notification delivery, an open browser tab, or automatic refresh does not count as user activity.
 
@@ -786,11 +786,11 @@ After successful login, the system must:
 
 Default post-login destinations are:
 
-| User type | Default destination |
-| --- | --- |
-| Customer | Customer dashboard |
-| Agent | Agent collection dashboard |
-| Admin | Admin dashboard |
+| User type | Default destination        |
+| --------- | -------------------------- |
+| Customer  | Customer dashboard         |
+| Agent     | Agent collection dashboard |
+| Admin     | Admin dashboard            |
 
 If another user signs in from the same browser, a resume cookie belonging to the previous user must be ignored and replaced. Permission removal, Customer reassignment, deleted routes, or newly restricted pages must also cause fallback to the appropriate default page.
 
@@ -860,13 +860,13 @@ Limits must consider the account, normalized email, IP address, device context, 
 
 ### 9.2 Password-failure thresholds
 
-| Failed password attempts | Required response |
-| ---: | --- |
-| 1–4 within 15 minutes | Reject with the generic login error |
-| 5 | Apply a one-minute cooldown |
-| 6–9 | Apply progressively longer delays of up to five minutes |
-| 10 within one hour | Apply a 15-minute login lock and email the account owner |
-| 20 within 24 hours | Apply a one-hour login lock and flag the activity for Admin or security review |
+| Failed password attempts | Required response                                                              |
+| -----------------------: | ------------------------------------------------------------------------------ |
+|    1–4 within 15 minutes | Reject with the generic login error                                            |
+|                        5 | Apply a one-minute cooldown                                                    |
+|                      6–9 | Apply progressively longer delays of up to five minutes                        |
+|       10 within one hour | Apply a 15-minute login lock and email the account owner                       |
+|       20 within 24 hours | Apply a one-hour login lock and flag the activity for Admin or security review |
 
 The public response remains:
 

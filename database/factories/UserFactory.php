@@ -37,6 +37,7 @@ class UserFactory extends Factory
             'email_normalized' => IdentityNormalizer::normalizeEmail($email),
             'user_type' => UserType::Customer,
             'account_state' => AccountState::Active,
+            'permission_version' => 1,
             'authenticator_state' => AuthenticatorState::NotConfigured,
             'locked_until' => null,
             'lock_category' => null,

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\AdminPermission;
+use App\Enums\UnlockVerificationMethod;
 use App\Enums\UserType;
 use App\Models\AuthenticationLock;
 use App\Models\User;
@@ -12,6 +14,7 @@ use App\Notifications\Auth\PasswordLockoutNotification;
 use App\Notifications\Auth\RecoveryCodeCooldownNotification;
 use App\Notifications\Auth\TwoFactorFailedAttemptsExceededNotification;
 use App\Support\IdentityNormalizer;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +24,10 @@ use Illuminate\Validation\ValidationException;
 
 class AuthenticationAbuseService
 {
+    public function __construct(
+        protected AuthorizationService $authorizationService,
+    ) {}
+
     /**
      * Check if password authentication is currently restricted for this identity or IP.
      */
@@ -428,67 +435,119 @@ class AuthenticationAbuseService
     }
 
     /**
-     * Manually unlock a user's temporary locks by an authorized Administrator (AUTH-061).
+     * Manually unlock a user's temporary locks by an authorized Administrator (AUTH-061, AUTHZ-019).
      *
+     * @throws AuthorizationException
      * @throws ValidationException
      */
-    public function manualUnlock(User $targetUser, User $adminUser, ?string $category = null, ?string $reason = null): void
-    {
-        // 1. Verify acting user is an Administrator
-        if ($adminUser->user_type !== UserType::Admin) {
-            throw ValidationException::withMessages([
-                'user' => [__('Only administrators are authorized to manually unlock accounts.')],
+    public function manualUnlock(
+        User $targetUser,
+        User $adminUser,
+        string $category = 'password',
+        UnlockVerificationMethod|string $verificationMethod = UnlockVerificationMethod::InPerson,
+        string $reason = 'Identity verified following security protocol',
+    ): void {
+        if (is_string($verificationMethod)) {
+            $verificationMethod = UnlockVerificationMethod::from($verificationMethod);
+        }
+        $reason = trim($reason);
+
+        DB::transaction(function () use ($targetUser, $adminUser, $category, $verificationMethod, $reason) {
+            // 1. Gather involved user IDs and lock in deterministic order
+            $idsToLock = collect([$adminUser->id, $targetUser->id])
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            User::query()->whereIn('id', $idsToLock)->lockForUpdate()->get();
+
+            /** @var User $lockedActor */
+            $lockedActor = User::query()->findOrFail($adminUser->id);
+            /** @var User $lockedTarget */
+            $lockedTarget = User::query()->findOrFail($targetUser->id);
+
+            // 2. Prohibit self-unlock (403)
+            if ($lockedActor->id === $lockedTarget->id) {
+                throw new AuthorizationException(__('Administrators cannot unlock their own accounts. Another administrator must verify and unlock this account.'));
+            }
+
+            // 3. Final active admin safeguard (403)
+            if ($lockedTarget->user_type === UserType::Admin && $lockedTarget->isFinalActiveAdmin()) {
+                throw new AuthorizationException(__('The final active administrator cannot be manually unlocked. The approved emergency recovery procedure is required.'));
+            }
+
+            // 4. Commit-time authorization check: re-run AuthorizationService for SecurityOperationsManage (403)
+            if (! $this->authorizationService->allows($lockedActor, AdminPermission::SecurityOperationsManage)) {
+                throw new AuthorizationException(__('You do not have authorization to manage security operations.'));
+            }
+
+            // 5. Lock matching active restriction rows in authentication_locks table
+            $normalizedEmail = IdentityNormalizer::normalizeEmail($lockedTarget->email);
+
+            $activeLocks = AuthenticationLock::query()
+                ->where(function ($query) use ($lockedTarget, $normalizedEmail) {
+                    $query->where('user_id', $lockedTarget->id)
+                        ->orWhere('email_normalized', $normalizedEmail);
+                })
+                ->where('lock_category', $category)
+                ->active()
+                ->lockForUpdate()
+                ->get();
+
+            $isUserLocked = $lockedTarget->isTemporarilyLocked($category);
+
+            // Reject expired or missing matching restrictions with 422
+            if ($activeLocks->isEmpty() && ! $isUserLocked) {
+                throw ValidationException::withMessages([
+                    'category' => [__('There is no active temporary restriction for this category.')],
+                ]);
+            }
+
+            // 6. Clear only the requested restriction category and matching abuse counters
+            // while preserving passwords, MFA, account state, roles, permissions, assignments, and unrelated restrictions.
+            if ($lockedTarget->lock_category === $category || $lockedTarget->lock_category === null) {
+                $lockedTarget->locked_until = null;
+                $lockedTarget->lock_category = null;
+                $lockedTarget->lock_reason = null;
+                $lockedTarget->save();
+            }
+
+            $now = Carbon::now();
+            foreach ($activeLocks as $lock) {
+                $lock->update([
+                    'unlocked_at' => $now,
+                    'unlocked_by_user_id' => $lockedActor->id,
+                    'unlock_reason' => $reason,
+                    'unlock_verification_method' => $verificationMethod,
+                ]);
+            }
+
+            // Clear matching abuse counters in cache
+            if ($category === 'password') {
+                Cache::forget("auth:password:failures:{$normalizedEmail}");
+                Cache::forget("auth:password:cooldown:{$normalizedEmail}");
+            } elseif ($category === 'mfa') {
+                Cache::forget("auth:totp:failures:{$lockedTarget->id}");
+                Cache::forget("auth:totp:cooldown:{$lockedTarget->id}");
+            } elseif ($category === 'recovery_code') {
+                Cache::forget("auth:recovery_code:failures:{$lockedTarget->id}");
+                Cache::forget("auth:recovery_code:cooldown:{$lockedTarget->id}");
+            }
+
+            // 7. Queue the account-owner notification only after commit
+            DB::afterCommit(function () use ($lockedTarget) {
+                $lockedTarget->notify(new AccountUnlockedNotification('Administrator'));
+            });
+
+            Log::info('Account manually unlocked by administrator', [
+                'target_user_id' => $lockedTarget->id,
+                'admin_user_id' => $lockedActor->id,
+                'category' => $category,
+                'verification_method' => $verificationMethod->value,
+                'reason' => $reason,
             ]);
-        }
-
-        // 2. Prohibit self-unlock
-        if ($adminUser->id === $targetUser->id) {
-            throw ValidationException::withMessages([
-                'user' => [__('Administrators cannot unlock their own accounts. Another administrator must verify and unlock this account.')],
-            ]);
-        }
-
-        // 3. Final active admin cannot be unlocked by anyone else
-        if ($targetUser->user_type === UserType::Admin && $targetUser->isFinalActiveAdmin()) {
-            throw ValidationException::withMessages([
-                'user' => [__('The final active administrator cannot be manually unlocked. The approved emergency recovery procedure is required.')],
-            ]);
-        }
-
-        // 4. Clear the temporary lock on user and mark active AuthenticationLock records
-        $normalized = IdentityNormalizer::normalizeEmail($targetUser->email);
-        $targetUser->unlock($category, $adminUser, $reason);
-
-        // Also mark any locks matching the normalized email
-        AuthenticationLock::where('email_normalized', $normalized)
-            ->when($category !== null, fn ($q) => $q->where('lock_category', $category))
-            ->active()
-            ->get()
-            ->each(fn (AuthenticationLock $l) => $l->markUnlocked($adminUser, $reason));
-
-        // 5. Clear all abuse counters in cache
-        if ($category === null || $category === 'password') {
-            Cache::forget("auth:password:failures:{$normalized}");
-            Cache::forget("auth:password:cooldown:{$normalized}");
-        }
-        if ($category === null || $category === 'mfa') {
-            Cache::forget("auth:totp:failures:{$targetUser->id}");
-            Cache::forget("auth:totp:cooldown:{$targetUser->id}");
-        }
-        if ($category === null || $category === 'recovery_code') {
-            Cache::forget("auth:recovery_code:failures:{$targetUser->id}");
-            Cache::forget("auth:recovery_code:cooldown:{$targetUser->id}");
-        }
-
-        Log::info('Account manually unlocked by administrator', [
-            'target_user_id' => $targetUser->id,
-            'admin_user_id' => $adminUser->id,
-            'category' => $category,
-            'reason' => $reason,
-        ]);
-
-        // 7. Dispatch queued security notification to account owner
-        $targetUser->notify(new AccountUnlockedNotification('Administrator'));
+        });
     }
 
     /**

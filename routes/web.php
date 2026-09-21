@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
 use App\Http\Controllers\Auth\DeviceEvictionController;
+use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
@@ -34,7 +36,19 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('lockouts', [LockoutController::class, 'index'])->name('lockouts.index');
         Route::post('lockouts/{user}/unlock', [LockoutController::class, 'unlock'])->name('lockouts.unlock');
+
+        Route::get('access', [AdminAccessController::class, 'index'])->name('access.index');
+        Route::get('access/{admin}', [AdminAccessController::class, 'show'])->name('access.show');
+        Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
+            ->middleware('fresh')
+            ->name('access.permissions.update');
     });
+
+    // Step-up Fresh Authentication (AUTHZ-T04)
+    Route::get('user/fresh-authentication', [FreshAuthenticationController::class, 'show'])
+        ->name('fresh-authentication');
+    Route::post('user/fresh-authentication', [FreshAuthenticationController::class, 'store'])
+        ->name('fresh-authentication.store');
 
     // Mandatory MFA Enrolment & Acknowledgement
     Route::get('two-factor-enrolment', [TwoFactorEnrolmentController::class, 'show'])

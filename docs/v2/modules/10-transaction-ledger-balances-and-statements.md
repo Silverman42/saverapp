@@ -17,15 +17,15 @@ The subledger is the authoritative source of posted financial effects. A transac
 
 Initial scope includes one NGN ledger for the configured business; balanced posting groups and immutable entries; Customer, cycle, Agent and business dimensions; contribution, fee, deduction, withdrawal, remittance, reversal and refund projections supplied by authorized owning workflows; current/as-of balances; scoped transaction search/detail; Customer statements; rebuild/integrity verification; and governed business exports.
 
-| Included | Deferred or owned elsewhere |
-| --- | --- |
-| NGN amounts stored as integer kobo and checked cumulative arithmetic | Foreign exchange, multiple currencies within one posting group, crypto or securities accounting |
-| Business subledger accounts and subsidiary Customer/Agent/cycle dimensions | Full statutory general ledger, tax filing, bank accounting package integration |
-| Posted financial truth and non-posting reservation integration | Collection, fee, withdrawal, reversal, refund and reconciliation workflow decisions |
-| Append-only linked compensation from an authorized owning workflow | Arbitrary manual journal screen, editable balances, direct Admin adjustment permission |
-| Customer statements rendered in application and downloadable PDF when the document service is enabled | Email/WhatsApp delivery, bulk statement runs, scheduled statements, certified legal statements |
-| Single-Customer scoped download and business/multi-Customer report export with proper authority | Raw ledger-entry CSV, audit-log export, accounting-software export until formats/privacy are approved |
-| Rebuildable derived projections and balance caches | Treating a mutable cache or search index as the financial source of truth |
+| Included                                                                                              | Deferred or owned elsewhere                                                                           |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| NGN amounts stored as integer kobo and checked cumulative arithmetic                                  | Foreign exchange, multiple currencies within one posting group, crypto or securities accounting       |
+| Business subledger accounts and subsidiary Customer/Agent/cycle dimensions                            | Full statutory general ledger, tax filing, bank accounting package integration                        |
+| Posted financial truth and non-posting reservation integration                                        | Collection, fee, withdrawal, reversal, refund and reconciliation workflow decisions                   |
+| Append-only linked compensation from an authorized owning workflow                                    | Arbitrary manual journal screen, editable balances, direct Admin adjustment permission                |
+| Customer statements rendered in application and downloadable PDF when the document service is enabled | Email/WhatsApp delivery, bulk statement runs, scheduled statements, certified legal statements        |
+| Single-Customer scoped download and business/multi-Customer report export with proper authority       | Raw ledger-entry CSV, audit-log export, accounting-software export until formats/privacy are approved |
+| Rebuildable derived projections and balance caches                                                    | Treating a mutable cache or search index as the financial source of truth                             |
 
 The PRD lists “Adjustment” as a transaction type, but no existing role or permission authorizes arbitrary financial adjustments. The type is reserved for a future named, reviewed owning workflow with explicit counter-account, reason, approval and correction rules. It is unavailable in initial scope.
 
@@ -50,14 +50,14 @@ If an invariant fails, affected financial writes fail closed. Reads show a speci
 
 An account has an immutable account ID/code, display name, account class, normal balance, currency, supported dimensions, effective interval, status and version. Proposed initial classes and controlled accounts include:
 
-| Class / normal balance | Controlled purpose |
-| --- | --- |
-| Asset / debit | Business cash, bank, POS/provider clearing and other approved business custody assets. |
-| Agent receivable / debit | Money recorded as received into an Agent's custody and still due to the business; subsidiary by original recording Agent. |
-| Customer savings liability / credit | Principal owed to each Customer; subsidiary by Customer and, where required, source cycle. |
-| Refund or payout payable / credit | Approved obligation owed but not yet paid where an owning workflow expressly creates it. |
-| Fee income / credit | Recognized business fee earnings, distinct by approved fee category/source. |
-| Other deduction destination / defined by policy | Approved income or payable account for a named deduction; never assumed to be fee income. |
+| Class / normal balance                            | Controlled purpose                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Asset / debit                                     | Business cash, bank, POS/provider clearing and other approved business custody assets.                                    |
+| Agent receivable / debit                          | Money recorded as received into an Agent's custody and still due to the business; subsidiary by original recording Agent. |
+| Customer savings liability / credit               | Principal owed to each Customer; subsidiary by Customer and, where required, source cycle.                                |
+| Refund or payout payable / credit                 | Approved obligation owed but not yet paid where an owning workflow expressly creates it.                                  |
+| Fee income / credit                               | Recognized business fee earnings, distinct by approved fee category/source.                                               |
+| Other deduction destination / defined by policy   | Approved income or payable account for a named deduction; never assumed to be fee income.                                 |
 | Business equity/expense/clearing / policy-defined | Only accounts required to keep an approved workflow complete; unavailable until their purpose and authority are reviewed. |
 
 Account retirement prevents new source events from selecting it while preserving historical entries and balance computation. Renaming changes presentation prospectively without changing stored references or old statement snapshots. Account creation/mapping belongs to reviewed business configuration; Module 10 introduces no UI or permission to create accounts.
@@ -95,18 +95,18 @@ Compensation groups receive new references and link to the original. External ba
 
 Owning modules validate eligibility, amounts, approvals, physical-money state and policy. They submit a versioned posting command from a closed catalogue. The ledger validates the command schema, current mapping, dimensions, uniqueness and balance, then posts atomically. It cannot infer missing approval, fee, destination or payment success.
 
-| Event | Conceptual balanced effect |
-| --- | --- |
-| Cash savings contribution | Debit original Agent receivable; credit Customer savings liability for gross savings. |
-| Savings received directly into approved business custody | Debit mapped business asset/clearing; credit Customer savings liability. |
-| External fee receipt | Debit approved custody/Agent receivable; credit fee income and settle linked obligation through Module 05. |
-| Savings-funded fee | Debit Customer savings liability; credit fee income; linked obligation settlement remains visible. |
-| Other authorized deduction | Debit Customer savings liability; credit the specifically approved income/payable destination. |
-| Customer withdrawal | Debit Customer liability by gross debit G; credit payout asset/custody by net payout P, fee income by F, and approved deduction destinations by D, where `G = P + F + D`. |
-| Cash remittance from Agent | Debit business custody asset; credit the same original Agent receivable; Customer liability unchanged. |
-| Fee-earnings withdrawal | Debit the applicable business earnings/equity-clearing account under Module 05; credit payout custody. Customer liability unchanged. |
-| Approved refund/concession | Follow Module 05's defined savings restoration or external refund-payable/payout contract; never masquerade as a contribution. |
-| Approved reversal | New balanced compensation of the eligible original/dependent bundle; original entries stay unchanged. |
+| Event                                                    | Conceptual balanced effect                                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cash savings contribution                                | Debit original Agent receivable; credit Customer savings liability for gross savings.                                                                                     |
+| Savings received directly into approved business custody | Debit mapped business asset/clearing; credit Customer savings liability.                                                                                                  |
+| External fee receipt                                     | Debit approved custody/Agent receivable; credit fee income and settle linked obligation through Module 05.                                                                |
+| Savings-funded fee                                       | Debit Customer savings liability; credit fee income; linked obligation settlement remains visible.                                                                        |
+| Other authorized deduction                               | Debit Customer savings liability; credit the specifically approved income/payable destination.                                                                            |
+| Customer withdrawal                                      | Debit Customer liability by gross debit G; credit payout asset/custody by net payout P, fee income by F, and approved deduction destinations by D, where `G = P + F + D`. |
+| Cash remittance from Agent                               | Debit business custody asset; credit the same original Agent receivable; Customer liability unchanged.                                                                    |
+| Fee-earnings withdrawal                                  | Debit the applicable business earnings/equity-clearing account under Module 05; credit payout custody. Customer liability unchanged.                                      |
+| Approved refund/concession                               | Follow Module 05's defined savings restoration or external refund-payable/payout contract; never masquerade as a contribution.                                            |
+| Approved reversal                                        | New balanced compensation of the eligible original/dependent bundle; original entries stay unchanged.                                                                     |
 
 These are conceptual patterns; release requires a reviewed chart and exact schema. A ledger endpoint accepts only authenticated service commands from the owning workflow, never arbitrary client-supplied account lines. `fees.manage`, `deductions.manage`, `withdrawals.review`, `reversals.review`, or `reconciliation.manage` authorizes only its defined business workflow, not free-form debits and credits.
 
@@ -120,16 +120,16 @@ Required fields include transaction ID/reference, Customer where applicable, typ
 
 ### 6.2 Type catalogue
 
-| Type | Customer-history meaning |
-| --- | --- |
-| Contribution | Posted savings principal received; show gross savings and plan allocations. |
-| Withdrawal | Posted gross savings debit G, net payout P, fee F and other deductions D separately. |
-| Fee | Assessment is non-cash obligation activity; payment/application/recognition/refund effects are identified explicitly. |
-| Deduction | Authorized posted savings deduction with named category/destination. |
-| Reversal | Linked compensation, with affected original type and net result. |
-| Refund | Restoration of savings or external refund payable/payment under the owning policy. |
-| Remittance | Agent/business custody movement; excluded from Customer savings history unless shown as a non-balance-changing operational reference. |
-| Adjustment | Reserved and disabled until a detailed owning workflow and authority exist. |
+| Type         | Customer-history meaning                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Contribution | Posted savings principal received; show gross savings and plan allocations.                                                           |
+| Withdrawal   | Posted gross savings debit G, net payout P, fee F and other deductions D separately.                                                  |
+| Fee          | Assessment is non-cash obligation activity; payment/application/recognition/refund effects are identified explicitly.                 |
+| Deduction    | Authorized posted savings deduction with named category/destination.                                                                  |
+| Reversal     | Linked compensation, with affected original type and net result.                                                                      |
+| Refund       | Restoration of savings or external refund payable/payment under the owning policy.                                                    |
+| Remittance   | Agent/business custody movement; excluded from Customer savings history unless shown as a non-balance-changing operational reference. |
+| Adjustment   | Reserved and disabled until a detailed owning workflow and authority exist.                                                           |
 
 Plan estimates, missed/skipped slots, pending fee obligations, pending/rejected withdrawals, live reservations, collection drafts, unconfirmed remittances and reconciliation state changes are not posted transactions. They may appear in separate request/obligation/reservation timelines and statement notes, never in posted activity totals.
 
@@ -173,16 +173,16 @@ Thrift-card funded slots use Module 07 allocations, not liability debits from wi
 
 ### 7.3 Business and Agent balances
 
-| Measure | Authoritative derivation and limitation |
-| --- | --- |
-| Total Customer liability | Sum of all Customer savings-liability subsidiary balances, including Inactive, Restricted and Archived Customers with outstanding liability. |
-| Agent receivable | Debit balance by original Agent for entrusted money minus confirmed remittance/eligible compensation. Reassignment does not transfer it. |
-| Business custody | Debit balances of approved cash/bank/POS/clearing assets, separated by account; not labelled Customer balance. |
-| Gross fee recognized | Credits to approved fee-income accounts before refunds/compensations. |
-| Net fee earnings | Net balance/effect of fee-income recognition, refunds and corrections under Module 05. |
+| Measure                            | Authoritative derivation and limitation                                                                                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Total Customer liability           | Sum of all Customer savings-liability subsidiary balances, including Inactive, Restricted and Archived Customers with outstanding liability.          |
+| Agent receivable                   | Debit balance by original Agent for entrusted money minus confirmed remittance/eligible compensation. Reassignment does not transfer it.              |
+| Business custody                   | Debit balances of approved cash/bank/POS/clearing assets, separated by account; not labelled Customer balance.                                        |
+| Gross fee recognized               | Credits to approved fee-income accounts before refunds/compensations.                                                                                 |
+| Net fee earnings                   | Net balance/effect of fee-income recognition, refunds and corrections under Module 05.                                                                |
 | Fee earnings available to withdraw | Module 05's conservative minimum of recognized balance and verified free cash after protected liabilities/payables; not the fee-income account alone. |
-| Outstanding fee obligations | Derived by Module 05 from assessment/settlement/waiver entries; not included in savings or recognized earnings until its defined recognition event. |
-| Live reservations | Withdrawal-store total of gross G; shown separately from posted liabilities/assets and reconciled to reserved request records. |
+| Outstanding fee obligations        | Derived by Module 05 from assessment/settlement/waiver entries; not included in savings or recognized earnings until its defined recognition event.   |
+| Live reservations                  | Withdrawal-store total of gross G; shown separately from posted liabilities/assets and reconciled to reserved request records.                        |
 
 Assets do not equal spendable profit. Customer liability, fee earnings and Agent receivables must never be combined into one generic “balance.” A complete chart includes any additional approved payables/equity/clearing required to interpret business position; missing accounts block claims of a fully balanced business financial position.
 
@@ -249,14 +249,14 @@ Direct URLs, cursors and downloadable artifacts re-check current scope. A known 
 
 ## 11. Authorization and exports
 
-| Action | Customer | Agent | Admin |
-| --- | --- | --- | --- |
-| View transaction list/detail | Own Customer financial records | Current assigned Customers; permitted masked own settlement summaries | Business-wide baseline read access |
-| View current balances | Own balances | Current assigned Customers and own permitted settlement totals | Business-wide baseline read access |
-| Generate/download one Customer statement | Own statement | Current assigned Customer | Business-wide baseline read access, subject to current Customer scope |
-| Export multiple Customers/business report | No | No | `reports.export` |
-| View raw detailed audit event | No | No | `audit.view` |
-| Post arbitrary ledger group/change balance | No | No | No permission exists |
+| Action                                     | Customer                       | Agent                                                                 | Admin                                                                 |
+| ------------------------------------------ | ------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| View transaction list/detail               | Own Customer financial records | Current assigned Customers; permitted masked own settlement summaries | Business-wide baseline read access                                    |
+| View current balances                      | Own balances                   | Current assigned Customers and own permitted settlement totals        | Business-wide baseline read access                                    |
+| Generate/download one Customer statement   | Own statement                  | Current assigned Customer                                             | Business-wide baseline read access, subject to current Customer scope |
+| Export multiple Customers/business report  | No                             | No                                                                    | `reports.export`                                                      |
+| View raw detailed audit event              | No                             | No                                                                    | `audit.view`                                                          |
+| Post arbitrary ledger group/change balance | No                             | No                                                                    | No permission exists                                                  |
 
 A single-Customer statement is part of scoped record access, not a business-wide export. Proposed initial rate/size controls apply equally by role. An Agent cannot retain it after reassignment; generated links are short-lived and reauthorize download. Business/multi-Customer exports require `reports.export`, create an auditable job, re-check permission at execution and release, and omit raw audit/security/evidence data unless a separately approved export explicitly permits it.
 
@@ -298,15 +298,15 @@ Customers can generate/view their own statement; a current assigned Agent with p
 
 ## 13. Screens and user experience
 
-| Surface | Required behaviour |
-| --- | --- |
-| Customer transactions | Current posted/available/reserved values, scoped filters, signed effects and type/status/date distinctions; own records only. |
-| Agent Customer ledger | Assigned Customer balances/history, plan and original actor context; no editable amount or Admin approval action. |
-| Admin ledger explorer | Business-wide read-only search, Customer/Agent/cycle dimensions, integrity indicator and permission-gated export link; no manual journal button. |
-| Transaction detail | Section 10.2 fields, linked source/correction timeline and safe explanation of financial effect. |
-| Customer statement centre | Period/timezone selection, preview metadata, generation progress, issued/superseded history and scoped download. |
-| Balance summary | Separately labelled Customer liability, available/reserved savings, Agent receivables, custody, fee earnings and obligations with cutoff/watermark. |
-| Integrity operations | Authorized operational incident view, mismatch category/scope/watermark and rebuild status; investigation access never becomes edit authority. |
+| Surface                   | Required behaviour                                                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Customer transactions     | Current posted/available/reserved values, scoped filters, signed effects and type/status/date distinctions; own records only.                       |
+| Agent Customer ledger     | Assigned Customer balances/history, plan and original actor context; no editable amount or Admin approval action.                                   |
+| Admin ledger explorer     | Business-wide read-only search, Customer/Agent/cycle dimensions, integrity indicator and permission-gated export link; no manual journal button.    |
+| Transaction detail        | Section 10.2 fields, linked source/correction timeline and safe explanation of financial effect.                                                    |
+| Customer statement centre | Period/timezone selection, preview metadata, generation progress, issued/superseded history and scoped download.                                    |
+| Balance summary           | Separately labelled Customer liability, available/reserved savings, Agent receivables, custody, fee earnings and obligations with cutoff/watermark. |
+| Integrity operations      | Authorized operational incident view, mismatch category/scope/watermark and rebuild status; investigation access never becomes edit authority.      |
 
 Loading uses skeleton/text without placeholder zero. Empty authoritative history says No posted transactions. Unavailable, stale, rebuilding, permission-denied and no-filter-match states are distinct. A stale balance displays its cutoff and blocks dependent confirmation. Scope loss clears sensitive rows/artifacts and returns to an accessible route.
 
@@ -363,110 +363,110 @@ Unavailable integrations produce **Blocked** scenarios and unavailable actions, 
 
 ## 18. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| LED-FR-001 | Maintain an authoritative immutable balanced NGN subledger distinct from user projections. | 1, 3 |
-| LED-FR-002 | Use positive integer-kobo entries and overflow-safe calculations without floating point. | 3, 4.3 |
-| LED-FR-003 | Maintain a versioned controlled account catalogue with explicit class/normal balance/purpose. | 4.1 |
-| LED-FR-004 | Store immutable uniquely keyed posting groups with source, actor, dates, schema and audit references. | 4.2 |
-| LED-FR-005 | Require valid debit/credit entries, currency equality, required dimensions and exact balance. | 4.3 |
-| LED-FR-006 | Generate globally unique durable transaction/posting references without treating them as authorization. | 4.4 |
-| LED-FR-007 | Accept only closed owning-workflow posting schemas and never arbitrary client journal lines. | 5 |
-| LED-FR-008 | Implement reviewed contribution, fee, deduction, withdrawal, remittance, refund and reversal patterns. | 5 |
-| LED-FR-009 | Keep Customer liability, custody, Agent receivable, fees, payables and destinations separate. | 4.1, 5, 7.3 |
-| LED-FR-010 | Project business transactions without double counting parent/component rows. | 6.1 |
-| LED-FR-011 | Provide a stable transaction type catalogue and keep non-posted workflows outside posted totals. | 6.2 |
-| LED-FR-012 | Derive Posted/Reversed status from entries/compensation, not editable workflow labels. | 6.3 |
-| LED-FR-013 | Preserve occurrence, commit, source and statement-cutoff date semantics and timezone. | 6.3 |
-| LED-FR-014 | Derive Customer savings liability exactly from its subsidiary entries. | 7.1 |
-| LED-FR-015 | Derive available savings from liability minus authoritative live gross reservations once. | 7.1 |
-| LED-FR-016 | Prevent negative Customer liability/availability and silent holds or estimated-money inclusion. | 7.1 |
-| LED-FR-017 | Derive cycle balances without changing thrift-slot funding or historical attribution. | 7.2 |
-| LED-FR-018 | Derive and distinctly label total liability, Agent receivable, custody and fee measures. | 7.3 |
-| LED-FR-019 | Treat balance caches/snapshots as rebuildable cutoff-labelled derivatives. | 7.4 |
-| LED-FR-020 | Correct posted money only through authorized linked balanced compensation. | 8 |
-| LED-FR-021 | Preserve immutable history and prohibit undeclared backdating/period override/manual adjustment. | 2, 8 |
-| LED-FR-022 | Deterministically rebuild versioned projections without changing authoritative entries. | 9.1 |
-| LED-FR-023 | Verify group, subsidiary, source, reservation, fee, withdrawal, remittance and compensation integrity. | 9.2 |
-| LED-FR-024 | Fail safely and investigate mismatches without manual balance overwrite. | 3, 9.2 |
-| LED-FR-025 | Provide scoped search/filter/sort/cursor pagination and full-result totals. | 10.1 |
-| LED-FR-026 | Provide authorized transaction detail with component, actor, date and correction trace. | 10.2 |
-| LED-FR-027 | Enforce Customer-own, current-Agent and Admin baseline-read scopes on all financial reads. | 10.2, 11 |
-| LED-FR-028 | Require `reports.export` for business/multi-Customer export and keep `audit.view` independent. | 11 |
-| LED-FR-029 | Generate one-Customer statements with reproducible opening/activity/closing balances. | 12.1 |
-| LED-FR-030 | Show reservations/availability, fees and nonfinancial information separately from posted statement totals. | 12.1 |
-| LED-FR-031 | Preserve statement cutoff/as-of metadata and append issued/superseded correction history. | 12.2 |
-| LED-FR-032 | Render consistent authorized in-app/PDF statements with integrity and accessibility controls. | 12.3 |
-| LED-FR-033 | Provide safe role-specific ledger, balance, detail, statement and integrity screens. | 13 |
-| LED-FR-034 | Distinguish authoritative empty, stale, unavailable, rebuilding and scope-loss states. | 7.4, 13 |
-| LED-FR-035 | Enforce durable idempotency and concurrency across source posting and balance dependencies. | 14 |
-| LED-FR-036 | Commit financial source linkage/projection/audit atomically and recover uncertain outcomes. | 14 |
-| LED-FR-037 | Emit safe deduplicated notification events without coupling delivery to financial finality. | 15 |
-| LED-FR-038 | Durably audit posting, reads, exports, statements, rebuilds and integrity incidents with least privilege. | 15 |
-| LED-FR-039 | Meet reviewed performance/security/retention/backup/recovery requirements without weakening durability. | 16 |
-| LED-FR-040 | Block release on missing accounting, workflow, reservation, statement or operational owner contracts. | 17 |
+| ID         | Requirement                                                                                                | Detail      |
+| ---------- | ---------------------------------------------------------------------------------------------------------- | ----------- |
+| LED-FR-001 | Maintain an authoritative immutable balanced NGN subledger distinct from user projections.                 | 1, 3        |
+| LED-FR-002 | Use positive integer-kobo entries and overflow-safe calculations without floating point.                   | 3, 4.3      |
+| LED-FR-003 | Maintain a versioned controlled account catalogue with explicit class/normal balance/purpose.              | 4.1         |
+| LED-FR-004 | Store immutable uniquely keyed posting groups with source, actor, dates, schema and audit references.      | 4.2         |
+| LED-FR-005 | Require valid debit/credit entries, currency equality, required dimensions and exact balance.              | 4.3         |
+| LED-FR-006 | Generate globally unique durable transaction/posting references without treating them as authorization.    | 4.4         |
+| LED-FR-007 | Accept only closed owning-workflow posting schemas and never arbitrary client journal lines.               | 5           |
+| LED-FR-008 | Implement reviewed contribution, fee, deduction, withdrawal, remittance, refund and reversal patterns.     | 5           |
+| LED-FR-009 | Keep Customer liability, custody, Agent receivable, fees, payables and destinations separate.              | 4.1, 5, 7.3 |
+| LED-FR-010 | Project business transactions without double counting parent/component rows.                               | 6.1         |
+| LED-FR-011 | Provide a stable transaction type catalogue and keep non-posted workflows outside posted totals.           | 6.2         |
+| LED-FR-012 | Derive Posted/Reversed status from entries/compensation, not editable workflow labels.                     | 6.3         |
+| LED-FR-013 | Preserve occurrence, commit, source and statement-cutoff date semantics and timezone.                      | 6.3         |
+| LED-FR-014 | Derive Customer savings liability exactly from its subsidiary entries.                                     | 7.1         |
+| LED-FR-015 | Derive available savings from liability minus authoritative live gross reservations once.                  | 7.1         |
+| LED-FR-016 | Prevent negative Customer liability/availability and silent holds or estimated-money inclusion.            | 7.1         |
+| LED-FR-017 | Derive cycle balances without changing thrift-slot funding or historical attribution.                      | 7.2         |
+| LED-FR-018 | Derive and distinctly label total liability, Agent receivable, custody and fee measures.                   | 7.3         |
+| LED-FR-019 | Treat balance caches/snapshots as rebuildable cutoff-labelled derivatives.                                 | 7.4         |
+| LED-FR-020 | Correct posted money only through authorized linked balanced compensation.                                 | 8           |
+| LED-FR-021 | Preserve immutable history and prohibit undeclared backdating/period override/manual adjustment.           | 2, 8        |
+| LED-FR-022 | Deterministically rebuild versioned projections without changing authoritative entries.                    | 9.1         |
+| LED-FR-023 | Verify group, subsidiary, source, reservation, fee, withdrawal, remittance and compensation integrity.     | 9.2         |
+| LED-FR-024 | Fail safely and investigate mismatches without manual balance overwrite.                                   | 3, 9.2      |
+| LED-FR-025 | Provide scoped search/filter/sort/cursor pagination and full-result totals.                                | 10.1        |
+| LED-FR-026 | Provide authorized transaction detail with component, actor, date and correction trace.                    | 10.2        |
+| LED-FR-027 | Enforce Customer-own, current-Agent and Admin baseline-read scopes on all financial reads.                 | 10.2, 11    |
+| LED-FR-028 | Require `reports.export` for business/multi-Customer export and keep `audit.view` independent.             | 11          |
+| LED-FR-029 | Generate one-Customer statements with reproducible opening/activity/closing balances.                      | 12.1        |
+| LED-FR-030 | Show reservations/availability, fees and nonfinancial information separately from posted statement totals. | 12.1        |
+| LED-FR-031 | Preserve statement cutoff/as-of metadata and append issued/superseded correction history.                  | 12.2        |
+| LED-FR-032 | Render consistent authorized in-app/PDF statements with integrity and accessibility controls.              | 12.3        |
+| LED-FR-033 | Provide safe role-specific ledger, balance, detail, statement and integrity screens.                       | 13          |
+| LED-FR-034 | Distinguish authoritative empty, stale, unavailable, rebuilding and scope-loss states.                     | 7.4, 13     |
+| LED-FR-035 | Enforce durable idempotency and concurrency across source posting and balance dependencies.                | 14          |
+| LED-FR-036 | Commit financial source linkage/projection/audit atomically and recover uncertain outcomes.                | 14          |
+| LED-FR-037 | Emit safe deduplicated notification events without coupling delivery to financial finality.                | 15          |
+| LED-FR-038 | Durably audit posting, reads, exports, statements, rebuilds and integrity incidents with least privilege.  | 15          |
+| LED-FR-039 | Meet reviewed performance/security/retention/backup/recovery requirements without weakening durability.    | 16          |
+| LED-FR-040 | Block release on missing accounting, workflow, reservation, statement or operational owner contracts.      | 17          |
 
 ## 19. Acceptance scenarios and release evidence
 
 Use fixtures with at least two Customers, two Agents and a reassignment; active/inactive/restricted/archived records; multiple cycles; partial/advance contributions; external and savings-funded fees; deductions; gross withdrawal reservations and posted payouts; remitted/unremitted Agent cash; linked reversals/refunds; issued/superseded statements; and deliberate projection/integrity failures. Evidence records scenario/requirement IDs, exact entries and pre/post balances, actors/permissions/versions, cutoff/timezone, result, audit reference and Passed/Failed/Blocked status.
 
-| ID | Requirement mapping | Testable expected result |
-| --- | --- | --- |
-| LED-AC-001 | LED-FR-001, LED-FR-005 | Each valid event creates immutable entries whose debit and credit totals match; an unbalanced group posts nothing. |
-| LED-AC-002 | LED-FR-002 | Kobo arithmetic preserves exact ₦2,000.01 as 200001; proposed cap value 999,999,999,999 succeeds where the owning event permits, cap+1/fractional/negative/overflow inputs fail, and larger cumulative totals do not truncate. |
-| LED-AC-003 | LED-FR-003 | Retired account blocks new selection but retains balances/history; renamed display does not change old references. |
-| LED-AC-004 | LED-FR-004 | Group retains source, actor/approver, occurrence/commit dates, schema/version and audit references after all lifecycle changes. |
-| LED-AC-005 | LED-FR-005, LED-FR-009 | Missing Customer/Agent/cycle dimension or currency/account mismatch fails without partial entry or projection. |
-| LED-AC-006 | LED-FR-006 | Concurrent reference generation remains globally unique; known reference alone cannot bypass record scope. |
-| LED-AC-007 | LED-FR-007 | Direct client-supplied ledger lines and Admin manual-journal attempts are denied even with every current Admin permission. |
-| LED-AC-008 | LED-FR-008, LED-FR-009 | Cash contribution debits original Agent receivable and credits Customer liability; remittance moves custody only and credits liability zero times. |
-| LED-AC-009 | LED-FR-008, LED-FR-009 | External fee receipt and savings fee application recognize fee through distinct custody/liability effects without double income. |
-| LED-AC-010 | LED-FR-008, LED-FR-015 | Withdrawal with G=10,000, F=500, D=200 posts P=9,300 and one Customer liability debit of 10,000; reservation G is consumed once. |
-| LED-AC-011 | LED-FR-008, LED-FR-009 | Agent remittance, fee-earnings withdrawal and Customer withdrawal affect their defined accounts and never merge Customer money with earnings. |
-| LED-AC-012 | LED-FR-010 | Mixed savings/fee receipt detail and component reports reconcile to one root amount without parent-plus-component double count. |
-| LED-AC-013 | LED-FR-011, LED-FR-012 | Pending/rejected request, unpaid obligation, missed slot and unconfirmed remittance do not appear as Posted; only Module 09 Approved-and-posted full compensation changes the original projection to Reversed without deleting it. |
-| LED-AC-014 | LED-FR-013 | Late permitted occurrence shows original activity date and later UTC commit; sort/cutoff and statement treatment remain reproducible. |
-| LED-AC-015 | LED-FR-014 | Customer subsidiary entry sum equals displayed liability across contribution, withdrawal, fee/deduction and correction activity. |
-| LED-AC-016 | LED-FR-015 | Liability 50,000 with live gross reservations 12,000 and 8,000 yields available 30,000; pending unreserved request does not change it. |
+| ID         | Requirement mapping    | Testable expected result                                                                                                                                                                                                                                                                                                        |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LED-AC-001 | LED-FR-001, LED-FR-005 | Each valid event creates immutable entries whose debit and credit totals match; an unbalanced group posts nothing.                                                                                                                                                                                                              |
+| LED-AC-002 | LED-FR-002             | Kobo arithmetic preserves exact ₦2,000.01 as 200001; proposed cap value 999,999,999,999 succeeds where the owning event permits, cap+1/fractional/negative/overflow inputs fail, and larger cumulative totals do not truncate.                                                                                                  |
+| LED-AC-003 | LED-FR-003             | Retired account blocks new selection but retains balances/history; renamed display does not change old references.                                                                                                                                                                                                              |
+| LED-AC-004 | LED-FR-004             | Group retains source, actor/approver, occurrence/commit dates, schema/version and audit references after all lifecycle changes.                                                                                                                                                                                                 |
+| LED-AC-005 | LED-FR-005, LED-FR-009 | Missing Customer/Agent/cycle dimension or currency/account mismatch fails without partial entry or projection.                                                                                                                                                                                                                  |
+| LED-AC-006 | LED-FR-006             | Concurrent reference generation remains globally unique; known reference alone cannot bypass record scope.                                                                                                                                                                                                                      |
+| LED-AC-007 | LED-FR-007             | Direct client-supplied ledger lines and Admin manual-journal attempts are denied even with every current Admin permission.                                                                                                                                                                                                      |
+| LED-AC-008 | LED-FR-008, LED-FR-009 | Cash contribution debits original Agent receivable and credits Customer liability; remittance moves custody only and credits liability zero times.                                                                                                                                                                              |
+| LED-AC-009 | LED-FR-008, LED-FR-009 | External fee receipt and savings fee application recognize fee through distinct custody/liability effects without double income.                                                                                                                                                                                                |
+| LED-AC-010 | LED-FR-008, LED-FR-015 | Withdrawal with G=10,000, F=500, D=200 posts P=9,300 and one Customer liability debit of 10,000; reservation G is consumed once.                                                                                                                                                                                                |
+| LED-AC-011 | LED-FR-008, LED-FR-009 | Agent remittance, fee-earnings withdrawal and Customer withdrawal affect their defined accounts and never merge Customer money with earnings.                                                                                                                                                                                   |
+| LED-AC-012 | LED-FR-010             | Mixed savings/fee receipt detail and component reports reconcile to one root amount without parent-plus-component double count.                                                                                                                                                                                                 |
+| LED-AC-013 | LED-FR-011, LED-FR-012 | Pending/rejected request, unpaid obligation, missed slot and unconfirmed remittance do not appear as Posted; only Module 09 Approved-and-posted full compensation changes the original projection to Reversed without deleting it.                                                                                              |
+| LED-AC-014 | LED-FR-013             | Late permitted occurrence shows original activity date and later UTC commit; sort/cutoff and statement treatment remain reproducible.                                                                                                                                                                                           |
+| LED-AC-015 | LED-FR-014             | Customer subsidiary entry sum equals displayed liability across contribution, withdrawal, fee/deduction and correction activity.                                                                                                                                                                                                |
+| LED-AC-016 | LED-FR-015             | Liability 50,000 with live gross reservations 12,000 and 8,000 yields available 30,000; pending unreserved request does not change it.                                                                                                                                                                                          |
 | LED-AC-017 | LED-FR-015, LED-FR-016 | Module 08 Draft has no R; Pending review, Approved — awaiting payout, Payout processing, Outcome unknown and Payment failed retain R whether or not a hold overlay is active; Posted consumes R; Rejected/Cancelled/Expired release it. Included fee is not subtracted again and concurrency cannot make availability negative. |
-| LED-AC-018 | LED-FR-016 | Outstanding fee, missed target, Agent shortage and plan estimate change no Customer balance/hold; unavailable input returns Unavailable, not zero. |
-| LED-AC-019 | LED-FR-017 | Customer withdrawal reduces cycle/Customer money as dimensioned but retains already Paid thrift slots; reassignment changes no cycle entries. |
-| LED-AC-020 | LED-FR-018 | Total Customer liability equals subsidiary sum including non-active Customers; Agent/custody/fee metrics remain distinctly labelled and reconciled. |
-| LED-AC-021 | LED-FR-019, LED-FR-034 | Lagging cache shows watermark and cannot approve a balance-sensitive action; authoritative empty history alone displays zero. |
-| LED-AC-022 | LED-FR-020 | Eligible Module 09 Approved-and-posted full reversal adds a balanced linked group; original entries/reference remain byte-for-byte unchanged and readable. Selected-component/partial reversal is unavailable. |
-| LED-AC-023 | LED-FR-020, LED-FR-021 | `reversals.review` cannot create unrelated waiver/deduction/journal or edit dates; reserved Adjustment remains unavailable. |
-| LED-AC-024 | LED-FR-021 | Owning bounded occurrence date retains current commit time; no permission provides a period-close/backdate override. |
-| LED-AC-025 | LED-FR-022 | Full rebuild at the same cutoff reproduces entry counts, balances, transaction statuses and statement input hashes exactly. |
-| LED-AC-026 | LED-FR-022 | Failed/incomplete rebuild never becomes current; verified old projection remains labelled while authoritative writes remain safe. |
-| LED-AC-027 | LED-FR-023 | Inject each group/source/subsidiary/reservation/fee/withdrawal/remittance/compensation mismatch and verify it is detected. |
-| LED-AC-028 | LED-FR-024 | Integrity incident freezes only dependent scope, raises durable reference and cannot be “fixed” with an editable balance field. |
-| LED-AC-029 | LED-FR-025 | Filters/search/sort apply after scope; stable cursor produces no gaps/duplicates and total reflects all matching rows, not current page. |
-| LED-AC-030 | LED-FR-025 | Invalid/overwide dates fail; Customer/Agent suggestions and counts reveal no inaccessible records. |
-| LED-AC-031 | LED-FR-026 | Detail correctly shows signed effect, G/P/F/D components, dates, actors, source and original/compensation timeline. |
-| LED-AC-032 | LED-FR-027 | Customer sees own only; Agent sees current assignments; Admin baseline sees business data; direct URL/cursor/download obeys identical scope. |
-| LED-AC-033 | LED-FR-027 | Reassignment immediately removes former Agent Customer history/artifact access without changing their historical recording attribution or own masked settlement. |
-| LED-AC-034 | LED-FR-028 | Baseline Admin and `audit.view` holder without `reports.export` cannot run business export; exporter gains no audit/mutation capability. |
-| LED-AC-035 | LED-FR-028 | Export re-checks authority at execution/release, carries filter/timezone/cutoff/version and exposes no raw audit/security/evidence fields. |
-| LED-AC-036 | LED-FR-029 | Statement opening plus signed period activity equals closing exactly, and each line resolves to an authorized transaction. |
-| LED-AC-037 | LED-FR-029 | Contribution, gross withdrawal/component, fee application, deduction, refund and reversal totals reconcile without counting external fees against savings. |
-| LED-AC-038 | LED-FR-030 | Statement shows live reserved/available and unpaid fee information separately; Agent remittance, missed slots and estimates do not enter posted totals. |
-| LED-AC-039 | LED-FR-031 | Issued statement retains cutoff/hash; later pre-period posting changes new opening, creates a new issue/supersession link and leaves old file reproducible. |
-| LED-AC-040 | LED-FR-031 | In-period correction changes new activity/closing and links notice; neither old statement nor ledger is edited or misleadingly labelled Final. |
-| LED-AC-041 | LED-FR-032 | App and PDF totals/reference/cutoff match; multipage output has headers/pages/accessibility and authorized integrity-checked download. |
-| LED-AC-042 | LED-FR-032 | Inconsistent ledger/activity source fails generation without partial PDF; allowed reservation outage omits only labelled availability, never substitutes zero. |
-| LED-AC-043 | LED-FR-033 | Customer, Agent and Admin screens expose only their actions/data; no screen offers editable balances/manual journals. |
-| LED-AC-044 | LED-FR-033, LED-FR-034 | Mobile/keyboard/screen-reader flow distinguishes type/status/dates and loading/empty/stale/unavailable/rebuilding/scope-loss without color-only cues. |
-| LED-AC-045 | LED-FR-035 | Same idempotency key/payload returns one group/transaction; changed payload conflicts after cache expiry as well. |
-| LED-AC-046 | LED-FR-035 | Concurrent contribution/withdrawal/deduction/reversal commands serialize or revalidate to preserve uniqueness, reservations and non-negative balances. |
-| LED-AC-047 | LED-FR-036 | Failure before financial commit leaves no group/source/projection/audit success; response loss after commit resolves one result by original key. |
-| LED-AC-048 | LED-FR-036 | Search/analytics/statement/notice outage after commit leaves one valid posting and catches up from durable projection events. |
-| LED-AC-049 | LED-FR-037 | Notification retry is event-deduplicated, scope-checked and cannot repeat posting/statement issue; internal account/evidence data stays absent. |
-| LED-AC-050 | LED-FR-038 | Posting, denial, read/download, export, statement, rebuild/promotion and incident actions have protected durable audit; secrets remain excluded. |
-| LED-AC-051 | LED-FR-038 | `audit.view` grants detailed audit read only and cannot post/rebuild-promote/export statements or access another role's unauthorized artifact. |
-| LED-AC-052 | LED-FR-039 | Documented p95 load tests meet or report proposed targets without returning success before durability. |
-| LED-AC-053 | LED-FR-039 | Backup/restore drill reaches declared cutoff with no missing/duplicate/unbalanced groups and reproduces sampled statements before promotion. |
-| LED-AC-054 | LED-FR-039 | No user can purge financial history/artifacts outside approved retention; storage/download/log paths enforce encryption, expiry and masking policy. |
-| LED-AC-055 | LED-FR-040 | Remove each chart/workflow/reservation/audit/statement/export/recovery dependency in turn; affected scenarios/actions report Blocked, never Passed/default zero. |
+| LED-AC-018 | LED-FR-016             | Outstanding fee, missed target, Agent shortage and plan estimate change no Customer balance/hold; unavailable input returns Unavailable, not zero.                                                                                                                                                                              |
+| LED-AC-019 | LED-FR-017             | Customer withdrawal reduces cycle/Customer money as dimensioned but retains already Paid thrift slots; reassignment changes no cycle entries.                                                                                                                                                                                   |
+| LED-AC-020 | LED-FR-018             | Total Customer liability equals subsidiary sum including non-active Customers; Agent/custody/fee metrics remain distinctly labelled and reconciled.                                                                                                                                                                             |
+| LED-AC-021 | LED-FR-019, LED-FR-034 | Lagging cache shows watermark and cannot approve a balance-sensitive action; authoritative empty history alone displays zero.                                                                                                                                                                                                   |
+| LED-AC-022 | LED-FR-020             | Eligible Module 09 Approved-and-posted full reversal adds a balanced linked group; original entries/reference remain byte-for-byte unchanged and readable. Selected-component/partial reversal is unavailable.                                                                                                                  |
+| LED-AC-023 | LED-FR-020, LED-FR-021 | `reversals.review` cannot create unrelated waiver/deduction/journal or edit dates; reserved Adjustment remains unavailable.                                                                                                                                                                                                     |
+| LED-AC-024 | LED-FR-021             | Owning bounded occurrence date retains current commit time; no permission provides a period-close/backdate override.                                                                                                                                                                                                            |
+| LED-AC-025 | LED-FR-022             | Full rebuild at the same cutoff reproduces entry counts, balances, transaction statuses and statement input hashes exactly.                                                                                                                                                                                                     |
+| LED-AC-026 | LED-FR-022             | Failed/incomplete rebuild never becomes current; verified old projection remains labelled while authoritative writes remain safe.                                                                                                                                                                                               |
+| LED-AC-027 | LED-FR-023             | Inject each group/source/subsidiary/reservation/fee/withdrawal/remittance/compensation mismatch and verify it is detected.                                                                                                                                                                                                      |
+| LED-AC-028 | LED-FR-024             | Integrity incident freezes only dependent scope, raises durable reference and cannot be “fixed” with an editable balance field.                                                                                                                                                                                                 |
+| LED-AC-029 | LED-FR-025             | Filters/search/sort apply after scope; stable cursor produces no gaps/duplicates and total reflects all matching rows, not current page.                                                                                                                                                                                        |
+| LED-AC-030 | LED-FR-025             | Invalid/overwide dates fail; Customer/Agent suggestions and counts reveal no inaccessible records.                                                                                                                                                                                                                              |
+| LED-AC-031 | LED-FR-026             | Detail correctly shows signed effect, G/P/F/D components, dates, actors, source and original/compensation timeline.                                                                                                                                                                                                             |
+| LED-AC-032 | LED-FR-027             | Customer sees own only; Agent sees current assignments; Admin baseline sees business data; direct URL/cursor/download obeys identical scope.                                                                                                                                                                                    |
+| LED-AC-033 | LED-FR-027             | Reassignment immediately removes former Agent Customer history/artifact access without changing their historical recording attribution or own masked settlement.                                                                                                                                                                |
+| LED-AC-034 | LED-FR-028             | Baseline Admin and `audit.view` holder without `reports.export` cannot run business export; exporter gains no audit/mutation capability.                                                                                                                                                                                        |
+| LED-AC-035 | LED-FR-028             | Export re-checks authority at execution/release, carries filter/timezone/cutoff/version and exposes no raw audit/security/evidence fields.                                                                                                                                                                                      |
+| LED-AC-036 | LED-FR-029             | Statement opening plus signed period activity equals closing exactly, and each line resolves to an authorized transaction.                                                                                                                                                                                                      |
+| LED-AC-037 | LED-FR-029             | Contribution, gross withdrawal/component, fee application, deduction, refund and reversal totals reconcile without counting external fees against savings.                                                                                                                                                                      |
+| LED-AC-038 | LED-FR-030             | Statement shows live reserved/available and unpaid fee information separately; Agent remittance, missed slots and estimates do not enter posted totals.                                                                                                                                                                         |
+| LED-AC-039 | LED-FR-031             | Issued statement retains cutoff/hash; later pre-period posting changes new opening, creates a new issue/supersession link and leaves old file reproducible.                                                                                                                                                                     |
+| LED-AC-040 | LED-FR-031             | In-period correction changes new activity/closing and links notice; neither old statement nor ledger is edited or misleadingly labelled Final.                                                                                                                                                                                  |
+| LED-AC-041 | LED-FR-032             | App and PDF totals/reference/cutoff match; multipage output has headers/pages/accessibility and authorized integrity-checked download.                                                                                                                                                                                          |
+| LED-AC-042 | LED-FR-032             | Inconsistent ledger/activity source fails generation without partial PDF; allowed reservation outage omits only labelled availability, never substitutes zero.                                                                                                                                                                  |
+| LED-AC-043 | LED-FR-033             | Customer, Agent and Admin screens expose only their actions/data; no screen offers editable balances/manual journals.                                                                                                                                                                                                           |
+| LED-AC-044 | LED-FR-033, LED-FR-034 | Mobile/keyboard/screen-reader flow distinguishes type/status/dates and loading/empty/stale/unavailable/rebuilding/scope-loss without color-only cues.                                                                                                                                                                           |
+| LED-AC-045 | LED-FR-035             | Same idempotency key/payload returns one group/transaction; changed payload conflicts after cache expiry as well.                                                                                                                                                                                                               |
+| LED-AC-046 | LED-FR-035             | Concurrent contribution/withdrawal/deduction/reversal commands serialize or revalidate to preserve uniqueness, reservations and non-negative balances.                                                                                                                                                                          |
+| LED-AC-047 | LED-FR-036             | Failure before financial commit leaves no group/source/projection/audit success; response loss after commit resolves one result by original key.                                                                                                                                                                                |
+| LED-AC-048 | LED-FR-036             | Search/analytics/statement/notice outage after commit leaves one valid posting and catches up from durable projection events.                                                                                                                                                                                                   |
+| LED-AC-049 | LED-FR-037             | Notification retry is event-deduplicated, scope-checked and cannot repeat posting/statement issue; internal account/evidence data stays absent.                                                                                                                                                                                 |
+| LED-AC-050 | LED-FR-038             | Posting, denial, read/download, export, statement, rebuild/promotion and incident actions have protected durable audit; secrets remain excluded.                                                                                                                                                                                |
+| LED-AC-051 | LED-FR-038             | `audit.view` grants detailed audit read only and cannot post/rebuild-promote/export statements or access another role's unauthorized artifact.                                                                                                                                                                                  |
+| LED-AC-052 | LED-FR-039             | Documented p95 load tests meet or report proposed targets without returning success before durability.                                                                                                                                                                                                                          |
+| LED-AC-053 | LED-FR-039             | Backup/restore drill reaches declared cutoff with no missing/duplicate/unbalanced groups and reproduces sampled statements before promotion.                                                                                                                                                                                    |
+| LED-AC-054 | LED-FR-039             | No user can purge financial history/artifacts outside approved retention; storage/download/log paths enforce encryption, expiry and masking policy.                                                                                                                                                                             |
+| LED-AC-055 | LED-FR-040             | Remove each chart/workflow/reservation/audit/statement/export/recovery dependency in turn; affected scenarios/actions report Blocked, never Passed/default zero.                                                                                                                                                                |
 
 ## 20. Worked examples
 

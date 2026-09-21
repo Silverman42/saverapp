@@ -113,7 +113,9 @@ const copyCodes = async (codes: string[]): Promise<void> => {
 
 const downloadCodes = (codes: string[]): void => {
     if (!codes.length) return;
-    const blob = new Blob([codes.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([codes.join('\n')], {
+        type: 'text/plain;charset=utf-8',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -149,21 +151,31 @@ const cancelReplacement = (): void => {
         <Card>
             <CardHeader class="flex flex-row items-center justify-between pb-2">
                 <div class="space-y-1">
-                    <CardTitle class="flex items-center gap-2 text-base font-semibold">
-                        <ShieldCheck class="size-5 text-green-600 dark:text-green-400" />
+                    <CardTitle
+                        class="flex items-center gap-2 text-base font-semibold"
+                    >
+                        <ShieldCheck
+                            class="size-5 text-green-600 dark:text-green-400"
+                        />
                         Authenticator App
                     </CardTitle>
                     <CardDescription>
-                        Time-based One-Time Password (TOTP) is active for your account.
+                        Time-based One-Time Password (TOTP) is active for your
+                        account.
                     </CardDescription>
                 </div>
-                <Badge variant="outline" class="border-green-600/30 text-green-700 dark:text-green-400 bg-green-500/10">
+                <Badge
+                    variant="outline"
+                    class="border-green-600/30 bg-green-500/10 text-green-700 dark:text-green-400"
+                >
                     Active
                 </Badge>
             </CardHeader>
             <CardContent class="space-y-4 pt-2">
                 <p class="text-muted-foreground text-xs leading-relaxed">
-                    Two-factor authentication is mandatory for your role. You are prompted for a 6-digit code during sign-in and sensitive operations.
+                    Two-factor authentication is mandatory for your role. You
+                    are prompted for a 6-digit code during sign-in and sensitive
+                    operations.
                 </p>
 
                 <div class="flex flex-wrap items-center gap-3">
@@ -184,12 +196,15 @@ const cancelReplacement = (): void => {
             <CardHeader>
                 <div class="flex flex-row items-center justify-between">
                     <div class="space-y-1">
-                        <CardTitle class="flex items-center gap-2 text-base font-semibold">
-                            <KeyRound class="size-5 text-primary" />
+                        <CardTitle
+                            class="flex items-center gap-2 text-base font-semibold"
+                        >
+                            <KeyRound class="text-primary size-5" />
                             Emergency Recovery Codes
                         </CardTitle>
                         <CardDescription>
-                            Use recovery codes if you lose access to your authenticator app.
+                            Use recovery codes if you lose access to your
+                            authenticator app.
                         </CardDescription>
                     </div>
                     <span class="text-muted-foreground text-xs font-medium">
@@ -199,19 +214,33 @@ const cancelReplacement = (): void => {
             </CardHeader>
             <CardContent class="space-y-4">
                 <!-- Warning when 2 or fewer remaining -->
-                <Alert v-if="isLowCodes" variant="destructive" class="border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-200">
-                    <AlertTriangle class="size-4 text-amber-600 dark:text-amber-400" />
-                    <AlertTitle class="text-sm font-semibold">Low recovery codes remaining</AlertTitle>
+                <Alert
+                    v-if="isLowCodes"
+                    variant="destructive"
+                    class="border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-200"
+                >
+                    <AlertTriangle
+                        class="size-4 text-amber-600 dark:text-amber-400"
+                    />
+                    <AlertTitle class="text-sm font-semibold"
+                        >Low recovery codes remaining</AlertTitle
+                    >
                     <AlertDescription class="text-xs">
-                        You have {{ remainingRecoveryCodes }} recovery code(s) remaining. Regenerate a new set to ensure you do not lose account access.
+                        You have {{ remainingRecoveryCodes }} recovery code(s)
+                        remaining. Regenerate a new set to ensure you do not
+                        lose account access.
                     </AlertDescription>
                 </Alert>
 
                 <p class="text-muted-foreground text-xs leading-relaxed">
-                    Recovery codes are stored exclusively as secure cryptographic hashes and cannot be viewed again. Each code can be used only once.
+                    Recovery codes are stored exclusively as secure
+                    cryptographic hashes and cannot be viewed again. Each code
+                    can be used only once.
                 </p>
 
-                <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div
+                    class="flex flex-wrap items-center justify-between gap-3 pt-1"
+                >
                     <Button
                         variant="secondary"
                         size="sm"
@@ -232,7 +261,10 @@ const cancelReplacement = (): void => {
         </Card>
 
         <!-- MODAL: Replace Authenticator -->
-        <Dialog :open="showReplaceModal" @update:open="showReplaceModal = $event">
+        <Dialog
+            :open="showReplaceModal"
+            @update:open="showReplaceModal = $event"
+        >
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Replace Authenticator App</DialogTitle>
@@ -256,7 +288,9 @@ const cancelReplacement = (): void => {
                     >
                         <div class="space-y-4">
                             <div class="grid gap-2">
-                                <Label for="replace_current_password">Current Password</Label>
+                                <Label for="replace_current_password"
+                                    >Current Password</Label
+                                >
                                 <PasswordInput
                                     id="replace_current_password"
                                     name="current_password"
@@ -264,11 +298,15 @@ const cancelReplacement = (): void => {
                                     placeholder="Enter current password"
                                     required
                                 />
-                                <InputError :message="errors.current_password" />
+                                <InputError
+                                    :message="errors.current_password"
+                                />
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="replace_current_code">Current Authenticator Code</Label>
+                                <Label for="replace_current_code"
+                                    >Current Authenticator Code</Label
+                                >
                                 <InputOTP
                                     id="replace_current_code"
                                     v-model="currentCode"
@@ -283,17 +321,29 @@ const cancelReplacement = (): void => {
                                         />
                                     </InputOTPGroup>
                                 </InputOTP>
-                                <input type="hidden" name="current_code" :value="currentCode" />
+                                <input
+                                    type="hidden"
+                                    name="current_code"
+                                    :value="currentCode"
+                                />
                                 <InputError :message="errors.current_code" />
                             </div>
 
                             <DialogFooter class="pt-4">
-                                <Button type="button" variant="outline" @click="showReplaceModal = false">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    @click="showReplaceModal = false"
+                                >
                                     Cancel
                                 </Button>
                                 <Button
                                     type="submit"
-                                    :disabled="processing || !currentPassword || currentCode.length < 6"
+                                    :disabled="
+                                        processing ||
+                                        !currentPassword ||
+                                        currentCode.length < 6
+                                    "
                                 >
                                     Continue
                                 </Button>
@@ -304,20 +354,32 @@ const cancelReplacement = (): void => {
 
                 <!-- STEP 2: Scan New QR Code and Confirm -->
                 <div v-else-if="replaceStep === 'scan'" class="space-y-4 py-2">
-                    <div v-if="replaceSetupData" class="flex flex-col items-center justify-center space-y-3">
-                        <div class="border-border bg-card overflow-hidden rounded-xl border p-3">
+                    <div
+                        v-if="replaceSetupData"
+                        class="flex flex-col items-center justify-center space-y-3"
+                    >
+                        <div
+                            class="border-border bg-card overflow-hidden rounded-xl border p-3"
+                        >
                             <div
                                 v-html="replaceSetupData.qr_code"
                                 class="size-44"
                                 :style="{
-                                    filter: resolvedAppearance === 'dark' ? 'invert(1) brightness(1.5)' : undefined,
+                                    filter:
+                                        resolvedAppearance === 'dark'
+                                            ? 'invert(1) brightness(1.5)'
+                                            : undefined,
                                 }"
                             />
                         </div>
 
                         <div class="w-full space-y-1 text-center">
-                            <p class="text-muted-foreground text-xs">Manual Entry Key:</p>
-                            <span class="font-mono text-xs select-all">{{ replaceSetupData.secret }}</span>
+                            <p class="text-muted-foreground text-xs">
+                                Manual Entry Key:
+                            </p>
+                            <span class="font-mono text-xs select-all">{{
+                                replaceSetupData.secret
+                            }}</span>
                         </div>
                     </div>
 
@@ -327,8 +389,13 @@ const cancelReplacement = (): void => {
                         #default="{ errors, processing }"
                     >
                         <div class="space-y-4 pt-2">
-                            <div class="flex flex-col items-center justify-center space-y-2">
-                                <Label for="new_totp_code">Enter 6-digit code from NEW authenticator</Label>
+                            <div
+                                class="flex flex-col items-center justify-center space-y-2"
+                            >
+                                <Label for="new_totp_code"
+                                    >Enter 6-digit code from NEW
+                                    authenticator</Label
+                                >
                                 <InputOTP
                                     id="new_totp_code"
                                     v-model="newCode"
@@ -344,15 +411,26 @@ const cancelReplacement = (): void => {
                                         />
                                     </InputOTPGroup>
                                 </InputOTP>
-                                <input type="hidden" name="code" :value="newCode" />
+                                <input
+                                    type="hidden"
+                                    name="code"
+                                    :value="newCode"
+                                />
                                 <InputError :message="errors.code" />
                             </div>
 
                             <DialogFooter class="pt-4">
-                                <Button type="button" variant="outline" @click="cancelReplacement">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    @click="cancelReplacement"
+                                >
                                     Cancel Replacement
                                 </Button>
-                                <Button type="submit" :disabled="processing || newCode.length < 6">
+                                <Button
+                                    type="submit"
+                                    :disabled="processing || newCode.length < 6"
+                                >
                                     Confirm Swap
                                 </Button>
                             </DialogFooter>
@@ -362,7 +440,9 @@ const cancelReplacement = (): void => {
 
                 <!-- STEP 3: Display New Recovery Codes -->
                 <div v-else-if="replaceStep === 'codes'" class="space-y-4 py-2">
-                    <div class="bg-muted grid grid-cols-2 gap-2 rounded-lg border p-3 font-mono text-xs">
+                    <div
+                        class="bg-muted grid grid-cols-2 gap-2 rounded-lg border p-3 font-mono text-xs"
+                    >
                         <div
                             v-for="(code, idx) in newCodesList"
                             :key="idx"
@@ -373,19 +453,33 @@ const cancelReplacement = (): void => {
                     </div>
 
                     <div class="flex gap-2">
-                        <Button variant="outline" size="sm" @click="copyCodes(newCodesList)">
-                            <Check v-if="copiedNewCodes" class="mr-1.5 size-3.5 text-green-500" />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="copyCodes(newCodesList)"
+                        >
+                            <Check
+                                v-if="copiedNewCodes"
+                                class="mr-1.5 size-3.5 text-green-500"
+                            />
                             <Copy v-else class="mr-1.5 size-3.5" />
                             {{ copiedNewCodes ? 'Copied' : 'Copy Codes' }}
                         </Button>
-                        <Button variant="outline" size="sm" @click="downloadCodes(newCodesList)">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="downloadCodes(newCodesList)"
+                        >
                             <Download class="mr-1.5 size-3.5" />
                             Download
                         </Button>
                     </div>
 
                     <DialogFooter class="pt-2">
-                        <Button class="w-full" @click="showReplaceModal = false">
+                        <Button
+                            class="w-full"
+                            @click="showReplaceModal = false"
+                        >
                             Done
                         </Button>
                     </DialogFooter>
@@ -394,16 +488,23 @@ const cancelReplacement = (): void => {
         </Dialog>
 
         <!-- MODAL: Regenerate Recovery Codes -->
-        <Dialog :open="showRegenerateModal" @update:open="showRegenerateModal = $event">
+        <Dialog
+            :open="showRegenerateModal"
+            @update:open="showRegenerateModal = $event"
+        >
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Regenerate Recovery Codes</DialogTitle>
                     <DialogDescription>
-                        This will immediately invalidate all existing recovery codes and generate 10 new ones.
+                        This will immediately invalidate all existing recovery
+                        codes and generate 10 new ones.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div v-if="!newCodesList.length || showReplaceModal" class="space-y-4 py-2">
+                <div
+                    v-if="!newCodesList.length || showReplaceModal"
+                    class="space-y-4 py-2"
+                >
                     <Form
                         action="/user/two-factor-recovery-codes"
                         method="post"
@@ -411,7 +512,9 @@ const cancelReplacement = (): void => {
                     >
                         <div class="space-y-4">
                             <div class="grid gap-2">
-                                <Label for="regen_password">Current Password</Label>
+                                <Label for="regen_password"
+                                    >Current Password</Label
+                                >
                                 <PasswordInput
                                     id="regen_password"
                                     name="password"
@@ -423,7 +526,9 @@ const cancelReplacement = (): void => {
                             </div>
 
                             <div class="grid gap-2">
-                                <Label for="regen_code">Authenticator Code</Label>
+                                <Label for="regen_code"
+                                    >Authenticator Code</Label
+                                >
                                 <InputOTP
                                     id="regen_code"
                                     v-model="regenCode"
@@ -438,18 +543,30 @@ const cancelReplacement = (): void => {
                                         />
                                     </InputOTPGroup>
                                 </InputOTP>
-                                <input type="hidden" name="code" :value="regenCode" />
+                                <input
+                                    type="hidden"
+                                    name="code"
+                                    :value="regenCode"
+                                />
                                 <InputError :message="errors.code" />
                             </div>
 
                             <DialogFooter class="pt-4">
-                                <Button type="button" variant="outline" @click="showRegenerateModal = false">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    @click="showRegenerateModal = false"
+                                >
                                     Cancel
                                 </Button>
                                 <Button
                                     type="submit"
                                     variant="destructive"
-                                    :disabled="processing || !regenPassword || regenCode.length < 6"
+                                    :disabled="
+                                        processing ||
+                                        !regenPassword ||
+                                        regenCode.length < 6
+                                    "
                                 >
                                     Regenerate Codes
                                 </Button>
@@ -460,10 +577,13 @@ const cancelReplacement = (): void => {
 
                 <div v-else class="space-y-4 py-2">
                     <p class="text-muted-foreground text-xs">
-                        Save these new recovery codes immediately. They will not be displayed again.
+                        Save these new recovery codes immediately. They will not
+                        be displayed again.
                     </p>
 
-                    <div class="bg-muted grid grid-cols-2 gap-2 rounded-lg border p-3 font-mono text-xs">
+                    <div
+                        class="bg-muted grid grid-cols-2 gap-2 rounded-lg border p-3 font-mono text-xs"
+                    >
                         <div
                             v-for="(code, idx) in newCodesList"
                             :key="idx"
@@ -474,19 +594,36 @@ const cancelReplacement = (): void => {
                     </div>
 
                     <div class="flex gap-2">
-                        <Button variant="outline" size="sm" @click="copyCodes(newCodesList)">
-                            <Check v-if="copiedNewCodes" class="mr-1.5 size-3.5 text-green-500" />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="copyCodes(newCodesList)"
+                        >
+                            <Check
+                                v-if="copiedNewCodes"
+                                class="mr-1.5 size-3.5 text-green-500"
+                            />
                             <Copy v-else class="mr-1.5 size-3.5" />
                             {{ copiedNewCodes ? 'Copied' : 'Copy Codes' }}
                         </Button>
-                        <Button variant="outline" size="sm" @click="downloadCodes(newCodesList)">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            @click="downloadCodes(newCodesList)"
+                        >
                             <Download class="mr-1.5 size-3.5" />
                             Download
                         </Button>
                     </div>
 
                     <DialogFooter class="pt-2">
-                        <Button class="w-full" @click="showRegenerateModal = false; newCodesList = []">
+                        <Button
+                            class="w-full"
+                            @click="
+                                showRegenerateModal = false;
+                                newCodesList = [];
+                            "
+                        >
                             Done
                         </Button>
                     </DialogFooter>

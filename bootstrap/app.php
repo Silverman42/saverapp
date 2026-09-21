@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureFreshAuthentication;
 use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RefreshPermissionVersionSession;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             EnsureActiveAccount::class,
             EnforceSessionLimits::class,
+            RefreshPermissionVersionSession::class,
         ]);
 
         $middleware->alias([

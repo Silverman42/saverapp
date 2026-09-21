@@ -32,17 +32,17 @@ No role may use a withdrawal to record a fee-earnings business draw, Agent remit
 
 ### 2.3 Ownership matrix
 
-| Owner | Authoritative responsibility |
-| --- | --- |
-| This module | Request terms/state, gross reservation, quote linkage, review decision, hold/expiry/cancellation, payout execution orchestration, posting bundle, and withdrawal history. |
-| Module 04 | Customer operational/account states, current effective assignment, Agent eligibility, reassignment/offboarding handover and archival gates. |
-| Module 05 | Fee snapshot, timing/basis/rounding, once-only trigger, fee assessment/application, and any future withdrawal-specific deduction contract. |
-| Module 06 | Source cycle identity/state, cycle-attributed posted principal/liability, completion/closure gates, and settlement lineage. |
-| Module 07 / shared ledger | Posted Customer liability, receipt/custody mappings, immutable balanced-entry protocol, and authoritative available-savings input. |
-| Authentication / Module 03 | Sessions, MFA/fresh authentication and fixed roles/permissions. |
-| External payout adapter/custody owner | Method availability, verified destination, execution authorization, provider idempotency, result/finality evidence and settlement. |
-| Reversals | Agent-initiated, one-Admin-approved linked compensation after posting. |
-| Statements/Reporting/Audit | Financial presentation, exports, retention, privileged audit access and reporting date policy. |
+| Owner                                 | Authoritative responsibility                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| This module                           | Request terms/state, gross reservation, quote linkage, review decision, hold/expiry/cancellation, payout execution orchestration, posting bundle, and withdrawal history. |
+| Module 04                             | Customer operational/account states, current effective assignment, Agent eligibility, reassignment/offboarding handover and archival gates.                               |
+| Module 05                             | Fee snapshot, timing/basis/rounding, once-only trigger, fee assessment/application, and any future withdrawal-specific deduction contract.                                |
+| Module 06                             | Source cycle identity/state, cycle-attributed posted principal/liability, completion/closure gates, and settlement lineage.                                               |
+| Module 07 / shared ledger             | Posted Customer liability, receipt/custody mappings, immutable balanced-entry protocol, and authoritative available-savings input.                                        |
+| Authentication / Module 03            | Sessions, MFA/fresh authentication and fixed roles/permissions.                                                                                                           |
+| External payout adapter/custody owner | Method availability, verified destination, execution authorization, provider idempotency, result/finality evidence and settlement.                                        |
+| Reversals                             | Agent-initiated, one-Admin-approved linked compensation after posting.                                                                                                    |
+| Statements/Reporting/Audit            | Financial presentation, exports, retention, privileged audit access and reporting date policy.                                                                            |
 
 ## 3. Terms, amount contract, and invariants
 
@@ -76,18 +76,18 @@ All posted entries are balanced, immutable, uniquely identified, and linked. A c
 
 ### 4.1 Closed-role action matrix
 
-| Action | Customer | Current eligible assigned Agent | Admin |
-| --- | --- | --- | --- |
-| View request/history | Own records | Currently assigned Customers; historical own-action scope as allowed by Module 04 | Business-wide baseline read |
-| Create/submit request | No | Yes, subject to all gates | No |
-| Edit draft before submission | No | Yes | No |
-| Cancel submitted request before approval | No | Current assigned Agent under Section 10 | No |
-| Approve/reject | No | No | Exactly one active Admin with `withdrawals.review` |
-| Manually release a reservation outside its request transition | No | No | No; Rejected/Cancelled/Expired transitions release atomically, and a release failure is an integrity incident rather than a balance-edit action |
-| Execute/record payout result | No | No inferred authority | Defined payout adapter/operator only after release gate |
-| Reverse posted withdrawal | No | Current assigned Agent initiates through Reversals | One Admin with `reversals.review` approves |
-| Export business-wide requests | No | No | `reports.export` separately |
-| View detailed audit | No | No | `audit.view` separately |
+| Action                                                        | Customer    | Current eligible assigned Agent                                                   | Admin                                                                                                                                           |
+| ------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| View request/history                                          | Own records | Currently assigned Customers; historical own-action scope as allowed by Module 04 | Business-wide baseline read                                                                                                                     |
+| Create/submit request                                         | No          | Yes, subject to all gates                                                         | No                                                                                                                                              |
+| Edit draft before submission                                  | No          | Yes                                                                               | No                                                                                                                                              |
+| Cancel submitted request before approval                      | No          | Current assigned Agent under Section 10                                           | No                                                                                                                                              |
+| Approve/reject                                                | No          | No                                                                                | Exactly one active Admin with `withdrawals.review`                                                                                              |
+| Manually release a reservation outside its request transition | No          | No                                                                                | No; Rejected/Cancelled/Expired transitions release atomically, and a release failure is an integrity incident rather than a balance-edit action |
+| Execute/record payout result                                  | No          | No inferred authority                                                             | Defined payout adapter/operator only after release gate                                                                                         |
+| Reverse posted withdrawal                                     | No          | Current assigned Agent initiates through Reversals                                | One Admin with `reversals.review` approves                                                                                                      |
+| Export business-wide requests                                 | No          | No                                                                                | `reports.export` separately                                                                                                                     |
+| View detailed audit                                           | No          | No                                                                                | `audit.view` separately                                                                                                                         |
 
 `withdrawals.review` does not imply `reversals.review`, `fees.manage`, `deductions.manage`, `reconciliation.manage`, `customers.manage`, `customers.reassign`, payout execution authority, or business settings authority. Baseline Admin read access does not permit a decision. There is no value threshold or second Admin approval in v2: one qualified Admin decision is sufficient for any amount. The Agent initiator and Admin reviewer are inherently different roles.
 
@@ -101,14 +101,14 @@ Customer login activation is not required because the Customer does not initiate
 
 ### 4.3 Customer operational-status matrix
 
-| Operation | Active | Inactive | Restricted | Archived |
-| --- | --- | --- | --- | --- |
-| Read permitted records | Allowed | Allowed | Allowed | Allowed |
-| Initiate request against existing savings | Eligible Agent | Proposed allowed settlement | Blocked | Blocked |
-| Approve/reject pending request | Eligible Admin | Eligible Admin | Reject allowed; approval blocked | Archived should have no unresolved request |
-| Start/continue payout execution | Eligible owning executor | Proposed allowed settlement | Blocked; activate or retain the hold overlay where applicable | Blocked |
-| Post definitive successful payout | Allowed | Allowed if request remains settlement-eligible | Blocked while restriction exists | Blocked |
-| Correct erroneous posted withdrawal | Reversals | Reversals | Reversals corrective exception | Restore first |
+| Operation                                 | Active                   | Inactive                                       | Restricted                                                    | Archived                                   |
+| ----------------------------------------- | ------------------------ | ---------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
+| Read permitted records                    | Allowed                  | Allowed                                        | Allowed                                                       | Allowed                                    |
+| Initiate request against existing savings | Eligible Agent           | Proposed allowed settlement                    | Blocked                                                       | Blocked                                    |
+| Approve/reject pending request            | Eligible Admin           | Eligible Admin                                 | Reject allowed; approval blocked                              | Archived should have no unresolved request |
+| Start/continue payout execution           | Eligible owning executor | Proposed allowed settlement                    | Blocked; activate or retain the hold overlay where applicable | Blocked                                    |
+| Post definitive successful payout         | Allowed                  | Allowed if request remains settlement-eligible | Blocked while restriction exists                              | Blocked                                    |
+| Correct erroneous posted withdrawal       | Reversals                | Reversals                                      | Reversals corrective exception                                | Restore first                              |
 
 Inactive withdrawal is a proposed explicit settlement contract: it consumes existing savings and creates no plan, contribution, fee policy, or new Customer obligation beyond the already agreed withdrawal fee. Restricted immediately blocks initiation, approval and unposted payout, including an already approved request. Rejecting an existing request remains allowed because it releases rather than pays funds. Archived blocks all withdrawal mutations; archival itself requires no live request/reservation.
 
@@ -138,24 +138,24 @@ Proposed initial concurrency rule: a source cycle may have at most one live with
 
 ## 6. Request fields and validation
 
-| Field | Requirement |
-| --- | --- |
-| Request ID | Server-generated immutable proposed format `WDL-000001`; never reused; public reference does not grant access. |
-| Customer | Current assigned scoped record, server bound; cannot be supplied as authority. |
-| Source cycle | Required eligible cycle, stable ID/revision/currency and source-balance version. |
-| Type | Partial, Full, or End-of-cycle, consistent with Section 5. |
-| Gross debit G | Positive NGN integer kobo; at most two entered decimals; proposed maximum 999,999,999,999 kobo; type/source/availability limits also apply. |
-| Fee F | Server quote from Module 05 snapshot/trigger; read-only amount, model/basis/rounding/version/expiry and once-only marker. |
-| Deduction D | Zero initially; future server-authorized amount/reference only. Never free-form in this module. |
-| Net payout P | Server-calculated `G − F − D`, positive; read-only. |
-| Requested payout method | Cash or bank transfer only when enabled by method registry; one method/request. |
-| Destination | Cash recipient identity/acknowledgement policy or verified Customer bank destination reference; encrypted/masked and never arbitrary third-party payee initially. |
+| Field                         | Requirement                                                                                                                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request ID                    | Server-generated immutable proposed format `WDL-000001`; never reused; public reference does not grant access.                                                              |
+| Customer                      | Current assigned scoped record, server bound; cannot be supplied as authority.                                                                                              |
+| Source cycle                  | Required eligible cycle, stable ID/revision/currency and source-balance version.                                                                                            |
+| Type                          | Partial, Full, or End-of-cycle, consistent with Section 5.                                                                                                                  |
+| Gross debit G                 | Positive NGN integer kobo; at most two entered decimals; proposed maximum 999,999,999,999 kobo; type/source/availability limits also apply.                                 |
+| Fee F                         | Server quote from Module 05 snapshot/trigger; read-only amount, model/basis/rounding/version/expiry and once-only marker.                                                   |
+| Deduction D                   | Zero initially; future server-authorized amount/reference only. Never free-form in this module.                                                                             |
+| Net payout P                  | Server-calculated `G − F − D`, positive; read-only.                                                                                                                         |
+| Requested payout method       | Cash or bank transfer only when enabled by method registry; one method/request.                                                                                             |
+| Destination                   | Cash recipient identity/acknowledgement policy or verified Customer bank destination reference; encrypted/masked and never arbitrary third-party payee initially.           |
 | Customer instruction evidence | Proposed required Agent attestation of Customer instruction plus method/destination; optional protected attachment subject to evidence policy. Not Customer login approval. |
-| Reason/purpose | Required Customer-visible plain text, trimmed 1–500 characters. |
-| Internal notes | Optional protected plain text, maximum 1,000 characters; omitted from Customer view/email. |
-| Requested occurrence date | Proposed current business date only; backdated/future payout requests deferred. Actual payout/provider date remains separate. |
-| Expiry | Server generated under Section 9; never client-extended. |
-| Versions/actors/times | Trusted Customer/assignment/plan/liability/reservation/quote/request versions; initiator and server UTC timestamps. |
+| Reason/purpose                | Required Customer-visible plain text, trimmed 1–500 characters.                                                                                                             |
+| Internal notes                | Optional protected plain text, maximum 1,000 characters; omitted from Customer view/email.                                                                                  |
+| Requested occurrence date     | Proposed current business date only; backdated/future payout requests deferred. Actual payout/provider date remains separate.                                               |
+| Expiry                        | Server generated under Section 9; never client-extended.                                                                                                                    |
+| Versions/actors/times         | Trusted Customer/assignment/plan/liability/reservation/quote/request versions; initiator and server UTC timestamps.                                                         |
 
 Trim text, reject executable markup/control characters except permitted newlines, unknown fields, foreign IDs, unsupported methods/currency, zero/negative/excess/extra-decimal values, `F + D ≥ G`, arithmetic overflow, stale quotes, unavailable balances, and unverified destination references. Client validation aids correction; server validation is authoritative. Do not silently round, cap, reduce, re-source, waive, or change payout method.
 
@@ -176,18 +176,18 @@ If a fee quote/version changes before submission, require a fresh preview and co
 
 ## 8. Lifecycle states, hold overlay, and action matrix
 
-| State | Reservation | Meaning / permitted next actions |
-| --- | --- | --- |
-| Draft | None | Client-side/incomplete input; not a financial request. Preview, discard or submit. |
-| Pending review | Live G | Submitted and awaiting one Admin decision. Admin approve/reject; current Agent may cancel before review. |
-| Approved — awaiting payout | Live G | Approval committed; executor may begin only when all gates pass. Authorized Admin may revoke before execution under Section 10. |
-| Payout processing | Live G | One execution attempt accepted/in progress. No cancellation, expiry, new execution or reposting. |
-| Outcome unknown | Live G | Provider/custody response cannot establish success/failure. Reconcile same attempt; never retry with a new payment. |
-| Payment failed | Live G | Definitive no-transfer result. Retry same approved request within limits or revoke/expire; no liability effect. |
-| Rejected | Released atomically | Admin rejected before payout processing; terminal, no liability effect. |
-| Cancelled | Released atomically | Agent cancelled Pending review, or authorized Admin revoked an Approved — awaiting payout/Payment failed request before execution; terminal. |
-| Expired | Released atomically | Safe automatic/authorized expiry before execution; terminal. |
-| Posted | Consumed atomically | Definitive payout and balanced bundle committed; terminal except Reversals. |
+| State                      | Reservation         | Meaning / permitted next actions                                                                                                             |
+| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Draft                      | None                | Client-side/incomplete input; not a financial request. Preview, discard or submit.                                                           |
+| Pending review             | Live G              | Submitted and awaiting one Admin decision. Admin approve/reject; current Agent may cancel before review.                                     |
+| Approved — awaiting payout | Live G              | Approval committed; executor may begin only when all gates pass. Authorized Admin may revoke before execution under Section 10.              |
+| Payout processing          | Live G              | One execution attempt accepted/in progress. No cancellation, expiry, new execution or reposting.                                             |
+| Outcome unknown            | Live G              | Provider/custody response cannot establish success/failure. Reconcile same attempt; never retry with a new payment.                          |
+| Payment failed             | Live G              | Definitive no-transfer result. Retry same approved request within limits or revoke/expire; no liability effect.                              |
+| Rejected                   | Released atomically | Admin rejected before payout processing; terminal, no liability effect.                                                                      |
+| Cancelled                  | Released atomically | Agent cancelled Pending review, or authorized Admin revoked an Approved — awaiting payout/Payment failed request before execution; terminal. |
+| Expired                    | Released atomically | Safe automatic/authorized expiry before execution; terminal.                                                                                 |
+| Posted                     | Consumed atomically | Definitive payout and balanced bundle committed; terminal except Reversals.                                                                  |
 
 Store exactly one primary lifecycle state plus an optional hold overlay containing hold status, reason, start/end times and version. A hold may apply only while the primary state is Pending review, Approved — awaiting payout or Payment failed. It preserves the underlying state, decision and live reservation; while held, approval, execution and posting are blocked, while safe rejection or revocation remains available as defined below. “Submitted,” “reconciled,” “notification sent,” or “provider accepted” are evidence/substates, not alternate financial postings. Primary-state and hold changes append events with actor/system source, UTC time, reason, versions and source evidence.
 
@@ -231,10 +231,10 @@ Agent Inactive/Suspended/offboarding blocks new initiation/cancellation but does
 
 Each enabled method has a versioned registry entry defining custody/funding account, destination verification, executor identity/authority, required evidence, idempotency support, definitive success/failure/unknown semantics, timeout/reconciliation, value limits and operational availability. Missing/disabled/unknown mapping blocks submission or execution; do not fall back to cash.
 
-| Method | Proposed request evidence | Required execution evidence / unresolved gate |
-| --- | --- | --- |
+| Method        | Proposed request evidence                                                      | Required execution evidence / unresolved gate                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Bank transfer | Verified Customer-owned destination token, bank, masked account, verified name | Funding account, provider idempotency key/reference, initiation/settlement times, amount/currency, payee match, signed/provider result. Provider integration/finality and who can initiate remain gates. |
-| Cash | Customer instruction and approved pickup/recipient identity reference | Named authorized custodian/executor, cash source, handoff time, Customer receipt/acknowledgement and evidence. Custody authority and reliable receipt policy remain gates. |
+| Cash          | Customer instruction and approved pickup/recipient identity reference          | Named authorized custodian/executor, cash source, handoff time, Customer receipt/acknowledgement and evidence. Custody authority and reliable receipt policy remain gates.                               |
 
 Do not store online-banking credentials, PINs, OTPs, full secrets, or provider tokens in request/audit. Encrypt destination/evidence references, malware-scan uploads, authorize every retrieval, use short-lived protected downloads, and log protected access as required by evidence policy. Customer-visible views show masked destinations and safe receipt references.
 
@@ -295,14 +295,14 @@ Provide responsive layouts without essential horizontal scrolling, semantic head
 
 ## 14. Notifications
 
-| Event | Recipients | Proposed content/channel |
-| --- | --- | --- |
-| Request submitted | Customer and current Agent in-app; authorized review queue | Request/type, G/F/P, plan, method mask, reservation/expiry, no promise of approval/payment. Customer email proposed. |
-| Approved/rejected/cancelled/expired | Customer and current Agent in-app; email for Customer | Decision/outcome, G/P, safe reason, reservation consequence, next permitted step. Internal reason omitted. |
-| Hold applied/lifted | Customer and current Agent in-app; authorized review queue | Safe hold/resume explanation; no automatic payout promise. Deduplicate unchanged hold. |
-| Execution processing/failed/unknown | Current Agent and authorized operational/review staff | Accurate state, safe method/reference and required action; Customer notified of material delay without false failure/success. |
-| Posted | Customer and current Agent in-app plus Customer email | Receipt, G/F/D/P, method mask, plan, posting/occurrence date, resulting balances/as-of time. |
-| Return/reversal progress | Owning workflow recipients | Preserve distinction between returned funds, requested correction and posted compensation. |
+| Event                               | Recipients                                                 | Proposed content/channel                                                                                                      |
+| ----------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Request submitted                   | Customer and current Agent in-app; authorized review queue | Request/type, G/F/P, plan, method mask, reservation/expiry, no promise of approval/payment. Customer email proposed.          |
+| Approved/rejected/cancelled/expired | Customer and current Agent in-app; email for Customer      | Decision/outcome, G/P, safe reason, reservation consequence, next permitted step. Internal reason omitted.                    |
+| Hold applied/lifted                 | Customer and current Agent in-app; authorized review queue | Safe hold/resume explanation; no automatic payout promise. Deduplicate unchanged hold.                                        |
+| Execution processing/failed/unknown | Current Agent and authorized operational/review staff      | Accurate state, safe method/reference and required action; Customer notified of material delay without false failure/success. |
+| Posted                              | Customer and current Agent in-app plus Customer email      | Receipt, G/F/D/P, method mask, plan, posting/occurrence date, resulting balances/as-of time.                                  |
+| Return/reversal progress            | Owning workflow recipients                                 | Preserve distinction between returned funds, requested correction and posted compensation.                                    |
 
 Queue notifications only after durable state commit. Use event/recipient/channel idempotency, bounded retries, current scope at dispatch/retrieval and safe templates. Reassignment suppresses old Agent Customer content; Admin recipient eligibility is checked at delivery. Delivery failure never reverses, reposts, releases or pays. Uncertain email acceptance is not request/payment uncertainty. Preferences, retention and mandatory-financial-notice policy remain owner decisions.
 
@@ -368,87 +368,87 @@ Dependent functionality is **Blocked**, not Passed, when any owner below is miss
 
 ## 19. Indexed functional requirements
 
-| ID | Requirement | Detail |
-| --- | --- | --- |
-| WDL-FR-001 | Enforce closed roles: current eligible Agent initiates, one `withdrawals.review` Admin decides, Customer reads own records, Admin cannot initiate and Agent cannot approve. | Section 4 |
-| WDL-FR-002 | Separate Customer authentication state from operational/financial eligibility and recheck current Agent/Admin authority at commit. | Section 4 |
-| WDL-FR-003 | Enforce Active/Inactive settlement/Restricted hold/Archived prohibition and preserve corrective reversal exception. | Sections 4.3, 10 |
-| WDL-FR-004 | Support Partial, Full and End-of-cycle withdrawals with explicit distinct meanings and one eligible source cycle. | Section 5 |
-| WDL-FR-005 | Validate all request fields, integer-kobo limits, positive P, protected destination/evidence and immutable trusted metadata. | Section 6 |
-| WDL-FR-006 | Calculate and disclose `G = P + F + D`, source/total balances and Module 05 quote without double charging or floating arithmetic. | Sections 3, 7 |
-| WDL-FR-007 | Acquire exactly one live gross reservation G atomically with submitted request/audit/outbox, without changing liability. | Section 7 |
-| WDL-FR-008 | Freeze submitted terms and require cancel/reject plus a new request for changed amount/source/method/destination. | Section 7 |
-| WDL-FR-009 | Maintain the defined append-only request/hold/execution lifecycle and allow only documented transitions. | Section 8 |
-| WDL-FR-010 | Review complete current evidence/balances and require exactly one authorized fresh-authenticated Admin decision. | Section 9.1 |
-| WDL-FR-011 | Release reservation atomically on safe rejection/cancellation/expiry without liability or earnings effect. | Sections 8–10 |
-| WDL-FR-012 | Apply proposed deadlines, pause expiry while Restricted, and never expire Payout processing/Outcome unknown. | Section 9.2 |
-| WDL-FR-013 | Restrict Agent cancellation to Pending and Admin revocation to approved/failed pre-execution requests, with reasons/version checks. | Section 10 |
-| WDL-FR-014 | Preserve request/reservation/actors through reassignment/offboarding while changing current scoped follow-up immediately. | Section 10 |
-| WDL-FR-015 | Enable a payout method only with versioned authority, custody, verified destination, evidence, finality, limits and accounting mapping. | Section 11.1 |
-| WDL-FR-016 | Execute P once using a bound provider/cash identity; distinguish definitive success, definitive failure and unknown result. | Section 11.2 |
-| WDL-FR-017 | Preserve reservation and block retries/releases during Payout processing/Outcome unknown; reconcile the same attempt. | Sections 8, 11.2 |
-| WDL-FR-018 | Atomically consume G and post one balanced bundle debiting liability G and crediting payout P, fee F and approved D once. | Sections 3, 11.3 |
-| WDL-FR-019 | Keep posting/request/approval/execution/occurrence/settlement dates distinct and route provider returns to an owning correction workflow. | Section 11.3 |
-| WDL-FR-020 | Bind idempotent request/decision/execution attempts and financial/source uniqueness to prevent duplicates under retries/restarts. | Section 12 |
-| WDL-FR-021 | Serialize funds, source, status, fee, plan, reversal, reservation, closure and archival races with fail-closed current checks. | Section 12 |
-| WDL-FR-022 | Provide correctly scoped accessible Agent/Admin/Customer screens, status explanations and separate reservation/liability presentation. | Section 13 |
-| WDL-FR-023 | Send deduplicated scope-checked notifications after commit without financial rollback/replay or false payout claims. | Section 14 |
-| WDL-FR-024 | Capture append-only protected audit/financial evidence with separate audit/export grants and no secrets. | Section 15 |
-| WDL-FR-025 | Meet reviewed integrity, security, availability, performance, accessibility, observability and time requirements. | Section 16 |
-| WDL-FR-026 | Supply source-aware Posted/request projections to statements/reports without presenting non-posted states as transactions. | Sections 11.3, 13.3 |
-| WDL-FR-027 | Keep plan lifecycle independent: payout never silently completes/closes/renews/changes slots; closure consumes authoritative settlement evidence. | Sections 5, 17.6 |
-| WDL-FR-028 | Leave unsupported executor, payout rail, return/reversal, deduction, accounting or evidence integrations Blocked without invented authority/manual balance edits. | Sections 2, 18 |
+| ID         | Requirement                                                                                                                                                                  | Detail              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| WDL-FR-001 | Enforce closed roles: current eligible Agent initiates, one `withdrawals.review` Admin decides, Customer reads own records, Admin cannot initiate and Agent cannot approve.  | Section 4           |
+| WDL-FR-002 | Separate Customer authentication state from operational/financial eligibility and recheck current Agent/Admin authority at commit.                                           | Section 4           |
+| WDL-FR-003 | Enforce Active/Inactive settlement/Restricted hold/Archived prohibition and preserve corrective reversal exception.                                                          | Sections 4.3, 10    |
+| WDL-FR-004 | Support Partial, Full and End-of-cycle withdrawals with explicit distinct meanings and one eligible source cycle.                                                            | Section 5           |
+| WDL-FR-005 | Validate all request fields, integer-kobo limits, positive P, protected destination/evidence and immutable trusted metadata.                                                 | Section 6           |
+| WDL-FR-006 | Calculate and disclose `G = P + F + D`, source/total balances and Module 05 quote without double charging or floating arithmetic.                                            | Sections 3, 7       |
+| WDL-FR-007 | Acquire exactly one live gross reservation G atomically with submitted request/audit/outbox, without changing liability.                                                     | Section 7           |
+| WDL-FR-008 | Freeze submitted terms and require cancel/reject plus a new request for changed amount/source/method/destination.                                                            | Section 7           |
+| WDL-FR-009 | Maintain the defined append-only request/hold/execution lifecycle and allow only documented transitions.                                                                     | Section 8           |
+| WDL-FR-010 | Review complete current evidence/balances and require exactly one authorized fresh-authenticated Admin decision.                                                             | Section 9.1         |
+| WDL-FR-011 | Release reservation atomically on safe rejection/cancellation/expiry without liability or earnings effect.                                                                   | Sections 8–10       |
+| WDL-FR-012 | Apply proposed deadlines, pause expiry while Restricted, and never expire Payout processing/Outcome unknown.                                                                 | Section 9.2         |
+| WDL-FR-013 | Restrict Agent cancellation to Pending and Admin revocation to approved/failed pre-execution requests, with reasons/version checks.                                          | Section 10          |
+| WDL-FR-014 | Preserve request/reservation/actors through reassignment/offboarding while changing current scoped follow-up immediately.                                                    | Section 10          |
+| WDL-FR-015 | Enable a payout method only with versioned authority, custody, verified destination, evidence, finality, limits and accounting mapping.                                      | Section 11.1        |
+| WDL-FR-016 | Execute P once using a bound provider/cash identity; distinguish definitive success, definitive failure and unknown result.                                                  | Section 11.2        |
+| WDL-FR-017 | Preserve reservation and block retries/releases during Payout processing/Outcome unknown; reconcile the same attempt.                                                        | Sections 8, 11.2    |
+| WDL-FR-018 | Atomically consume G and post one balanced bundle debiting liability G and crediting payout P, fee F and approved D once.                                                    | Sections 3, 11.3    |
+| WDL-FR-019 | Keep posting/request/approval/execution/occurrence/settlement dates distinct and route provider returns to an owning correction workflow.                                    | Section 11.3        |
+| WDL-FR-020 | Bind idempotent request/decision/execution attempts and financial/source uniqueness to prevent duplicates under retries/restarts.                                            | Section 12          |
+| WDL-FR-021 | Serialize funds, source, status, fee, plan, reversal, reservation, closure and archival races with fail-closed current checks.                                               | Section 12          |
+| WDL-FR-022 | Provide correctly scoped accessible Agent/Admin/Customer screens, status explanations and separate reservation/liability presentation.                                       | Section 13          |
+| WDL-FR-023 | Send deduplicated scope-checked notifications after commit without financial rollback/replay or false payout claims.                                                         | Section 14          |
+| WDL-FR-024 | Capture append-only protected audit/financial evidence with separate audit/export grants and no secrets.                                                                     | Section 15          |
+| WDL-FR-025 | Meet reviewed integrity, security, availability, performance, accessibility, observability and time requirements.                                                            | Section 16          |
+| WDL-FR-026 | Supply source-aware Posted/request projections to statements/reports without presenting non-posted states as transactions.                                                   | Sections 11.3, 13.3 |
+| WDL-FR-027 | Keep plan lifecycle independent: payout never silently completes/closes/renews/changes slots; closure consumes authoritative settlement evidence.                            | Sections 5, 17.6    |
+| WDL-FR-028 | Leave unsupported executor, payout rail, return/reversal, deduction, accounting or evidence integrations Blocked without invented authority/manual balance edits.            | Sections 2, 18      |
 | WDL-FR-029 | Permit at most one live request per source cycle initially and serialize restriction with durable execution start so once-only fees and irreversible results remain correct. | Sections 5.4, 10–12 |
 
 ## 20. Acceptance scenarios and traceability
 
 These are future release scenarios, not claims of implementation or completed tests. Each evidence record includes scenario/requirement IDs, build and fixture, actor/account/grants/assignment/status, request/source/quote/reservation versions, exact pre/post L/R/A/G/F/D/P and ledger totals, method evidence, expected/observed states/audit/notifications, and Passed/Failed/Blocked. UI hiding alone is not proof of server authorization.
 
-| ID | Requirements | Scenario and expected result |
-| --- | --- | --- |
-| WDL-AC-001 | WDL-FR-001 | Agent initiates assigned Customer request; Customer/Admin initiation and Agent approval endpoints fail with no request/reservation. |
-| WDL-AC-002 | WDL-FR-001, WDL-FR-010 | Baseline Admin and wrong-grant Admin cannot decide; one current `withdrawals.review` Admin approves/rejects any amount; no second approval required. |
-| WDL-AC-003 | WDL-FR-002 | Customer Invited/locked account with Active status remains Agent-operable; Agent Inactive/Suspended/Deactivated or stale assignment cannot mutate. |
-| WDL-AC-004 | WDL-FR-003 | Active and proposed Inactive existing-savings requests pass owner gates; Restricted/Archived initiation fails. Restriction blocks approval/payout and retains live request reservation. |
-| WDL-AC-005 | WDL-FR-003, WDL-FR-009 | Restrict an Approved — awaiting payout request, then lift; its primary state remains Approved — awaiting payout while the hold overlay blocks posting, the overlay clears only after revalidation, and it never auto-pays. Revocation while held releases safely. |
-| WDL-AC-006 | WDL-FR-004 | Partial G below source amount succeeds; Full requires exact current source available; amount increase after submission does not enlarge it. |
-| WDL-AC-007 | WDL-FR-004, WDL-FR-027 | End-cycle rejects Active/Paused source, succeeds for Completed valid quote, and Posted remains Completed until separate closure gates/action. |
-| WDL-AC-008 | WDL-FR-004 | Closed/Cancelled/unattributed/multi-cycle source request fails without guessing or moving balances. |
-| WDL-AC-009 | WDL-FR-005 | Validate amount zero/negative/max/max+1/extra decimals/overflow, text lengths/control markup, foreign IDs and protected-field injection; valid NGN stored exactly in kobo. |
-| WDL-AC-010 | WDL-FR-005, WDL-FR-015 | Unverified/third-party/stale destination, unsupported method, infected/oversized evidence and stale protected link fail without leaking full destination or secrets. |
-| WDL-AC-011 | WDL-FR-006 | G ₦10,000/F 2%/D 0 yields P ₦9,800; quote clearly labels all values and posting cannot debit a second fee. |
-| WDL-AC-012 | WDL-FR-006 | Fixed fee ≥ G, future unsupported D, stale/missing Module 05 quote or arithmetic overflow blocks submission without silently cap/waive/prorate. |
-| WDL-AC-013 | WDL-FR-007 | Liability ₦86,000/no reservations: submit G ₦30,000; liability stays ₦86,000, live R ₦30,000, A ₦56,000, no payout/income. |
-| WDL-AC-014 | WDL-FR-007, WDL-FR-021 | Two requests race against ₦50,000; G ₦30,000 winner leaves only ₦20,000 reservable, so stale G ₦25,000 loses. |
-| WDL-AC-015 | WDL-FR-008 | Attempt to edit submitted G/type/source/method/destination/quote; reject. Terminal release plus new request uses new ID/current quote. |
-| WDL-AC-016 | WDL-FR-009 | Exercise every allowed state path and invalid transition; only documented transitions append, no state checkbox edit or liability side effect. |
-| WDL-AC-017 | WDL-FR-010 | Review uses current balances/source/fee/evidence; missing freshness, grant, reservation, positive P, or unchanged versions prevents approval. |
-| WDL-AC-018 | WDL-FR-010 | Two Admin decisions race; exactly one Approved or Rejected event commits and approval itself posts no money. |
-| WDL-AC-019 | WDL-FR-011 | Reject/Agent-cancel/Admin-revoke/safe-expire each releases exactly G once, leaves L/fees unchanged and retains terminal history. |
-| WDL-AC-020 | WDL-FR-012 | Pending review/Approved — awaiting payout/Payment failed deadline expires safely; Restricted hold pauses the deadline and restores the proposed 24-hour window; Payout processing/Outcome unknown never auto-releases. |
-| WDL-AC-021 | WDL-FR-013 | Agent cancels Pending only; cannot cancel Approved/Processing/Posted. Admin revokes Approved before execution only; stale execution race has one ordered result. |
-| WDL-AC-022 | WDL-FR-014 | Reassign pending/approved request; amounts/state/reservation/initiator remain, former Agent loses access/action, replacement gains current follow-up without impersonation. |
-| WDL-AC-023 | WDL-FR-014 | Suspend/offboard initiating Agent; request persists, no reservation release, formal handover gates final deactivation, original attribution stays. |
-| WDL-AC-024 | WDL-FR-015 | Each enabled cash/bank method proves executor, funding/custody map, verified destination, limits/evidence/finality; any missing contract reports Blocked and no fallback cash. |
-| WDL-AC-025 | WDL-FR-016 | Definitive bank/cash success posts once; definitive no-transfer becomes Payment failed with R live and no liability debit. |
-| WDL-AC-026 | WDL-FR-016, WDL-FR-017 | Timeout/ambiguous cash handoff becomes Outcome unknown; repeated click/new execution/release blocked until same attempt proves success or no-transfer. |
-| WDL-AC-027 | WDL-FR-018 | Post G ₦10,000/P ₦9,800/F ₦200: consume R ₦10,000, debit L once ₦10,000, credit payout/fee exactly, balanced group/marker once. |
-| WDL-AC-028 | WDL-FR-018 | Inject failure at reservation consumption, liability, payout, fee, transaction, audit or outbox persistence; entire posting bundle commits or none, while proven external success remains recoverable without resend. |
-| WDL-AC-029 | WDL-FR-019 | Store and render request/approval/post/provider occurrence/settlement dates distinctly; later provider settlement never debits L again. |
-| WDL-AC-030 | WDL-FR-019, WDL-FR-028 | Provider return after Posted creates owned exception/correction path; no status rollback, deletion, fee guess or generic manual adjustment. |
-| WDL-AC-031 | WDL-FR-020 | Duplicate submit/decision/execution/post callbacks and restart resolve one request/reservation/decision/payment/post; changed payload conflicts. |
-| WDL-AC-032 | WDL-FR-020 | Lost submission response resolves same attempt; reassignment before replay applies current read scope and cannot create a replacement request. |
-| WDL-AC-033 | WDL-FR-021 | Contribution/deduction/reversal/second payout/restriction/closure races serialize; no `L < live R`, negative A, overdraw, payout while the hold overlay is active, or closed-cycle request. |
-| WDL-AC-034 | WDL-FR-021 | Audit/balance/reservation/fee/status owner unavailable or stale returns safe failure/Blocked, never cached-zero authorization. |
-| WDL-AC-035 | WDL-FR-022 | Direct URLs/search/filter/counts/actions for Customer/Agent/Admin stay scoped; private reason/evidence/funding data omitted and revoked access clears stale detail. |
-| WDL-AC-036 | WDL-FR-022 | Desktop/mobile keyboard/screen-reader use distinguishes G/F/D/P, L/R/A and every loading/empty/error/unknown state without color-only meaning or essential horizontal scroll. |
-| WDL-AC-037 | WDL-FR-023 | Emit each notification family, duplicate/retry/fail delivery and reassign recipient; only current safe recipients receive deduplicated accurate state, with no financial replay. |
-| WDL-AC-038 | WDL-FR-024 | Verify committed/denied/conflicting/unknown/evidence-access events and balanced links; detailed audit/export grants stay separate and secrets/full bank data absent. |
-| WDL-AC-039 | WDL-FR-025 | Restart/load/security/accessibility tests preserve invariants; measured targets and dataset profile recorded, and target miss is reported rather than false Passed. |
-| WDL-AC-040 | WDL-FR-026 | Statements include Posted withdrawal/correction entries only; request history separately shows primary request state and hold status, reservations separate from L, and authoritative dates/as-of labels. |
-| WDL-AC-041 | WDL-FR-027 | Full payout of Active plan does not close/reduce slots; completed payout supplies settlement evidence but reconciliation/fee/job blockers still stop closure. |
-| WDL-AC-042 | WDL-FR-028 | Undefined executor/rail, future D, payout return, reversal, accounting mapping, cash verification or statement policy remains Blocked with no invented permission/mark-paid/balance edit. |
-| WDL-AC-043 | WDL-FR-029, WDL-FR-006 | A second live request for the same cycle is blocked even when funds fit; terminal release permits a newly quoted request, and a later request after Posted respects the durable once-only fee marker. |
+| ID         | Requirements                       | Scenario and expected result                                                                                                                                                                                                                                      |
+| ---------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WDL-AC-001 | WDL-FR-001                         | Agent initiates assigned Customer request; Customer/Admin initiation and Agent approval endpoints fail with no request/reservation.                                                                                                                               |
+| WDL-AC-002 | WDL-FR-001, WDL-FR-010             | Baseline Admin and wrong-grant Admin cannot decide; one current `withdrawals.review` Admin approves/rejects any amount; no second approval required.                                                                                                              |
+| WDL-AC-003 | WDL-FR-002                         | Customer Invited/locked account with Active status remains Agent-operable; Agent Inactive/Suspended/Deactivated or stale assignment cannot mutate.                                                                                                                |
+| WDL-AC-004 | WDL-FR-003                         | Active and proposed Inactive existing-savings requests pass owner gates; Restricted/Archived initiation fails. Restriction blocks approval/payout and retains live request reservation.                                                                           |
+| WDL-AC-005 | WDL-FR-003, WDL-FR-009             | Restrict an Approved — awaiting payout request, then lift; its primary state remains Approved — awaiting payout while the hold overlay blocks posting, the overlay clears only after revalidation, and it never auto-pays. Revocation while held releases safely. |
+| WDL-AC-006 | WDL-FR-004                         | Partial G below source amount succeeds; Full requires exact current source available; amount increase after submission does not enlarge it.                                                                                                                       |
+| WDL-AC-007 | WDL-FR-004, WDL-FR-027             | End-cycle rejects Active/Paused source, succeeds for Completed valid quote, and Posted remains Completed until separate closure gates/action.                                                                                                                     |
+| WDL-AC-008 | WDL-FR-004                         | Closed/Cancelled/unattributed/multi-cycle source request fails without guessing or moving balances.                                                                                                                                                               |
+| WDL-AC-009 | WDL-FR-005                         | Validate amount zero/negative/max/max+1/extra decimals/overflow, text lengths/control markup, foreign IDs and protected-field injection; valid NGN stored exactly in kobo.                                                                                        |
+| WDL-AC-010 | WDL-FR-005, WDL-FR-015             | Unverified/third-party/stale destination, unsupported method, infected/oversized evidence and stale protected link fail without leaking full destination or secrets.                                                                                              |
+| WDL-AC-011 | WDL-FR-006                         | G ₦10,000/F 2%/D 0 yields P ₦9,800; quote clearly labels all values and posting cannot debit a second fee.                                                                                                                                                        |
+| WDL-AC-012 | WDL-FR-006                         | Fixed fee ≥ G, future unsupported D, stale/missing Module 05 quote or arithmetic overflow blocks submission without silently cap/waive/prorate.                                                                                                                   |
+| WDL-AC-013 | WDL-FR-007                         | Liability ₦86,000/no reservations: submit G ₦30,000; liability stays ₦86,000, live R ₦30,000, A ₦56,000, no payout/income.                                                                                                                                        |
+| WDL-AC-014 | WDL-FR-007, WDL-FR-021             | Two requests race against ₦50,000; G ₦30,000 winner leaves only ₦20,000 reservable, so stale G ₦25,000 loses.                                                                                                                                                     |
+| WDL-AC-015 | WDL-FR-008                         | Attempt to edit submitted G/type/source/method/destination/quote; reject. Terminal release plus new request uses new ID/current quote.                                                                                                                            |
+| WDL-AC-016 | WDL-FR-009                         | Exercise every allowed state path and invalid transition; only documented transitions append, no state checkbox edit or liability side effect.                                                                                                                    |
+| WDL-AC-017 | WDL-FR-010                         | Review uses current balances/source/fee/evidence; missing freshness, grant, reservation, positive P, or unchanged versions prevents approval.                                                                                                                     |
+| WDL-AC-018 | WDL-FR-010                         | Two Admin decisions race; exactly one Approved or Rejected event commits and approval itself posts no money.                                                                                                                                                      |
+| WDL-AC-019 | WDL-FR-011                         | Reject/Agent-cancel/Admin-revoke/safe-expire each releases exactly G once, leaves L/fees unchanged and retains terminal history.                                                                                                                                  |
+| WDL-AC-020 | WDL-FR-012                         | Pending review/Approved — awaiting payout/Payment failed deadline expires safely; Restricted hold pauses the deadline and restores the proposed 24-hour window; Payout processing/Outcome unknown never auto-releases.                                            |
+| WDL-AC-021 | WDL-FR-013                         | Agent cancels Pending only; cannot cancel Approved/Processing/Posted. Admin revokes Approved before execution only; stale execution race has one ordered result.                                                                                                  |
+| WDL-AC-022 | WDL-FR-014                         | Reassign pending/approved request; amounts/state/reservation/initiator remain, former Agent loses access/action, replacement gains current follow-up without impersonation.                                                                                       |
+| WDL-AC-023 | WDL-FR-014                         | Suspend/offboard initiating Agent; request persists, no reservation release, formal handover gates final deactivation, original attribution stays.                                                                                                                |
+| WDL-AC-024 | WDL-FR-015                         | Each enabled cash/bank method proves executor, funding/custody map, verified destination, limits/evidence/finality; any missing contract reports Blocked and no fallback cash.                                                                                    |
+| WDL-AC-025 | WDL-FR-016                         | Definitive bank/cash success posts once; definitive no-transfer becomes Payment failed with R live and no liability debit.                                                                                                                                        |
+| WDL-AC-026 | WDL-FR-016, WDL-FR-017             | Timeout/ambiguous cash handoff becomes Outcome unknown; repeated click/new execution/release blocked until same attempt proves success or no-transfer.                                                                                                            |
+| WDL-AC-027 | WDL-FR-018                         | Post G ₦10,000/P ₦9,800/F ₦200: consume R ₦10,000, debit L once ₦10,000, credit payout/fee exactly, balanced group/marker once.                                                                                                                                   |
+| WDL-AC-028 | WDL-FR-018                         | Inject failure at reservation consumption, liability, payout, fee, transaction, audit or outbox persistence; entire posting bundle commits or none, while proven external success remains recoverable without resend.                                             |
+| WDL-AC-029 | WDL-FR-019                         | Store and render request/approval/post/provider occurrence/settlement dates distinctly; later provider settlement never debits L again.                                                                                                                           |
+| WDL-AC-030 | WDL-FR-019, WDL-FR-028             | Provider return after Posted creates owned exception/correction path; no status rollback, deletion, fee guess or generic manual adjustment.                                                                                                                       |
+| WDL-AC-031 | WDL-FR-020                         | Duplicate submit/decision/execution/post callbacks and restart resolve one request/reservation/decision/payment/post; changed payload conflicts.                                                                                                                  |
+| WDL-AC-032 | WDL-FR-020                         | Lost submission response resolves same attempt; reassignment before replay applies current read scope and cannot create a replacement request.                                                                                                                    |
+| WDL-AC-033 | WDL-FR-021                         | Contribution/deduction/reversal/second payout/restriction/closure races serialize; no `L < live R`, negative A, overdraw, payout while the hold overlay is active, or closed-cycle request.                                                                       |
+| WDL-AC-034 | WDL-FR-021                         | Audit/balance/reservation/fee/status owner unavailable or stale returns safe failure/Blocked, never cached-zero authorization.                                                                                                                                    |
+| WDL-AC-035 | WDL-FR-022                         | Direct URLs/search/filter/counts/actions for Customer/Agent/Admin stay scoped; private reason/evidence/funding data omitted and revoked access clears stale detail.                                                                                               |
+| WDL-AC-036 | WDL-FR-022                         | Desktop/mobile keyboard/screen-reader use distinguishes G/F/D/P, L/R/A and every loading/empty/error/unknown state without color-only meaning or essential horizontal scroll.                                                                                     |
+| WDL-AC-037 | WDL-FR-023                         | Emit each notification family, duplicate/retry/fail delivery and reassign recipient; only current safe recipients receive deduplicated accurate state, with no financial replay.                                                                                  |
+| WDL-AC-038 | WDL-FR-024                         | Verify committed/denied/conflicting/unknown/evidence-access events and balanced links; detailed audit/export grants stay separate and secrets/full bank data absent.                                                                                              |
+| WDL-AC-039 | WDL-FR-025                         | Restart/load/security/accessibility tests preserve invariants; measured targets and dataset profile recorded, and target miss is reported rather than false Passed.                                                                                               |
+| WDL-AC-040 | WDL-FR-026                         | Statements include Posted withdrawal/correction entries only; request history separately shows primary request state and hold status, reservations separate from L, and authoritative dates/as-of labels.                                                         |
+| WDL-AC-041 | WDL-FR-027                         | Full payout of Active plan does not close/reduce slots; completed payout supplies settlement evidence but reconciliation/fee/job blockers still stop closure.                                                                                                     |
+| WDL-AC-042 | WDL-FR-028                         | Undefined executor/rail, future D, payout return, reversal, accounting mapping, cash verification or statement policy remains Blocked with no invented permission/mark-paid/balance edit.                                                                         |
+| WDL-AC-043 | WDL-FR-029, WDL-FR-006             | A second live request for the same cycle is blocked even when funds fit; terminal release permits a newly quoted request, and a later request after Posted respects the durable once-only fee marker.                                                             |
 | WDL-AC-044 | WDL-FR-029, WDL-FR-003, WDL-FR-017 | Race restriction against execution start: restriction-first sends no payout and activates the hold; durable execution-first resolves that exact irreversible attempt to Posted or Payment failed with the hold active, without a second send or unrelated payout. |
 
 Required fixtures include at least two Agents and assignments/reassignment histories; Agent active/inactive/locked/suspended/offboarding states; baseline and split-grant Admins with grant revocation mid-request; Customer account states and all four operational statuses; Active/Paused/Completed/Closed/Cancelled cycles; partial/full/end-cycle amounts; prior paid/waived/withdrawal-timed fees; sufficient/insufficient/source-mismatched liability; multiple live reservations; cash/bank enabled/disabled/unknown outcomes; payout returns; provider duplicate callbacks; missing owners; UTC/business-date boundaries; protected evidence; and concurrent submission/decision/posting/status/closure operations.

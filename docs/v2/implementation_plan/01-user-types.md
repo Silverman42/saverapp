@@ -8,15 +8,15 @@ Implement only Module 01 decisions that are confirmed and independently enforcea
 
 - Add a string-backed `App\Enums\UserType` with `Customer`, `Agent`, and `Admin` cases.
 - Add a required `users.user_type` string column with no database default and cast it to `UserType` on `User`.
-  - Use a new migration rather than modifying the applied base migration.
-  - Fail before altering the schema if legacy users exist, preventing silent role assignment.
+    - Use a new migration rather than modifying the applied base migration.
+    - Fail before altering the schema if legacy users exist, preventing silent role assignment.
 - Update `UserFactory` with `customer()`, `agent()`, and `admin()` states; use Customer as the least-privileged factory default.
 - Remove the starter sample user from `DatabaseSeeder`; secure Business/first-Admin provisioning remains deferred.
 - Disable Fortify registration, remove the registration action/view wiring and unused registration page, and remove sign-up links from the welcome and login pages.
 - Update the Inertia TypeScript contract with `UserType = 'customer' | 'agent' | 'admin'` and required `user_type`.
 - Expand Module 01 in `docs/v2/tasks.md`, preserving the original row:
-  - Mark user-type persistence, closed registration, and frontend contract tasks according to verification evidence.
-  - Record Business/first-Admin bootstrap and resource authorization as `Blocked` on confirmed Modules 02, 03, 04, 14, and 15 decisions.
+    - Mark user-type persistence, closed registration, and frontend contract tasks according to verification evidence.
+    - Record Business/first-Admin bootstrap and resource authorization as `Blocked` on confirmed Modules 02, 03, 04, 14, and 15 decisions.
 
 ## Public Interfaces
 

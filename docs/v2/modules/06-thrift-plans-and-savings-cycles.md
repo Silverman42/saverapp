@@ -30,15 +30,15 @@ Weekly/monthly/custom frequencies, selected collection weekdays, holiday calenda
 
 ### 2.3 Owning boundaries
 
-| Owner | Authoritative responsibility |
-| --- | --- |
-| This module | Agreed plan terms/revisions, stable dated slots, lifecycle, lineage, progress evaluation, and validated closure/cancellation gates. |
-| Module 04 | Customer identity/status history, effective assignment, Agent availability and account/operational eligibility. |
-| Module 05 | Fee rules, applicability, immutable snapshots, fee basis/timing/rounding, obligations, recognition, payment/application, waivers/refunds and fee earnings. |
+| Owner                   | Authoritative responsibility                                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| This module             | Agreed plan terms/revisions, stable dated slots, lifecycle, lineage, progress evaluation, and validated closure/cancellation gates.                                                      |
+| Module 04               | Customer identity/status history, effective assignment, Agent availability and account/operational eligibility.                                                                          |
+| Module 05               | Fee rules, applicability, immutable snapshots, fee basis/timing/rounding, obligations, recognition, payment/application, waivers/refunds and fee earnings.                               |
 | Module 07/shared ledger | Contribution posting and allocation, receipt count, actual thrift-card states, balanced immutable financial entries, liability/available-savings outputs, Agent cash and reconciliation. |
-| Withdrawals/Reversals | Reservation, request approval, payout, approved corrective counter-entries, and their settlement states. |
-| Business Configuration | Authoritative business timezone and supported plan policy configuration; financial changes use the relevant existing Admin permissions. |
-| Reporting/Audit | Historical reports/statements, retention, masking, export and privileged audit access. |
+| Withdrawals/Reversals   | Reservation, request approval, payout, approved corrective counter-entries, and their settlement states.                                                                                 |
+| Business Configuration  | Authoritative business timezone and supported plan policy configuration; financial changes use the relevant existing Admin permissions.                                                  |
+| Reporting/Audit         | Historical reports/statements, retention, masking, export and privileged audit access.                                                                                                   |
 
 An Agent selecting an available fee option is not configuring a fee rule. Admin permissions such as `customers.manage`, `fees.manage`, or `business.settings.manage` never confer Agent plan-management capability. There is no `plans.manage` permission in the closed catalogue.
 
@@ -57,26 +57,26 @@ Maintain at most one open daily cycle per Customer, enforced atomically for ever
 
 ## 4. Plan fields and validation
 
-| Field | Entry / source | Validation and meaning |
-| --- | --- | --- |
-| Customer | Required selection | Existing currently assigned Customer; operationally Active for creation/renewal. Recheck at commit. Invited Customer login state does not independently block eligible Agent operations. |
-| Plan name | Required Agent input | Plain text, trimmed, 1–100 Unicode characters; no markup execution. Not a unique key. |
-| Contribution amount | Required Agent input | Positive NGN amount with at most two decimal places; stored as integer kobo. Proposed range ₦1.00–₦10,000,000.00; reject extra precision rather than silently round. Any lower business cap must be shown and versioned. |
-| Currency | System supplied | NGN initial scope; immutable after creation. Never infer a conversion. |
-| Start date | Required Agent input | Valid local calendar date; today or a future date, proposed maximum 365 calendar days ahead. Backdated creation deferred. |
-| Number of contribution days | Required Agent input | Integer 1–366 inclusive; count of slots, not month duration or receipt count. Reject zero, fractions and overflow. |
-| Collection frequency | Required fixed choice | Daily only initially; every local calendar day including weekends, no automatic holiday exclusion. Unsupported frequencies rejected. |
-| Timezone | Business source, snapshotted | Required valid IANA timezone; initial recommended business value `Africa/Lagos`. UTC timestamps remain separate. No browser-local timezone inference. |
-| Scheduled end date | System calculated | Start date plus N−1 calendar days in snapshotted timezone. Read-only. Optional PRD expected date is implemented by this authoritative calculated field initially. |
-| Fee option | Required applicable option | Current version from Module 05, including explicit no-fee option when authorized by its policy. No Agent-entered fee amount/rate/timing override. |
-| Fee snapshot | System reference | Immutable rule/version, currency, model, basis, contribution-unit amount, timing, rounding and applicability evidence from Module 05. Retain original and successor references on a permitted pre-activity revision. |
-| Notes | Optional Agent input | Plain text, maximum 2,000 characters. Explicitly Customer-visible service notes; do not copy private Module 04 notes or investigation reasons here. |
-| Lifecycle reason | Required on amendment/pause/resume/cancel/early close | Trimmed plain text 1–500 characters, with separate Customer-facing explanation if the internal reason contains sensitive information. |
-| Public plan ID | System generated | Proposed `PLN-000001` style immutable reference, uniqueness business-wide; internal ID separate. Gaps allowed; never reused. |
-| Revision / row version | System maintained | Monotonically increasing terms revision and mutation concurrency version; clients cannot overwrite. |
-| Creator / effective Agent | Trusted sources | Immutable creator reference; current responsible Agent derived from current Customer assignment, never copied as durable access authority. |
-| Predecessor / successor | System maintained | Renewal lineage; at most one initial successor per predecessor under this initial scope. Not an unrestricted Agent-edited relation. |
-| Timestamps and intervals | System generated | UTC creation/update/action timestamps, actor references, schedule revision, pause intervals and completion/closure/cancellation evidence. |
+| Field                       | Entry / source                                        | Validation and meaning                                                                                                                                                                                                   |
+| --------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Customer                    | Required selection                                    | Existing currently assigned Customer; operationally Active for creation/renewal. Recheck at commit. Invited Customer login state does not independently block eligible Agent operations.                                 |
+| Plan name                   | Required Agent input                                  | Plain text, trimmed, 1–100 Unicode characters; no markup execution. Not a unique key.                                                                                                                                    |
+| Contribution amount         | Required Agent input                                  | Positive NGN amount with at most two decimal places; stored as integer kobo. Proposed range ₦1.00–₦10,000,000.00; reject extra precision rather than silently round. Any lower business cap must be shown and versioned. |
+| Currency                    | System supplied                                       | NGN initial scope; immutable after creation. Never infer a conversion.                                                                                                                                                   |
+| Start date                  | Required Agent input                                  | Valid local calendar date; today or a future date, proposed maximum 365 calendar days ahead. Backdated creation deferred.                                                                                                |
+| Number of contribution days | Required Agent input                                  | Integer 1–366 inclusive; count of slots, not month duration or receipt count. Reject zero, fractions and overflow.                                                                                                       |
+| Collection frequency        | Required fixed choice                                 | Daily only initially; every local calendar day including weekends, no automatic holiday exclusion. Unsupported frequencies rejected.                                                                                     |
+| Timezone                    | Business source, snapshotted                          | Required valid IANA timezone; initial recommended business value `Africa/Lagos`. UTC timestamps remain separate. No browser-local timezone inference.                                                                    |
+| Scheduled end date          | System calculated                                     | Start date plus N−1 calendar days in snapshotted timezone. Read-only. Optional PRD expected date is implemented by this authoritative calculated field initially.                                                        |
+| Fee option                  | Required applicable option                            | Current version from Module 05, including explicit no-fee option when authorized by its policy. No Agent-entered fee amount/rate/timing override.                                                                        |
+| Fee snapshot                | System reference                                      | Immutable rule/version, currency, model, basis, contribution-unit amount, timing, rounding and applicability evidence from Module 05. Retain original and successor references on a permitted pre-activity revision.     |
+| Notes                       | Optional Agent input                                  | Plain text, maximum 2,000 characters. Explicitly Customer-visible service notes; do not copy private Module 04 notes or investigation reasons here.                                                                      |
+| Lifecycle reason            | Required on amendment/pause/resume/cancel/early close | Trimmed plain text 1–500 characters, with separate Customer-facing explanation if the internal reason contains sensitive information.                                                                                    |
+| Public plan ID              | System generated                                      | Proposed `PLN-000001` style immutable reference, uniqueness business-wide; internal ID separate. Gaps allowed; never reused.                                                                                             |
+| Revision / row version      | System maintained                                     | Monotonically increasing terms revision and mutation concurrency version; clients cannot overwrite.                                                                                                                      |
+| Creator / effective Agent   | Trusted sources                                       | Immutable creator reference; current responsible Agent derived from current Customer assignment, never copied as durable access authority.                                                                               |
+| Predecessor / successor     | System maintained                                     | Renewal lineage; at most one initial successor per predecessor under this initial scope. Not an unrestricted Agent-edited relation.                                                                                      |
+| Timestamps and intervals    | System generated                                      | UTC creation/update/action timestamps, actor references, schedule revision, pause intervals and completion/closure/cancellation evidence.                                                                                |
 
 Validation runs on the server as well as the form. Normalize display input without stripping legitimate names; return safe field-specific errors. Reject unknown/protected fields and mismatched Customer/plan IDs. Financial summaries and actual slot states are read-only owner outputs. Calculate expected gross with checked integer arithmetic; never use binary floating point for stored money.
 
@@ -84,31 +84,31 @@ Validation runs on the server as well as the form. Normalize display input witho
 
 ### 5.1 Role matrix
 
-| Operation | Customer | Current eligible assigned Agent | Active Admin |
-| --- | --- | --- | --- |
-| View permitted plan/terms/card/history | Own only | Assigned Customers | Business-wide baseline read |
-| Create/renew/amend plan | No | Subject to Customer/state/gates | No |
-| Pause/resume/cancel/close | No | Subject to lifecycle rules | No |
-| Record contribution | No | Module 07 only | No |
-| Initiate withdrawal/reversal | No | Owning workflow only | No Agent-side initiation |
-| Approve payout/reversal or manage fees | No | No | Owning permission/workflow only |
+| Operation                              | Customer | Current eligible assigned Agent | Active Admin                    |
+| -------------------------------------- | -------- | ------------------------------- | ------------------------------- |
+| View permitted plan/terms/card/history | Own only | Assigned Customers              | Business-wide baseline read     |
+| Create/renew/amend plan                | No       | Subject to Customer/state/gates | No                              |
+| Pause/resume/cancel/close              | No       | Subject to lifecycle rules      | No                              |
+| Record contribution                    | No       | Module 07 only                  | No                              |
+| Initiate withdrawal/reversal           | No       | Owning workflow only            | No Agent-side initiation        |
+| Approve payout/reversal or manage fees | No       | No                              | Owning permission/workflow only |
 
 An Agent must have completed activation/MFA, operational status Active, a currently permitted Authentication session, current effective assignment, and applicable domain eligibility. Preserve Module 04's temporary-lock exception for an otherwise legitimate existing session; it is not equivalent to suspension. An Inactive Agent may retain permitted reads but cannot manage plans. Suspended/Deactivated access follows Authentication.
 
 ### 5.2 Customer status matrix
 
-| Plan action | Active | Inactive | Restricted | Archived |
-| --- | --- | --- | --- | --- |
-| Read own/permitted records | Allowed | Allowed | Allowed | Allowed |
-| Create/renew/term amendment | Eligible Agent | Blocked | Blocked | Blocked |
-| Explicit pause | Eligible Agent | Eligible Agent; preserves pause | Eligible Agent; no financial effect | Blocked |
-| Resume collections | Eligible Agent and valid terms | Blocked | Blocked | Blocked |
-| New contribution or catch-up/advance | Module 07 eligible plan | Blocked | Blocked | Blocked |
-| Completion evaluation from existing actuals | System read/evaluation | System read/evaluation | System read/evaluation | Historical read only |
-| Settlement/payout | Owning eligible workflow | Owning eligible workflow | Blocked by hold | Blocked |
-| Normal or early closure | Settled gates | Settled gates | Only non-financial closure with all gates independently satisfied; no hold bypass | Already terminal |
-| Zero-activity cancellation | Eligible Agent and gates | Eligible Agent and gates | Non-financial only with zero obligations | Already terminal |
-| Corrective reversal | Owning review | Owning review | Owning review; separate authority | Restore first under Module 04 |
+| Plan action                                 | Active                         | Inactive                        | Restricted                                                                        | Archived                      |
+| ------------------------------------------- | ------------------------------ | ------------------------------- | --------------------------------------------------------------------------------- | ----------------------------- |
+| Read own/permitted records                  | Allowed                        | Allowed                         | Allowed                                                                           | Allowed                       |
+| Create/renew/term amendment                 | Eligible Agent                 | Blocked                         | Blocked                                                                           | Blocked                       |
+| Explicit pause                              | Eligible Agent                 | Eligible Agent; preserves pause | Eligible Agent; no financial effect                                               | Blocked                       |
+| Resume collections                          | Eligible Agent and valid terms | Blocked                         | Blocked                                                                           | Blocked                       |
+| New contribution or catch-up/advance        | Module 07 eligible plan        | Blocked                         | Blocked                                                                           | Blocked                       |
+| Completion evaluation from existing actuals | System read/evaluation         | System read/evaluation          | System read/evaluation                                                            | Historical read only          |
+| Settlement/payout                           | Owning eligible workflow       | Owning eligible workflow        | Blocked by hold                                                                   | Blocked                       |
+| Normal or early closure                     | Settled gates                  | Settled gates                   | Only non-financial closure with all gates independently satisfied; no hold bypass | Already terminal              |
+| Zero-activity cancellation                  | Eligible Agent and gates       | Eligible Agent and gates        | Non-financial only with zero obligations                                          | Already terminal              |
+| Corrective reversal                         | Owning review                  | Owning review                   | Owning review; separate authority                                                 | Restore first under Module 04 |
 
 Restricted status must not block correction of an erroneous financial record, but correction still requires the owning review workflow. Non-financial closure/cancellation under a restriction is proposed only where all owner gates independently certify zero obligations and no prohibited financial posting is required. An unavailable owner result blocks it. Customer restoration does not reopen a cycle or permit new activity until status and Agent eligibility explicitly allow it.
 
@@ -158,13 +158,13 @@ On resume/reactivation/reassignment, preserve slots and actuals. Unfunded earlie
 
 ### 8.1 States and transitions
 
-| State | Meaning / entry | Permitted plan actions |
-| --- | --- | --- |
-| Active | Confirmed open cycle; may be future-start or schedule elapsed | Read, eligible collections, allowed pre-activity amendment, pause, zero-activity cancel, settled early close; system completion evaluation. |
-| Paused | Explicit Agent pause with effective interval | Read, permitted pre-activity amendment, eligible resume, zero-activity cancel, settled early close; no new collections. |
-| Completed | All slots net funded; remains open pending settlement | Read, eligible withdrawal/fee/correction workflows, closure after gates. No new ordinary collections, term amendment or automatic renewal. |
-| Closed | Normal completed settlement or documented settled early termination | Historical read and separately approved correction investigation; no normal mutations or automatic reopen. |
-| Cancelled | Zero financial/obligation activity terminated with retained identity | Historical read; no new financial activity or reopen. |
+| State     | Meaning / entry                                                      | Permitted plan actions                                                                                                                      |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active    | Confirmed open cycle; may be future-start or schedule elapsed        | Read, eligible collections, allowed pre-activity amendment, pause, zero-activity cancel, settled early close; system completion evaluation. |
+| Paused    | Explicit Agent pause with effective interval                         | Read, permitted pre-activity amendment, eligible resume, zero-activity cancel, settled early close; no new collections.                     |
+| Completed | All slots net funded; remains open pending settlement                | Read, eligible withdrawal/fee/correction workflows, closure after gates. No new ordinary collections, term amendment or automatic renewal.  |
+| Closed    | Normal completed settlement or documented settled early termination  | Historical read and separately approved correction investigation; no normal mutations or automatic reopen.                                  |
+| Cancelled | Zero financial/obligation activity terminated with retained identity | Historical read; no new financial activity or reopen.                                                                                       |
 
 Allowed explicit transitions: Active → Paused; Paused → Active; Active/Paused → Cancelled with cancellation gates; Active/Paused → Closed with early-termination gates; Completed → Closed with normal gates. System evaluation permits Active/Paused → Completed only from authoritative fully funded actuals; preserve any previous pause history. Plan creation creates Active directly; saving an unconfirmed browser form is not a durable Draft cycle. Unsubmitted forms do not reserve capacity.
 
@@ -248,14 +248,14 @@ Open forms must reload against assignment and plan versions. Queued original-Age
 
 ## 13. Directories and profile screens
 
-| Screen | Required content and actions |
-| --- | --- |
-| Scoped plan directory | Customer/name/plan ID, amount/currency, start/end/timezone, funded/N, lifecycle, Customer status separately, current Agent where permitted, fee summary, last update. Search/filter by permitted Customer, ID/name, lifecycle, date range and Agent for Admins. |
-| Create/edit preview | Validated fields; generated slot dates; old/new revision comparison where relevant; fee source/version/basis/timing; estimates labelled; eligibility/capacity blockers; attestation/confirmation. |
-| Plan detail | Agreed terms/revisions, lifecycle/intervals, current eligibility explanation, original creator/current responsible Agent, sourced financial summary, fee snapshot/actual obligations, digital card, payments/requests, lineage and permitted history. |
-| Lifecycle confirmation | Current versions, consequences, authoritative gate checklist and blocking references, reason/Customer-facing explanation, success reference or safe conflict/failure. |
-| Customer own view | Read-only agreement, card, progress/shortfalls, estimates versus actual, Customer-facing interruption/early-termination explanations, prior cycles, permitted statement/contact link. No financial mutation controls. |
-| Admin oversight | Business-wide read-only plans and interruption/settlement exceptions; links to separately permitted reassignment, fee, reconciliation or approval workflows. No plan management buttons. |
+| Screen                 | Required content and actions                                                                                                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scoped plan directory  | Customer/name/plan ID, amount/currency, start/end/timezone, funded/N, lifecycle, Customer status separately, current Agent where permitted, fee summary, last update. Search/filter by permitted Customer, ID/name, lifecycle, date range and Agent for Admins. |
+| Create/edit preview    | Validated fields; generated slot dates; old/new revision comparison where relevant; fee source/version/basis/timing; estimates labelled; eligibility/capacity blockers; attestation/confirmation.                                                               |
+| Plan detail            | Agreed terms/revisions, lifecycle/intervals, current eligibility explanation, original creator/current responsible Agent, sourced financial summary, fee snapshot/actual obligations, digital card, payments/requests, lineage and permitted history.           |
+| Lifecycle confirmation | Current versions, consequences, authoritative gate checklist and blocking references, reason/Customer-facing explanation, success reference or safe conflict/failure.                                                                                           |
+| Customer own view      | Read-only agreement, card, progress/shortfalls, estimates versus actual, Customer-facing interruption/early-termination explanations, prior cycles, permitted statement/contact link. No financial mutation controls.                                           |
+| Admin oversight        | Business-wide read-only plans and interruption/settlement exceptions; links to separately permitted reassignment, fee, reconciliation or approval workflows. No plan management buttons.                                                                        |
 
 Proposed pagination: 25 rows default, permitted sizes 25/50/100, default newest-created first with ID tie-breaker. Server filtering/counts/pagination must respect current scope; never derive total balances/progress from the page. Preserve filters when returning from detail. Archived/terminal cycles are accessible through explicit filters without disappearing from historical statements.
 
@@ -279,13 +279,13 @@ Support mobile card/table access, labelled inputs, keyboard navigation, accessib
 
 ### 15.1 Notification matrix
 
-| Event | Recipients / proposed channels | Permitted message |
-| --- | --- | --- |
-| Creation/renewal or terms amendment | Customer in-app/email, current assigned Agent in-app receipt | Plan reference, agreed terms/date/fee summary or changes, Customer-visible notes, safe contact; no claim of paid money. |
-| Pause/resume/cancel/closure/early termination | Customer in-app/email; current Agent in-app | Effective state/time, user-facing reason, consequences and authorized next step. |
-| Completion or post-completion shortfall | Customer in-app/email; current Agent in-app | Lifecycle event or material correction, outstanding settlement or shortfall, no automatic payout/fee approval promise. |
-| Owner dependency/settlement failure | Acting Agent safe receipt; permitted owner staff work queue if relevant | Blocking category/reference within scope; no broadcast of private financial reasons. |
-| Closed-cycle discrepancy | Current assigned Agent; relevant authorized financial owners | Safe exception reference, gate consequences, separate required corrective workflow. |
+| Event                                         | Recipients / proposed channels                                          | Permitted message                                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Creation/renewal or terms amendment           | Customer in-app/email, current assigned Agent in-app receipt            | Plan reference, agreed terms/date/fee summary or changes, Customer-visible notes, safe contact; no claim of paid money. |
+| Pause/resume/cancel/closure/early termination | Customer in-app/email; current Agent in-app                             | Effective state/time, user-facing reason, consequences and authorized next step.                                        |
+| Completion or post-completion shortfall       | Customer in-app/email; current Agent in-app                             | Lifecycle event or material correction, outstanding settlement or shortfall, no automatic payout/fee approval promise.  |
+| Owner dependency/settlement failure           | Acting Agent safe receipt; permitted owner staff work queue if relevant | Blocking category/reference within scope; no broadcast of private financial reasons.                                    |
+| Closed-cycle discrepancy                      | Current assigned Agent; relevant authorized financial owners            | Safe exception reference, gate consequences, separate required corrective workflow.                                     |
 
 Use Module 13's canonical delivery discipline and Module 04's lifecycle/current-Agent recipient rules: durable outbox, deduplicate event/recipient/channel, bounded retries, scope checks before send/retrieval, current Agent routing, minimal email subjects and authorized failure visibility. Routine notices cannot reveal statements/private notes in emails to an Invited or revoked-access account. The notification integration must use the recorded/verified-address policies of Authentication; email acceptance is not proof of agreement. Delivery failure never rolls back or repeats a plan mutation. Customer financial statements and balances remain available through authorized views, not broadly attached notifications.
 
@@ -297,104 +297,104 @@ Preserve completed financial records and all historical revisions/intervals. Aud
 
 ## 16. Numbered functional requirements
 
-| ID | Requirement | Specification |
-| --- | --- | --- |
-| TPC-FR-001 | Restrict initial scope to individual fixed-amount NGN daily finite cycles; reject unsupported modes. | Sections 2, 4 |
-| TPC-FR-002 | Enforce Agent-only creation/management and role-safe read scope server-side. | Section 5 |
-| TPC-FR-003 | Recheck current Agent session/MFA/operational readiness, assignment and Customer action eligibility at commit. | Sections 5, 12, 14 |
-| TPC-FR-004 | Enforce at most one Active/Paused/Completed daily cycle per Customer atomically. | Section 3 |
-| TPC-FR-005 | Validate all fields/limits and reject protected/unknown fields and mismatched relationships. | Section 4 |
-| TPC-FR-006 | Store NGN integer kobo, validate precision/ranges and use checked calculation. | Sections 4, 10 |
-| TPC-FR-007 | Snapshot timezone and generate N stable local-calendar slots with derived final date. | Sections 4, 7.1 |
-| TPC-FR-008 | Preserve timezone/schedules under configuration, assignment and status changes. | Sections 7, 12 |
-| TPC-FR-009 | Resolve applicable immutable fee terms through Module 05; prohibit Agent overrides/default guesses. | Sections 4, 6, 10 |
-| TPC-FR-010 | Preview agreement/fee estimates and collect Agent agreement attestation before creation/revision. | Sections 6, 9 |
-| TPC-FR-011 | Atomically create cycle/slots/snapshot links/audit/operation/delivery records with no financial posting. | Sections 6, 14 |
-| TPC-FR-012 | Bind mutations to operation references and resolve retries/uncertain outcomes without duplication. | Section 14 |
-| TPC-FR-013 | Reject stale configuration, terms, plan, assignment/status or owner gate versions. | Sections 6, 14 |
-| TPC-FR-014 | Derive actual progress from complete live owner allocations, not elapsed dates or receipt count. | Section 7.2 |
-| TPC-FR-015 | Delegate actual card statuses/partial/advance/multi-day/catch-up allocations and finite-slot limits to Module 07. | Section 7 |
-| TPC-FR-016 | Preserve original schedules and dated eligibility/interruption history without fabricated payments/missed slots. | Section 7.3 |
-| TPC-FR-017 | Enforce explicit lifecycle/state/action matrices and deny unsupported transitions. | Sections 5, 8 |
-| TPC-FR-018 | Pause/resume with reason/history and current eligibility, without releasing capacity or financial effects. | Section 8.2 |
-| TPC-FR-019 | Complete only fully net funded cycles; produce one idempotent owner event per completion occurrence. | Section 8.3 |
-| TPC-FR-020 | Preserve completion history on reversal, pause shortfall cycles and avoid automatic collection resumption/repeated fees. | Section 8.1 |
-| TPC-FR-021 | Restrict financial/schedule amendments to verified never-used cycles and retain superseded revisions/slots. | Section 9.1 |
-| TPC-FR-022 | Lock financial terms after any financial/obligation activity; allow only specified nonterminal descriptive corrections. | Section 9.2 |
-| TPC-FR-023 | Clearly separate estimates from actual contribution, liability, reservations, available savings and owner fee outcomes. | Section 10 |
-| TPC-FR-024 | Never post financial amounts or registration-fee deductions through plan lifecycle/estimate actions. | Sections 6, 10 |
-| TPC-FR-025 | Close only using complete versioned authoritative settlement gates with concurrency protection. | Section 11 |
-| TPC-FR-026 | Require explicit settled early-termination outcome, agreed fee-owner contract and preserved unfunded history. | Section 11.2 |
-| TPC-FR-027 | Cancel only never-used zero-obligation cycles and preserve their identities/history. | Section 11.3 |
-| TPC-FR-028 | Keep Closed/Cancelled terminal; surface linked post-closure exceptions to financial/archive gates. | Sections 8.1, 11 |
-| TPC-FR-029 | Renew by creating a fresh linked agreed cycle for the same eligible Customer after predecessor termination. | Section 12.1 |
-| TPC-FR-030 | Preserve Customer identity, prior cycles, finances and registration-fee history during renewal. | Section 12.1 |
-| TPC-FR-031 | Apply immediate reassignment scope change without rewriting plan/financial/historical attribution. | Section 12.2 |
-| TPC-FR-032 | Provide scoped searchable paginated directories, complete detail/revision/lineage and contextual actions. | Section 13 |
-| TPC-FR-033 | Show safe loading/empty/error/as-of/blocking states and accessible responsive controls/cards. | Section 13 |
-| TPC-FR-034 | Fail dependent mutations closed on unavailable/unknown owner gates and preserve atomic outcomes. | Sections 11.4, 14 |
-| TPC-FR-035 | Recheck lifecycle/slot versions in queued/financial commands; serialize races with posting/closure. | Section 14 |
-| TPC-FR-036 | Emit scoped deduplicated notifications and handle delivery failure without undoing mutations. | Section 15.1 |
-| TPC-FR-037 | Capture append-only durable lifecycle/agreement/gate/failure evidence with safe masking and access. | Section 15.2 |
-| TPC-FR-038 | Block release of unsupported interfaces/authority/fee/timezone/correction policies instead of granting new capability. | Sections 1, 17, 19 |
+| ID         | Requirement                                                                                                              | Specification      |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------ |
+| TPC-FR-001 | Restrict initial scope to individual fixed-amount NGN daily finite cycles; reject unsupported modes.                     | Sections 2, 4      |
+| TPC-FR-002 | Enforce Agent-only creation/management and role-safe read scope server-side.                                             | Section 5          |
+| TPC-FR-003 | Recheck current Agent session/MFA/operational readiness, assignment and Customer action eligibility at commit.           | Sections 5, 12, 14 |
+| TPC-FR-004 | Enforce at most one Active/Paused/Completed daily cycle per Customer atomically.                                         | Section 3          |
+| TPC-FR-005 | Validate all fields/limits and reject protected/unknown fields and mismatched relationships.                             | Section 4          |
+| TPC-FR-006 | Store NGN integer kobo, validate precision/ranges and use checked calculation.                                           | Sections 4, 10     |
+| TPC-FR-007 | Snapshot timezone and generate N stable local-calendar slots with derived final date.                                    | Sections 4, 7.1    |
+| TPC-FR-008 | Preserve timezone/schedules under configuration, assignment and status changes.                                          | Sections 7, 12     |
+| TPC-FR-009 | Resolve applicable immutable fee terms through Module 05; prohibit Agent overrides/default guesses.                      | Sections 4, 6, 10  |
+| TPC-FR-010 | Preview agreement/fee estimates and collect Agent agreement attestation before creation/revision.                        | Sections 6, 9      |
+| TPC-FR-011 | Atomically create cycle/slots/snapshot links/audit/operation/delivery records with no financial posting.                 | Sections 6, 14     |
+| TPC-FR-012 | Bind mutations to operation references and resolve retries/uncertain outcomes without duplication.                       | Section 14         |
+| TPC-FR-013 | Reject stale configuration, terms, plan, assignment/status or owner gate versions.                                       | Sections 6, 14     |
+| TPC-FR-014 | Derive actual progress from complete live owner allocations, not elapsed dates or receipt count.                         | Section 7.2        |
+| TPC-FR-015 | Delegate actual card statuses/partial/advance/multi-day/catch-up allocations and finite-slot limits to Module 07.        | Section 7          |
+| TPC-FR-016 | Preserve original schedules and dated eligibility/interruption history without fabricated payments/missed slots.         | Section 7.3        |
+| TPC-FR-017 | Enforce explicit lifecycle/state/action matrices and deny unsupported transitions.                                       | Sections 5, 8      |
+| TPC-FR-018 | Pause/resume with reason/history and current eligibility, without releasing capacity or financial effects.               | Section 8.2        |
+| TPC-FR-019 | Complete only fully net funded cycles; produce one idempotent owner event per completion occurrence.                     | Section 8.3        |
+| TPC-FR-020 | Preserve completion history on reversal, pause shortfall cycles and avoid automatic collection resumption/repeated fees. | Section 8.1        |
+| TPC-FR-021 | Restrict financial/schedule amendments to verified never-used cycles and retain superseded revisions/slots.              | Section 9.1        |
+| TPC-FR-022 | Lock financial terms after any financial/obligation activity; allow only specified nonterminal descriptive corrections.  | Section 9.2        |
+| TPC-FR-023 | Clearly separate estimates from actual contribution, liability, reservations, available savings and owner fee outcomes.  | Section 10         |
+| TPC-FR-024 | Never post financial amounts or registration-fee deductions through plan lifecycle/estimate actions.                     | Sections 6, 10     |
+| TPC-FR-025 | Close only using complete versioned authoritative settlement gates with concurrency protection.                          | Section 11         |
+| TPC-FR-026 | Require explicit settled early-termination outcome, agreed fee-owner contract and preserved unfunded history.            | Section 11.2       |
+| TPC-FR-027 | Cancel only never-used zero-obligation cycles and preserve their identities/history.                                     | Section 11.3       |
+| TPC-FR-028 | Keep Closed/Cancelled terminal; surface linked post-closure exceptions to financial/archive gates.                       | Sections 8.1, 11   |
+| TPC-FR-029 | Renew by creating a fresh linked agreed cycle for the same eligible Customer after predecessor termination.              | Section 12.1       |
+| TPC-FR-030 | Preserve Customer identity, prior cycles, finances and registration-fee history during renewal.                          | Section 12.1       |
+| TPC-FR-031 | Apply immediate reassignment scope change without rewriting plan/financial/historical attribution.                       | Section 12.2       |
+| TPC-FR-032 | Provide scoped searchable paginated directories, complete detail/revision/lineage and contextual actions.                | Section 13         |
+| TPC-FR-033 | Show safe loading/empty/error/as-of/blocking states and accessible responsive controls/cards.                            | Section 13         |
+| TPC-FR-034 | Fail dependent mutations closed on unavailable/unknown owner gates and preserve atomic outcomes.                         | Sections 11.4, 14  |
+| TPC-FR-035 | Recheck lifecycle/slot versions in queued/financial commands; serialize races with posting/closure.                      | Section 14         |
+| TPC-FR-036 | Emit scoped deduplicated notifications and handle delivery failure without undoing mutations.                            | Section 15.1       |
+| TPC-FR-037 | Capture append-only durable lifecycle/agreement/gate/failure evidence with safe masking and access.                      | Section 15.2       |
+| TPC-FR-038 | Block release of unsupported interfaces/authority/fee/timezone/correction policies instead of granting new capability.   | Sections 1, 17, 19 |
 
 ## 17. Acceptance scenarios and traceability
 
 Development checks may use a documented contract test double exercising owner version/failure semantics; record that evidence as contract-level verification. Release acceptance requires authoritative owner integrations. An absent integration is **Blocked**, not Passed, regardless of a passing test double. Future implementation verification must record outcome, build/configuration versions and evidence; the table does not assert completed tests.
 
-| ID | Requirements | Scenario / expected result |
-| --- | --- | --- |
-| TPC-AC-001 | TPC-FR-001, TPC-FR-005 | Submit weekly, foreign currency, interest, multiple owners or bulk input; reject without a plan or financial effect. |
-| TPC-AC-002 | TPC-FR-002 | Customer/Admin call creation/amend/pause/closure APIs directly; deny regardless of Admin grants. |
-| TPC-AC-003 | TPC-FR-002, TPC-FR-032 | Customer own plan succeeds; another Customer's ID/search/count/revision/notification never reveals existence or data. |
-| TPC-AC-004 | TPC-FR-003 | Inactive/onboarding/suspended Agent mutation fails; legitimate existing temporary-lock session follows Module 04 exception. |
-| TPC-AC-005 | TPC-FR-003 | Create for Active/Invited Customer as eligible Agent succeeds; Customer login activation is not falsely required. |
-| TPC-AC-006 | TPC-FR-003, TPC-FR-017 | Inactive/Restricted/Archived Customer creation/renewal/amendment fails; Inactive existing settlement is available through its owner. |
-| TPC-AC-007 | TPC-FR-004 | Attempt second plan while first is Active, Paused or Completed, including past final date/full withdrawal; reject. |
-| TPC-AC-008 | TPC-FR-004, TPC-FR-013 | Two agents/requests race creation or renewal for one Customer; at most one open cycle commits. |
-| TPC-AC-009 | TPC-FR-005, TPC-FR-006 | Exercise field boundaries, blank/Unicode text, amount fractions/overflow, zero/fractional N and mismatched Customer; only valid input succeeds. |
-| TPC-AC-010 | TPC-FR-007 | 31 slots from a January start cross into next month if needed; Day N derives from N−1 days, not month end. |
-| TPC-AC-011 | TPC-FR-007, TPC-FR-008 | Leap year/year boundary and DST-configured timezone retain correct local dates; browser timezone or later config change does not move slots. |
-| TPC-AC-012 | TPC-FR-005, TPC-FR-007 | Backdated, >365-day future start and unsupported expected-date override fail; future-start valid plan occupies capacity. |
-| TPC-AC-013 | TPC-FR-009 | Missing fee/timezone/unsupported combination blocks creation; explicit applicable no-fee version succeeds without guessed zero. |
-| TPC-AC-014 | TPC-FR-009, TPC-FR-013 | Fee/config changes after preview; conflict and new explicit review, never silently reprice. |
-| TPC-AC-015 | TPC-FR-010 | Confirmation contains all agreed terms and Agent attestation; absent confirmation cannot create a cycle. |
-| TPC-AC-016 | TPC-FR-011, TPC-FR-024 | Valid creation commits one complete cycle boundary and no contribution, fee earnings, reservation or registration-fee deduction. |
-| TPC-AC-017 | TPC-FR-011, TPC-FR-034 | Fail each persistence/snapshot/audit boundary; no partial active slots/plan/charge or premature message remains. |
-| TPC-AC-018 | TPC-FR-012 | Repeat click/retry/lost response resolves same plan/event; same key/different payload rejects. |
-| TPC-AC-019 | TPC-FR-012, TPC-FR-031 | Original Agent loses assignment before retrieving committed operation; deny old receipt access without creating replacement. |
-| TPC-AC-020 | TPC-FR-014 | Ten partial receipts funding one slot count as one funded unit; one receipt funding three slots counts as three. |
-| TPC-AC-021 | TPC-FR-014, TPC-FR-019 | Final due date passes with unpaid/partial slots; plan does not complete; early advance-full funding may complete. |
-| TPC-AC-022 | TPC-FR-015 | Partial/multi-day/advance/catch-up allocations obey owner slots/caps; overpayment cannot create extra plan days. |
-| TPC-AC-023 | TPC-FR-016 | Customer status changes preserve dates/paid history; current actionable expectations exclude blocked periods, no automatic paid/missed entries. |
-| TPC-AC-024 | TPC-FR-016, TPC-FR-031 | Agent becomes unavailable/reassigned; slots and prior actor/cash attribution persist and service interruption is distinct from payment failure. |
-| TPC-AC-025 | TPC-FR-017, TPC-FR-018 | Pause/resume retains dated intervals/slots, no balance/reservation effect, no second-plan capacity; blocked Customer cannot resume. |
-| TPC-AC-026 | TPC-FR-016, TPC-FR-018 | Resume after scheduled final date; display original outstanding slots and allow only eligible owner catch-up, no silent date extension. |
-| TPC-AC-027 | TPC-FR-017 | Every unsupported transition/reopen/Customer-side action fails without lifecycle/financial mutation. |
-| TPC-AC-028 | TPC-FR-019 | All slots net funded; durable completion event, no payout/closure; duplicate delivery produces no duplicate once-per-cycle fee. |
-| TPC-AC-029 | TPC-FR-020 | Approved reversal creates Completed shortfall; transition Paused, retain completion history, owner handles fee correction and eligible review before resume. |
-| TPC-AC-030 | TPC-FR-021 | Never-used Active/Paused cycle amended; reason/re-attestation, old revision/snapshot retained, superseded slot IDs cannot accept funds. |
-| TPC-AC-031 | TPC-FR-021, TPC-FR-035 | First receipt/reservation/fee obligation races term amendment; serialize, never post against silently rewritten terms. |
-| TPC-AC-032 | TPC-FR-022 | Once-used then fully reversed cycle still refuses monetary/date/fee-term edits; allowed name/notes correction retains before/after. |
-| TPC-AC-033 | TPC-FR-023, TPC-FR-024 | ₦2,000 × 31 preview shows ₦62,000/₦2,000/₦60,000 labelled estimates; actual withdrawals/fees/reservations are separate owner values. |
-| TPC-AC-034 | TPC-FR-023 | Percentage/fixed/one-day fee basis uses snapshot and owner outcomes; no percentage-first-contribution or unknown early-fee guess. |
-| TPC-AC-035 | TPC-FR-023, TPC-FR-034 | Ledger/fee summary fails/stales; show unavailable/as-of, not zero or derived page balance; dependent confirmation blocked. |
-| TPC-AC-036 | TPC-FR-025 | Individually fail liability, residual kobo, reservation, fee, request, correction, reconciliation/cash, job and attribution gates; closure fails. |
-| TPC-AC-037 | TPC-FR-025, TPC-FR-035 | New reservation/contribution/correction appears between gate query and closure; stale gates cannot commit Closed. |
-| TPC-AC-038 | TPC-FR-025 | Fully funded and fully settled cycle closes; no closure-triggered payout/waiver/posting, history retained. |
-| TPC-AC-039 | TPC-FR-026 | Incomplete cycle settles under explicit owner early-fee contract and closes early; unfulfilled slots retained, never paid/skipped by invented command. |
-| TPC-AC-040 | TPC-FR-026, TPC-FR-038 | Early-termination fee policy unavailable; action blocked, no assumed pro-rate/refund. |
-| TPC-AC-041 | TPC-FR-027 | Never-used zero-obligation cycle cancels and releases capacity; any prior reversed receipt or pending charge prevents cancellation. |
-| TPC-AC-042 | TPC-FR-017, TPC-FR-025 | Restricted closure/cancel succeeds only if entirely non-financial and all gates zero; status cannot permit fee/payout to pass gates. |
-| TPC-AC-043 | TPC-FR-028 | Closed-cycle approved correction raises linked exception visible to archive/owner gates, keeps Closed and any successor unchanged. |
-| TPC-AC-044 | TPC-FR-029, TPC-FR-030 | Renew terminated predecessor for eligible same Customer; fresh IDs/slots/current fee snapshot, one lineage, no new registration fee or money migration. |
-| TPC-AC-045 | TPC-FR-029 | Renew Completed/open predecessor, inactive Customer, already-linked predecessor or duplicate race; deny or resolve original successor. |
-| TPC-AC-046 | TPC-FR-031, TPC-FR-035 | Reassign during form/job; former Agent action denied, new Agent sees permitted history, no impersonation or financial reset. |
-| TPC-AC-047 | TPC-FR-032 | Scoped directory search/filter/count/pagination and historical lineage work across repeated names; no cross-scope metadata. |
-| TPC-AC-048 | TPC-FR-033 | Mobile/keyboard/accessibility and loading/empty/error states expose text statuses and safe reasons, no guessed financial zero. |
-| TPC-AC-049 | TPC-FR-036 | Delivery outage after lifecycle commit leaves one committed action and retryable deduplicated notice; current scope/privacy checked at delivery. |
-| TPC-AC-050 | TPC-FR-037 | Every material event/gate/denial has durable masked evidence; Customer history excludes privileged reasons and detailed audit requires `audit.view`. |
-| TPC-AC-051 | TPC-FR-038 | Missing owner interface, reopening authority or configuration decision marks dependent checks Blocked and cannot grant a new Admin permission. |
+| ID         | Requirements           | Scenario / expected result                                                                                                                                   |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TPC-AC-001 | TPC-FR-001, TPC-FR-005 | Submit weekly, foreign currency, interest, multiple owners or bulk input; reject without a plan or financial effect.                                         |
+| TPC-AC-002 | TPC-FR-002             | Customer/Admin call creation/amend/pause/closure APIs directly; deny regardless of Admin grants.                                                             |
+| TPC-AC-003 | TPC-FR-002, TPC-FR-032 | Customer own plan succeeds; another Customer's ID/search/count/revision/notification never reveals existence or data.                                        |
+| TPC-AC-004 | TPC-FR-003             | Inactive/onboarding/suspended Agent mutation fails; legitimate existing temporary-lock session follows Module 04 exception.                                  |
+| TPC-AC-005 | TPC-FR-003             | Create for Active/Invited Customer as eligible Agent succeeds; Customer login activation is not falsely required.                                            |
+| TPC-AC-006 | TPC-FR-003, TPC-FR-017 | Inactive/Restricted/Archived Customer creation/renewal/amendment fails; Inactive existing settlement is available through its owner.                         |
+| TPC-AC-007 | TPC-FR-004             | Attempt second plan while first is Active, Paused or Completed, including past final date/full withdrawal; reject.                                           |
+| TPC-AC-008 | TPC-FR-004, TPC-FR-013 | Two agents/requests race creation or renewal for one Customer; at most one open cycle commits.                                                               |
+| TPC-AC-009 | TPC-FR-005, TPC-FR-006 | Exercise field boundaries, blank/Unicode text, amount fractions/overflow, zero/fractional N and mismatched Customer; only valid input succeeds.              |
+| TPC-AC-010 | TPC-FR-007             | 31 slots from a January start cross into next month if needed; Day N derives from N−1 days, not month end.                                                   |
+| TPC-AC-011 | TPC-FR-007, TPC-FR-008 | Leap year/year boundary and DST-configured timezone retain correct local dates; browser timezone or later config change does not move slots.                 |
+| TPC-AC-012 | TPC-FR-005, TPC-FR-007 | Backdated, >365-day future start and unsupported expected-date override fail; future-start valid plan occupies capacity.                                     |
+| TPC-AC-013 | TPC-FR-009             | Missing fee/timezone/unsupported combination blocks creation; explicit applicable no-fee version succeeds without guessed zero.                              |
+| TPC-AC-014 | TPC-FR-009, TPC-FR-013 | Fee/config changes after preview; conflict and new explicit review, never silently reprice.                                                                  |
+| TPC-AC-015 | TPC-FR-010             | Confirmation contains all agreed terms and Agent attestation; absent confirmation cannot create a cycle.                                                     |
+| TPC-AC-016 | TPC-FR-011, TPC-FR-024 | Valid creation commits one complete cycle boundary and no contribution, fee earnings, reservation or registration-fee deduction.                             |
+| TPC-AC-017 | TPC-FR-011, TPC-FR-034 | Fail each persistence/snapshot/audit boundary; no partial active slots/plan/charge or premature message remains.                                             |
+| TPC-AC-018 | TPC-FR-012             | Repeat click/retry/lost response resolves same plan/event; same key/different payload rejects.                                                               |
+| TPC-AC-019 | TPC-FR-012, TPC-FR-031 | Original Agent loses assignment before retrieving committed operation; deny old receipt access without creating replacement.                                 |
+| TPC-AC-020 | TPC-FR-014             | Ten partial receipts funding one slot count as one funded unit; one receipt funding three slots counts as three.                                             |
+| TPC-AC-021 | TPC-FR-014, TPC-FR-019 | Final due date passes with unpaid/partial slots; plan does not complete; early advance-full funding may complete.                                            |
+| TPC-AC-022 | TPC-FR-015             | Partial/multi-day/advance/catch-up allocations obey owner slots/caps; overpayment cannot create extra plan days.                                             |
+| TPC-AC-023 | TPC-FR-016             | Customer status changes preserve dates/paid history; current actionable expectations exclude blocked periods, no automatic paid/missed entries.              |
+| TPC-AC-024 | TPC-FR-016, TPC-FR-031 | Agent becomes unavailable/reassigned; slots and prior actor/cash attribution persist and service interruption is distinct from payment failure.              |
+| TPC-AC-025 | TPC-FR-017, TPC-FR-018 | Pause/resume retains dated intervals/slots, no balance/reservation effect, no second-plan capacity; blocked Customer cannot resume.                          |
+| TPC-AC-026 | TPC-FR-016, TPC-FR-018 | Resume after scheduled final date; display original outstanding slots and allow only eligible owner catch-up, no silent date extension.                      |
+| TPC-AC-027 | TPC-FR-017             | Every unsupported transition/reopen/Customer-side action fails without lifecycle/financial mutation.                                                         |
+| TPC-AC-028 | TPC-FR-019             | All slots net funded; durable completion event, no payout/closure; duplicate delivery produces no duplicate once-per-cycle fee.                              |
+| TPC-AC-029 | TPC-FR-020             | Approved reversal creates Completed shortfall; transition Paused, retain completion history, owner handles fee correction and eligible review before resume. |
+| TPC-AC-030 | TPC-FR-021             | Never-used Active/Paused cycle amended; reason/re-attestation, old revision/snapshot retained, superseded slot IDs cannot accept funds.                      |
+| TPC-AC-031 | TPC-FR-021, TPC-FR-035 | First receipt/reservation/fee obligation races term amendment; serialize, never post against silently rewritten terms.                                       |
+| TPC-AC-032 | TPC-FR-022             | Once-used then fully reversed cycle still refuses monetary/date/fee-term edits; allowed name/notes correction retains before/after.                          |
+| TPC-AC-033 | TPC-FR-023, TPC-FR-024 | ₦2,000 × 31 preview shows ₦62,000/₦2,000/₦60,000 labelled estimates; actual withdrawals/fees/reservations are separate owner values.                         |
+| TPC-AC-034 | TPC-FR-023             | Percentage/fixed/one-day fee basis uses snapshot and owner outcomes; no percentage-first-contribution or unknown early-fee guess.                            |
+| TPC-AC-035 | TPC-FR-023, TPC-FR-034 | Ledger/fee summary fails/stales; show unavailable/as-of, not zero or derived page balance; dependent confirmation blocked.                                   |
+| TPC-AC-036 | TPC-FR-025             | Individually fail liability, residual kobo, reservation, fee, request, correction, reconciliation/cash, job and attribution gates; closure fails.            |
+| TPC-AC-037 | TPC-FR-025, TPC-FR-035 | New reservation/contribution/correction appears between gate query and closure; stale gates cannot commit Closed.                                            |
+| TPC-AC-038 | TPC-FR-025             | Fully funded and fully settled cycle closes; no closure-triggered payout/waiver/posting, history retained.                                                   |
+| TPC-AC-039 | TPC-FR-026             | Incomplete cycle settles under explicit owner early-fee contract and closes early; unfulfilled slots retained, never paid/skipped by invented command.       |
+| TPC-AC-040 | TPC-FR-026, TPC-FR-038 | Early-termination fee policy unavailable; action blocked, no assumed pro-rate/refund.                                                                        |
+| TPC-AC-041 | TPC-FR-027             | Never-used zero-obligation cycle cancels and releases capacity; any prior reversed receipt or pending charge prevents cancellation.                          |
+| TPC-AC-042 | TPC-FR-017, TPC-FR-025 | Restricted closure/cancel succeeds only if entirely non-financial and all gates zero; status cannot permit fee/payout to pass gates.                         |
+| TPC-AC-043 | TPC-FR-028             | Closed-cycle approved correction raises linked exception visible to archive/owner gates, keeps Closed and any successor unchanged.                           |
+| TPC-AC-044 | TPC-FR-029, TPC-FR-030 | Renew terminated predecessor for eligible same Customer; fresh IDs/slots/current fee snapshot, one lineage, no new registration fee or money migration.      |
+| TPC-AC-045 | TPC-FR-029             | Renew Completed/open predecessor, inactive Customer, already-linked predecessor or duplicate race; deny or resolve original successor.                       |
+| TPC-AC-046 | TPC-FR-031, TPC-FR-035 | Reassign during form/job; former Agent action denied, new Agent sees permitted history, no impersonation or financial reset.                                 |
+| TPC-AC-047 | TPC-FR-032             | Scoped directory search/filter/count/pagination and historical lineage work across repeated names; no cross-scope metadata.                                  |
+| TPC-AC-048 | TPC-FR-033             | Mobile/keyboard/accessibility and loading/empty/error states expose text statuses and safe reasons, no guessed financial zero.                               |
+| TPC-AC-049 | TPC-FR-036             | Delivery outage after lifecycle commit leaves one committed action and retryable deduplicated notice; current scope/privacy checked at delivery.             |
+| TPC-AC-050 | TPC-FR-037             | Every material event/gate/denial has durable masked evidence; Customer history excludes privileged reasons and detailed audit requires `audit.view`.         |
+| TPC-AC-051 | TPC-FR-038             | Missing owner interface, reopening authority or configuration decision marks dependent checks Blocked and cannot grant a new Admin permission.               |
 
 ## 18. Verification and release adequacy
 
@@ -404,20 +404,20 @@ Verify invariants at persistent boundaries, not only button visibility: one open
 
 ## 19. Proposed choices and decision gates
 
-| Decision | Draft recommendation / release implication |
-| --- | --- |
-| Daily frequency and range | Daily all-calendar-day schedules, 1–366 slots, field limits in Section 4; approve before implementation. Additional frequencies need a dedicated schedule contract. |
-| Concurrency capacity | One Active/Paused/Completed daily cycle per Customer; no renewal before terminal predecessor. Approve tighter-than-PRD open-cycle interpretation. |
-| Start and timezone | Today/future at most 365 days, no backdated creation; timezone immutable per cycle. Business Configuration must establish authoritative settings/change scope. |
-| Agreement evidence | Agent attestation and Customer notice initially; any legal signature/consent requirement belongs to a separately agreed owner workflow. |
-| Term amendment | Financial terms lock after any activity/assessment, even if later reversed; descriptive corrections only under specified scope. |
-| Interruptions | Preserve dates and suppress actionable expectations using effective intervals; catch-up uses original slots. Module 07 must finalize actual Missed/Skipped/blocked classification without fabricating payments. |
-| Completion corrections | Completed shortfall becomes Paused; Closed remains terminal with an exception. Closed-cycle reopening/correction settlement needs explicit owner rules and existing authority mapping. |
-| Settlement mapping | Ledger/Withdrawals/Fees/Reconciliation must provide complete cycle-attributed gates and serialization. Unknown attribution blocks closure/archival. |
-| Early termination | Proposed full fixed/one-day cycle fee on early termination with net posted principal; completion percentage on net posted principal after reversals and before withdrawals. Module 05 owns actual due/charge outcome; approve this default, with no implicit pro-rating or refund. |
-| Restricted non-financial endings | Permit cancellation/closure only when independently settled with no blocked financial action; approve this narrow lifecycle interpretation with Module 04. |
-| Renewal | Fresh current rules/agreement, same Customer, at most one successor, no automatic carry-over of money or registration fee. |
-| Notifications/exports/retention | Apply cross-module scope/delivery policies; deferred Reporting/Audit contracts block unrestricted retention/reveal/export features. |
+| Decision                         | Draft recommendation / release implication                                                                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily frequency and range        | Daily all-calendar-day schedules, 1–366 slots, field limits in Section 4; approve before implementation. Additional frequencies need a dedicated schedule contract.                                                                                                                |
+| Concurrency capacity             | One Active/Paused/Completed daily cycle per Customer; no renewal before terminal predecessor. Approve tighter-than-PRD open-cycle interpretation.                                                                                                                                  |
+| Start and timezone               | Today/future at most 365 days, no backdated creation; timezone immutable per cycle. Business Configuration must establish authoritative settings/change scope.                                                                                                                     |
+| Agreement evidence               | Agent attestation and Customer notice initially; any legal signature/consent requirement belongs to a separately agreed owner workflow.                                                                                                                                            |
+| Term amendment                   | Financial terms lock after any activity/assessment, even if later reversed; descriptive corrections only under specified scope.                                                                                                                                                    |
+| Interruptions                    | Preserve dates and suppress actionable expectations using effective intervals; catch-up uses original slots. Module 07 must finalize actual Missed/Skipped/blocked classification without fabricating payments.                                                                    |
+| Completion corrections           | Completed shortfall becomes Paused; Closed remains terminal with an exception. Closed-cycle reopening/correction settlement needs explicit owner rules and existing authority mapping.                                                                                             |
+| Settlement mapping               | Ledger/Withdrawals/Fees/Reconciliation must provide complete cycle-attributed gates and serialization. Unknown attribution blocks closure/archival.                                                                                                                                |
+| Early termination                | Proposed full fixed/one-day cycle fee on early termination with net posted principal; completion percentage on net posted principal after reversals and before withdrawals. Module 05 owns actual due/charge outcome; approve this default, with no implicit pro-rating or refund. |
+| Restricted non-financial endings | Permit cancellation/closure only when independently settled with no blocked financial action; approve this narrow lifecycle interpretation with Module 04.                                                                                                                         |
+| Renewal                          | Fresh current rules/agreement, same Customer, at most one successor, no automatic carry-over of money or registration fee.                                                                                                                                                         |
+| Notifications/exports/retention  | Apply cross-module scope/delivery policies; deferred Reporting/Audit contracts block unrestricted retention/reveal/export features.                                                                                                                                                |
 
 ## 20. Related modules
 
