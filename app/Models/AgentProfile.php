@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use App\Enums\AccountState;
+use App\Enums\AgentEligibilityCapability;
 use App\Enums\AgentStatus;
+use App\Services\AgentEligibilityService;
 use App\Support\PhoneNormalizer;
 use Database\Factories\AgentProfileFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use RuntimeException;
@@ -94,7 +96,7 @@ class AgentProfile extends Model
     /**
      * Get the user authentication account linked to this agent profile.
      *
-     * @return BelongsTo<User, AgentProfile>
+     * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {
@@ -104,7 +106,7 @@ class AgentProfile extends Model
     /**
      * Get the user who created this agent profile.
      *
-     * @return BelongsTo<User, AgentProfile>
+     * @return BelongsTo<User, $this>
      */
     public function createdBy(): BelongsTo
     {
@@ -114,11 +116,41 @@ class AgentProfile extends Model
     /**
      * Get the user who last updated this agent profile.
      *
-     * @return BelongsTo<User, AgentProfile>
+     * @return BelongsTo<User, $this>
      */
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by_user_id');
+    }
+
+    /**
+     * Get all customer assignments ever associated with this agent profile.
+     *
+     * @return HasMany<CustomerAssignment, $this>
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(CustomerAssignment::class, 'agent_profile_id');
+    }
+
+    /**
+     * Get all current customer assignments for this agent profile.
+     *
+     * @return HasMany<CustomerAssignment, $this>
+     */
+    public function currentAssignments(): HasMany
+    {
+        return $this->hasMany(CustomerAssignment::class, 'agent_profile_id')->where('is_current', 1);
+    }
+
+    /**
+     * Get all historical (ended) customer assignments for this agent profile.
+     *
+     * @return HasMany<CustomerAssignment, $this>
+     */
+    public function historicalAssignments(): HasMany
+    {
+        return $this->hasMany(CustomerAssignment::class, 'agent_profile_id')->whereNull('is_current');
     }
 
     /**
@@ -168,22 +200,12 @@ class AgentProfile extends Model
 
     /**
      * Check if the Agent is eligible for customer operations.
-     * Section 9.2:
-     * 1. Account state Active with completed MFA.
-     * 2. Operational status Active.
+     * Delegates to the authoritative AgentEligibilityService.
      */
     public function isEligible(): bool
     {
-        if (! $this->isActive()) {
-            return false;
-        }
-
-        $user = $this->user;
-        if (! $user) {
-            return false;
-        }
-
-        return $user->account_state === AccountState::Active
-            && $user->hasConfirmedTwoFactor();
+        return app(AgentEligibilityService::class)
+            ->evaluate($this, AgentEligibilityCapability::PerformAssignedCustomerWork)
+            ->isEligible();
     }
 }

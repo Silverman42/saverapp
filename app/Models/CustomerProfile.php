@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use RuntimeException;
@@ -167,7 +169,7 @@ class CustomerProfile extends Model
     /**
      * Get the user authentication account linked to this customer profile.
      *
-     * @return BelongsTo<User, CustomerProfile>
+     * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {
@@ -177,7 +179,7 @@ class CustomerProfile extends Model
     /**
      * Get the user who created this customer profile.
      *
-     * @return BelongsTo<User, CustomerProfile>
+     * @return BelongsTo<User, $this>
      */
     public function createdBy(): BelongsTo
     {
@@ -187,11 +189,31 @@ class CustomerProfile extends Model
     /**
      * Get the user who last updated this customer profile.
      *
-     * @return BelongsTo<User, CustomerProfile>
+     * @return BelongsTo<User, $this>
      */
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by_user_id');
+    }
+
+    /**
+     * Get all assignment history records for this customer profile.
+     *
+     * @return HasMany<CustomerAssignment, $this>
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(CustomerAssignment::class, 'customer_profile_id')->orderBy('version', 'desc');
+    }
+
+    /**
+     * Get the current effective assignment for this customer profile.
+     *
+     * @return HasOne<CustomerAssignment, $this>
+     */
+    public function currentAssignment(): HasOne
+    {
+        return $this->hasOne(CustomerAssignment::class, 'customer_profile_id')->where('is_current', 1);
     }
 
     /**

@@ -114,8 +114,7 @@ class User extends Authenticatable
             $origUserTypeValue = $originalUserType instanceof UserType ? $originalUserType->value : $originalUserType;
             $origStateValue = $originalAccountState instanceof AccountState ? $originalAccountState->value : $originalAccountState;
 
-            $isLosingActiveAdmin = ($user->isDirty('account_state') && in_array($user->account_state, [AccountState::Suspended, AccountState::Deactivated], true))
-                || ($user->isDirty('user_type') && $user->user_type !== UserType::Admin);
+            $isLosingActiveAdmin = $user->isDirty('account_state') && in_array($user->account_state, [AccountState::Suspended, AccountState::Deactivated], true);
 
             if ($origUserTypeValue === UserType::Admin->value && $origStateValue === AccountState::Active->value && $isLosingActiveAdmin && $user->isFinalActiveAdmin()) {
                 throw new RuntimeException('Cannot suspend or deactivate the final active Administrator.');
@@ -282,6 +281,10 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->assignedCustomerAssignments()->exists()) {
+            return true;
+        }
+
         return false;
     }
 
@@ -303,6 +306,16 @@ class User extends Authenticatable
     public function agentProfile(): HasOne
     {
         return $this->hasOne(AgentProfile::class, 'user_id');
+    }
+
+    /**
+     * Get customer assignments made by this user.
+     *
+     * @return HasMany<CustomerAssignment, $this>
+     */
+    public function assignedCustomerAssignments(): HasMany
+    {
+        return $this->hasMany(CustomerAssignment::class, 'assigned_by_user_id');
     }
 
     /**
