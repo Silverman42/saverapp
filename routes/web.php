@@ -2,12 +2,18 @@
 
 use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\LockoutController;
+use App\Http\Controllers\AgentDirectoryController;
+use App\Http\Controllers\AgentPhotoController;
+use App\Http\Controllers\AgentProfileController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
 use App\Http\Controllers\Auth\DeviceEvictionController;
 use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
+use App\Http\Controllers\CustomerDirectoryController;
+use App\Http\Controllers\CustomerPhotoController;
+use App\Http\Controllers\CustomerProfileController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +22,14 @@ use Inertia\Inertia;
 Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
+    // Customer & Agent Directories and Profiles (CAM-T04)
+    Route::get('customers', [CustomerDirectoryController::class, 'index'])->name('customers.index');
+    Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
+    Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
+
+    Route::get('agents', [AgentDirectoryController::class, 'index'])->name('agents.index');
+    Route::get('agents/{agent}', [AgentProfileController::class, 'show'])->name('agents.show');
+    Route::get('agents/{agent}/photo', [AgentPhotoController::class, 'show'])->name('agents.photo');
     Route::get('dashboard', function (Request $request) {
         return redirect()->route(RoleDestinationResolver::resolveRouteName($request->user()));
     })->name('dashboard');

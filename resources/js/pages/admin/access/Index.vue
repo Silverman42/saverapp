@@ -80,7 +80,7 @@ const getBadgeVariant = (state: string) => {
             class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
         >
             <div>
-                <h1 class="text-3xl font-semibold tracking-tight">
+                <h1 class="text-[25px] font-medium tracking-tight">
                     Administrator Access
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">

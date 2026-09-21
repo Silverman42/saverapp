@@ -1,4 +1,5 @@
 @import url('https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap');
+@import '@vuepic/vue-datepicker/dist/main.css';
 @import 'tailwindcss';
 
 @import 'tw-animate-css';
@@ -69,6 +70,28 @@
     ::file-selector-button {
         border-color: var(--color-gray-200, currentColor);
     }
+}
+
+.saver-date-picker,
+.saver-date-picker .dp--menu {
+    --dp-font-family: var(--font-sans);
+    --dp-border-radius: var(--radius);
+    --dp-background-color: var(--card);
+    --dp-text-color: var(--foreground);
+    --dp-hover-color: var(--accent);
+    --dp-hover-text-color: var(--accent-foreground);
+    --dp-hover-icon-color: var(--accent-foreground);
+    --dp-primary-color: var(--primary);
+    --dp-primary-text-color: var(--primary-foreground);
+    --dp-primary-disabled-color: var(--muted);
+    --dp-secondary-color: var(--muted-foreground);
+    --dp-border-color: var(--input);
+    --dp-menu-border-color: var(--border);
+    --dp-border-color-hover: var(--ring);
+    --dp-border-color-focus: var(--ring);
+    --dp-disabled-color: var(--muted);
+    --dp-disabled-color-text: var(--muted-foreground);
+    --dp-icon-color: var(--muted-foreground);
 }
 
 @layer utilities {

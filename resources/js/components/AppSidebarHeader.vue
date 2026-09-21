@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
-import { Bell, Search } from '@lucide/vue';
+import { Bell } from '@lucide/vue';
 import { computed } from 'vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import UserMenuContent from '@/components/UserMenuContent.vue';
@@ -11,7 +11,6 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem } from '@/types';
@@ -43,25 +42,7 @@ const user = computed(() => page.props.auth.user);
             </template>
         </div>
 
-        <div
-            class="relative ml-auto hidden w-full max-w-sm md:block lg:mr-auto lg:ml-8"
-        >
-            <Search
-                class="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2"
-            />
-            <Input
-                aria-label="Search SaverApp"
-                class="bg-background h-10 pr-12 pl-10"
-                placeholder="Search anything..."
-            />
-            <kbd
-                class="border-border bg-card text-muted-foreground pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold sm:inline-flex"
-            >
-                /
-            </kbd>
-        </div>
-
-        <div class="ml-auto flex items-center gap-2 lg:ml-0">
+        <div class="ml-auto flex items-center gap-2">
             <Button variant="ghost" size="icon" aria-label="Notifications">
                 <Bell class="size-4.5" />
             </Button>

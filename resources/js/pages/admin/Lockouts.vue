@@ -230,7 +230,7 @@ const refreshData = () => {
         >
             <div>
                 <!-- heading -->
-                <h1 class="text-3xl font-semibold tracking-tight">
+                <h1 class="text-[25px] font-medium tracking-tight">
                     Security Lockouts
                 </h1>
                 <!-- heading end  -->

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import {
+    Briefcase,
     LayoutDashboard,
     Palette,
     ShieldAlert,
@@ -28,6 +29,8 @@ import type { NavItem } from '@/types';
 
 const page = usePage();
 const isAdmin = computed(() => page.props.auth?.user?.user_type === 'admin');
+const isAgent = computed(() => page.props.auth?.user?.user_type === 'agent');
+const canViewCustomers = computed(() => isAdmin.value || isAgent.value);
 const hasSecurityOperationsManage = computed(() => {
     const permissions =
         (page.props.auth?.user as { permissions?: string[] } | undefined)
@@ -35,13 +38,25 @@ const hasSecurityOperationsManage = computed(() => {
     return permissions.includes('security.operations.manage');
 });
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutDashboard,
-    },
-];
+const mainNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+            icon: LayoutDashboard,
+        },
+    ];
+
+    if (canViewCustomers.value) {
+        items.push({
+            title: 'Customers',
+            href: '/customers',
+            icon: Users,
+        });
+    }
+
+    return items;
+});
 
 const adminNavItems = computed<NavItem[]>(() => {
     if (!isAdmin.value) {
@@ -49,6 +64,11 @@ const adminNavItems = computed<NavItem[]>(() => {
     }
 
     const items: NavItem[] = [
+        {
+            title: 'Agents',
+            href: '/agents',
+            icon: Briefcase,
+        },
         {
             title: 'Admin Access',
             href: '/admin/access',

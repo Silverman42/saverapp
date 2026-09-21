@@ -248,7 +248,7 @@ const getPermissionDetails = (name: string) => {
                 </Button>
             </Link>
             <div>
-                <h1 class="text-3xl font-semibold tracking-tight">
+                <h1 class="text-[25px] font-medium tracking-tight">
                     {{ admin.name }}
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">

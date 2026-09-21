@@ -45,15 +45,22 @@ The canonical implementation lives in `resources/css/app.css` and is exposed thr
 ### Header
 
 - 80px sticky surface with a bottom border.
-- Search occupies the central desktop region; user actions stay on the right.
-- Use rounded inputs and restrained icon buttons. Do not add unimplemented global actions without a clearly non-destructive fallback.
+- User actions stay on the right.
+- Use restrained icon buttons. Do not add unimplemented global actions without a clearly non-destructive fallback.
 
 ### Content
 
 - Page padding: 16px mobile, 24px tablet, 32px desktop.
-- Primary page heading: 30px, semibold, tight tracking.
+- Primary page heading: 25px, medium, tight tracking (`text-[25px] font-medium tracking-tight`).
 - Default section gap: 24px; default card grid gap: 16px.
 - Metric cards use a responsive 1/2/3-column grid and a minimum height near 176px.
+
+### Tables and filters
+
+- Table and directory filter fields use a `flex flex-row flex-wrap gap-4` group.
+- Each direct filter control uses `w-fit` without forced growth, retaining its control's natural width when rows wrap.
+- Input, Select, and DatePicker controls use a 44px default height (`h-11`).
+- Use the shared `@/components/ui/date-picker` for every date selection. It displays `DD/MM/YYYY` and emits `YYYY-MM-DD` for application forms and filters.
 
 ## Authentication layout
 
@@ -66,7 +73,7 @@ The canonical implementation lives in `resources/css/app.css` and is exposed thr
 ## Components
 
 - **Button:** 40px default height, 12px radius, semibold label. Cyan is reserved for the primary action. Outline buttons use a card surface and cool-gray border.
-- **Input / Select / OTP:** card background, subtle border, 44px default height, 12px radius, cyan focus ring, readable disabled state.
+- **Input / Select / DatePicker / OTP:** card background, subtle border, 44px default height, 12px radius, cyan focus ring, readable disabled state.
 - **Card:** white/dark surface, 16px radius, 1px border, minimal elevation, 20–24px internal padding.
 - **Badge:** compact pill with semibold 12px label. Prefer pale semantic backgrounds over solid fills.
 - **Alert:** 12px radius, subtle border, icon-plus-text structure. Errors must use destructive text and never rely on color alone.

@@ -94,7 +94,9 @@ const refreshDashboard = (): void => {
                 >
                     Operations overview
                 </Badge>
-                <h1 class="text-3xl font-semibold tracking-tight">Dashboard</h1>
+                <h1 class="text-[25px] font-medium tracking-tight">
+                    Dashboard
+                </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
                     A source-aware view of savings operations and account
                     activity.
