@@ -115,4 +115,10 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    'invitation_sender' => [
+        'address' => env('MAIL_INVITATION_SENDER_ADDRESS'),
+        'name' => env('MAIL_INVITATION_SENDER_NAME', 'SaverApp'),
+        'verified' => (bool) env('MAIL_INVITATION_SENDER_VERIFIED', false),
+    ],
+
 ];

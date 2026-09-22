@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountState;
+use App\Enums\AdminPermission;
 use App\Enums\AgentEligibilityCapability;
 use App\Enums\CustomerStatus;
 use App\Enums\UserType;
 use App\Models\CustomerAssignment;
+use App\Models\Invitation;
 use App\Models\User;
 use App\Services\AgentEligibilityService;
+use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -25,6 +29,7 @@ class AgentProfileController extends Controller
         string $agent,
         ResourceScopeService $resourceScopeService,
         AgentEligibilityService $agentEligibilityService,
+        AuthorizationService $authorizationService,
     ): Response {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -174,11 +179,33 @@ class AgentProfileController extends Controller
                 'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
                 'can_manage_lifecycle' => false,
                 'lifecycle_message' => 'Agent status & lifecycle management will be available in CAM-T10/T11.',
+                'can_manage_invitation' => $viewer->user_type === UserType::Admin
+                    && $authorizationService->allows($viewer, AdminPermission::AgentsManage)
+                    && $user?->account_state === AccountState::Invited,
             ],
         ];
 
-        // Internal notes: STRICTLY OMITTED from Agent self-service responses
+        // Internal notes and invitation controls: STRICTLY OMITTED from Agent self-service responses
         if ($viewer->user_type === UserType::Admin) {
+            $latestInvitation = $user
+                ? Invitation::query()->where('user_id', $user->id)->latest('generation')->first()
+                : null;
+
+            if ($latestInvitation) {
+                $profileData['invitation'] = [
+                    'status' => $latestInvitation->status->value,
+                    'status_label' => $latestInvitation->status->displayName(),
+                    'delivery_status' => $latestInvitation->delivery_status->value,
+                    'delivery_status_label' => $latestInvitation->delivery_status->displayName(),
+                    'generation' => $latestInvitation->generation,
+                    'can_resend' => $latestInvitation->canResend() && $user?->account_state === AccountState::Invited,
+                    'sent_at' => $latestInvitation->sent_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'opened_at' => $latestInvitation->opened_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'expires_at' => $latestInvitation->expires_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'delivery_error' => $latestInvitation->delivery_error,
+                ];
+            }
+
             $profileData['notes'] = $agentProfile->notes;
             $profileData['lifecycle'] = [
                 'operational_status' => $agentProfile->operational_status->value,

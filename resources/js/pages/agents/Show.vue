@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
 import { index as agentsIndex, show as agentsShow } from '@/routes/agents';
+import { cancel as cancelInvitation, correctEmail as correctEmailInvitation, resend as resendInvitation } from '@/routes/agents/invitations';
 import { show as customersShow } from '@/routes/customers';
 import {
     AlertCircle,
@@ -10,18 +11,31 @@ import {
     CheckCircle2,
     Clock,
     Lock,
+    Mail,
+    Pencil,
     Phone,
+    RefreshCw,
     Shield,
     ShieldCheck,
     StickyNote,
     User as UserIcon,
     Wallet,
+    XCircle,
 } from '@lucide/vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -83,6 +97,18 @@ export type AgentDetail = {
         status: string;
         message: string;
     };
+    invitation?: {
+        status: string;
+        status_label: string;
+        delivery_status: string;
+        delivery_status_label: string;
+        generation: number;
+        can_resend: boolean;
+        sent_at: string | null;
+        opened_at: string | null;
+        expires_at: string | null;
+        delivery_error: string | null;
+    } | null;
     notes?: string | null;
     lifecycle?: {
         operational_status: string;
@@ -94,6 +120,7 @@ export type AgentDetail = {
         reassign_message: string;
         can_manage_lifecycle: boolean;
         lifecycle_message: string;
+        can_manage_invitation?: boolean;
     };
 };
 
@@ -162,6 +189,119 @@ const getAccountBadgeVariant = (state: string) => {
         default:
             return 'secondary';
     }
+};
+
+const getInvitationBadgeVariant = (status: string) => {
+    switch (status) {
+        case 'sent':
+        case 'opened':
+            return 'outline';
+        case 'activated':
+            return 'default';
+        case 'delivery_failed':
+        case 'expired':
+        case 'cancelled':
+            return 'destructive';
+        default:
+            return 'secondary';
+    }
+};
+
+const isResending = ref(false);
+const handleResendInvitation = () => {
+    if (!props.agent.invitation?.can_resend) return;
+    isResending.value = true;
+    router.post(
+        resendInvitation(props.agent.id).url,
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                isResending.value = false;
+            },
+        }
+    );
+};
+
+const showCorrectEmailModal = ref(false);
+const correctEmailForm = reactive({
+    email: '',
+    reason: '',
+    processing: false,
+    error: '',
+});
+
+const openCorrectEmailModal = () => {
+    correctEmailForm.email = props.agent.email || '';
+    correctEmailForm.reason = '';
+    correctEmailForm.error = '';
+    showCorrectEmailModal.value = true;
+};
+
+const submitCorrectEmail = () => {
+    if (!correctEmailForm.email || !correctEmailForm.reason) {
+        correctEmailForm.error = 'Both email and reason are required.';
+        return;
+    }
+    correctEmailForm.processing = true;
+    router.post(
+        correctEmailInvitation(props.agent.id).url,
+        {
+            email: correctEmailForm.email,
+            reason: correctEmailForm.reason,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showCorrectEmailModal.value = false;
+            },
+            onError: (errors) => {
+                correctEmailForm.error = Object.values(errors)[0] as string;
+            },
+            onFinish: () => {
+                correctEmailForm.processing = false;
+            },
+        }
+    );
+};
+
+const showCancelModal = ref(false);
+const cancelForm = reactive({
+    reason: '',
+    processing: false,
+    error: '',
+});
+
+const openCancelModal = () => {
+    cancelForm.reason = '';
+    cancelForm.error = '';
+    showCancelModal.value = true;
+};
+
+const submitCancelInvitation = () => {
+    if (!cancelForm.reason) {
+        cancelForm.error = 'A cancellation reason is required.';
+        return;
+    }
+    cancelForm.processing = true;
+    router.post(
+        cancelInvitation(props.agent.id).url,
+        {
+            reason: cancelForm.reason,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showCancelModal.value = false;
+            },
+            onError: (errors) => {
+                cancelForm.error = Object.values(errors)[0] as string;
+            },
+            onFinish: () => {
+                cancelForm.processing = false;
+            },
+        }
+    );
 };
 
 const assignmentFiltersOpen = ref(false);
@@ -512,6 +652,81 @@ const resetAssignmentFilters = (): void => {
             </Card>
         </div>
 
+        <!-- Invitation Lifecycle & Delivery Card (Admin Only) -->
+        <Card v-if="agent.invitation">
+            <CardHeader class="pb-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <CardTitle class="flex items-center gap-2 text-base font-semibold">
+                            <Mail class="h-4 w-4" /> Invitation & Delivery Lifecycle
+                        </CardTitle>
+                        <CardDescription>
+                            Track account activation invitation state, delivery attempts, and manage resends or address corrections.
+                        </CardDescription>
+                    </div>
+                    <Badge :variant="getInvitationBadgeVariant(agent.invitation.status)">
+                        {{ agent.invitation.status_label }}
+                    </Badge>
+                </div>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                        <p class="text-muted-foreground text-xs font-medium">Delivery Status</p>
+                        <Badge variant="outline" class="mt-1">{{ agent.invitation.delivery_status_label }}</Badge>
+                    </div>
+                    <div>
+                        <p class="text-muted-foreground text-xs font-medium">Generation</p>
+                        <p class="mt-1 font-mono text-sm font-semibold">#{{ agent.invitation.generation }}</p>
+                    </div>
+                    <div>
+                        <p class="text-muted-foreground text-xs font-medium">Sent At</p>
+                        <p class="mt-1 text-sm">{{ agent.invitation.sent_at || '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-muted-foreground text-xs font-medium">Expires At</p>
+                        <p class="mt-1 text-sm">{{ agent.invitation.expires_at || '—' }}</p>
+                    </div>
+                </div>
+
+                <div v-if="agent.invitation.delivery_error" class="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+                    <p class="font-medium">Delivery Issue</p>
+                    <p class="mt-0.5">{{ agent.invitation.delivery_error }}</p>
+                </div>
+
+                <!-- Invitation Management Actions -->
+                <div v-if="agent.actions.can_manage_invitation" class="flex flex-wrap items-center gap-3 pt-2 border-t">
+                    <Button
+                        v-if="agent.invitation.can_resend"
+                        variant="outline"
+                        size="sm"
+                        :disabled="isResending"
+                        @click="handleResendInvitation"
+                    >
+                        <RefreshCw class="mr-1.5 h-3.5 w-3.5" :class="{ 'animate-spin': isResending }" />
+                        Resend Invitation
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="openCorrectEmailModal"
+                    >
+                        <Pencil class="mr-1.5 h-3.5 w-3.5" />
+                        Correct Email
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-destructive hover:bg-destructive/10"
+                        @click="openCancelModal"
+                    >
+                        <XCircle class="mr-1.5 h-3.5 w-3.5" />
+                        Cancel Invitation
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+
         <!-- Internal Notes Card (Admin Only, strictly omitted from Agent self-service) -->
         <Card v-if="agent.notes !== undefined">
             <CardHeader class="pb-3">
@@ -575,5 +790,75 @@ const resetAssignmentFilters = (): void => {
                 </div>
             </CardContent>
         </Card>
+
+        <!-- Correct Email Dialog -->
+        <Dialog v-model:open="showCorrectEmailModal">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Correct Agent Email</DialogTitle>
+                    <DialogDescription>
+                        Update the email address for {{ agent.name }}. Outstanding invitations will be invalidated and a new invitation will be dispatched.
+                    </DialogDescription>
+                </DialogHeader>
+                <div class="space-y-4 py-2">
+                    <div class="space-y-1.5">
+                        <Label for="correct-email">New email address <span class="text-destructive">*</span></Label>
+                        <Input
+                            id="correct-email"
+                            v-model="correctEmailForm.email"
+                            type="email"
+                            required
+                            placeholder="agent@example.ng"
+                        />
+                    </div>
+                    <div class="space-y-1.5">
+                        <Label for="correct-reason">Correction reason <span class="text-destructive">*</span></Label>
+                        <Input
+                            id="correct-reason"
+                            v-model="correctEmailForm.reason"
+                            required
+                            placeholder="e.g. Typo in original email address"
+                        />
+                    </div>
+                    <p v-if="correctEmailForm.error" class="text-destructive text-xs">{{ correctEmailForm.error }}</p>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" @click="showCorrectEmailModal = false">Cancel</Button>
+                    <Button :disabled="correctEmailForm.processing" @click="submitCorrectEmail">
+                        Update Email & Resend
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Cancel Invitation Dialog -->
+        <Dialog v-model:open="showCancelModal">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Cancel Agent Invitation</DialogTitle>
+                    <DialogDescription>
+                        Invalidate outstanding invitation and activation links for {{ agent.name }}. The account will not be able to activate with cancelled links.
+                    </DialogDescription>
+                </DialogHeader>
+                <div class="space-y-4 py-2">
+                    <div class="space-y-1.5">
+                        <Label for="cancel-reason">Cancellation reason <span class="text-destructive">*</span></Label>
+                        <Input
+                            id="cancel-reason"
+                            v-model="cancelForm.reason"
+                            required
+                            placeholder="e.g. Onboarding cancelled or identity error"
+                        />
+                    </div>
+                    <p v-if="cancelForm.error" class="text-destructive text-xs">{{ cancelForm.error }}</p>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" @click="showCancelModal = false">Keep Invitation</Button>
+                    <Button variant="destructive" :disabled="cancelForm.processing" @click="submitCancelInvitation">
+                        Confirm Cancellation
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

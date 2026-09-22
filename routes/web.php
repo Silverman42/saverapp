@@ -3,8 +3,11 @@
 use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\AgentDirectoryController;
+use App\Http\Controllers\AgentInvitationController;
 use App\Http\Controllers\AgentPhotoController;
 use App\Http\Controllers\AgentProfileController;
+use App\Http\Controllers\AgentRegistrationController;
+use App\Http\Controllers\Auth\AgentActivationController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
 use App\Http\Controllers\Auth\DeviceEvictionController;
 use App\Http\Controllers\Auth\FreshAuthenticationController;
@@ -21,15 +24,30 @@ use Inertia\Inertia;
 
 Route::inertia('/', 'Welcome')->name('home');
 
+// Agent Activation via Hashed Challenge (CAM-T05)
+Route::get('invitations/agent/{token}', [AgentActivationController::class, 'show'])->name('invitations.agent.show');
+Route::post('invitations/agent/{token}', [AgentActivationController::class, 'activate'])->name('invitations.agent.activate');
+
 Route::middleware(['auth'])->group(function () {
     // Customer & Agent Directories and Profiles (CAM-T04)
     Route::get('customers', [CustomerDirectoryController::class, 'index'])->name('customers.index');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
 
+    // Agent Registration and Attempts (CAM-T05)
+    Route::get('agents/create', [AgentRegistrationController::class, 'create'])->name('agents.create');
+    Route::post('agents', [AgentRegistrationController::class, 'store'])->name('agents.store');
+    Route::get('agents/attempts/{reference}', [AgentRegistrationController::class, 'showAttempt'])->name('agents.attempts.show');
+
     Route::get('agents', [AgentDirectoryController::class, 'index'])->name('agents.index');
     Route::get('agents/{agent}', [AgentProfileController::class, 'show'])->name('agents.show');
     Route::get('agents/{agent}/photo', [AgentPhotoController::class, 'show'])->name('agents.photo');
+
+    // Agent Invitation Management (CAM-T05)
+    Route::post('agents/{agent}/invitation/resend', [AgentInvitationController::class, 'resend'])->name('agents.invitations.resend');
+    Route::post('agents/{agent}/invitation/correct-email', [AgentInvitationController::class, 'correctEmail'])->name('agents.invitations.correct-email');
+    Route::post('agents/{agent}/invitation/cancel', [AgentInvitationController::class, 'cancel'])->name('agents.invitations.cancel');
+
     Route::get('dashboard', function (Request $request) {
         return redirect()->route(RoleDestinationResolver::resolveRouteName($request->user()));
     })->name('dashboard');
