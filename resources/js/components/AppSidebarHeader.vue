@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
-import { Bell } from '@lucide/vue';
+import { Bell, ChevronDown } from '@lucide/vue';
 import { computed } from 'vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import UserMenuContent from '@/components/UserMenuContent.vue';
@@ -51,7 +51,7 @@ const user = computed(() => page.props.auth.user);
                 <DropdownMenuTrigger as-child>
                     <Button
                         variant="outline"
-                        class="h-11 gap-2 rounded-full p-1.5 pr-2.5"
+                        class="h-11 gap-2 rounded-full px-1.5 py-1.5 has-[>svg]:px-1.5"
                         data-test="header-user-menu-button"
                     >
                         <Avatar class="size-8">
@@ -71,6 +71,10 @@ const user = computed(() => page.props.auth.user);
                         >
                             {{ user.name }}
                         </span>
+                        <ChevronDown
+                            class="text-muted-foreground size-4 shrink-0"
+                            aria-hidden="true"
+                        />
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" class="w-64" :side-offset="8">

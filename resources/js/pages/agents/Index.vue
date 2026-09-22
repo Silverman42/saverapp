@@ -80,7 +80,11 @@ const getAccountBadgeVariant = (state: string | null): 'default' | 'secondary' |
     <Head title="Agent Directory" />
 
     <div class="space-y-6">
-        <ModuleOverview :metrics="overviewMetrics">
+        <ModuleOverview
+            title="Agent Overview"
+            description="Monitor agent activity, assignment eligibility, and customer coverage."
+            :metrics="overviewMetrics"
+        >
             <template #actions><Select :model-value="overviewPeriod" @update:model-value="updateOverviewPeriod"><SelectTrigger class="w-40" aria-label="Agent overview period"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All time</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem></SelectContent></Select></template>
         </ModuleOverview>
 

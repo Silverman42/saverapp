@@ -155,7 +155,11 @@ const getAccountBadgeVariant = (state: string | null): 'default' | 'secondary' |
     <Head title="Customer Directory" />
 
     <div class="space-y-6">
-        <ModuleOverview :metrics="overviewMetrics">
+        <ModuleOverview
+            title="Customer Overview"
+            description="Monitor customer accounts, activity, and operational restrictions."
+            :metrics="overviewMetrics"
+        >
             <template #actions>
                 <Select :model-value="overviewPeriod" @update:model-value="updateOverviewPeriod">
                     <SelectTrigger class="w-40" aria-label="Customer overview period"><SelectValue /></SelectTrigger>
