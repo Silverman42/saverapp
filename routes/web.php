@@ -18,6 +18,7 @@ use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
+use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerDirectoryController;
 use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerPhotoController;
@@ -27,6 +28,8 @@ use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
+use App\Http\Controllers\ReconciliationController;
+use App\Http\Controllers\ThriftPlanController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -65,6 +68,37 @@ Route::middleware(['auth'])->group(function () {
     Route::post('customers/{customer}/name-corrections/{correction}/cancel', [ProfileIdentityController::class, 'cancelNameCorrection'])->name('customers.name-corrections.cancel');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
+
+    // Thrift plan core (Module 06)
+    Route::get('plans', [ThriftPlanController::class, 'index'])->name('plans.index');
+    Route::get('customers/{customer}/plans/create', [ThriftPlanController::class, 'create'])->name('customers.plans.create');
+    Route::post('customers/{customer}/plans', [ThriftPlanController::class, 'store'])->name('customers.plans.store');
+    Route::get('plans/attempts/{reference}', [ThriftPlanController::class, 'showAttempt'])->name('plans.attempts.show');
+    Route::get('plans/{plan}/edit', [ThriftPlanController::class, 'edit'])->name('plans.edit');
+    Route::get('plans/{plan}/card', [CollectionController::class, 'card'])->middleware('collections.enabled')->name('plans.card');
+    Route::post('plans/{plan}/card/{slot}/annotations', [CollectionController::class, 'annotate'])->middleware('collections.enabled')->name('plans.card.annotations.store');
+    Route::patch('plans/{plan}', [ThriftPlanController::class, 'update'])->name('plans.update');
+    Route::post('plans/{plan}/pause', [ThriftPlanController::class, 'pause'])->name('plans.pause');
+    Route::post('plans/{plan}/resume', [ThriftPlanController::class, 'resume'])->name('plans.resume');
+    Route::post('plans/{plan}/cancel', [ThriftPlanController::class, 'cancel'])->name('plans.cancel');
+    Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
+
+    // Cash collections, thrift cards, and reconciliation (Module 07)
+    Route::middleware('collections.enabled')->group(function (): void {
+        Route::get('collections', [CollectionController::class, 'index'])->name('collections.index');
+        Route::get('customers/{customer}/collections/create', [CollectionController::class, 'create'])->name('customers.collections.create');
+        Route::post('customers/{customer}/collections/preview', [CollectionController::class, 'preview'])->name('customers.collections.preview');
+        Route::post('customers/{customer}/collections', [CollectionController::class, 'store'])->name('customers.collections.store');
+        Route::get('collections/attempts/{reference}', [CollectionController::class, 'attempt'])->name('collections.attempts.show');
+        Route::get('collections/{receipt}', [CollectionController::class, 'show'])->name('collections.show');
+        Route::get('collection-batches', [ReconciliationController::class, 'index'])->name('collection-batches.index');
+        Route::get('collection-batches/{batch}', [ReconciliationController::class, 'show'])->name('collection-batches.show');
+        Route::post('collection-batches/{batch}/remittances', [ReconciliationController::class, 'remit'])->name('collection-batches.remittances.store');
+        Route::post('collection-batches/{batch}/review', [ReconciliationController::class, 'review'])->name('collection-batches.review');
+        Route::post('collection-batches/{batch}/exceptions', [ReconciliationController::class, 'reportException'])->name('collection-batches.exceptions.store');
+        Route::post('collection-batches/{batch}/exceptions/{exception}/resolve', [ReconciliationController::class, 'resolveException'])->name('collection-batches.exceptions.resolve');
+        Route::post('collection-batches/{batch}/exceptions/{exception}/reopen', [ReconciliationController::class, 'reopenException'])->name('collection-batches.exceptions.reopen');
+    });
 
     // Customer Invitation Management (CAM-T06)
     Route::post('customers/{customer}/invitation/resend', [CustomerInvitationController::class, 'resend'])->name('customers.invitations.resend');

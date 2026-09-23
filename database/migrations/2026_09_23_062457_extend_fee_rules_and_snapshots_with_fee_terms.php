@@ -47,12 +47,24 @@ return new class extends Migration
         }
 
         Schema::table('fee_rules', function (Blueprint $table): void {
-            $table->string('rule_key', 100)->nullable()->after('kind');
-            $table->string('timing', 50)->default('registration')->after('model');
-            $table->string('basis', 50)->default('none')->after('timing');
-            $table->unsignedSmallInteger('basis_points')->nullable()->after('amount_kobo');
-            $table->string('settlement_source', 50)->default('external_receipt')->after('basis_points');
-            $table->index(['kind', 'rule_key', 'effective_at'], 'fee_rules_kind_key_effective_index');
+            if (! Schema::hasColumn('fee_rules', 'rule_key')) {
+                $table->string('rule_key', 100)->nullable()->after('kind');
+            }
+            if (! Schema::hasColumn('fee_rules', 'timing')) {
+                $table->string('timing', 50)->default('registration')->after('model');
+            }
+            if (! Schema::hasColumn('fee_rules', 'basis')) {
+                $table->string('basis', 50)->default('none')->after('timing');
+            }
+            if (! Schema::hasColumn('fee_rules', 'basis_points')) {
+                $table->unsignedSmallInteger('basis_points')->nullable()->after('amount_kobo');
+            }
+            if (! Schema::hasColumn('fee_rules', 'settlement_source')) {
+                $table->string('settlement_source', 50)->default('external_receipt')->after('basis_points');
+            }
+            if (! Schema::hasIndex('fee_rules', 'fee_rules_kind_key_effective_index')) {
+                $table->index(['kind', 'rule_key', 'effective_at'], 'fee_rules_kind_key_effective_index');
+            }
         });
 
         DB::table('fee_rules')->whereNull('rule_key')->update(['rule_key' => 'registration']);
@@ -61,14 +73,34 @@ return new class extends Migration
             $table->string('rule_key', 100)->nullable(false)->change();
         });
 
+        if (! Schema::hasIndex('fee_snapshots', 'fee_snapshots_customer_profile_id_index')) {
+            Schema::table('fee_snapshots', function (Blueprint $table): void {
+                $table->index('customer_profile_id');
+            });
+        }
+
         Schema::table('fee_snapshots', function (Blueprint $table): void {
-            $table->string('timing', 50)->default('registration')->after('model');
-            $table->string('basis', 50)->default('none')->after('timing');
-            $table->unsignedSmallInteger('basis_points')->nullable()->after('amount_kobo');
-            $table->unsignedBigInteger('basis_amount_kobo')->default(0)->after('basis_points');
-            $table->string('settlement_source', 50)->default('external_receipt')->after('basis_points');
-            $table->string('source_type', 50)->nullable()->after('customer_profile_id');
-            $table->string('source_id', 100)->nullable()->after('source_type');
+            if (! Schema::hasColumn('fee_snapshots', 'timing')) {
+                $table->string('timing', 50)->default('registration')->after('model');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'basis')) {
+                $table->string('basis', 50)->default('none')->after('timing');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'basis_points')) {
+                $table->unsignedSmallInteger('basis_points')->nullable()->after('amount_kobo');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'basis_amount_kobo')) {
+                $table->unsignedBigInteger('basis_amount_kobo')->default(0)->after('basis_points');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'settlement_source')) {
+                $table->string('settlement_source', 50)->default('external_receipt')->after('basis_points');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'source_type')) {
+                $table->string('source_type', 50)->nullable()->after('customer_profile_id');
+            }
+            if (! Schema::hasColumn('fee_snapshots', 'source_id')) {
+                $table->string('source_id', 100)->nullable()->after('source_type');
+            }
         });
 
         DB::table('fee_snapshots')->orderBy('id')->each(function (object $snapshot): void {
@@ -79,15 +111,23 @@ return new class extends Migration
         });
 
         Schema::table('fee_snapshots', function (Blueprint $table): void {
-            $table->dropUnique('fee_snapshots_customer_profile_id_kind_unique');
+            if (Schema::hasIndex('fee_snapshots', 'fee_snapshots_customer_profile_id_kind_unique')) {
+                $table->dropUnique('fee_snapshots_customer_profile_id_kind_unique');
+            }
             $table->string('source_type', 50)->nullable(false)->change();
             $table->string('source_id', 100)->nullable(false)->change();
-            $table->unique(['source_type', 'source_id']);
+            if (! Schema::hasIndex('fee_snapshots', 'fee_snapshots_source_type_source_id_unique')) {
+                $table->unique(['source_type', 'source_id']);
+            }
         });
 
         Schema::table('fee_obligations', function (Blueprint $table): void {
-            $table->string('source_type', 50)->nullable()->after('fee_snapshot_id');
-            $table->string('source_id', 100)->nullable()->after('source_type');
+            if (! Schema::hasColumn('fee_obligations', 'source_type')) {
+                $table->string('source_type', 50)->nullable()->after('fee_snapshot_id');
+            }
+            if (! Schema::hasColumn('fee_obligations', 'source_id')) {
+                $table->string('source_id', 100)->nullable()->after('source_type');
+            }
         });
 
         DB::table('fee_obligations')
@@ -102,10 +142,14 @@ return new class extends Migration
             });
 
         Schema::table('fee_obligations', function (Blueprint $table): void {
-            $table->dropUnique('fee_obligations_customer_profile_id_kind_unique');
+            if (Schema::hasIndex('fee_obligations', 'fee_obligations_customer_profile_id_kind_unique')) {
+                $table->dropUnique('fee_obligations_customer_profile_id_kind_unique');
+            }
             $table->string('source_type', 50)->nullable(false)->change();
             $table->string('source_id', 100)->nullable(false)->change();
-            $table->unique(['source_type', 'source_id']);
+            if (! Schema::hasIndex('fee_obligations', 'fee_obligations_source_type_source_id_unique')) {
+                $table->unique(['source_type', 'source_id']);
+            }
         });
     }
 

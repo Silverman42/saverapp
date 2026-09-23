@@ -251,7 +251,7 @@ class CustomerDirectoryController extends Controller
                 'account_state_label' => $user?->account_state ? ucfirst(str_replace('_', ' ', $user->account_state->value)) : 'Unknown',
                 'current_plan' => [
                     'status' => 'unavailable',
-                    'message' => 'Plan details unavailable until Module 06',
+                    'message' => 'Schedule details are available from the Customer profile; collection progress remains unavailable until the financial modules are connected.',
                 ],
                 'registered_at' => $profile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                 'registered_at_iso' => $profile->created_at?->timezone('Africa/Lagos')->toIso8601String(),

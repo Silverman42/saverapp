@@ -246,6 +246,14 @@ class CustomerProfile extends Model
         return $this->hasMany(FeeObligation::class, 'customer_profile_id')->orderBy('id');
     }
 
+    /** @return HasMany<ThriftPlan, $this> */
+    public function thriftPlans(): HasMany
+    {
+        return $this->hasMany(ThriftPlan::class, 'customer_profile_id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+    }
+
     /**
      * Get the status histories for this customer profile.
      *

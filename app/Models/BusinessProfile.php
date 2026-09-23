@@ -11,6 +11,7 @@ use RuntimeException;
  * @property int $id
  * @property string $business_id
  * @property string $display_name
+ * @property string $timezone
  * @property string|null $legal_name
  * @property string|null $support_email
  * @property string|null $support_phone
@@ -25,6 +26,7 @@ use RuntimeException;
 #[Fillable([
     'business_id',
     'display_name',
+    'timezone',
     'legal_name',
     'support_email',
     'support_phone',

@@ -122,7 +122,7 @@ Dependencies: Modules 01–05 and 07
 
 | Task                                                                                                                   | Specification reference | Status | Evidence or blocker |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate plan lifecycle, schedule, progress, settlement, closure, and renewal requirements into implementation tasks. | Sections 4–18           | To Do  | —                   |
+| Translate plan lifecycle, schedule, progress, settlement, closure, and renewal requirements into implementation tasks. | Sections 4–18           | In Progress | Core plan, revision, lifecycle, scoped UI, audit, and notification work is on `codex/module-06-thrift-plans-and-savings-cycles`; type/build/style/route checks pass. Database/concurrency scenarios and financial-owner integrations remain pending. |
 
 ## Module 07 — Collections, Digital Thrift Card, and Reconciliation
 
@@ -131,7 +131,9 @@ Dependencies: Modules 01–06
 
 | Task                                                                                                                           | Specification reference | Status | Evidence or blocker |
 | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------ | ------------------- |
-| Translate collection, allocation, thrift-card, custody, reconciliation, and correction requirements into implementation tasks. | Sections 19–20          | To Do  | —                   |
+| Translate collection, allocation, thrift-card, custody, reconciliation, and correction requirements into implementation tasks. | Sections 4–20           | Completed | Staged plan and approved policies recorded in `docs/v2/implementation_plan/07-collections-thrift-card-and-reconciliation.md`. |
+| Implement the gated cash collection release, card, daily work, and cash reconciliation. | `COL-T01`–`COL-T05` | In Progress | Cash paths and UI are implemented behind `COLLECTIONS_ENABLED=false`. Local MySQL migrations now complete and repeat as a no-op. 19 focused collection tests (144 assertions), scoped static analysis, type check, build, and formatting pass. Module 06 concurrency proof, full Module 07 acceptance matrix, accessibility/load checks, and non-shortage financial exception resolution remain before activation. |
+| Add withdrawal-aware reversal compensation and noncash methods. | `COL-T06`; `COL-AC-025`, `COL-AC-051`–`056` | Blocked | Modules 08–09 and reviewed noncash evidence/accounting contracts are not available. |
 
 ## Module 08 — Withdrawals and Payout Approvals
 

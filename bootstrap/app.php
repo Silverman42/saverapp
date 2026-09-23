@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnforceSessionLimits;
 use App\Http\Middleware\EnsureActiveAccount;
+use App\Http\Middleware\EnsureCollectionsEnabled;
 use App\Http\Middleware\EnsureFreshAuthentication;
 use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\HandleAppearance;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureUserType::class,
             'fresh' => EnsureFreshAuthentication::class,
+            'collections.enabled' => EnsureCollectionsEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

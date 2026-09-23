@@ -12,31 +12,45 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (DB::table('fee_obligations')->where('status', '!=', 'pending')->exists()
+        if ((Schema::hasColumn('fee_obligations', 'status')
+                && DB::table('fee_obligations')->where('status', '!=', 'pending')->exists())
             || DB::table('fee_obligations')->where('amount_kobo', '<', 1)->exists()) {
             throw new RuntimeException('Fee obligations with settled, waived, or cancelled status lack entry evidence and cannot be safely upgraded. Reconcile those records before retrying.');
         }
 
-        Schema::create('fee_obligation_entries', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('fee_obligation_id')->constrained()->restrictOnDelete();
-            $table->string('entry_type', 50);
-            $table->unsignedBigInteger('amount_kobo');
-            $table->string('currency', 3)->default('NGN');
-            $table->string('source_type', 50);
-            $table->string('source_id', 100);
-            $table->string('idempotency_key', 120)->unique();
-            $table->foreignId('actor_user_id')->nullable()->constrained('users')->restrictOnDelete();
-            $table->string('reason', 500)->nullable();
-            $table->string('customer_description', 500)->nullable();
-            $table->string('ledger_posting_reference', 100)->nullable();
-            $table->timestamps();
+        if (! Schema::hasTable('fee_obligation_entries')) {
+            Schema::create('fee_obligation_entries', function (Blueprint $table): void {
+                $table->id();
+                $table->foreignId('fee_obligation_id')->constrained()->restrictOnDelete();
+                $table->string('entry_type', 50);
+                $table->unsignedBigInteger('amount_kobo');
+                $table->string('currency', 3)->default('NGN');
+                $table->string('source_type', 50);
+                $table->string('source_id', 100);
+                $table->string('idempotency_key', 120)->unique();
+                $table->foreignId('actor_user_id')->nullable()->constrained('users')->restrictOnDelete();
+                $table->string('reason', 500)->nullable();
+                $table->string('customer_description', 500)->nullable();
+                $table->string('ledger_posting_reference', 100)->nullable();
+                $table->timestamps();
 
-            $table->unique(['source_type', 'source_id', 'entry_type']);
-            $table->index(['fee_obligation_id', 'created_at', 'id']);
-        });
+                $table->unique(['source_type', 'source_id', 'entry_type']);
+                $table->index(['fee_obligation_id', 'created_at', 'id']);
+            });
+        }
 
         DB::table('fee_obligations')->orderBy('id')->each(function (object $obligation): void {
+            $existing = DB::table('fee_obligation_entries')
+                ->where('idempotency_key', 'legacy-assessment-'.$obligation->id)->first();
+            if ($existing !== null) {
+                if ($existing->fee_obligation_id !== $obligation->id
+                    || $existing->amount_kobo !== $obligation->amount_kobo
+                    || $existing->entry_type !== 'assessment') {
+                    throw new RuntimeException('Existing legacy fee assessment entry does not match its obligation.');
+                }
+
+                return;
+            }
             DB::table('fee_obligation_entries')->insert([
                 'fee_obligation_id' => $obligation->id,
                 'entry_type' => 'assessment',
@@ -54,10 +68,22 @@ return new class extends Migration
             ]);
         });
 
+        if (! Schema::hasIndex('fee_obligations', 'fee_obligations_customer_profile_id_index')) {
+            Schema::table('fee_obligations', function (Blueprint $table): void {
+                $table->index('customer_profile_id');
+            });
+        }
+
         Schema::table('fee_obligations', function (Blueprint $table): void {
-            $table->dropIndex('fee_obligations_customer_profile_id_status_index');
-            $table->dropColumn('status');
-            $table->index(['customer_profile_id', 'kind']);
+            if (Schema::hasIndex('fee_obligations', 'fee_obligations_customer_profile_id_status_index')) {
+                $table->dropIndex('fee_obligations_customer_profile_id_status_index');
+            }
+            if (Schema::hasColumn('fee_obligations', 'status')) {
+                $table->dropColumn('status');
+            }
+            if (! Schema::hasIndex('fee_obligations', 'fee_obligations_customer_profile_id_kind_index')) {
+                $table->index(['customer_profile_id', 'kind']);
+            }
         });
     }
 

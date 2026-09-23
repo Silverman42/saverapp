@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'permissions' => $user ? app(AuthorizationService::class)->effectivePermissionCodes($user) : [],
             ],
+            'features' => ['collections' => (bool) config('collections.enabled')],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

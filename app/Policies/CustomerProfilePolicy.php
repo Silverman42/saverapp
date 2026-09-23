@@ -103,6 +103,25 @@ class CustomerProfilePolicy
     }
 
     /**
+     * Determine whether the current assigned Agent can manage plans for this Customer.
+     * Admin customer-management permissions do not grant plan-management capability.
+     */
+    public function managePlan(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $user->user_type === UserType::Agent
+            && $this->agentEligibilityService->canPerformAssignedCustomerWork($user)
+            && $user->agentProfile !== null
+            && $customerProfile->currentAssignment !== null
+            && $customerProfile->currentAssignment->agent_profile_id === $user->agentProfile->id;
+    }
+
+    /** Only the eligible current Agent may attest to money actually received. */
+    public function recordCollection(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $this->managePlan($user, $customerProfile);
+    }
+
+    /**
      * Determine whether the user can reassign the customer.
      * Reassignment requires customers.reassign permission.
      */

@@ -2,6 +2,8 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
+import { create as createCustomerPlan } from '@/routes/customers/plans';
+import { index as plansIndex, show as showPlan } from '@/routes/plans';
 import {
     edit as editCustomer,
     index as customersIndex,
@@ -163,6 +165,16 @@ export type CustomerDetail = {
     plans: {
         status: string;
         message: string;
+        current_plan: {
+            id: string;
+            name: string;
+            status: string;
+            status_label: string;
+            formatted_contribution_amount: string;
+            start_date: string;
+            scheduled_end_date: string;
+        } | null;
+        can_create: boolean;
     };
     transactions: {
         status: string;
@@ -1030,15 +1042,35 @@ const getInvitationBadgeVariant = (
                     </CardTitle>
                 </CardHeader>
                 <CardContent class="space-y-2 text-xs">
-                    <div
-                        class="bg-muted text-muted-foreground rounded-md p-2.5"
-                    >
+                    <div v-if="customer.plans.current_plan" class="bg-muted rounded-md p-2.5">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <Link :href="showPlan(customer.plans.current_plan.id).url" class="text-foreground font-medium hover:underline">
+                                {{ customer.plans.current_plan.name }}
+                            </Link>
+                            <Badge variant="secondary">{{ customer.plans.current_plan.status_label }}</Badge>
+                        </div>
+                        <p class="mt-1 text-[11px]">
+                            {{ customer.plans.current_plan.formatted_contribution_amount }} daily ·
+                            {{ customer.plans.current_plan.start_date }} –
+                            {{ customer.plans.current_plan.scheduled_end_date }}
+                        </p>
+                        <p class="mt-1 text-[11px]">{{ customer.plans.message }}</p>
+                    </div>
+                    <div v-else class="bg-muted text-muted-foreground rounded-md p-2.5">
                         <div class="text-foreground font-medium">
-                            Plans unavailable
+                            No open plan
                         </div>
                         <p class="mt-0.5 text-[11px]">
                             {{ customer.plans.message }}
                         </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <Button v-if="customer.plans.can_create" as-child size="sm">
+                            <Link :href="createCustomerPlan(customer.id).url">Create plan</Link>
+                        </Button>
+                        <Button as-child variant="outline" size="sm">
+                            <Link :href="plansIndex({ query: { search: customer.id } }).url">Plan history</Link>
+                        </Button>
                     </div>
                 </CardContent>
             </Card>

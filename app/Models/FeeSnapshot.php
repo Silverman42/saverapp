@@ -130,9 +130,9 @@ class FeeSnapshot extends Model
      */
     public function isZero(): bool
     {
-        return $this->amount_kobo === 0
-            || $this->model === FeeRuleModel::NoFee
-            || ($this->model === FeeRuleModel::Percentage && $this->basis_points === 0);
+        return $this->model === FeeRuleModel::NoFee
+            || ($this->model === FeeRuleModel::Fixed && $this->amount_kobo === 0)
+            || ($this->model === FeeRuleModel::Percentage && ($this->basis_points ?? 0) === 0);
     }
 
     /**

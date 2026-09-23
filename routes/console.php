@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('authz:expire-restrictions')
     ->everyMinute()
     ->withoutOverlapping();
+
+Schedule::command('collections:freeze-batches')
+    ->everyMinute()
+    ->withoutOverlapping();

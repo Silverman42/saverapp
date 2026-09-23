@@ -10,6 +10,7 @@ import {
     ShieldCheck,
     UserRound,
     Users,
+    WalletCards,
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -26,6 +27,9 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
+import { index as plansIndex } from '@/routes/plans';
+import { index as collectionsIndex } from '@/routes/collections';
+import { index as batchesIndex } from '@/routes/collection-batches';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
@@ -56,7 +60,16 @@ const mainNavItems = computed<NavItem[]>(() => {
             href: dashboard(),
             icon: LayoutDashboard,
         },
+        {
+            title: 'Plans',
+            href: plansIndex(),
+            icon: WalletCards,
+        },
     ];
+
+    if (page.props.features.collections) {
+        items.push({ title: 'Collections', href: collectionsIndex(), icon: Coins });
+    }
 
     if (canViewCustomers.value) {
         items.push({
@@ -64,6 +77,10 @@ const mainNavItems = computed<NavItem[]>(() => {
             href: '/customers',
             icon: Users,
         });
+    }
+
+    if (page.props.features.collections && (isAgent.value || isAdmin.value)) {
+        items.push({ title: 'Cash batches', href: batchesIndex(), icon: Briefcase });
     }
 
     return items;

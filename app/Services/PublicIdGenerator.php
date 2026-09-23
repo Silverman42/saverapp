@@ -24,6 +24,14 @@ class PublicIdGenerator
     }
 
     /**
+     * Generate an immutable public ID for a thrift plan (format: PLN-000001).
+     */
+    public function generateForPlan(): string
+    {
+        return $this->generate('plan');
+    }
+
+    /**
      * Generate a public ID atomically for an entity type.
      */
     public function generate(string $entityType): string

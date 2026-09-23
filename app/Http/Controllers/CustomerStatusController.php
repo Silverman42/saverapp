@@ -67,7 +67,7 @@ class CustomerStatusController extends Controller
             'allowed_targets' => $this->allowedTargets($profile->operational_status),
             'financial_sections' => [
                 'summary' => 'Financial summary is unavailable until Module 10.',
-                'plans' => 'Plan details are unavailable until Module 06.',
+                'plans' => 'Plan schedule details are available from the Customer profile; actual collection progress remains unavailable until the financial modules are connected.',
                 'collections' => 'Collection details are unavailable until Module 07.',
                 'withdrawals' => 'Withdrawal details are unavailable until Module 08.',
             ],

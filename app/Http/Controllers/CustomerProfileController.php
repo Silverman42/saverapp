@@ -12,6 +12,8 @@ use App\Services\AuthorizationService;
 use App\Services\CustomerNameCorrectionService;
 use App\Services\FeeObligationService;
 use App\Services\ResourceScopeService;
+use App\Support\MoneyFormatter;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -99,6 +101,13 @@ class CustomerProfileController extends Controller
                 )
             );
 
+        $currentPlan = $customerProfile->thriftPlans()
+            ->where('open_customer_profile_id', $customerProfile->id)
+            ->with('termsRevisions')
+            ->first();
+        $currentPlanRevision = $currentPlan?->termsRevisions->firstWhere('revision', $currentPlan->current_terms_revision);
+        $canManagePlan = Gate::forUser($viewer)->allows('managePlan', $customerProfile);
+
         $profileData = [
             'id' => $customerProfile->customer_id,
             'name' => $user->name,
@@ -133,8 +142,26 @@ class CustomerProfileController extends Controller
                 'message' => 'Financial summary unavailable until Module 10',
             ],
             'plans' => [
-                'status' => 'unavailable',
-                'message' => 'Plan details unavailable until Module 06',
+                'status' => 'available',
+                'message' => $currentPlan === null
+                    ? 'There is no open thrift plan for this Customer.'
+                    : 'Agreed schedule details are available. Actual collections and savings progress remain unavailable.',
+                'current_plan' => $currentPlan === null || $currentPlanRevision === null ? null : [
+                    'id' => $currentPlan->plan_id,
+                    'name' => $currentPlanRevision->name,
+                    'status' => $currentPlan->status->value,
+                    'status_label' => $currentPlan->status->displayName(),
+                    'formatted_contribution_amount' => MoneyFormatter::formatNaira($currentPlanRevision->contribution_amount_kobo),
+                    'start_date' => $currentPlanRevision->start_date,
+                    'scheduled_end_date' => CarbonImmutable::createFromFormat('!Y-m-d', $currentPlanRevision->start_date, $currentPlanRevision->timezone)
+                        ->addDays($currentPlanRevision->contribution_days - 1)->toDateString(),
+                    'show_url' => route('plans.show', $currentPlan->plan_id),
+                ],
+                'can_create' => $canManagePlan
+                    && $customerProfile->operational_status->value === 'active'
+                    && $currentPlan === null,
+                'create_url' => route('customers.plans.create', $customerProfile->customer_id),
+                'index_url' => route('plans.index'),
             ],
             'transactions' => [
                 'status' => 'unavailable',
