@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
-use App\Http\Requests\Settings\ProfileUpdateRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,28 +19,18 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
+        $user = $request->user();
+        $profileEditUrl = match ($user->user_type) {
+            UserType::Customer => $user->customerProfile?->customer_id ? route('customers.edit', $user->customerProfile->customer_id) : null,
+            UserType::Agent => $user->agentProfile?->agent_id ? route('agents.edit', $user->agentProfile->agent_id) : null,
+            default => null,
+        };
+
         return Inertia::render('settings/Profile', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'profileEditUrl' => $profileEditUrl,
         ]);
-    }
-
-    /**
-     * Update the user's profile information.
-     */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
-    {
-        $request->user()->fill($request->validated());
-
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
-        }
-
-        $request->user()->save();
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
-
-        return to_route('profile.edit');
     }
 
     /**

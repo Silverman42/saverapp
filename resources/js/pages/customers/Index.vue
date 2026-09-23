@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, Users } from '@lucide/vue';
+import { ChevronLeft, ChevronRight, UserPlus, Users } from '@lucide/vue';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import ModuleOverview from '@/components/directory/ModuleOverview.vue';
@@ -17,7 +17,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { index as customersIndex, show as customersShow } from '@/routes/customers';
+import {
+    create as customersCreate,
+    index as customersIndex,
+    show as customersShow,
+} from '@/routes/customers';
 import { dashboard } from '@/routes';
 
 type Customer = {
@@ -61,6 +65,7 @@ const props = defineProps<{
     filters: DirectoryFilters;
     available_agents: Array<{ id: string; name: string }>;
     viewer_type: string;
+    can_register?: boolean;
     overview: { total: number; active: number; restricted: number };
     overview_period: 'all' | 'today' | 'week' | 'month';
 }>();
@@ -78,40 +83,75 @@ const filtersOpen = ref(false);
 const overviewPeriod = ref(props.overview_period);
 const filterForm = reactive<DirectoryFilters>({ ...props.filters });
 
-watch(() => props.filters, (filters) => Object.assign(filterForm, filters));
-watch(() => props.overview_period, (period) => { overviewPeriod.value = period; });
+watch(
+    () => props.filters,
+    (filters) => Object.assign(filterForm, filters),
+);
+watch(
+    () => props.overview_period,
+    (period) => {
+        overviewPeriod.value = period;
+    },
+);
 
-const activeFilterCount = computed(() => [
-    filterForm.operational_status,
-    filterForm.account_state,
-    filterForm.assigned_agent,
-    filterForm.agent_eligibility,
-    filterForm.registered_from,
-    filterForm.registered_to,
-].filter((value) => value && value !== 'all').length);
+const activeFilterCount = computed(
+    () =>
+        [
+            filterForm.operational_status,
+            filterForm.account_state,
+            filterForm.assigned_agent,
+            filterForm.agent_eligibility,
+            filterForm.registered_from,
+            filterForm.registered_to,
+        ].filter((value) => value && value !== 'all').length,
+);
 
 const overviewMetrics = computed(() => [
-    { label: 'Total customers', value: props.overview.total, description: 'Registered in the selected period' },
-    { label: 'Active customers', value: props.overview.active, description: 'Currently able to transact' },
-    { label: 'Restricted customers', value: props.overview.restricted, description: 'Currently under an operational restriction' },
+    {
+        label: 'Total customers',
+        value: props.overview.total,
+        description: 'Registered in the selected period',
+    },
+    {
+        label: 'Active customers',
+        value: props.overview.active,
+        description: 'Currently able to transact',
+    },
+    {
+        label: 'Restricted customers',
+        value: props.overview.restricted,
+        description: 'Currently under an operational restriction',
+    },
 ]);
 
 const query = (): Record<string, string | number> => {
-    const params: Record<string, string | number> = { overview_period: overviewPeriod.value };
-    const defaults: Partial<DirectoryFilters> = { sort: 'created_at', direction: 'desc', per_page: 25 };
+    const params: Record<string, string | number> = {
+        overview_period: overviewPeriod.value,
+    };
+    const defaults: Partial<DirectoryFilters> = {
+        sort: 'created_at',
+        direction: 'desc',
+        per_page: 25,
+    };
 
-    (Object.keys(filterForm) as Array<keyof DirectoryFilters>).forEach((key) => {
-        const value = filterForm[key];
-        if (value !== '' && value !== defaults[key] && value !== 'all') {
-            params[key] = value;
-        }
-    });
+    (Object.keys(filterForm) as Array<keyof DirectoryFilters>).forEach(
+        (key) => {
+            const value = filterForm[key];
+            if (value !== '' && value !== defaults[key] && value !== 'all') {
+                params[key] = value;
+            }
+        },
+    );
 
     return params;
 };
 
 const applyFilters = (): void => {
-    router.get(customersIndex.url({ query: query() }), {}, { preserveScroll: true, preserveState: true, replace: true });
+    router.get(
+        customersIndex.url({ query: query() }),
+        {},
+        { preserveScroll: true, preserveState: true, replace: true },
+    );
 };
 
 const updateOverviewPeriod = (value: unknown): void => {
@@ -122,32 +162,59 @@ const updateOverviewPeriod = (value: unknown): void => {
 
 const resetFilters = (): void => {
     Object.assign(filterForm, {
-        search: '', operational_status: '', account_state: '', assigned_agent: '', agent_eligibility: '',
-        registered_from: '', registered_to: '', sort: 'created_at', direction: 'desc', per_page: 25,
+        search: '',
+        operational_status: '',
+        account_state: '',
+        assigned_agent: '',
+        agent_eligibility: '',
+        registered_from: '',
+        registered_to: '',
+        sort: 'created_at',
+        direction: 'desc',
+        per_page: 25,
     });
     applyFilters();
 };
 
-const updateDateFilter = (field: 'registered_from' | 'registered_to', value: string): void => {
+const updateDateFilter = (
+    field: 'registered_from' | 'registered_to',
+    value: string,
+): void => {
     filterForm[field] = value;
     applyFilters();
 };
 
 const getInitials = (name: string): string => {
     const parts = name.trim().split(/\s+/);
-    return parts.length > 1 ? `${parts[0][0]}${parts.at(-1)?.[0] ?? ''}`.toUpperCase() : (parts[0]?.slice(0, 2).toUpperCase() ?? 'CU');
+    return parts.length > 1
+        ? `${parts[0][0]}${parts.at(-1)?.[0] ?? ''}`.toUpperCase()
+        : (parts[0]?.slice(0, 2).toUpperCase() ?? 'CU');
 };
 
-const getOperationalBadgeVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-        active: 'default', inactive: 'secondary', restricted: 'destructive', archived: 'destructive',
+const getOperationalBadgeVariant = (
+    status: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    const variants: Record<
+        string,
+        'default' | 'secondary' | 'destructive' | 'outline'
+    > = {
+        active: 'default',
+        inactive: 'secondary',
+        restricted: 'destructive',
+        archived: 'destructive',
     };
 
     return variants[status] ?? 'outline';
 };
 
-const getAccountBadgeVariant = (state: string | null): 'default' | 'secondary' | 'destructive' | 'outline' => {
-    return state === 'active' ? 'outline' : ['suspended', 'deactivated'].includes(state ?? '') ? 'destructive' : 'secondary';
+const getAccountBadgeVariant = (
+    state: string | null,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    return state === 'active'
+        ? 'outline'
+        : ['suspended', 'deactivated'].includes(state ?? '')
+          ? 'destructive'
+          : 'secondary';
 };
 </script>
 
@@ -155,15 +222,48 @@ const getAccountBadgeVariant = (state: string | null): 'default' | 'secondary' |
     <Head title="Customer Directory" />
 
     <div class="space-y-6">
+        <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        >
+            <div>
+                <h1 class="text-[25px] font-medium tracking-tight">
+                    Customers
+                </h1>
+                <p class="text-muted-foreground mt-1.5 text-sm">
+                    Manage customer accounts, invitations, and operational
+                    status.
+                </p>
+            </div>
+            <Link v-if="can_register" :href="customersCreate().url">
+                <Button>
+                    <UserPlus class="mr-1.5 size-4" /> Register Customer
+                </Button>
+            </Link>
+        </div>
+
         <ModuleOverview
             title="Customer Overview"
             description="Monitor customer accounts, activity, and operational restrictions."
             :metrics="overviewMetrics"
         >
             <template #actions>
-                <Select :model-value="overviewPeriod" @update:model-value="updateOverviewPeriod">
-                    <SelectTrigger class="w-40" aria-label="Customer overview period"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">All time</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem></SelectContent>
+                <Select
+                    :model-value="overviewPeriod"
+                    @update:model-value="updateOverviewPeriod"
+                >
+                    <SelectTrigger
+                        class="w-40"
+                        aria-label="Customer overview period"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent
+                        ><SelectItem value="all">All time</SelectItem
+                        ><SelectItem value="today">Today</SelectItem
+                        ><SelectItem value="week">This week</SelectItem
+                        ><SelectItem value="month"
+                            >This month</SelectItem
+                        ></SelectContent
+                    >
                 </Select>
             </template>
         </ModuleOverview>
@@ -181,36 +281,391 @@ const getAccountBadgeVariant = (state: string | null): 'default' | 'secondary' |
             @reset-filters="resetFilters"
         >
             <template #filters>
-                <div class="w-fit space-y-1.5"><Label for="customer-status" class="text-xs">Operational status</Label><Select v-model="filterForm.operational_status" @update:model-value="applyFilters"><SelectTrigger id="customer-status"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="restricted">Restricted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent></Select></div>
-                <div class="w-fit space-y-1.5"><Label for="customer-account-state" class="text-xs">Account state</Label><Select v-model="filterForm.account_state" @update:model-value="applyFilters"><SelectTrigger id="customer-account-state"><SelectValue placeholder="All account states" /></SelectTrigger><SelectContent><SelectItem value="all">All states</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="invited">Invited</SelectItem><SelectItem value="mfa_setup">MFA setup</SelectItem><SelectItem value="suspended">Suspended</SelectItem><SelectItem value="deactivated">Deactivated</SelectItem></SelectContent></Select></div>
-                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5"><Label for="customer-agent" class="text-xs">Assigned agent</Label><Select v-model="filterForm.assigned_agent" @update:model-value="applyFilters"><SelectTrigger id="customer-agent"><SelectValue placeholder="All agents" /></SelectTrigger><SelectContent><SelectItem value="all">All agents</SelectItem><SelectItem v-for="agent in available_agents" :key="agent.id" :value="agent.id">{{ agent.name }} ({{ agent.id }})</SelectItem></SelectContent></Select></div>
-                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5"><Label for="customer-agent-eligibility" class="text-xs">Agent eligibility</Label><Select v-model="filterForm.agent_eligibility" @update:model-value="applyFilters"><SelectTrigger id="customer-agent-eligibility"><SelectValue placeholder="Any eligibility" /></SelectTrigger><SelectContent><SelectItem value="all">Any eligibility</SelectItem><SelectItem value="eligible">Eligible</SelectItem><SelectItem value="ineligible">Ineligible</SelectItem></SelectContent></Select></div>
-                <div class="w-fit space-y-1.5"><Label for="customer-registered-from" class="text-xs">Registered from</Label><DatePicker id="customer-registered-from" :model-value="filterForm.registered_from" @update:model-value="updateDateFilter('registered_from', $event)" /></div>
-                <div class="w-fit space-y-1.5"><Label for="customer-registered-to" class="text-xs">Registered to</Label><DatePicker id="customer-registered-to" :model-value="filterForm.registered_to" @update:model-value="updateDateFilter('registered_to', $event)" /></div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="customer-status" class="text-xs"
+                        >Operational status</Label
+                    ><Select
+                        v-model="filterForm.operational_status"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="customer-status"
+                            ><SelectValue
+                                placeholder="All statuses" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All statuses</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="inactive">Inactive</SelectItem
+                            ><SelectItem value="restricted"
+                                >Restricted</SelectItem
+                            ><SelectItem value="archived"
+                                >Archived</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="customer-account-state" class="text-xs"
+                        >Account state</Label
+                    ><Select
+                        v-model="filterForm.account_state"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="customer-account-state"
+                            ><SelectValue
+                                placeholder="All account states" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All states</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="invited">Invited</SelectItem
+                            ><SelectItem value="mfa_setup">MFA setup</SelectItem
+                            ><SelectItem value="suspended">Suspended</SelectItem
+                            ><SelectItem value="deactivated"
+                                >Deactivated</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5">
+                    <Label for="customer-agent" class="text-xs"
+                        >Assigned agent</Label
+                    ><Select
+                        v-model="filterForm.assigned_agent"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="customer-agent"
+                            ><SelectValue
+                                placeholder="All agents" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All agents</SelectItem
+                            ><SelectItem
+                                v-for="agent in available_agents"
+                                :key="agent.id"
+                                :value="agent.id"
+                                >{{ agent.name }} ({{ agent.id }})</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5">
+                    <Label for="customer-agent-eligibility" class="text-xs"
+                        >Agent eligibility</Label
+                    ><Select
+                        v-model="filterForm.agent_eligibility"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="customer-agent-eligibility"
+                            ><SelectValue
+                                placeholder="Any eligibility" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">Any eligibility</SelectItem
+                            ><SelectItem value="eligible">Eligible</SelectItem
+                            ><SelectItem value="ineligible"
+                                >Ineligible</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="customer-registered-from" class="text-xs"
+                        >Registered from</Label
+                    ><DatePicker
+                        id="customer-registered-from"
+                        :model-value="filterForm.registered_from"
+                        @update:model-value="
+                            updateDateFilter('registered_from', $event)
+                        "
+                    />
+                </div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="customer-registered-to" class="text-xs"
+                        >Registered to</Label
+                    ><DatePicker
+                        id="customer-registered-to"
+                        :model-value="filterForm.registered_to"
+                        @update:model-value="
+                            updateDateFilter('registered_to', $event)
+                        "
+                    />
+                </div>
             </template>
 
-            <template #filter-summary><p class="text-muted-foreground text-xs">{{ customers.total }} customer{{ customers.total === 1 ? '' : 's' }} match the current filters.</p></template>
+            <template #filter-summary
+                ><p class="text-muted-foreground text-xs">
+                    {{ customers.total }} customer{{
+                        customers.total === 1 ? '' : 's'
+                    }}
+                    match the current filters.
+                </p></template
+            >
 
-            <div v-if="customers.data.length === 0" class="py-14 text-center"><div class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"><Users class="size-5" /></div><h3 class="mt-4 text-sm font-semibold">No customers found</h3><p class="text-muted-foreground mt-1 text-sm">Adjust the search or filters to find a customer record.</p></div>
+            <div v-if="customers.data.length === 0" class="py-14 text-center">
+                <div
+                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
+                >
+                    <Users class="size-5" />
+                </div>
+                <h3 class="mt-4 text-sm font-semibold">No customers found</h3>
+                <p class="text-muted-foreground mt-1 text-sm">
+                    Adjust the search or filters to find a customer record.
+                </p>
+            </div>
 
             <div v-else class="space-y-3">
-                <Link v-for="customer in customers.data" :key="customer.id" :href="customersShow(customer.id).url" class="group block rounded-2xl focus-visible:outline-none">
-                    <DirectoryRow class="group-focus-visible:border-primary group-focus-visible:bg-accent/35">
-                    <div class="hidden items-center gap-5 lg:grid" :class="viewer_type === 'admin' ? 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(5,minmax(0,1fr))]' : 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(4,minmax(0,1fr))]'">
-                        <div class="flex min-w-0 items-center gap-3"><Avatar class="size-11 shrink-0"><AvatarImage v-if="customer.photo_url" :src="customer.photo_url" :alt="customer.name" /><AvatarFallback>{{ getInitials(customer.name) }}</AvatarFallback></Avatar><div class="min-w-0"><p class="truncate text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground truncate text-xs">{{ customer.email || customer.phone }}</p></div></div>
-                        <div v-if="viewer_type === 'admin'"><p class="text-muted-foreground text-[11px] font-medium uppercase">Assigned agent</p><p class="mt-1 text-sm">{{ customer.assigned_agent?.name || 'Unassigned' }}</p></div>
-                        <div><p class="text-muted-foreground text-[11px] font-medium uppercase">Operational status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div>
-                        <div><p class="text-muted-foreground text-[11px] font-medium uppercase">Account state</p><Badge :variant="getAccountBadgeVariant(customer.account_state)" class="mt-1">{{ customer.account_state_label }}</Badge></div>
-                        <div><p class="text-muted-foreground text-[11px] font-medium uppercase">Phone</p><p class="mt-1 text-sm">{{ customer.phone }}</p></div>
-                        <div><p class="text-muted-foreground text-[11px] font-medium uppercase">Registered</p><p class="mt-1 text-sm">{{ customer.registered_at || '—' }}</p></div>
-                    </div>
-                    <div class="lg:hidden"><div class="flex min-w-0 items-center gap-3"><Avatar class="size-11 shrink-0"><AvatarImage v-if="customer.photo_url" :src="customer.photo_url" :alt="customer.name" /><AvatarFallback>{{ getInitials(customer.name) }}</AvatarFallback></Avatar><div class="min-w-0"><p class="truncate text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground truncate text-xs">{{ customer.email || customer.phone }}</p></div></div><div class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Account</p><Badge :variant="getAccountBadgeVariant(customer.account_state)" class="mt-1">{{ customer.account_state_label }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Phone</p><p class="mt-1">{{ customer.phone }}</p></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Registered</p><p class="mt-1">{{ customer.registered_at || '—' }}</p></div><div v-if="viewer_type === 'admin'" class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Assigned agent</p><p class="mt-1">{{ customer.assigned_agent?.name || 'Unassigned' }}</p></div></div></div>
+                <Link
+                    v-for="customer in customers.data"
+                    :key="customer.id"
+                    :href="customersShow(customer.id).url"
+                    class="group block rounded-2xl focus-visible:outline-none"
+                >
+                    <DirectoryRow
+                        class="group-focus-visible:border-primary group-focus-visible:bg-accent/35"
+                    >
+                        <div
+                            class="hidden items-center gap-5 lg:grid"
+                            :class="
+                                viewer_type === 'admin'
+                                    ? 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(5,minmax(0,1fr))]'
+                                    : 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(4,minmax(0,1fr))]'
+                            "
+                        >
+                            <div class="flex min-w-0 items-center gap-3">
+                                <Avatar class="size-11 shrink-0"
+                                    ><AvatarImage
+                                        v-if="customer.photo_url"
+                                        :src="customer.photo_url"
+                                        :alt="customer.name"
+                                    /><AvatarFallback>{{
+                                        getInitials(customer.name)
+                                    }}</AvatarFallback></Avatar
+                                >
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold">
+                                        {{ customer.name }}
+                                    </p>
+                                    <p
+                                        class="text-muted-foreground truncate text-xs"
+                                    >
+                                        {{ customer.email || customer.phone }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div v-if="viewer_type === 'admin'">
+                                <p
+                                    class="text-muted-foreground text-[11px] font-medium uppercase"
+                                >
+                                    Assigned agent
+                                </p>
+                                <p class="mt-1 text-sm">
+                                    {{
+                                        customer.assigned_agent?.name ||
+                                        'Unassigned'
+                                    }}
+                                </p>
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[11px] font-medium uppercase"
+                                >
+                                    Operational status
+                                </p>
+                                <Badge
+                                    :variant="
+                                        getOperationalBadgeVariant(
+                                            customer.operational_status,
+                                        )
+                                    "
+                                    class="mt-1"
+                                    >{{
+                                        customer.operational_status_label
+                                    }}</Badge
+                                >
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[11px] font-medium uppercase"
+                                >
+                                    Account state
+                                </p>
+                                <Badge
+                                    :variant="
+                                        getAccountBadgeVariant(
+                                            customer.account_state,
+                                        )
+                                    "
+                                    class="mt-1"
+                                    >{{ customer.account_state_label }}</Badge
+                                >
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[11px] font-medium uppercase"
+                                >
+                                    Phone
+                                </p>
+                                <p class="mt-1 text-sm">{{ customer.phone }}</p>
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[11px] font-medium uppercase"
+                                >
+                                    Registered
+                                </p>
+                                <p class="mt-1 text-sm">
+                                    {{ customer.registered_at || '—' }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="lg:hidden">
+                            <div class="flex min-w-0 items-center gap-3">
+                                <Avatar class="size-11 shrink-0"
+                                    ><AvatarImage
+                                        v-if="customer.photo_url"
+                                        :src="customer.photo_url"
+                                        :alt="customer.name"
+                                    /><AvatarFallback>{{
+                                        getInitials(customer.name)
+                                    }}</AvatarFallback></Avatar
+                                >
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold">
+                                        {{ customer.name }}
+                                    </p>
+                                    <p
+                                        class="text-muted-foreground truncate text-xs"
+                                    >
+                                        {{ customer.email || customer.phone }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div
+                                class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm"
+                            >
+                                <div>
+                                    <p
+                                        class="text-muted-foreground text-[10px] font-medium uppercase"
+                                    >
+                                        Status
+                                    </p>
+                                    <Badge
+                                        :variant="
+                                            getOperationalBadgeVariant(
+                                                customer.operational_status,
+                                            )
+                                        "
+                                        class="mt-1"
+                                        >{{
+                                            customer.operational_status_label
+                                        }}</Badge
+                                    >
+                                </div>
+                                <div>
+                                    <p
+                                        class="text-muted-foreground text-[10px] font-medium uppercase"
+                                    >
+                                        Account
+                                    </p>
+                                    <Badge
+                                        :variant="
+                                            getAccountBadgeVariant(
+                                                customer.account_state,
+                                            )
+                                        "
+                                        class="mt-1"
+                                        >{{
+                                            customer.account_state_label
+                                        }}</Badge
+                                    >
+                                </div>
+                                <div>
+                                    <p
+                                        class="text-muted-foreground text-[10px] font-medium uppercase"
+                                    >
+                                        Phone
+                                    </p>
+                                    <p class="mt-1">{{ customer.phone }}</p>
+                                </div>
+                                <div>
+                                    <p
+                                        class="text-muted-foreground text-[10px] font-medium uppercase"
+                                    >
+                                        Registered
+                                    </p>
+                                    <p class="mt-1">
+                                        {{ customer.registered_at || '—' }}
+                                    </p>
+                                </div>
+                                <div
+                                    v-if="viewer_type === 'admin'"
+                                    class="col-span-2"
+                                >
+                                    <p
+                                        class="text-muted-foreground text-[10px] font-medium uppercase"
+                                    >
+                                        Assigned agent
+                                    </p>
+                                    <p class="mt-1">
+                                        {{
+                                            customer.assigned_agent?.name ||
+                                            'Unassigned'
+                                        }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </DirectoryRow>
                 </Link>
             </div>
 
             <template #footer>
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="filterForm.per_page" @update:model-value="applyFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem><SelectItem :value="100">100</SelectItem></SelectContent></Select> per page</div><div class="flex items-center justify-between gap-3 sm:justify-end"><span class="text-muted-foreground text-xs">Page {{ customers.current_page }} of {{ customers.last_page }}</span><div class="flex gap-2"><Link v-if="customers.prev_page_url" :href="customers.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm"><ChevronLeft /> Prev</Button></Link><Button v-else variant="outline" size="sm" disabled><ChevronLeft /> Prev</Button><Link v-if="customers.next_page_url" :href="customers.next_page_url" preserve-state preserve-scroll><Button size="sm">Next <ChevronRight /></Button></Link><Button v-else size="sm" disabled>Next <ChevronRight /></Button></div></div></div>
+                <div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <div
+                        class="text-muted-foreground flex items-center gap-2 text-sm"
+                    >
+                        Display
+                        <Select
+                            v-model="filterForm.per_page"
+                            @update:model-value="applyFilters"
+                            ><SelectTrigger class="h-9 w-20"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem :value="25">25</SelectItem
+                                ><SelectItem :value="50">50</SelectItem
+                                ><SelectItem :value="100"
+                                    >100</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                        per page
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-3 sm:justify-end"
+                    >
+                        <span class="text-muted-foreground text-xs"
+                            >Page {{ customers.current_page }} of
+                            {{ customers.last_page }}</span
+                        >
+                        <div class="flex gap-2">
+                            <Link
+                                v-if="customers.prev_page_url"
+                                :href="customers.prev_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button variant="outline" size="sm"
+                                    ><ChevronLeft /> Prev</Button
+                                ></Link
+                            ><Button v-else variant="outline" size="sm" disabled
+                                ><ChevronLeft /> Prev</Button
+                            ><Link
+                                v-if="customers.next_page_url"
+                                :href="customers.next_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button size="sm"
+                                    >Next <ChevronRight /></Button></Link
+                            ><Button v-else size="sm" disabled
+                                >Next <ChevronRight
+                            /></Button>
+                        </div>
+                    </div>
+                </div>
             </template>
         </DirectoryPanel>
     </div>

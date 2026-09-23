@@ -2,8 +2,16 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
-import { index as agentsIndex, show as agentsShow } from '@/routes/agents';
-import { cancel as cancelInvitation, correctEmail as correctEmailInvitation, resend as resendInvitation } from '@/routes/agents/invitations';
+import {
+    edit as editAgent,
+    index as agentsIndex,
+    show as agentsShow,
+} from '@/routes/agents';
+import {
+    cancel as cancelInvitation,
+    correctEmail as correctEmailInvitation,
+    resend as resendInvitation,
+} from '@/routes/agents/invitations';
 import { show as customersShow } from '@/routes/customers';
 import {
     AlertCircle,
@@ -37,7 +45,13 @@ import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Card,
     CardContent,
@@ -116,6 +130,8 @@ export type AgentDetail = {
         updated_at: string;
     };
     actions: {
+        can_edit: boolean;
+        edit_message?: string | null;
         can_reassign_customers: boolean;
         reassign_message: string;
         can_manage_lifecycle: boolean;
@@ -219,7 +235,7 @@ const handleResendInvitation = () => {
             onFinish: () => {
                 isResending.value = false;
             },
-        }
+        },
     );
 };
 
@@ -261,7 +277,7 @@ const submitCorrectEmail = () => {
             onFinish: () => {
                 correctEmailForm.processing = false;
             },
-        }
+        },
     );
 };
 
@@ -300,12 +316,14 @@ const submitCancelInvitation = () => {
             onFinish: () => {
                 cancelForm.processing = false;
             },
-        }
+        },
     );
 };
 
 const assignmentFiltersOpen = ref(false);
-const assignmentFilterForm = reactive<AssignmentFilters>({ ...props.assignment_filters });
+const assignmentFilterForm = reactive<AssignmentFilters>({
+    ...props.assignment_filters,
+});
 
 watch(
     () => props.assignment_filters,
@@ -313,19 +331,37 @@ watch(
 );
 
 const activeAssignmentFilterCount = computed(() => {
-    return assignmentFilterForm.operational_status && assignmentFilterForm.operational_status !== 'all' ? 1 : 0;
+    return assignmentFilterForm.operational_status &&
+        assignmentFilterForm.operational_status !== 'all'
+        ? 1
+        : 0;
 });
 
 const applyAssignmentFilters = (): void => {
     const query: Record<string, string | number> = {};
-    if (assignmentFilterForm.search) query.assignments_search = assignmentFilterForm.search;
-    if (assignmentFilterForm.operational_status && assignmentFilterForm.operational_status !== 'all') query.assignments_operational_status = assignmentFilterForm.operational_status;
-    if (assignmentFilterForm.per_page !== 10) query.assignments_per_page = assignmentFilterForm.per_page;
-    router.get(agentsShow(props.agent.id, { query }).url, {}, { preserveState: true, preserveScroll: true, replace: true });
+    if (assignmentFilterForm.search)
+        query.assignments_search = assignmentFilterForm.search;
+    if (
+        assignmentFilterForm.operational_status &&
+        assignmentFilterForm.operational_status !== 'all'
+    )
+        query.assignments_operational_status =
+            assignmentFilterForm.operational_status;
+    if (assignmentFilterForm.per_page !== 10)
+        query.assignments_per_page = assignmentFilterForm.per_page;
+    router.get(
+        agentsShow(props.agent.id, { query }).url,
+        {},
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
 };
 
 const resetAssignmentFilters = (): void => {
-    Object.assign(assignmentFilterForm, { search: '', operational_status: '', per_page: 10 });
+    Object.assign(assignmentFilterForm, {
+        search: '',
+        operational_status: '',
+        per_page: 10,
+    });
     applyAssignmentFilters();
 };
 </script>
@@ -363,6 +399,12 @@ const resetAssignmentFilters = (): void => {
 
             <!-- Status Badges -->
             <div class="flex items-center gap-2">
+                <Link
+                    v-if="agent.actions.can_edit"
+                    :href="editAgent(agent.id).url"
+                >
+                    <Button variant="outline">Edit profile</Button>
+                </Link>
                 <Badge
                     :variant="
                         getOperationalBadgeVariant(agent.operational_status)
@@ -547,14 +589,237 @@ const resetAssignmentFilters = (): void => {
             @reset-filters="resetAssignmentFilters"
         >
             <template #filters>
-                <div class="w-fit space-y-1.5"><Label for="assignment-status" class="text-xs">Operational status</Label><Select v-model="assignmentFilterForm.operational_status" @update:model-value="applyAssignmentFilters"><SelectTrigger id="assignment-status"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem><SelectItem value="restricted">Restricted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent></Select></div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="assignment-status" class="text-xs"
+                        >Operational status</Label
+                    ><Select
+                        v-model="assignmentFilterForm.operational_status"
+                        @update:model-value="applyAssignmentFilters"
+                        ><SelectTrigger id="assignment-status"
+                            ><SelectValue
+                                placeholder="All statuses" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All statuses</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="inactive">Inactive</SelectItem
+                            ><SelectItem value="restricted"
+                                >Restricted</SelectItem
+                            ><SelectItem value="archived"
+                                >Archived</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
             </template>
-            <template #filter-summary><p class="text-muted-foreground text-xs">{{ assigned_customers.total }} current customer{{ assigned_customers.total === 1 ? '' : 's' }} match the current filters.</p></template>
+            <template #filter-summary
+                ><p class="text-muted-foreground text-xs">
+                    {{ assigned_customers.total }} current customer{{
+                        assigned_customers.total === 1 ? '' : 's'
+                    }}
+                    match the current filters.
+                </p></template
+            >
 
-            <div class="mb-5 flex flex-wrap gap-2 text-xs"><Badge variant="default">{{ agent.assignments_summary.active_count }} Active</Badge><Badge variant="secondary">{{ agent.assignments_summary.inactive_count }} Inactive</Badge><Badge variant="secondary">{{ agent.assignments_summary.restricted_count }} Restricted</Badge><Badge variant="destructive">{{ agent.assignments_summary.archived_count }} Archived</Badge></div>
-            <div v-if="assigned_customers.data.length === 0" class="text-muted-foreground py-10 text-center text-sm">No customers currently assigned to this agent match this view.</div>
-            <div v-else class="space-y-3"><DirectoryRow v-for="customer in assigned_customers.data" :key="customer.id"><div class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(0,1fr))_auto]"><div><p class="text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground text-xs">{{ customer.id }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Operational status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Account state</p><p class="mt-1 text-sm capitalize">{{ customer.account_state?.replace('_', ' ') || 'Unknown' }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Assigned since</p><p class="mt-1 text-sm">{{ customer.assigned_since || '—' }}</p></div><Link :href="customersShow(customer.id).url"><Button variant="outline" size="sm">View</Button></Link></div><div class="md:hidden"><div class="flex items-start justify-between gap-3"><div><p class="text-sm font-semibold">{{ customer.name }}</p><p class="text-muted-foreground text-xs">{{ customer.id }}</p></div><Link :href="customersShow(customer.id).url"><Button variant="outline" size="sm">View</Button></Link></div><div class="mt-4 grid grid-cols-2 gap-4 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Status</p><Badge :variant="getOperationalBadgeVariant(customer.operational_status)" class="mt-1">{{ customer.operational_status_label }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Account</p><p class="mt-1 capitalize">{{ customer.account_state?.replace('_', ' ') || 'Unknown' }}</p></div><div class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Assigned since</p><p class="mt-1">{{ customer.assigned_since || '—' }}</p></div></div></div></DirectoryRow></div>
-            <template #footer><div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="assignmentFilterForm.per_page" @update:model-value="applyAssignmentFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="10">10</SelectItem><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem></SelectContent></Select> per page</div><div class="flex items-center gap-3"><span class="text-muted-foreground text-xs">Page {{ assigned_customers.current_page }} of {{ assigned_customers.last_page }}</span><div class="flex gap-2"><Link v-if="assigned_customers.prev_page_url" :href="assigned_customers.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm">Previous</Button></Link><Button v-else variant="outline" size="sm" disabled>Previous</Button><Link v-if="assigned_customers.next_page_url" :href="assigned_customers.next_page_url" preserve-state preserve-scroll><Button size="sm">Next</Button></Link><Button v-else size="sm" disabled>Next</Button></div></div></div></template>
+            <div class="mb-5 flex flex-wrap gap-2 text-xs">
+                <Badge variant="default"
+                    >{{ agent.assignments_summary.active_count }} Active</Badge
+                ><Badge variant="secondary"
+                    >{{
+                        agent.assignments_summary.inactive_count
+                    }}
+                    Inactive</Badge
+                ><Badge variant="secondary"
+                    >{{
+                        agent.assignments_summary.restricted_count
+                    }}
+                    Restricted</Badge
+                ><Badge variant="destructive"
+                    >{{
+                        agent.assignments_summary.archived_count
+                    }}
+                    Archived</Badge
+                >
+            </div>
+            <div
+                v-if="assigned_customers.data.length === 0"
+                class="text-muted-foreground py-10 text-center text-sm"
+            >
+                No customers currently assigned to this agent match this view.
+            </div>
+            <div v-else class="space-y-3">
+                <DirectoryRow
+                    v-for="customer in assigned_customers.data"
+                    :key="customer.id"
+                    ><div
+                        class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(0,1fr))_auto]"
+                    >
+                        <div>
+                            <p class="text-sm font-semibold">
+                                {{ customer.name }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ customer.id }}
+                            </p>
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Operational status
+                            </p>
+                            <Badge
+                                :variant="
+                                    getOperationalBadgeVariant(
+                                        customer.operational_status,
+                                    )
+                                "
+                                class="mt-1"
+                                >{{ customer.operational_status_label }}</Badge
+                            >
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Account state
+                            </p>
+                            <p class="mt-1 text-sm capitalize">
+                                {{
+                                    customer.account_state?.replace('_', ' ') ||
+                                    'Unknown'
+                                }}
+                            </p>
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Assigned since
+                            </p>
+                            <p class="mt-1 text-sm">
+                                {{ customer.assigned_since || '—' }}
+                            </p>
+                        </div>
+                        <Link :href="customersShow(customer.id).url"
+                            ><Button variant="outline" size="sm"
+                                >View</Button
+                            ></Link
+                        >
+                    </div>
+                    <div class="md:hidden">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-sm font-semibold">
+                                    {{ customer.name }}
+                                </p>
+                                <p class="text-muted-foreground text-xs">
+                                    {{ customer.id }}
+                                </p>
+                            </div>
+                            <Link :href="customersShow(customer.id).url"
+                                ><Button variant="outline" size="sm"
+                                    >View</Button
+                                ></Link
+                            >
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Status
+                                </p>
+                                <Badge
+                                    :variant="
+                                        getOperationalBadgeVariant(
+                                            customer.operational_status,
+                                        )
+                                    "
+                                    class="mt-1"
+                                    >{{
+                                        customer.operational_status_label
+                                    }}</Badge
+                                >
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Account
+                                </p>
+                                <p class="mt-1 capitalize">
+                                    {{
+                                        customer.account_state?.replace(
+                                            '_',
+                                            ' ',
+                                        ) || 'Unknown'
+                                    }}
+                                </p>
+                            </div>
+                            <div class="col-span-2">
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Assigned since
+                                </p>
+                                <p class="mt-1">
+                                    {{ customer.assigned_since || '—' }}
+                                </p>
+                            </div>
+                        </div>
+                    </div></DirectoryRow
+                >
+            </div>
+            <template #footer
+                ><div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <div
+                        class="text-muted-foreground flex items-center gap-2 text-sm"
+                    >
+                        Display
+                        <Select
+                            v-model="assignmentFilterForm.per_page"
+                            @update:model-value="applyAssignmentFilters"
+                            ><SelectTrigger class="h-9 w-20"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem :value="10">10</SelectItem
+                                ><SelectItem :value="25">25</SelectItem
+                                ><SelectItem :value="50"
+                                    >50</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                        per page
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-muted-foreground text-xs"
+                            >Page {{ assigned_customers.current_page }} of
+                            {{ assigned_customers.last_page }}</span
+                        >
+                        <div class="flex gap-2">
+                            <Link
+                                v-if="assigned_customers.prev_page_url"
+                                :href="assigned_customers.prev_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button variant="outline" size="sm"
+                                    >Previous</Button
+                                ></Link
+                            ><Button v-else variant="outline" size="sm" disabled
+                                >Previous</Button
+                            ><Link
+                                v-if="assigned_customers.next_page_url"
+                                :href="assigned_customers.next_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button size="sm">Next</Button></Link
+                            ><Button v-else size="sm" disabled>Next</Button>
+                        </div>
+                    </div>
+                </div></template
+            >
         </DirectoryPanel>
 
         <!-- Personal & Engagement Details + Internal Notes Grid -->
@@ -657,14 +922,22 @@ const resetAssignmentFilters = (): void => {
             <CardHeader class="pb-3">
                 <div class="flex items-center justify-between">
                     <div>
-                        <CardTitle class="flex items-center gap-2 text-base font-semibold">
-                            <Mail class="h-4 w-4" /> Invitation & Delivery Lifecycle
+                        <CardTitle
+                            class="flex items-center gap-2 text-base font-semibold"
+                        >
+                            <Mail class="h-4 w-4" /> Invitation & Delivery
+                            Lifecycle
                         </CardTitle>
                         <CardDescription>
-                            Track account activation invitation state, delivery attempts, and manage resends or address corrections.
+                            Track account activation invitation state, delivery
+                            attempts, and manage resends or address corrections.
                         </CardDescription>
                     </div>
-                    <Badge :variant="getInvitationBadgeVariant(agent.invitation.status)">
+                    <Badge
+                        :variant="
+                            getInvitationBadgeVariant(agent.invitation.status)
+                        "
+                    >
                         {{ agent.invitation.status_label }}
                     </Badge>
                 </div>
@@ -672,30 +945,52 @@ const resetAssignmentFilters = (): void => {
             <CardContent class="space-y-4">
                 <div class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
                     <div>
-                        <p class="text-muted-foreground text-xs font-medium">Delivery Status</p>
-                        <Badge variant="outline" class="mt-1">{{ agent.invitation.delivery_status_label }}</Badge>
+                        <p class="text-muted-foreground text-xs font-medium">
+                            Delivery Status
+                        </p>
+                        <Badge variant="outline" class="mt-1">{{
+                            agent.invitation.delivery_status_label
+                        }}</Badge>
                     </div>
                     <div>
-                        <p class="text-muted-foreground text-xs font-medium">Generation</p>
-                        <p class="mt-1 font-mono text-sm font-semibold">#{{ agent.invitation.generation }}</p>
+                        <p class="text-muted-foreground text-xs font-medium">
+                            Generation
+                        </p>
+                        <p class="mt-1 font-mono text-sm font-semibold">
+                            #{{ agent.invitation.generation }}
+                        </p>
                     </div>
                     <div>
-                        <p class="text-muted-foreground text-xs font-medium">Sent At</p>
-                        <p class="mt-1 text-sm">{{ agent.invitation.sent_at || '—' }}</p>
+                        <p class="text-muted-foreground text-xs font-medium">
+                            Sent At
+                        </p>
+                        <p class="mt-1 text-sm">
+                            {{ agent.invitation.sent_at || '—' }}
+                        </p>
                     </div>
                     <div>
-                        <p class="text-muted-foreground text-xs font-medium">Expires At</p>
-                        <p class="mt-1 text-sm">{{ agent.invitation.expires_at || '—' }}</p>
+                        <p class="text-muted-foreground text-xs font-medium">
+                            Expires At
+                        </p>
+                        <p class="mt-1 text-sm">
+                            {{ agent.invitation.expires_at || '—' }}
+                        </p>
                     </div>
                 </div>
 
-                <div v-if="agent.invitation.delivery_error" class="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+                <div
+                    v-if="agent.invitation.delivery_error"
+                    class="bg-destructive/10 text-destructive rounded-lg p-3 text-xs"
+                >
                     <p class="font-medium">Delivery Issue</p>
                     <p class="mt-0.5">{{ agent.invitation.delivery_error }}</p>
                 </div>
 
                 <!-- Invitation Management Actions -->
-                <div v-if="agent.actions.can_manage_invitation" class="flex flex-wrap items-center gap-3 pt-2 border-t">
+                <div
+                    v-if="agent.actions.can_manage_invitation"
+                    class="flex flex-wrap items-center gap-3 border-t pt-2"
+                >
                     <Button
                         v-if="agent.invitation.can_resend"
                         variant="outline"
@@ -703,7 +998,10 @@ const resetAssignmentFilters = (): void => {
                         :disabled="isResending"
                         @click="handleResendInvitation"
                     >
-                        <RefreshCw class="mr-1.5 h-3.5 w-3.5" :class="{ 'animate-spin': isResending }" />
+                        <RefreshCw
+                            class="mr-1.5 h-3.5 w-3.5"
+                            :class="{ 'animate-spin': isResending }"
+                        />
                         Resend Invitation
                     </Button>
                     <Button
@@ -797,12 +1095,17 @@ const resetAssignmentFilters = (): void => {
                 <DialogHeader>
                     <DialogTitle>Correct Agent Email</DialogTitle>
                     <DialogDescription>
-                        Update the email address for {{ agent.name }}. Outstanding invitations will be invalidated and a new invitation will be dispatched.
+                        Update the email address for {{ agent.name }}.
+                        Outstanding invitations will be invalidated and a new
+                        invitation will be dispatched.
                     </DialogDescription>
                 </DialogHeader>
                 <div class="space-y-4 py-2">
                     <div class="space-y-1.5">
-                        <Label for="correct-email">New email address <span class="text-destructive">*</span></Label>
+                        <Label for="correct-email"
+                            >New email address
+                            <span class="text-destructive">*</span></Label
+                        >
                         <Input
                             id="correct-email"
                             v-model="correctEmailForm.email"
@@ -812,7 +1115,10 @@ const resetAssignmentFilters = (): void => {
                         />
                     </div>
                     <div class="space-y-1.5">
-                        <Label for="correct-reason">Correction reason <span class="text-destructive">*</span></Label>
+                        <Label for="correct-reason"
+                            >Correction reason
+                            <span class="text-destructive">*</span></Label
+                        >
                         <Input
                             id="correct-reason"
                             v-model="correctEmailForm.reason"
@@ -820,11 +1126,23 @@ const resetAssignmentFilters = (): void => {
                             placeholder="e.g. Typo in original email address"
                         />
                     </div>
-                    <p v-if="correctEmailForm.error" class="text-destructive text-xs">{{ correctEmailForm.error }}</p>
+                    <p
+                        v-if="correctEmailForm.error"
+                        class="text-destructive text-xs"
+                    >
+                        {{ correctEmailForm.error }}
+                    </p>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" @click="showCorrectEmailModal = false">Cancel</Button>
-                    <Button :disabled="correctEmailForm.processing" @click="submitCorrectEmail">
+                    <Button
+                        variant="outline"
+                        @click="showCorrectEmailModal = false"
+                        >Cancel</Button
+                    >
+                    <Button
+                        :disabled="correctEmailForm.processing"
+                        @click="submitCorrectEmail"
+                    >
                         Update Email & Resend
                     </Button>
                 </DialogFooter>
@@ -837,12 +1155,17 @@ const resetAssignmentFilters = (): void => {
                 <DialogHeader>
                     <DialogTitle>Cancel Agent Invitation</DialogTitle>
                     <DialogDescription>
-                        Invalidate outstanding invitation and activation links for {{ agent.name }}. The account will not be able to activate with cancelled links.
+                        Invalidate outstanding invitation and activation links
+                        for {{ agent.name }}. The account will not be able to
+                        activate with cancelled links.
                     </DialogDescription>
                 </DialogHeader>
                 <div class="space-y-4 py-2">
                     <div class="space-y-1.5">
-                        <Label for="cancel-reason">Cancellation reason <span class="text-destructive">*</span></Label>
+                        <Label for="cancel-reason"
+                            >Cancellation reason
+                            <span class="text-destructive">*</span></Label
+                        >
                         <Input
                             id="cancel-reason"
                             v-model="cancelForm.reason"
@@ -850,11 +1173,19 @@ const resetAssignmentFilters = (): void => {
                             placeholder="e.g. Onboarding cancelled or identity error"
                         />
                     </div>
-                    <p v-if="cancelForm.error" class="text-destructive text-xs">{{ cancelForm.error }}</p>
+                    <p v-if="cancelForm.error" class="text-destructive text-xs">
+                        {{ cancelForm.error }}
+                    </p>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" @click="showCancelModal = false">Keep Invitation</Button>
-                    <Button variant="destructive" :disabled="cancelForm.processing" @click="submitCancelInvitation">
+                    <Button variant="outline" @click="showCancelModal = false"
+                        >Keep Invitation</Button
+                    >
+                    <Button
+                        variant="destructive"
+                        :disabled="cancelForm.processing"
+                        @click="submitCancelInvitation"
+                    >
                         Confirm Cancellation
                     </Button>
                 </DialogFooter>

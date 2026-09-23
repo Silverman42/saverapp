@@ -140,6 +140,7 @@ class AgentProfileController extends Controller
             'account_state_label' => $user?->account_state ? ucfirst(str_replace('_', ' ', $user->account_state->value)) : 'Unknown',
             'registered_at' => $agentProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             'registered_at_iso' => $agentProfile->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'version' => $agentProfile->version,
             'readiness' => [
                 'can_read_assigned' => [
                     'eligible' => $canRead->isEligible(),
@@ -175,6 +176,10 @@ class AgentProfileController extends Controller
             ],
             // Contextual actions
             'actions' => [
+                'can_edit' => Gate::forUser($viewer)->allows('update', $agentProfile),
+                'edit_message' => Gate::forUser($viewer)->allows('update', $agentProfile)
+                    ? null
+                    : 'Your current access does not allow editing this Agent profile.',
                 'can_reassign_customers' => false,
                 'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
                 'can_manage_lifecycle' => false,

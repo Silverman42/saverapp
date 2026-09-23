@@ -1,20 +1,40 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import { dashboard } from '@/routes';
+import {
+    edit as editCustomer,
+    index as customersIndex,
+} from '@/routes/customers';
+import {
+    show as showNameCorrection,
+    cancel as cancelNameCorrection,
+} from '@/routes/customers/name-corrections';
+import {
+    cancel as cancelInvitation,
+    correctEmail as correctEmailInvitation,
+    resend as resendInvitation,
+} from '@/routes/customers/invitations';
 import {
     AlertCircle,
     ArrowLeft,
+    CheckCircle2,
+    Coins,
     CreditCard,
     FileText,
     History,
+    Loader2,
     Lock,
+    Mail,
     Phone,
     Receipt,
+    RotateCw,
     Shield,
     StickyNote,
     User as UserIcon,
     Users,
     Wallet,
+    XCircle,
 } from '@lucide/vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +46,16 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export type NextOfKin = {
     full_name: string | null;
@@ -41,6 +71,30 @@ export type AssignedAgent = {
     email?: string | null;
     operational_status?: string;
     is_eligible?: boolean;
+};
+
+export type FeeSnapshot = {
+    name: string;
+    model: string;
+    amount_kobo: number;
+    formatted_amount: string;
+    currency: string;
+    customer_description: string;
+    is_zero: boolean;
+    acknowledged_at: string | null;
+};
+
+export type CustomerInvitation = {
+    status: string;
+    status_label: string;
+    delivery_status: string;
+    delivery_status_label: string;
+    generation: number;
+    can_resend: boolean;
+    sent_at: string | null;
+    opened_at: string | null;
+    expires_at: string | null;
+    delivery_error: string | null;
 };
 
 export type CustomerDetail = {
@@ -63,6 +117,15 @@ export type CustomerDetail = {
     registered_at: string;
     registered_at_iso: string;
     assigned_agent: AssignedAgent | null;
+    fee_snapshot?: FeeSnapshot | null;
+    invitation?: CustomerInvitation | null;
+    pending_name_correction?: {
+        id: number;
+        proposed_name: string | null;
+        expires_at: string;
+        can_review: boolean;
+        can_cancel: boolean;
+    };
     notes?: string | null;
     relationship_history: {
         registered_at: string;
@@ -91,6 +154,7 @@ export type CustomerDetail = {
         reassign_message: string;
         can_archive: boolean;
         archive_message: string;
+        can_manage_invitation?: boolean;
     };
 };
 
@@ -108,11 +172,81 @@ defineOptions({
             },
             {
                 title: 'Customers',
-                href: '/customers',
+                href: customersIndex(),
             },
         ],
     },
 });
+
+const showCorrectEmailModal = ref(false);
+const showCancelModal = ref(false);
+
+const emailForm = useForm({
+    email: '',
+    reason: '',
+});
+
+const cancelForm = useForm({
+    reason: '',
+});
+
+const handleResendInvitation = (): void => {
+    if (!props.customer.invitation?.can_resend) return;
+
+    router.post(
+        resendInvitation(props.customer.id).url,
+        {},
+        {
+            preserveScroll: true,
+        },
+    );
+};
+
+const openCorrectEmailModal = (): void => {
+    emailForm.reset();
+    emailForm.clearErrors();
+    emailForm.email = props.customer.email || '';
+    showCorrectEmailModal.value = true;
+};
+
+const submitCorrectEmail = (): void => {
+    emailForm.post(correctEmailInvitation(props.customer.id).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showCorrectEmailModal.value = false;
+            emailForm.reset();
+        },
+    });
+};
+
+const openCancelModal = (): void => {
+    cancelForm.reset();
+    cancelForm.clearErrors();
+    showCancelModal.value = true;
+};
+
+const submitCancelInvitation = (): void => {
+    cancelForm.post(cancelInvitation(props.customer.id).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showCancelModal.value = false;
+            cancelForm.reset();
+        },
+    });
+};
+
+const cancelNameProposal = (): void => {
+    const proposal = props.customer.pending_name_correction;
+    if (!proposal?.can_cancel) return;
+    router.post(
+        cancelNameCorrection({
+            customer: props.customer.id,
+            correction: proposal.id,
+        }).url,
+        {},
+        { preserveScroll: true },
+    );
+};
 
 const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/);
@@ -146,6 +280,23 @@ const getAccountBadgeVariant = (state: string) => {
             return 'secondary';
     }
 };
+
+const getInvitationBadgeVariant = (
+    status: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    switch (status) {
+        case 'activated':
+            return 'default';
+        case 'opened':
+        case 'sent':
+            return 'secondary';
+        case 'expired':
+        case 'cancelled':
+            return 'destructive';
+        default:
+            return 'outline';
+    }
+};
 </script>
 
 <template>
@@ -157,7 +308,10 @@ const getAccountBadgeVariant = (state: string) => {
             class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
         >
             <div class="flex items-center gap-4">
-                <Link v-if="viewer_type !== 'customer'" href="/customers">
+                <Link
+                    v-if="viewer_type !== 'customer'"
+                    :href="customersIndex().url"
+                >
                     <Button variant="outline" size="icon" class="h-9 w-9">
                         <ArrowLeft class="h-4 w-4" />
                     </Button>
@@ -182,6 +336,12 @@ const getAccountBadgeVariant = (state: string) => {
 
             <!-- Status Badges -->
             <div class="flex items-center gap-2">
+                <Link
+                    v-if="customer.actions.can_edit"
+                    :href="editCustomer(customer.id).url"
+                >
+                    <Button variant="outline">Edit profile</Button>
+                </Link>
                 <Badge
                     :variant="
                         getOperationalBadgeVariant(customer.operational_status)
@@ -240,6 +400,59 @@ const getAccountBadgeVariant = (state: string) => {
                             >
                         </div>
                     </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        <Card v-if="customer.pending_name_correction">
+            <CardHeader>
+                <CardTitle>Pending name correction</CardTitle>
+                <CardDescription
+                    >Expires
+                    {{ customer.pending_name_correction.expires_at }}
+                    (Africa/Lagos).</CardDescription
+                >
+            </CardHeader>
+            <CardContent
+                class="flex flex-wrap items-center justify-between gap-3"
+            >
+                <p
+                    v-if="customer.pending_name_correction.can_review"
+                    class="text-sm"
+                >
+                    Proposed name:
+                    <strong>{{
+                        customer.pending_name_correction.proposed_name
+                    }}</strong>
+                </p>
+                <p v-else class="text-muted-foreground text-sm">
+                    Waiting for the Customer to review the proposed name.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <Link
+                        v-if="
+                            customer.pending_name_correction.can_review ||
+                            customer.pending_name_correction.can_cancel
+                        "
+                        :href="
+                            showNameCorrection({
+                                customer: customer.id,
+                                correction: customer.pending_name_correction.id,
+                            }).url
+                        "
+                    >
+                        <Button variant="outline">{{
+                            customer.pending_name_correction.can_review
+                                ? 'Review correction'
+                                : 'View proposal'
+                        }}</Button>
+                    </Link>
+                    <Button
+                        v-if="customer.pending_name_correction.can_cancel"
+                        variant="destructive"
+                        @click="cancelNameProposal"
+                        >Cancel proposal</Button
+                    >
                 </div>
             </CardContent>
         </Card>
@@ -440,6 +653,206 @@ const getAccountBadgeVariant = (state: string) => {
             </CardContent>
         </Card>
 
+        <!-- Registration Fee Snapshot Card -->
+        <Card v-if="customer.fee_snapshot">
+            <CardHeader class="pb-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <Coins class="text-primary h-4 w-4" />
+                        <CardTitle class="text-base font-semibold"
+                            >Registration Fee Terms</CardTitle
+                        >
+                    </div>
+                    <Badge
+                        :variant="
+                            customer.fee_snapshot.acknowledged_at
+                                ? 'default'
+                                : 'secondary'
+                        "
+                    >
+                        {{
+                            customer.fee_snapshot.acknowledged_at
+                                ? 'Terms Acknowledged'
+                                : 'Pending Activation'
+                        }}
+                    </Badge>
+                </div>
+                <CardDescription>
+                    Snapshotted registration terms established at customer
+                    record creation.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div class="grid gap-4 text-sm sm:grid-cols-3">
+                    <div class="space-y-1">
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Rule Name & Amount
+                        </p>
+                        <p class="text-foreground font-semibold">
+                            {{ customer.fee_snapshot.name }}
+                        </p>
+                        <p class="text-primary font-mono text-lg font-bold">
+                            {{ customer.fee_snapshot.formatted_amount }}
+                        </p>
+                    </div>
+                    <div class="space-y-1">
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Acknowledgement
+                        </p>
+                        <p
+                            v-if="customer.fee_snapshot.acknowledged_at"
+                            class="text-foreground text-xs"
+                        >
+                            Acknowledged on
+                            {{ customer.fee_snapshot.acknowledged_at }}
+                        </p>
+                        <p v-else class="text-muted-foreground text-xs italic">
+                            Awaiting customer acceptance during activation.
+                        </p>
+                    </div>
+                    <div class="space-y-1">
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Customer Disclosure
+                        </p>
+                        <p class="text-muted-foreground text-xs">
+                            {{ customer.fee_snapshot.customer_description }}
+                        </p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        <!-- Invitation Lifecycle & Delivery Card (Admin & Assigned Agent) -->
+        <Card v-if="customer.invitation">
+            <CardHeader class="pb-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <Mail class="text-primary h-4 w-4" />
+                        <CardTitle class="text-base font-semibold"
+                            >Invitation & Delivery Lifecycle</CardTitle
+                        >
+                    </div>
+                    <Badge
+                        :variant="
+                            getInvitationBadgeVariant(
+                                customer.invitation.status,
+                            )
+                        "
+                    >
+                        {{ customer.invitation.status_label }}
+                    </Badge>
+                </div>
+                <CardDescription>
+                    Track account activation invitation state, delivery
+                    attempts, and manage resends or address corrections.
+                </CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="grid gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Delivery Status
+                        </p>
+                        <Badge variant="outline" class="mt-1">{{
+                            customer.invitation.delivery_status_label
+                        }}</Badge>
+                    </div>
+                    <div>
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Generation
+                        </p>
+                        <p class="mt-1 font-mono text-sm font-semibold">
+                            #{{ customer.invitation.generation }}
+                        </p>
+                    </div>
+                    <div>
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Dispatched At
+                        </p>
+                        <p class="mt-1 text-sm">
+                            {{ customer.invitation.sent_at || '—' }}
+                        </p>
+                    </div>
+                    <div>
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Expires At
+                        </p>
+                        <p class="mt-1 text-sm">
+                            {{ customer.invitation.expires_at || '—' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div
+                    v-if="customer.invitation.delivery_error"
+                    class="bg-destructive/10 text-destructive rounded-lg p-3 text-xs"
+                >
+                    <p class="font-medium">Delivery Error Encountered:</p>
+                    <p class="mt-0.5">
+                        {{ customer.invitation.delivery_error }}
+                    </p>
+                </div>
+
+                <!-- Invitation Management Actions -->
+                <div
+                    v-if="customer.actions.can_manage_invitation"
+                    class="flex flex-wrap items-center gap-3 border-t pt-2"
+                >
+                    <Button
+                        v-if="customer.invitation.can_resend"
+                        variant="outline"
+                        size="sm"
+                        @click="handleResendInvitation"
+                    >
+                        <RotateCw class="mr-1.5 size-3.5" />
+                        Resend Invitation
+                    </Button>
+                    <Button
+                        v-else
+                        variant="outline"
+                        size="sm"
+                        disabled
+                        title="Cooldown active or daily limit reached"
+                    >
+                        <RotateCw class="mr-1.5 size-3.5" />
+                        Resend Cooldown
+                    </Button>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="openCorrectEmailModal"
+                    >
+                        <Mail class="mr-1.5 size-3.5" />
+                        Correct Email
+                    </Button>
+
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        @click="openCancelModal"
+                    >
+                        <XCircle class="mr-1.5 size-3.5" />
+                        Cancel Invitation
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+
         <!-- Explicit Unavailable Dependency Sections -->
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <!-- Financial Summary -->
@@ -550,5 +963,148 @@ const getAccountBadgeVariant = (state: string) => {
                 </div>
             </CardContent>
         </Card>
+
+        <!-- Correct Email Dialog -->
+        <Dialog
+            :open="showCorrectEmailModal"
+            @update:open="showCorrectEmailModal = $event"
+        >
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Correct Customer Email</DialogTitle>
+                    <DialogDescription>
+                        Update the email address for {{ customer.name }}.
+                        Outstanding invitations will be invalidated and a fresh
+                        invitation will be dispatched.
+                    </DialogDescription>
+                </DialogHeader>
+                <form @submit.prevent="submitCorrectEmail" class="space-y-4">
+                    <div class="space-y-1.5">
+                        <Label for="correct-customer-email"
+                            >New Email Address
+                            <span class="text-destructive">*</span></Label
+                        >
+                        <Input
+                            id="correct-customer-email"
+                            v-model="emailForm.email"
+                            type="email"
+                            required
+                            placeholder="customer@example.ng"
+                            :class="{
+                                'border-destructive': emailForm.errors.email,
+                            }"
+                        />
+                        <p
+                            v-if="emailForm.errors.email"
+                            class="text-destructive text-xs"
+                        >
+                            {{ emailForm.errors.email }}
+                        </p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <Label for="correct-customer-email-reason"
+                            >Justification Reason
+                            <span class="text-destructive">*</span></Label
+                        >
+                        <textarea
+                            id="correct-customer-email-reason"
+                            v-model="emailForm.reason"
+                            rows="2"
+                            required
+                            placeholder="Reason for updating email address (e.g. Typo in initial registration address)"
+                            class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            :class="{
+                                'border-destructive': emailForm.errors.reason,
+                            }"
+                        />
+                        <p
+                            v-if="emailForm.errors.reason"
+                            class="text-destructive text-xs"
+                        >
+                            {{ emailForm.errors.reason }}
+                        </p>
+                    </div>
+
+                    <DialogFooter class="gap-2 sm:gap-0">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showCorrectEmailModal = false"
+                            >Cancel</Button
+                        >
+                        <Button type="submit" :disabled="emailForm.processing">
+                            <Loader2
+                                v-if="emailForm.processing"
+                                class="mr-2 size-4 animate-spin"
+                            />
+                            Update Email & Resend
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Cancel Invitation Dialog -->
+        <Dialog :open="showCancelModal" @update:open="showCancelModal = $event">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Cancel Customer Invitation</DialogTitle>
+                    <DialogDescription>
+                        Invalidate outstanding invitation and activation links
+                        for {{ customer.name }}. The account will not be able to
+                        activate with cancelled links.
+                    </DialogDescription>
+                </DialogHeader>
+                <form
+                    @submit.prevent="submitCancelInvitation"
+                    class="space-y-4"
+                >
+                    <div class="space-y-1.5">
+                        <Label for="cancel-customer-invitation-reason"
+                            >Cancellation Reason
+                            <span class="text-destructive">*</span></Label
+                        >
+                        <textarea
+                            id="cancel-customer-invitation-reason"
+                            v-model="cancelForm.reason"
+                            rows="2"
+                            required
+                            placeholder="Reason for cancelling invitation (e.g. Customer requested onboarding withdrawal)"
+                            class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            :class="{
+                                'border-destructive': cancelForm.errors.reason,
+                            }"
+                        />
+                        <p
+                            v-if="cancelForm.errors.reason"
+                            class="text-destructive text-xs"
+                        >
+                            {{ cancelForm.errors.reason }}
+                        </p>
+                    </div>
+
+                    <DialogFooter class="gap-2 sm:gap-0">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showCancelModal = false"
+                            >Keep Invitation</Button
+                        >
+                        <Button
+                            type="submit"
+                            variant="destructive"
+                            :disabled="cancelForm.processing"
+                        >
+                            <Loader2
+                                v-if="cancelForm.processing"
+                                class="mr-2 size-4 animate-spin"
+                            />
+                            Confirm Cancellation
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

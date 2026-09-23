@@ -1,35 +1,41 @@
 <script setup lang="ts">
-import { Form, Head, usePage } from '@inertiajs/vue3';
-import { Link } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { edit } from '@/routes/profile';
 import { dashboard } from '@/routes';
-import { send } from '@/routes/verification';
+import { edit } from '@/routes/profile';
+import { store as requestEmailChange } from '@/routes/email-change';
+
+const props = defineProps<{
+    mustVerifyEmail: boolean;
+    status?: string | null;
+    profileEditUrl: string | null;
+}>();
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            {
-                title: 'Dashboard',
-                href: dashboard(),
-            },
-            {
-                title: 'Profile settings',
-                href: edit(),
-            },
+            { title: 'Dashboard', href: dashboard() },
+            { title: 'Profile settings', href: edit() },
         ],
     },
 });
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
+const emailForm = useForm({ email: user.value.email });
+const emailFormProfileError = computed(
+    () => (emailForm.errors as unknown as { profile?: string }).profile,
+);
+
+const submitEmailChange = (): void => {
+    emailForm.post(requestEmailChange().url, { preserveScroll: true });
+};
 </script>
 
 <template>
@@ -41,70 +47,64 @@ const user = computed(() => page.props.auth.user);
         <Heading
             variant="small"
             title="Profile"
-            description="Update your name and email address"
+            description="Review your account details and manage identity changes securely."
         />
 
-        <Form
-            v-bind="ProfileController.update.form()"
-            class="space-y-6"
-            v-slot="{ errors, processing }"
-        >
-            <div class="grid gap-2">
-                <Label for="name">Name</Label>
-                <Input
-                    id="name"
-                    class="mt-1 block w-full"
-                    name="name"
-                    :default-value="user.name"
-                    required
-                    autocomplete="name"
-                    placeholder="Full name"
-                />
-                <InputError class="mt-2" :message="errors.name" />
-            </div>
+        <section class="space-y-3 rounded-lg border p-5">
+            <h2 class="text-base font-medium">Name and phone</h2>
+            <p class="text-muted-foreground text-sm">
+                Your current name is {{ user.name }}. Name and phone changes use
+                your account profile and may require fresh authentication.
+            </p>
+            <Link v-if="profileEditUrl" :href="profileEditUrl">
+                <Button variant="outline">Open profile</Button>
+            </Link>
+            <p v-else class="text-muted-foreground text-sm">
+                Contact an authorized administrator to update your profile
+                details.
+            </p>
+        </section>
 
+        <form
+            class="space-y-4 rounded-lg border p-5"
+            @submit.prevent="submitEmailChange"
+        >
+            <div>
+                <h2 class="text-base font-medium">Email address</h2>
+                <p class="text-muted-foreground mt-1 text-sm">
+                    The current email stays active until both the current and
+                    new addresses confirm the change.
+                </p>
+            </div>
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">New email address</Label>
                 <Input
                     id="email"
+                    v-model="emailForm.email"
                     type="email"
-                    class="mt-1 block w-full"
-                    name="email"
-                    :default-value="user.email"
                     required
-                    autocomplete="username"
-                    placeholder="Email address"
+                    maxlength="255"
+                    autocomplete="email"
                 />
-                <InputError class="mt-2" :message="errors.email" />
+                <InputError :message="emailForm.errors.email" />
             </div>
+            <p v-if="emailFormProfileError" class="text-destructive text-sm">
+                {{ emailFormProfileError }}
+            </p>
+            <Button type="submit" :disabled="emailForm.processing">{{
+                emailForm.processing
+                    ? 'Sending confirmations…'
+                    : 'Request email change'
+            }}</Button>
+        </form>
 
-            <div v-if="page.props.mustVerifyEmail && !user.email_verified_at">
-                <p class="text-muted-foreground -mt-4 text-sm">
-                    Your email address is unverified.
-                    <Link
-                        :href="send()"
-                        as="button"
-                        class="text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
-                    >
-                        Click here to re-send the verification email.
-                    </Link>
-                </p>
+        <p
+            v-if="props.status === 'email-change-complete'"
+            class="text-sm font-medium text-green-700"
+        >
+            Your email address changed. Sign in with the new address.
+        </p>
 
-                <div
-                    v-if="page.props.status === 'verification-link-sent'"
-                    class="mt-2 text-sm font-medium text-green-600"
-                >
-                    A new verification link has been sent to your email address.
-                </div>
-            </div>
-
-            <div class="flex items-center gap-4">
-                <Button :disabled="processing" data-test="update-profile-button"
-                    >Save</Button
-                >
-            </div>
-        </Form>
+        <DeleteUser />
     </div>
-
-    <DeleteUser />
 </template>

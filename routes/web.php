@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\LockoutController;
+use App\Http\Controllers\Admin\RegistrationFeeRuleController;
 use App\Http\Controllers\AgentDirectoryController;
 use App\Http\Controllers\AgentInvitationController;
 use App\Http\Controllers\AgentPhotoController;
@@ -9,14 +10,20 @@ use App\Http\Controllers\AgentProfileController;
 use App\Http\Controllers\AgentRegistrationController;
 use App\Http\Controllers\Auth\AgentActivationController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
+use App\Http\Controllers\Auth\CustomerActivationController;
 use App\Http\Controllers\Auth\DeviceEvictionController;
 use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
 use App\Http\Controllers\CustomerDirectoryController;
+use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerPhotoController;
 use App\Http\Controllers\CustomerProfileController;
+use App\Http\Controllers\CustomerRegistrationController;
+use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\ProfileIdentityController;
+use App\Http\Controllers\ProfileManagementController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -28,11 +35,36 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::get('invitations/agent/{token}', [AgentActivationController::class, 'show'])->name('invitations.agent.show');
 Route::post('invitations/agent/{token}', [AgentActivationController::class, 'activate'])->name('invitations.agent.activate');
 
+// Customer Activation via Hashed Challenge (CAM-T06)
+Route::get('invitations/customer/{token}', [CustomerActivationController::class, 'show'])->name('invitations.customer.show');
+Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->name('invitations.customer.activate');
+
 Route::middleware(['auth'])->group(function () {
+    // Customer Registration and Attempts (CAM-T06)
+    Route::get('customers/create', [CustomerRegistrationController::class, 'create'])->name('customers.create');
+    Route::get('customers/fee-preview', [CustomerRegistrationController::class, 'feePreview'])->name('customers.fee-preview');
+    Route::post('customers', [CustomerRegistrationController::class, 'store'])->name('customers.store');
+    Route::get('customers/attempts/{reference}', [CustomerRegistrationController::class, 'showAttempt'])->name('customers.attempts.show');
+
     // Customer & Agent Directories and Profiles (CAM-T04)
     Route::get('customers', [CustomerDirectoryController::class, 'index'])->name('customers.index');
+    Route::get('customers/{customer}/edit', [ProfileManagementController::class, 'editCustomer'])->name('customers.edit');
+    Route::patch('customers/{customer}', [ProfileManagementController::class, 'updateCustomer'])->name('customers.update');
+    Route::post('customers/{customer}/name', [ProfileIdentityController::class, 'changeOwnName'])->middleware('fresh')->name('customers.name.update');
+    Route::post('customers/{customer}/name-corrections', [ProfileIdentityController::class, 'storeNameCorrection'])->name('customers.name-corrections.store');
+    Route::post('customers/{customer}/phone', [ProfileIdentityController::class, 'changeOwnCustomerPhone'])->middleware('fresh')->name('customers.phone.self');
+    Route::post('customers/{customer}/phone-correction', [ProfileIdentityController::class, 'correctCustomerPhone'])->name('customers.phone-corrections.store');
+    Route::get('customers/{customer}/name-corrections/{correction}', [ProfileIdentityController::class, 'showNameCorrection'])->name('customers.name-corrections.show');
+    Route::post('customers/{customer}/name-corrections/{correction}/accept', [ProfileIdentityController::class, 'acceptNameCorrection'])->middleware('fresh')->name('customers.name-corrections.accept');
+    Route::post('customers/{customer}/name-corrections/{correction}/reject', [ProfileIdentityController::class, 'rejectNameCorrection'])->middleware('fresh')->name('customers.name-corrections.reject');
+    Route::post('customers/{customer}/name-corrections/{correction}/cancel', [ProfileIdentityController::class, 'cancelNameCorrection'])->name('customers.name-corrections.cancel');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
+
+    // Customer Invitation Management (CAM-T06)
+    Route::post('customers/{customer}/invitation/resend', [CustomerInvitationController::class, 'resend'])->name('customers.invitations.resend');
+    Route::post('customers/{customer}/invitation/correct-email', [CustomerInvitationController::class, 'correctEmail'])->name('customers.invitations.correct-email');
+    Route::post('customers/{customer}/invitation/cancel', [CustomerInvitationController::class, 'cancel'])->name('customers.invitations.cancel');
 
     // Agent Registration and Attempts (CAM-T05)
     Route::get('agents/create', [AgentRegistrationController::class, 'create'])->name('agents.create');
@@ -40,6 +72,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('agents/attempts/{reference}', [AgentRegistrationController::class, 'showAttempt'])->name('agents.attempts.show');
 
     Route::get('agents', [AgentDirectoryController::class, 'index'])->name('agents.index');
+    Route::get('agents/{agent}/edit', [ProfileManagementController::class, 'editAgent'])->name('agents.edit');
+    Route::patch('agents/{agent}', [ProfileManagementController::class, 'updateAgent'])->name('agents.update');
+    Route::post('agents/{agent}/phone', [ProfileIdentityController::class, 'changeOwnAgentPhone'])->middleware('fresh')->name('agents.phone.self');
+    Route::post('agents/{agent}/phone-correction', [ProfileIdentityController::class, 'correctAgentPhone'])->name('agents.phone-corrections.store');
     Route::get('agents/{agent}', [AgentProfileController::class, 'show'])->name('agents.show');
     Route::get('agents/{agent}/photo', [AgentPhotoController::class, 'show'])->name('agents.photo');
 
@@ -74,6 +110,12 @@ Route::middleware(['auth'])->group(function () {
         Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
             ->middleware('fresh')
             ->name('access.permissions.update');
+
+        // Registration Fee Rules (CAM-T06)
+        Route::get('fees/registration', [RegistrationFeeRuleController::class, 'index'])->name('fees.registration.index');
+        Route::post('fees/registration', [RegistrationFeeRuleController::class, 'store'])
+            ->middleware('fresh')
+            ->name('fees.registration.store');
     });
 
     // Step-up Fresh Authentication (AUTHZ-T04)
@@ -118,6 +160,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('sessions/revoke-all', [SessionController::class, 'destroyAll'])
         ->name('sessions.destroy-all');
 });
+
+Route::get('email-change/{pendingEmailChange}', [EmailChangeController::class, 'showConfirmation'])->name('email-change.confirm.show');
+Route::post('email-change/{pendingEmailChange}', [EmailChangeController::class, 'confirm'])->name('email-change.confirm');
 
 // Device Eviction (pending authentication)
 Route::get('device-eviction', [DeviceEvictionController::class, 'show'])

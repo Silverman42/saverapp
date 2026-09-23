@@ -217,6 +217,36 @@ class CustomerProfile extends Model
     }
 
     /**
+     * Get the fee snapshot for this customer profile.
+     *
+     * @return HasOne<FeeSnapshot, $this>
+     */
+    public function feeSnapshot(): HasOne
+    {
+        return $this->hasOne(FeeSnapshot::class, 'customer_profile_id');
+    }
+
+    /**
+     * Get the fee obligation for this customer profile.
+     *
+     * @return HasOne<FeeObligation, $this>
+     */
+    public function feeObligation(): HasOne
+    {
+        return $this->hasOne(FeeObligation::class, 'customer_profile_id');
+    }
+
+    /**
+     * Get the status histories for this customer profile.
+     *
+     * @return HasMany<CustomerStatusHistory, $this>
+     */
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(CustomerStatusHistory::class, 'customer_profile_id')->orderBy('created_at', 'desc');
+    }
+
+    /**
      * Scope query to active customers.
      *
      * @param  Builder<CustomerProfile>  $query

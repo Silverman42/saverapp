@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountState;
+use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\Invitation;
 use App\Models\User;
 use App\Services\AgentEligibilityService;
+use App\Services\AuthorizationService;
+use App\Services\CustomerNameCorrectionService;
 use App\Services\ResourceScopeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -21,6 +26,8 @@ class CustomerProfileController extends Controller
         string $customer,
         ResourceScopeService $resourceScopeService,
         AgentEligibilityService $agentEligibilityService,
+        AuthorizationService $authorizationService,
+        CustomerNameCorrectionService $nameCorrectionService,
     ): Response {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -28,7 +35,7 @@ class CustomerProfileController extends Controller
         // 1. Resolve through ResourceScopeService
         $customerProfile = $resourceScopeService->forCustomers($viewer)
             ->where('customer_id', $customer)
-            ->with(['user', 'currentAssignment.agentProfile.user'])
+            ->with(['user', 'currentAssignment.agentProfile.user', 'feeSnapshot'])
             ->first();
 
         // Missing or unauthorized IDs return identical generic unavailable response
@@ -79,7 +86,16 @@ class CustomerProfileController extends Controller
             ];
         }
 
-        // Build viewer-specific profile data
+        $canManageInvitation = $user?->account_state === AccountState::Invited
+            && (
+                ($viewer->user_type === UserType::Admin && $authorizationService->allows($viewer, AdminPermission::CustomersManage))
+                || ($viewer->user_type === UserType::Agent
+                    && $agentEligibilityService->canPerformAssignedCustomerWork($viewer)
+                    && $currentAssignment !== null
+                    && $currentAssignment->agent_profile_id === $viewer->agentProfile?->id
+                )
+            );
+
         $profileData = [
             'id' => $customerProfile->customer_id,
             'name' => $user?->name ?? 'Unknown',
@@ -97,6 +113,7 @@ class CustomerProfileController extends Controller
             'account_state_label' => $user?->account_state ? ucfirst(str_replace('_', ' ', $user->account_state->value)) : 'Unknown',
             'registered_at' => $customerProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             'registered_at_iso' => $customerProfile->created_at?->timezone('Africa/Lagos')->toIso8601String(),
+            'version' => $customerProfile->version,
             'assigned_agent' => $assignedAgentData,
             'relationship_history' => [
                 'registered_at' => $customerProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
@@ -121,18 +138,65 @@ class CustomerProfileController extends Controller
             ],
             // Contextual actions
             'actions' => [
-                'can_edit' => false,
-                'edit_message' => 'Customer profile editing will be available in CAM-T07.',
+                'can_edit' => Gate::forUser($viewer)->allows('update', $customerProfile),
+                'edit_message' => Gate::forUser($viewer)->allows('update', $customerProfile)
+                    ? null
+                    : 'Your current access does not allow editing this Customer profile.',
                 'can_reassign' => false,
                 'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
                 'can_archive' => false,
                 'archive_message' => 'Customer archival will be available in CAM-T09.',
+                'can_manage_invitation' => $canManageInvitation,
             ],
         ];
 
-        // Internal notes: STRICTLY OMITTED from Customer viewer responses
+        $snapshot = $customerProfile->feeSnapshot;
+        if ($snapshot) {
+            $profileData['fee_snapshot'] = [
+                'name' => $snapshot->name,
+                'model' => $snapshot->model->value,
+                'amount_kobo' => $snapshot->amount_kobo,
+                'formatted_amount' => $snapshot->formattedAmount(),
+                'currency' => $snapshot->currency,
+                'customer_description' => $snapshot->customer_description,
+                'is_zero' => $snapshot->isZero(),
+                'acknowledged_at' => $snapshot->acknowledged_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+            ];
+        }
+
+        $pendingNameCorrection = $nameCorrectionService->visiblePending($customerProfile, $viewer);
+        if ($pendingNameCorrection !== null) {
+            $profileData['pending_name_correction'] = [
+                'id' => $pendingNameCorrection->id,
+                'proposed_name' => $viewer->id === $customerProfile->user_id ? $pendingNameCorrection->proposed_name : null,
+                'expires_at' => $pendingNameCorrection->expires_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                'can_review' => $viewer->id === $customerProfile->user_id,
+                'can_cancel' => $viewer->id === $pendingNameCorrection->requested_by_user_id,
+            ];
+        }
+
+        // Internal notes and invitation controls: STRICTLY OMITTED from Customer viewer responses
         if ($viewer->user_type !== UserType::Customer) {
             $profileData['notes'] = $customerProfile->notes;
+
+            $latestInvitation = $user
+                ? Invitation::query()->where('user_id', $user->id)->latest('generation')->first()
+                : null;
+
+            if ($latestInvitation) {
+                $profileData['invitation'] = [
+                    'status' => $latestInvitation->status->value,
+                    'status_label' => $latestInvitation->status->displayName(),
+                    'delivery_status' => $latestInvitation->delivery_status->value,
+                    'delivery_status_label' => $latestInvitation->delivery_status->displayName(),
+                    'generation' => $latestInvitation->generation,
+                    'can_resend' => $latestInvitation->canResend(),
+                    'sent_at' => $latestInvitation->sent_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'opened_at' => $latestInvitation->opened_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'expires_at' => $latestInvitation->expires_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'delivery_error' => $latestInvitation->delivery_error,
+                ];
+            }
         }
 
         return Inertia::render('customers/Show', [

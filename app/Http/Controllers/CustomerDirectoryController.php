@@ -287,6 +287,7 @@ class CustomerDirectoryController extends Controller
             ],
             'available_agents' => $availableAgents,
             'viewer_type' => $viewer->user_type->value,
+            'can_register' => Gate::forUser($viewer)->allows('create', CustomerProfile::class),
             'overview' => $overview,
             'overview_period' => $overviewPeriod,
         ]);
