@@ -49,6 +49,7 @@ class CustomerProfileController extends Controller
         $currentAssignment = $customerProfile->currentAssignment;
         $assignedAgent = $currentAssignment?->agentProfile;
         $assignedAgentUser = $assignedAgent?->user;
+        $latestStatusHistory = $customerProfile->statusHistories()->first();
 
         // Assigned Agent data tailored to viewer role
         $assignedAgentData = null;
@@ -56,7 +57,7 @@ class CustomerProfileController extends Controller
             if ($viewer->user_type === UserType::Customer) {
                 // Customer receives permitted business contact only
                 $assignedAgentData = [
-                    'name' => $assignedAgentUser?->name ?? 'Unknown',
+                    'name' => $assignedAgentUser->name,
                     'phone' => $assignedAgent->phone,
                     'email' => $assignedAgentUser?->email,
                 ];
@@ -65,7 +66,7 @@ class CustomerProfileController extends Controller
                 $isEligible = $agentEligibilityService->canReceiveAssignment($assignedAgent);
                 $assignedAgentData = [
                     'id' => $assignedAgent->agent_id,
-                    'name' => $assignedAgentUser?->name ?? 'Unknown',
+                    'name' => $assignedAgentUser->name,
                     'phone' => $assignedAgent->phone,
                     'email' => $assignedAgentUser?->email,
                     'operational_status' => $assignedAgent->operational_status->value,
@@ -98,7 +99,7 @@ class CustomerProfileController extends Controller
 
         $profileData = [
             'id' => $customerProfile->customer_id,
-            'name' => $user?->name ?? 'Unknown',
+            'name' => $user->name,
             'email' => $user?->email,
             'phone' => $customerProfile->phone,
             'address' => $customerProfile->address,
@@ -114,6 +115,11 @@ class CustomerProfileController extends Controller
             'registered_at' => $customerProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             'registered_at_iso' => $customerProfile->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'version' => $customerProfile->version,
+            'status_explanation' => $latestStatusHistory?->customer_facing_explanation === null ? null : [
+                'status' => $latestStatusHistory->to_status->displayName(),
+                'explanation' => $latestStatusHistory->customer_facing_explanation,
+                'effective_at' => $latestStatusHistory->created_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+            ],
             'assigned_agent' => $assignedAgentData,
             'relationship_history' => [
                 'registered_at' => $customerProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
@@ -147,6 +153,9 @@ class CustomerProfileController extends Controller
                 'can_archive' => false,
                 'archive_message' => 'Customer archival will be available in CAM-T09.',
                 'can_manage_invitation' => $canManageInvitation,
+                'can_manage_status' => $customerProfile->operational_status->value !== 'archived'
+                    && $viewer->user_type === UserType::Admin
+                    && $authorizationService->allows($viewer, AdminPermission::CustomersManage),
             ],
         ];
 

@@ -6,14 +6,17 @@ use App\Enums\CustomerStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
  * @property int $customer_profile_id
- * @property string|null $from_status
- * @property string $to_status
+ * @property CustomerStatus|null $from_status
+ * @property CustomerStatus $to_status
  * @property string $reason
+ * @property string|null $customer_facing_explanation
+ * @property int|null $audit_event_id
  * @property int $changed_by_user_id
  * @property Carbon $created_at
  */
@@ -22,7 +25,10 @@ use Illuminate\Support\Carbon;
     'from_status',
     'to_status',
     'reason',
+    'customer_facing_explanation',
+    'audit_event_id',
     'changed_by_user_id',
+    'created_at',
 ])]
 class CustomerStatusHistory extends Model
 {
@@ -65,5 +71,17 @@ class CustomerStatusHistory extends Model
     public function changedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'changed_by_user_id');
+    }
+
+    /** @return HasMany<CustomerStatusNotificationIntent, $this> */
+    public function notificationIntents(): HasMany
+    {
+        return $this->hasMany(CustomerStatusNotificationIntent::class, 'customer_status_history_id');
+    }
+
+    /** @return BelongsTo<AuditEvent, $this> */
+    public function auditEvent(): BelongsTo
+    {
+        return $this->belongsTo(AuditEvent::class);
     }
 }

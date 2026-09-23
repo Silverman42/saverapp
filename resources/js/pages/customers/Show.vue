@@ -6,6 +6,7 @@ import {
     edit as editCustomer,
     index as customersIndex,
 } from '@/routes/customers';
+import { edit as manageCustomerStatus } from '@/routes/customers/status';
 import {
     show as showNameCorrection,
     cancel as cancelNameCorrection,
@@ -116,6 +117,11 @@ export type CustomerDetail = {
     account_state_label: string;
     registered_at: string;
     registered_at_iso: string;
+    status_explanation: {
+        status: string;
+        explanation: string;
+        effective_at: string | null;
+    } | null;
     assigned_agent: AssignedAgent | null;
     fee_snapshot?: FeeSnapshot | null;
     invitation?: CustomerInvitation | null;
@@ -155,6 +161,7 @@ export type CustomerDetail = {
         can_archive: boolean;
         archive_message: string;
         can_manage_invitation?: boolean;
+        can_manage_status?: boolean;
     };
 };
 
@@ -342,6 +349,12 @@ const getInvitationBadgeVariant = (
                 >
                     <Button variant="outline">Edit profile</Button>
                 </Link>
+                <Link
+                    v-if="customer.actions.can_manage_status"
+                    :href="manageCustomerStatus(customer.id).url"
+                >
+                    <Button variant="outline">Manage status</Button>
+                </Link>
                 <Badge
                     :variant="
                         getOperationalBadgeVariant(customer.operational_status)
@@ -358,6 +371,24 @@ const getInvitationBadgeVariant = (
                 </Badge>
             </div>
         </div>
+
+        <Card v-if="customer.status_explanation">
+            <CardContent class="space-y-1.5 p-4">
+                <p class="text-sm font-medium">
+                    {{ customer.status_explanation.status }} status update
+                    <span
+                        v-if="customer.status_explanation.effective_at"
+                        class="text-muted-foreground font-normal"
+                    >
+                        · {{ customer.status_explanation.effective_at }}
+                        (Africa/Lagos)
+                    </span>
+                </p>
+                <p class="text-muted-foreground text-sm">
+                    {{ customer.status_explanation.explanation }}
+                </p>
+            </CardContent>
+        </Card>
 
         <!-- Profile Photo & Primary Identity Banner -->
         <Card>

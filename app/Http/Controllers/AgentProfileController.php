@@ -182,8 +182,10 @@ class AgentProfileController extends Controller
                     : 'Your current access does not allow editing this Agent profile.',
                 'can_reassign_customers' => false,
                 'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
-                'can_manage_lifecycle' => false,
-                'lifecycle_message' => 'Agent status & lifecycle management will be available in CAM-T10/T11.',
+                'can_manage_lifecycle' => Gate::forUser($viewer)->allows('manage', $agentProfile),
+                'lifecycle_message' => Gate::forUser($viewer)->allows('manage', $agentProfile)
+                    ? 'Manage Agent operational status.'
+                    : 'Agent lifecycle management requires agents.manage.',
                 'can_manage_invitation' => $viewer->user_type === UserType::Admin
                     && $authorizationService->allows($viewer, AdminPermission::AgentsManage)
                     && $user?->account_state === AccountState::Invited,

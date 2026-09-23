@@ -243,7 +243,9 @@ class CustomerProfile extends Model
      */
     public function statusHistories(): HasMany
     {
-        return $this->hasMany(CustomerStatusHistory::class, 'customer_profile_id')->orderBy('created_at', 'desc');
+        return $this->hasMany(CustomerStatusHistory::class, 'customer_profile_id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
     }
 
     /**

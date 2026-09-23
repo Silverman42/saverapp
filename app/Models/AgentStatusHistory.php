@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -13,7 +14,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $from_status
  * @property string $to_status
  * @property string $reason
+ * @property string|null $agent_facing_explanation
  * @property int $changed_by_user_id
+ * @property int|null $audit_event_id
  * @property Carbon $created_at
  */
 #[Fillable([
@@ -21,7 +24,9 @@ use Illuminate\Support\Carbon;
     'from_status',
     'to_status',
     'reason',
+    'agent_facing_explanation',
     'changed_by_user_id',
+    'audit_event_id',
 ])]
 class AgentStatusHistory extends Model
 {
@@ -62,5 +67,11 @@ class AgentStatusHistory extends Model
     public function changedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'changed_by_user_id');
+    }
+
+    /** @return HasMany<AgentStatusNotificationIntent, $this> */
+    public function notificationIntents(): HasMany
+    {
+        return $this->hasMany(AgentStatusNotificationIntent::class);
     }
 }

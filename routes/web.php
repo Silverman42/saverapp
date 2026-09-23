@@ -8,6 +8,7 @@ use App\Http\Controllers\AgentInvitationController;
 use App\Http\Controllers\AgentPhotoController;
 use App\Http\Controllers\AgentProfileController;
 use App\Http\Controllers\AgentRegistrationController;
+use App\Http\Controllers\AgentStatusController;
 use App\Http\Controllers\Auth\AgentActivationController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
 use App\Http\Controllers\Auth\CustomerActivationController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerPhotoController;
 use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\CustomerRegistrationController;
+use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
@@ -48,6 +50,8 @@ Route::middleware(['auth'])->group(function () {
 
     // Customer & Agent Directories and Profiles (CAM-T04)
     Route::get('customers', [CustomerDirectoryController::class, 'index'])->name('customers.index');
+    Route::get('customers/{customer}/status', [CustomerStatusController::class, 'edit'])->name('customers.status.edit');
+    Route::patch('customers/{customer}/status', [CustomerStatusController::class, 'update'])->name('customers.status.update');
     Route::get('customers/{customer}/edit', [ProfileManagementController::class, 'editCustomer'])->name('customers.edit');
     Route::patch('customers/{customer}', [ProfileManagementController::class, 'updateCustomer'])->name('customers.update');
     Route::post('customers/{customer}/name', [ProfileIdentityController::class, 'changeOwnName'])->middleware('fresh')->name('customers.name.update');
@@ -72,6 +76,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('agents/attempts/{reference}', [AgentRegistrationController::class, 'showAttempt'])->name('agents.attempts.show');
 
     Route::get('agents', [AgentDirectoryController::class, 'index'])->name('agents.index');
+    Route::get('agents/{agent}/status', [AgentStatusController::class, 'edit'])->name('agents.status.edit');
+    Route::patch('agents/{agent}/status', [AgentStatusController::class, 'update'])->name('agents.status.update');
     Route::get('agents/{agent}/edit', [ProfileManagementController::class, 'editAgent'])->name('agents.edit');
     Route::patch('agents/{agent}', [ProfileManagementController::class, 'updateAgent'])->name('agents.update');
     Route::post('agents/{agent}/phone', [ProfileIdentityController::class, 'changeOwnAgentPhone'])->middleware('fresh')->name('agents.phone.self');

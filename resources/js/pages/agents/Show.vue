@@ -7,6 +7,7 @@ import {
     index as agentsIndex,
     show as agentsShow,
 } from '@/routes/agents';
+import { edit as editAgentStatus } from '@/routes/agents/status';
 import {
     cancel as cancelInvitation,
     correctEmail as correctEmailInvitation,
@@ -404,6 +405,12 @@ const resetAssignmentFilters = (): void => {
                     :href="editAgent(agent.id).url"
                 >
                     <Button variant="outline">Edit profile</Button>
+                </Link>
+                <Link
+                    v-if="agent.actions.can_manage_lifecycle"
+                    :href="editAgentStatus(agent.id).url"
+                >
+                    <Button variant="outline">Manage status</Button>
                 </Link>
                 <Badge
                     :variant="

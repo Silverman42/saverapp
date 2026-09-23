@@ -143,6 +143,18 @@ class AgentProfile extends Model
         return $this->hasMany(CustomerAssignment::class, 'agent_profile_id')->where('is_current', 1);
     }
 
+    /** @return HasMany<AgentStatusHistory, $this> */
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(AgentStatusHistory::class);
+    }
+
+    /** @return HasMany<AgentOffboardingCase, $this> */
+    public function offboardingCases(): HasMany
+    {
+        return $this->hasMany(AgentOffboardingCase::class);
+    }
+
     /**
      * Get all historical (ended) customer assignments for this agent profile.
      *

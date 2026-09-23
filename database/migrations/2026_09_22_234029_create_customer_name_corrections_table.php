@@ -25,7 +25,7 @@ return new class extends Migration
             $table->timestamp('resolved_at')->nullable();
             $table->timestamps();
 
-            $table->index(['customer_profile_id', 'status', 'expires_at']);
+            $table->index(['customer_profile_id', 'status', 'expires_at'], 'customer_name_corrections_profile_status_expiry_idx');
         });
     }
 

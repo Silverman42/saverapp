@@ -111,6 +111,13 @@ class CustomerProfilePolicy
         return $this->authorizationService->allows($user, AdminPermission::CustomersReassign);
     }
 
+    /** Determine whether the Admin can change the Customer's operational status. */
+    public function manageOperationalStatus(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $customerProfile->operational_status !== CustomerStatus::Archived
+            && $this->authorizationService->allows($user, AdminPermission::CustomersManage);
+    }
+
     /**
      * Destructive deletion is strictly denied.
      */
