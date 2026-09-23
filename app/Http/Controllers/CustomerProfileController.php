@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\CustomerNameCorrectionService;
+use App\Services\FeeObligationService;
 use App\Services\ResourceScopeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +29,7 @@ class CustomerProfileController extends Controller
         AgentEligibilityService $agentEligibilityService,
         AuthorizationService $authorizationService,
         CustomerNameCorrectionService $nameCorrectionService,
+        FeeObligationService $feeObligationService,
     ): Response {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -35,7 +37,7 @@ class CustomerProfileController extends Controller
         // 1. Resolve through ResourceScopeService
         $customerProfile = $resourceScopeService->forCustomers($viewer)
             ->where('customer_id', $customer)
-            ->with(['user', 'currentAssignment.agentProfile.user', 'feeSnapshot'])
+            ->with(['user', 'currentAssignment.agentProfile.user', 'feeSnapshot', 'feeObligations.feeSnapshot', 'feeObligations.entries'])
             ->first();
 
         // Missing or unauthorized IDs return identical generic unavailable response
@@ -164,12 +166,14 @@ class CustomerProfileController extends Controller
             $profileData['fee_snapshot'] = [
                 'name' => $snapshot->name,
                 'model' => $snapshot->model->value,
+                'rule_version' => $snapshot->fee_rule_version,
                 'amount_kobo' => $snapshot->amount_kobo,
                 'formatted_amount' => $snapshot->formattedAmount(),
                 'currency' => $snapshot->currency,
                 'customer_description' => $snapshot->customer_description,
                 'is_zero' => $snapshot->isZero(),
                 'acknowledged_at' => $snapshot->acknowledged_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                'obligation' => $feeObligationService->customerSummary($customerProfile),
             ];
         }
 
@@ -211,6 +215,7 @@ class CustomerProfileController extends Controller
         return Inertia::render('customers/Show', [
             'customer' => $profileData,
             'viewer_type' => $viewer->user_type->value,
+            'fee_obligations' => $feeObligationService->customerObligations($customerProfile),
         ]);
     }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import type { AcceptableValue } from 'reka-ui';
 import {
     AlertCircle,
     CheckCircle2,
@@ -51,6 +52,11 @@ export type FeeRuleItem = {
     name: string;
     model: string;
     model_label: string;
+    kind?: string;
+    rule_key?: string;
+    timing?: string;
+    basis?: string;
+    basis_points?: number | null;
     amount_kobo: number;
     formatted_amount: string;
     currency: string;
@@ -65,6 +71,8 @@ export type FeeRuleItem = {
 const props = defineProps<{
     current_rule: FeeRuleItem | null;
     rules: FeeRuleItem[];
+    plan_options: FeeRuleItem[];
+    plan_rules: FeeRuleItem[];
 }>();
 
 defineOptions({
@@ -79,21 +87,63 @@ defineOptions({
 const showPublishModal = ref(false);
 
 const form = useForm({
+    kind: 'registration',
+    rule_key: '',
     name: '',
     model: 'fixed',
+    timing: 'first_contribution',
+    basis: 'none',
+    basis_points: '',
     amount_ngn: '',
+    effective_at: '',
     customer_description: '',
     publication_reason: '',
 });
 
-const openPublishModal = (): void => {
+const openPublishModal = (kind: 'registration' | 'plan'): void => {
     form.reset();
     form.clearErrors();
+    form.kind = kind;
     form.model = 'fixed';
+    form.timing = kind === 'registration' ? 'registration' : 'first_contribution';
     showPublishModal.value = true;
 };
 
+const handleModelChange = (value: AcceptableValue): void => {
+    if (typeof value !== 'string') {
+        return;
+    }
+
+    const model = value;
+    form.model = model;
+    if (model === 'percentage' && form.timing === 'first_contribution') {
+        form.timing = 'cycle_completion';
+    } else if (model === 'one_day' && form.timing === 'withdrawal') {
+        form.timing = 'cycle_completion';
+    }
+};
+
 const submitPublish = (): void => {
+    if (form.model !== 'fixed') {
+        form.amount_ngn = '';
+    }
+    if (form.model !== 'percentage') {
+        form.basis_points = '';
+    }
+
+    if (form.kind === 'registration') {
+        form.timing = 'registration';
+        form.basis = 'none';
+    } else if (form.model === 'one_day') {
+        form.basis = 'contractual_daily_contribution';
+    } else if (form.model === 'percentage') {
+        form.basis = form.timing === 'withdrawal'
+            ? 'gross_withdrawal_debit'
+            : 'net_cycle_contributions';
+    } else {
+        form.basis = 'none';
+    }
+
     form.post(feesRegistrationStore().url, {
         preserveScroll: true,
         onSuccess: () => {
@@ -112,13 +162,13 @@ const submitPublish = (): void => {
             <!-- Header -->
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h1 class="text-[25px] font-medium tracking-tight">Registration Fee Rules</h1>
+                    <h1 class="text-[25px] font-medium tracking-tight">Fees and Plan Rules</h1>
                     <p class="text-muted-foreground mt-1.5 text-sm">
-                        Authoritative registration fee terms. All customer onboardings snapshot the active rule at registration.
+                        Versioned registration terms and selectable plan fee options. Posting stays gated until each owning financial workflow is ready.
                     </p>
                 </div>
-                <Button @click="openPublishModal">
-                    <Plus class="mr-1.5 size-4" /> Publish New Rule
+                <Button @click="openPublishModal('registration')">
+                    <Plus class="mr-1.5 size-4" /> Registration Rule
                 </Button>
             </div>
 
@@ -169,6 +219,73 @@ const submitPublish = (): void => {
                     <div class="rounded-lg bg-background p-4 shadow-xs">
                         <p class="text-muted-foreground text-xs font-medium uppercase">Governance Justification</p>
                         <p class="mt-1 text-xs text-foreground">{{ current_rule.publication_reason }}</p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <CardTitle>Selectable Plan Fee Options</CardTitle>
+                            <CardDescription class="mt-1.5">
+                                Rule options are versioned for future plan snapshots. Assessment and posting wait for Module 06 contracts.
+                            </CardDescription>
+                        </div>
+                        <Button variant="outline" @click="openPublishModal('plan')">
+                            <Plus class="mr-1.5 size-4" /> Plan Fee Option
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div v-if="plan_options.length === 0" class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No selectable plan fee options have been published.
+                    </div>
+                    <div v-else class="grid gap-3 md:grid-cols-2">
+                        <div v-for="option in plan_options" :key="option.id" class="rounded-lg border p-4">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <p class="font-medium">{{ option.name }}</p>
+                                    <p class="text-xs text-muted-foreground">{{ option.rule_key }} · v{{ option.version }}</p>
+                                </div>
+                                <Badge variant="outline">{{ option.model_label }}</Badge>
+                            </div>
+                            <p class="mt-3 font-mono text-lg font-semibold">{{ option.formatted_amount }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">{{ option.customer_description }}</p>
+                            <p class="mt-2 text-[11px] text-muted-foreground">Trigger: {{ option.timing?.replaceAll('_', ' ') }}</p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <div class="flex items-center gap-2">
+                        <History class="size-5 text-muted-foreground" />
+                        <CardTitle>Plan Rule History</CardTitle>
+                    </div>
+                    <CardDescription>Published versions remain immutable; only future effective intervals change.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div v-if="plan_rules.length === 0" class="py-6 text-center text-sm text-muted-foreground">
+                        No plan fee rules have been published yet.
+                    </div>
+                    <div v-else class="divide-y divide-border overflow-hidden rounded-lg border">
+                        <div v-for="rule in plan_rules" :key="rule.id" class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="font-mono text-sm font-semibold">{{ rule.rule_key }} · v{{ rule.version }}</span>
+                                    <Badge :variant="rule.is_active ? 'default' : 'secondary'">{{ rule.is_active ? 'Active' : 'Retired' }}</Badge>
+                                    <Badge variant="outline">{{ rule.model_label }}</Badge>
+                                </div>
+                                <p class="mt-1 text-sm font-medium">{{ rule.name }}</p>
+                                <p class="text-xs text-muted-foreground">{{ rule.customer_description }}</p>
+                            </div>
+                            <div class="text-left sm:text-right">
+                                <p class="font-mono font-semibold">{{ rule.formatted_amount }}</p>
+                                <p class="text-[11px] text-muted-foreground">{{ rule.timing?.replaceAll('_', ' ') }} · {{ rule.effective_at }}</p>
+                            </div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -227,19 +344,25 @@ const submitPublish = (): void => {
             <Dialog :open="showPublishModal" @update:open="showPublishModal = $event">
                 <DialogContent class="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Publish Registration Fee Rule</DialogTitle>
+                        <DialogTitle>{{ form.kind === 'registration' ? 'Publish Registration Fee Rule' : 'Publish Plan Fee Option' }}</DialogTitle>
                         <DialogDescription>
-                            Publishing a new rule atomically retires the currently active rule. Active customer registrations immediately snapshot the new rule.
+                            Publishing creates an immutable version and sets its effective interval. Plan options do not trigger fees until their owning workflow is available.
                         </DialogDescription>
                     </DialogHeader>
 
                     <form @submit.prevent="submitPublish" class="space-y-4">
+                        <div v-if="form.kind === 'plan'" class="space-y-1.5">
+                            <Label for="rule-key">Stable Option Key <span class="text-destructive">*</span></Label>
+                            <Input id="rule-key" v-model="form.rule_key" placeholder="e.g. standard_plan" required />
+                            <p v-if="form.errors.rule_key" class="text-destructive text-xs">{{ form.errors.rule_key }}</p>
+                        </div>
+
                         <div class="space-y-1.5">
                             <Label for="rule-name">Rule Name <span class="text-destructive">*</span></Label>
                             <Input
                                 id="rule-name"
                                 v-model="form.name"
-                                placeholder="e.g. Standard Customer Registration Fee 2026"
+                                :placeholder="form.kind === 'registration' ? 'e.g. Standard Customer Registration Fee 2026' : 'e.g. Standard Plan Cycle Fee'"
                                 required
                                 :class="{ 'border-destructive': form.errors.name }"
                             />
@@ -249,19 +372,34 @@ const submitPublish = (): void => {
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="rule-model">Fee Model <span class="text-destructive">*</span></Label>
-                                <Select v-model="form.model">
+                                <Select :model-value="form.model" @update:model-value="handleModelChange">
                                     <SelectTrigger id="rule-model">
                                         <SelectValue placeholder="Select model" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="fixed">Fixed Fee (NGN)</SelectItem>
                                         <SelectItem value="no_fee">Explicit Zero / No Fee</SelectItem>
+                                        <SelectItem v-if="form.kind === 'plan'" value="one_day">One Contractual Day</SelectItem>
+                                        <SelectItem v-if="form.kind === 'plan'" value="percentage">Percentage</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p v-if="form.errors.model" class="text-destructive text-xs">{{ form.errors.model }}</p>
                             </div>
 
-                            <div v-if="form.model === 'fixed'" class="space-y-1.5">
+                            <div v-if="form.kind === 'plan'" class="space-y-1.5">
+                                <Label for="rule-timing">Fee Timing <span class="text-destructive">*</span></Label>
+                                <Select v-model="form.timing">
+                                    <SelectTrigger id="rule-timing"><SelectValue placeholder="Select timing" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-if="form.model !== 'percentage'" value="first_contribution">First contribution</SelectItem>
+                                        <SelectItem value="cycle_completion">Cycle completion</SelectItem>
+                                        <SelectItem v-if="form.model !== 'one_day'" value="withdrawal">Withdrawal</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p v-if="form.errors.timing" class="text-destructive text-xs">{{ form.errors.timing }}</p>
+                            </div>
+
+                            <div v-if="form.model === 'fixed' && (form.kind === 'registration' || form.kind === 'plan')" class="space-y-1.5">
                                 <Label for="rule-amount">Amount (NGN) <span class="text-destructive">*</span></Label>
                                 <Input
                                     id="rule-amount"
@@ -275,6 +413,20 @@ const submitPublish = (): void => {
                                 />
                                 <p v-if="form.errors.amount_ngn" class="text-destructive text-xs">{{ form.errors.amount_ngn }}</p>
                             </div>
+
+                            <div v-if="form.model === 'percentage'" class="space-y-1.5">
+                                <Label for="rule-rate">Rate (basis points) <span class="text-destructive">*</span></Label>
+                                <Input id="rule-rate" v-model="form.basis_points" type="number" step="1" min="0" max="10000" required placeholder="e.g. 250" />
+                                <p class="text-muted-foreground text-[11px]">100 basis points = 1%. Basis: {{ form.timing === 'withdrawal' ? 'gross withdrawal debit' : 'net cycle contributions' }}.</p>
+                                <p v-if="form.errors.basis_points" class="text-destructive text-xs">{{ form.errors.basis_points }}</p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label for="rule-effective-at">Effective from</Label>
+                            <Input id="rule-effective-at" v-model="form.effective_at" type="datetime-local" />
+                            <p v-if="form.errors.effective_at" class="text-destructive text-xs">{{ form.errors.effective_at }}</p>
+                            <p class="text-muted-foreground text-[11px]">Leave blank to make the rule effective when published.</p>
                         </div>
 
                         <div class="space-y-1.5">
@@ -286,7 +438,7 @@ const submitPublish = (): void => {
                                 v-model="form.customer_description"
                                 rows="3"
                                 required
-                                placeholder="Disclosed to the customer during invitation activation (e.g. One-time onboarding and account verification fee)."
+                                :placeholder="form.kind === 'registration' ? 'Disclosed during activation (e.g. One-time onboarding fee).' : 'Explain the plan fee and when it applies.'"
                                 class="border-input placeholder:text-muted-foreground focus-visible:border-ring flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                 :class="{ 'border-destructive': form.errors.customer_description }"
                             />

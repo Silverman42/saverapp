@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\FeeRuleBasis;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
+use App\Enums\FeeRuleTiming;
+use App\Enums\FeeSettlementSource;
+use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -18,8 +22,12 @@ use RuntimeException;
  * @property string $name
  * @property FeeRuleKind $kind
  * @property FeeRuleModel $model
+ * @property FeeRuleTiming $timing
+ * @property FeeRuleBasis $basis
+ * @property FeeSettlementSource $settlement_source
  * @property string $currency
  * @property int $amount_kobo
+ * @property int|null $basis_points
  * @property string $customer_description
  * @property CarbonImmutable $effective_at
  * @property CarbonImmutable|null $retired_at
@@ -32,7 +40,12 @@ use RuntimeException;
     'version',
     'name',
     'kind',
+    'rule_key',
     'model',
+    'timing',
+    'basis',
+    'basis_points',
+    'settlement_source',
     'currency',
     'amount_kobo',
     'customer_description',
@@ -54,7 +67,11 @@ class FeeRule extends Model
             'version' => 'integer',
             'kind' => FeeRuleKind::class,
             'model' => FeeRuleModel::class,
+            'timing' => FeeRuleTiming::class,
+            'basis' => FeeRuleBasis::class,
+            'settlement_source' => FeeSettlementSource::class,
             'amount_kobo' => 'integer',
+            'basis_points' => 'integer',
             'effective_at' => 'datetime',
             'retired_at' => 'datetime',
         ];
@@ -66,7 +83,7 @@ class FeeRule extends Model
     protected static function booted(): void
     {
         static::updating(function (FeeRule $rule): void {
-            if ($rule->isDirty(['version', 'name', 'kind', 'model', 'currency', 'amount_kobo', 'customer_description', 'effective_at', 'published_by_user_id', 'publication_reason'])) {
+            if ($rule->isDirty(['version', 'name', 'kind', 'rule_key', 'model', 'timing', 'basis', 'basis_points', 'settlement_source', 'currency', 'amount_kobo', 'customer_description', 'effective_at', 'published_by_user_id', 'publication_reason'])) {
                 throw new RuntimeException('Published fee rule terms are immutable and cannot be modified.');
             }
         });
@@ -106,8 +123,27 @@ class FeeRule extends Model
     {
         return $query->where('kind', FeeRuleKind::Registration->value)
             ->where('effective_at', '<=', now())
-            ->whereNull('retired_at')
+            ->where(function (Builder $query): void {
+                $query->whereNull('retired_at')->orWhere('retired_at', '>', now());
+            })
             ->latest('version');
+    }
+
+    /**
+     * Scope to currently selectable plan fee rules.
+     *
+     * @param  Builder<FeeRule>  $query
+     * @return Builder<FeeRule>
+     */
+    public function scopeCurrentPlanOptions(Builder $query): Builder
+    {
+        return $query->where('kind', FeeRuleKind::Plan->value)
+            ->where('effective_at', '<=', now())
+            ->where(function (Builder $query): void {
+                $query->whereNull('retired_at')->orWhere('retired_at', '>', now());
+            })
+            ->orderBy('rule_key')
+            ->orderByDesc('version');
     }
 
     /**
@@ -115,7 +151,8 @@ class FeeRule extends Model
      */
     public function isZero(): bool
     {
-        return $this->model === FeeRuleModel::NoFee || $this->amount_kobo === 0;
+        return $this->model === FeeRuleModel::NoFee
+            || ($this->model === FeeRuleModel::Percentage && $this->basis_points === 0);
     }
 
     /**
@@ -123,12 +160,20 @@ class FeeRule extends Model
      */
     public function formattedAmount(): string
     {
-        if ($this->isZero()) {
-            return 'Free';
-        }
+        return match ($this->model) {
+            FeeRuleModel::NoFee => 'Free',
+            FeeRuleModel::OneDay => 'One contractual day',
+            FeeRuleModel::Percentage => $this->formattedPercentage(),
+            FeeRuleModel::Fixed => MoneyFormatter::formatNaira($this->amount_kobo),
+        };
+    }
 
-        $naira = $this->amount_kobo / 100;
+    private function formattedPercentage(): string
+    {
+        $basisPoints = $this->basis_points ?? 0;
+        $wholePercent = intdiv($basisPoints, 100);
+        $fraction = $basisPoints % 100;
 
-        return '₦'.number_format($naira, 2);
+        return rtrim(rtrim($wholePercent.'.'.str_pad((string) $fraction, 2, '0', STR_PAD_LEFT), '0'), '.').'%';
     }
 }

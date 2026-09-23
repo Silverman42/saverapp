@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import {
     Briefcase,
+    Coins,
     LayoutDashboard,
     Palette,
     ShieldAlert,
@@ -24,6 +25,7 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
@@ -39,6 +41,12 @@ const hasSecurityOperationsManage = computed(() => {
         (page.props.auth?.user as { permissions?: string[] } | undefined)
             ?.permissions ?? [];
     return permissions.includes('security.operations.manage');
+});
+const hasFeesManage = computed(() => {
+    const permissions =
+        (page.props.auth?.user as { permissions?: string[] } | undefined)
+            ?.permissions ?? [];
+    return permissions.includes('fees.manage');
 });
 
 const mainNavItems = computed<NavItem[]>(() => {
@@ -78,6 +86,14 @@ const adminNavItems = computed<NavItem[]>(() => {
             icon: Users,
         },
     ];
+
+    if (hasFeesManage.value) {
+        items.push({
+            title: 'Fees',
+            href: adminFeesIndex(),
+            icon: Coins,
+        });
+    }
 
     if (hasSecurityOperationsManage.value) {
         items.push({

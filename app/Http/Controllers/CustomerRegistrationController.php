@@ -48,21 +48,27 @@ class CustomerRegistrationController extends Controller
     public function create(RegistrationFeeService $feeService): Response
     {
         Gate::authorize('create', CustomerProfile::class);
+        $attemptReference = (string) Str::uuid();
 
         return Inertia::render('customers/Create', [
-            'attempt_reference' => (string) Str::uuid(),
-            'fee_preview' => $feeService->previewFee(),
+            'attempt_reference' => $attemptReference,
+            'fee_preview' => $feeService->previewFee('customer_registration', $attemptReference),
         ]);
     }
 
     /**
      * Return live registration fee preview for client validation.
      */
-    public function feePreview(RegistrationFeeService $feeService): JsonResponse
+    public function feePreview(Request $request, RegistrationFeeService $feeService): JsonResponse
     {
         Gate::authorize('create', CustomerProfile::class);
 
-        return response()->json($feeService->previewFee());
+        $validated = $request->validate(['attempt_reference' => ['nullable', 'uuid']]);
+
+        return response()->json($feeService->previewFee(
+            'customer_registration',
+            $validated['attempt_reference'] ?? (string) Str::uuid(),
+        ));
     }
 
     /**

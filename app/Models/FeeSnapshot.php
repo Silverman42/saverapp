@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\FeeRuleBasis;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
+use App\Enums\FeeRuleTiming;
+use App\Enums\FeeSettlementSource;
+use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -14,13 +18,20 @@ use RuntimeException;
 /**
  * @property int $id
  * @property int $customer_profile_id
+ * @property string $source_type
+ * @property string $source_id
  * @property int $fee_rule_id
  * @property int $fee_rule_version
  * @property string $name
  * @property FeeRuleKind $kind
  * @property FeeRuleModel $model
+ * @property FeeRuleTiming $timing
+ * @property FeeRuleBasis $basis
+ * @property FeeSettlementSource $settlement_source
  * @property string $currency
  * @property int $amount_kobo
+ * @property int|null $basis_points
+ * @property int $basis_amount_kobo
  * @property string $customer_description
  * @property CarbonImmutable|null $acknowledged_at
  * @property CarbonImmutable|null $created_at
@@ -28,13 +39,20 @@ use RuntimeException;
  */
 #[Fillable([
     'customer_profile_id',
+    'source_type',
+    'source_id',
     'fee_rule_id',
     'fee_rule_version',
     'name',
     'kind',
     'model',
+    'timing',
+    'basis',
+    'settlement_source',
     'currency',
     'amount_kobo',
+    'basis_points',
+    'basis_amount_kobo',
     'customer_description',
     'acknowledged_at',
 ])]
@@ -51,7 +69,12 @@ class FeeSnapshot extends Model
             'fee_rule_version' => 'integer',
             'kind' => FeeRuleKind::class,
             'model' => FeeRuleModel::class,
+            'timing' => FeeRuleTiming::class,
+            'basis' => FeeRuleBasis::class,
+            'settlement_source' => FeeSettlementSource::class,
             'amount_kobo' => 'integer',
+            'basis_points' => 'integer',
+            'basis_amount_kobo' => 'integer',
             'acknowledged_at' => 'datetime',
         ];
     }
@@ -62,7 +85,7 @@ class FeeSnapshot extends Model
     protected static function booted(): void
     {
         static::updating(function (FeeSnapshot $snapshot): void {
-            if ($snapshot->isDirty(['customer_profile_id', 'fee_rule_id', 'fee_rule_version', 'name', 'kind', 'model', 'currency', 'amount_kobo', 'customer_description'])) {
+            if ($snapshot->isDirty(['customer_profile_id', 'source_type', 'source_id', 'fee_rule_id', 'fee_rule_version', 'name', 'kind', 'model', 'timing', 'basis', 'settlement_source', 'currency', 'amount_kobo', 'basis_points', 'basis_amount_kobo', 'customer_description'])) {
                 throw new RuntimeException('Fee snapshot terms are immutable and cannot be modified.');
             }
         });
@@ -107,7 +130,9 @@ class FeeSnapshot extends Model
      */
     public function isZero(): bool
     {
-        return $this->model === FeeRuleModel::NoFee || $this->amount_kobo === 0;
+        return $this->amount_kobo === 0
+            || $this->model === FeeRuleModel::NoFee
+            || ($this->model === FeeRuleModel::Percentage && $this->basis_points === 0);
     }
 
     /**
@@ -115,13 +140,21 @@ class FeeSnapshot extends Model
      */
     public function formattedAmount(): string
     {
-        if ($this->isZero()) {
-            return 'Free';
-        }
+        return match ($this->model) {
+            FeeRuleModel::NoFee => 'Free',
+            FeeRuleModel::OneDay => 'One contractual day',
+            FeeRuleModel::Percentage => $this->formattedPercentage(),
+            FeeRuleModel::Fixed => MoneyFormatter::formatNaira($this->amount_kobo),
+        };
+    }
 
-        $naira = $this->amount_kobo / 100;
+    private function formattedPercentage(): string
+    {
+        $basisPoints = $this->basis_points ?? 0;
+        $wholePercent = intdiv($basisPoints, 100);
+        $fraction = $basisPoints % 100;
 
-        return '₦'.number_format($naira, 2);
+        return rtrim(rtrim($wholePercent.'.'.str_pad((string) $fraction, 2, '0', STR_PAD_LEFT), '0'), '.').'%';
     }
 
     /**

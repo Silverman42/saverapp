@@ -7,7 +7,6 @@ use App\Enums\CreationAttemptStatus;
 use App\Enums\CustomerAssignmentStatus;
 use App\Enums\CustomerStatus;
 use App\Enums\DeliveryStatus;
-use App\Enums\FeeObligationStatus;
 use App\Enums\Gender;
 use App\Enums\InvitationStatus;
 use App\Enums\UserType;
@@ -18,7 +17,6 @@ use App\Models\CreationAttempt;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\CustomerStatusHistory;
-use App\Models\FeeObligation;
 use App\Models\FeeSnapshot;
 use App\Models\Invitation;
 use App\Models\User;
@@ -39,6 +37,7 @@ class CustomerRegistrationService
         protected PublicIdGenerator $publicIdGenerator,
         protected AgentEligibilityService $agentEligibilityService,
         protected RegistrationFeeService $registrationFeeService,
+        protected FeeObligationService $feeObligationService,
         protected InvitationSenderReadinessService $senderReadinessService,
         protected ProfilePhotoService $profilePhotoService,
     ) {}
@@ -148,7 +147,7 @@ class CustomerRegistrationService
             }
 
             // Verify Authoritative Registration Fee Rule
-            $currentRule = $this->registrationFeeService->getCurrentRule();
+            $currentRule = $this->registrationFeeService->getCurrentRule(forUpdate: true);
             if ($currentRule === null) {
                 throw new ConflictHttpException('No published registration fee rule is available. Registration is blocked.');
             }
@@ -157,6 +156,13 @@ class CustomerRegistrationService
             if ($currentRule->version !== $previewedVersion) {
                 throw new ConflictHttpException('Registration fee configuration has changed since preview. Please reconfirm before registration.');
             }
+
+            $registrationQuote = $this->feeObligationService->quote(
+                rule: $currentRule,
+                basisKobo: 0,
+                sourceType: 'customer_registration',
+                sourceId: $attemptReference,
+            );
 
             $name = trim((string) $data['name']);
             $email = trim((string) $data['email']);
@@ -306,26 +312,21 @@ class CustomerRegistrationService
                 'name' => $currentRule->name,
                 'kind' => 'registration',
                 'model' => $currentRule->model->value,
+                'timing' => $currentRule->timing->value,
+                'basis' => $currentRule->basis->value,
+                'settlement_source' => $currentRule->settlement_source->value,
                 'currency' => $currentRule->currency,
-                'amount_kobo' => $currentRule->amount_kobo,
+                'amount_kobo' => $registrationQuote->amountKobo,
+                'basis_points' => $currentRule->basis_points,
+                'basis_amount_kobo' => $registrationQuote->basisKobo,
                 'customer_description' => $currentRule->customer_description,
+                'source_type' => 'registration',
+                'source_id' => (string) $customerProfile->id,
                 'acknowledged_at' => null,
             ]);
 
-            // If non-zero fee, create payable FeeObligation
-            if ($currentRule->amount_kobo > 0) {
-                FeeObligation::create([
-                    'customer_profile_id' => $customerProfile->id,
-                    'fee_snapshot_id' => $feeSnapshot->id,
-                    'kind' => 'registration',
-                    'amount_kobo' => $currentRule->amount_kobo,
-                    'currency' => $currentRule->currency,
-                    'status' => FeeObligationStatus::Pending,
-                    'due_condition' => 'upon_registration',
-                    'customer_description' => $currentRule->customer_description,
-                    'created_by_user_id' => $freshAgent->id,
-                ]);
-            }
+            // Assessment evidence is committed with the Customer, snapshot, audit and attempt.
+            $this->feeObligationService->assessRegistrationSnapshot($feeSnapshot, $freshAgent);
 
             // Create Invitation challenge (7-day validity for customer)
             $plainToken = Str::random(64);
@@ -355,7 +356,7 @@ class CustomerRegistrationService
                 'operational_status' => $customerProfile->operational_status->value,
                 'account_state' => $user->account_state->value,
                 'fee_version' => $currentRule->version,
-                'fee_amount_kobo' => $currentRule->amount_kobo,
+                'fee_amount_kobo' => $registrationQuote->amountKobo,
             ];
             $attempt->save();
 
@@ -372,7 +373,9 @@ class CustomerRegistrationService
                     'operational_status' => $customerProfile->operational_status->value,
                     'account_state' => $user->account_state->value,
                     'fee_version' => $currentRule->version,
-                    'fee_amount_kobo' => $currentRule->amount_kobo,
+                    'fee_amount_kobo' => $registrationQuote->amountKobo,
+                    'fee_quote_source_type' => $registrationQuote->sourceType,
+                    'fee_quote_source_id' => $registrationQuote->sourceId,
                 ],
                 actor: $freshAgent,
             );

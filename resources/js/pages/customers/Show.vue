@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import {
     edit as editCustomer,
@@ -77,12 +77,31 @@ export type AssignedAgent = {
 export type FeeSnapshot = {
     name: string;
     model: string;
+    rule_version: number;
     amount_kobo: number;
     formatted_amount: string;
     currency: string;
     customer_description: string;
     is_zero: boolean;
     acknowledged_at: string | null;
+    obligation: {
+        status: 'available' | 'no_fee' | 'unavailable';
+        assessed_amount_kobo?: number;
+        formatted_assessed_amount?: string;
+        formatted_settled_amount?: string;
+        formatted_waived_amount?: string;
+        formatted_outstanding_amount?: string;
+        obligation_status?: string;
+        obligation_status_label?: string;
+        message?: string;
+        history?: Array<{
+            type: string;
+            amount_kobo: number;
+            formatted_amount: string;
+            description: string | null;
+            recorded_at: string | null;
+        }>;
+    };
 };
 
 export type CustomerInvitation = {
@@ -168,7 +187,29 @@ export type CustomerDetail = {
 const props = defineProps<{
     customer: CustomerDetail;
     viewer_type: string;
+    fee_obligations: Array<{
+        id: number;
+        kind?: string;
+        name?: string;
+        rule_version?: number;
+        status: string;
+        message?: string;
+        status_label?: string;
+        formatted_assessed_amount?: string;
+        formatted_settled_amount?: string;
+        formatted_waived_amount?: string;
+        formatted_outstanding_amount?: string;
+        history?: Array<{
+            type: string;
+            formatted_amount: string;
+            description: string | null;
+            recorded_at: string | null;
+        }>;
+    }>;
 }>();
+const planFeeObligations = computed(() =>
+    props.fee_obligations.filter((obligation) => obligation.kind !== 'registration'),
+);
 
 defineOptions({
     layout: {
@@ -714,7 +755,7 @@ const getInvitationBadgeVariant = (
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <div class="grid gap-4 text-sm sm:grid-cols-3">
+                <div class="grid gap-4 text-sm sm:grid-cols-4">
                     <div class="space-y-1">
                         <p
                             class="text-muted-foreground text-xs font-medium uppercase"
@@ -755,6 +796,75 @@ const getInvitationBadgeVariant = (
                             {{ customer.fee_snapshot.customer_description }}
                         </p>
                     </div>
+                    <div class="space-y-1">
+                        <p class="text-muted-foreground text-xs font-medium uppercase">
+                            Outstanding Fee
+                        </p>
+                        <p v-if="customer.fee_snapshot.obligation.status === 'unavailable'" class="text-destructive text-xs">
+                            {{ customer.fee_snapshot.obligation.message }}
+                        </p>
+                        <template v-else>
+                            <p class="text-foreground font-semibold">
+                                {{ customer.fee_snapshot.obligation.formatted_outstanding_amount ?? '₦0.00' }}
+                            </p>
+                            <Badge variant="outline">
+                                {{ customer.fee_snapshot.obligation.obligation_status_label ?? 'No fee due' }}
+                            </Badge>
+                            <p v-if="customer.fee_snapshot.obligation.formatted_settled_amount" class="text-muted-foreground text-xs">
+                                Settled {{ customer.fee_snapshot.obligation.formatted_settled_amount }}
+                                <span v-if="customer.fee_snapshot.obligation.formatted_waived_amount">
+                                    · Waived {{ customer.fee_snapshot.obligation.formatted_waived_amount }}
+                                </span>
+                            </p>
+                        </template>
+                    </div>
+                </div>
+                <div v-if="customer.fee_snapshot.obligation.history?.length" class="mt-5 border-t pt-4">
+                    <h3 class="text-xs font-medium uppercase text-muted-foreground">Fee activity</h3>
+                    <ol class="mt-3 space-y-3">
+                        <li v-for="(entry, index) in customer.fee_snapshot.obligation.history" :key="`${entry.type}-${index}`" class="flex items-start justify-between gap-4 text-xs">
+                            <div>
+                                <p class="font-medium capitalize">{{ entry.type.replaceAll('_', ' ') }}</p>
+                                <p v-if="entry.description" class="text-muted-foreground">{{ entry.description }}</p>
+                                <p class="text-muted-foreground">{{ entry.recorded_at }}</p>
+                            </div>
+                            <span class="shrink-0 font-mono">{{ entry.formatted_amount }}</span>
+                        </li>
+                    </ol>
+                </div>
+            </CardContent>
+        </Card>
+
+        <Card v-if="planFeeObligations.length > 0">
+            <CardHeader>
+                <CardTitle class="text-base">Plan Fee Obligations</CardTitle>
+                <CardDescription>Plan fees are shown from immutable fee snapshots and recorded obligation entries.</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div v-for="obligation in planFeeObligations" :key="obligation.id" class="rounded-lg border p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="font-medium">{{ obligation.name ?? 'Plan fee' }}</p>
+                            <p class="text-xs text-muted-foreground">{{ obligation.kind }} · rule v{{ obligation.rule_version }}</p>
+                        </div>
+                        <Badge variant="outline">{{ obligation.status_label ?? 'Unavailable' }}</Badge>
+                    </div>
+                    <p v-if="obligation.status === 'unavailable'" class="mt-3 text-xs text-destructive">{{ obligation.message }}</p>
+                    <div v-else class="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+                        <p>Assessed <strong>{{ obligation.formatted_assessed_amount }}</strong></p>
+                        <p>Settled <strong>{{ obligation.formatted_settled_amount }}</strong></p>
+                        <p>Outstanding <strong>{{ obligation.formatted_outstanding_amount }}</strong></p>
+                    </div>
+                    <ol v-if="obligation.history?.length" class="mt-3 space-y-2 border-t pt-3">
+                        <li v-for="(entry, index) in obligation.history" :key="`${entry.type}-${index}`" class="flex justify-between gap-4 text-xs">
+                            <div>
+                                <p class="capitalize">{{ entry.type.replaceAll('_', ' ') }}</p>
+                                <p v-if="entry.description" class="text-muted-foreground">{{ entry.description }}</p>
+                                <p class="text-muted-foreground">{{ entry.recorded_at }}</p>
+                            </div>
+                            <span class="font-mono">{{ entry.formatted_amount }}</span>
+                        </li>
+                    </ol>
                 </div>
             </CardContent>
         </Card>

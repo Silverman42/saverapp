@@ -227,13 +227,23 @@ class CustomerProfile extends Model
     }
 
     /**
-     * Get the fee obligation for this customer profile.
+     * Get every immutable fee snapshot attached to this customer.
      *
-     * @return HasOne<FeeObligation, $this>
+     * @return HasMany<FeeSnapshot, $this>
      */
-    public function feeObligation(): HasOne
+    public function feeSnapshots(): HasMany
     {
-        return $this->hasOne(FeeObligation::class, 'customer_profile_id');
+        return $this->hasMany(FeeSnapshot::class, 'customer_profile_id')->orderBy('id');
+    }
+
+    /**
+     * Get fee obligations for this customer profile.
+     *
+     * @return HasMany<FeeObligation, $this>
+     */
+    public function feeObligations(): HasMany
+    {
+        return $this->hasMany(FeeObligation::class, 'customer_profile_id')->orderBy('id');
     }
 
     /**

@@ -41,7 +41,7 @@ import {
 
 export type FeePreview = {
     available: boolean;
-    rule_id?: string;
+    rule_id?: string | number;
     version?: number;
     name?: string;
     model?: string;
@@ -50,6 +50,19 @@ export type FeePreview = {
     currency?: string;
     customer_description?: string;
     is_zero?: boolean;
+    timing?: string;
+    basis?: string;
+    quote?: {
+        rule_id: number;
+        rule_version: number;
+        amount_kobo: number;
+        currency: string;
+        basis_kobo: number;
+        timing: string;
+        basis: string;
+        source_type: string;
+        source_id: string;
+    };
     message?: string;
 };
 

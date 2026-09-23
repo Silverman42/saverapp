@@ -6,11 +6,14 @@ use App\Enums\AdminPermission;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreFeeRuleRequest;
 use App\Models\FeeRule;
 use App\Services\AuthorizationService;
 use App\Services\RegistrationFeeService;
+use App\Support\MoneyAmount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -36,76 +39,71 @@ class RegistrationFeeRuleController extends Controller
             ->with(['publishedBy'])
             ->latest('version')
             ->get()
-            ->map(fn (FeeRule $rule): array => [
-                'id' => $rule->id,
-                'version' => $rule->version,
-                'name' => $rule->name,
-                'model' => $rule->model->value,
-                'model_label' => $rule->model->displayName(),
-                'amount_kobo' => $rule->amount_kobo,
-                'formatted_amount' => $rule->formattedAmount(),
-                'currency' => $rule->currency,
-                'customer_description' => $rule->customer_description,
-                'publication_reason' => $rule->publication_reason,
-                'effective_at' => $rule->effective_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
-                'retired_at' => $rule->retired_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
-                'is_active' => $rule->retired_at === null,
+            ->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule) + [
+                'published_by' => $rule->publishedBy?->name ?? 'Unknown',
+            ]);
+
+        $planRules = FeeRule::query()
+            ->where('kind', FeeRuleKind::Plan->value)
+            ->with('publishedBy')
+            ->orderBy('rule_key')
+            ->orderByDesc('version')
+            ->get()
+            ->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule) + [
                 'published_by' => $rule->publishedBy?->name ?? 'Unknown',
             ]);
 
         return Inertia::render('admin/fees/RegistrationFee', [
-            'current_rule' => $currentRule ? [
-                'id' => $currentRule->id,
-                'version' => $currentRule->version,
-                'name' => $currentRule->name,
-                'model' => $currentRule->model->value,
-                'model_label' => $currentRule->model->displayName(),
-                'amount_kobo' => $currentRule->amount_kobo,
-                'formatted_amount' => $currentRule->formattedAmount(),
-                'currency' => $currentRule->currency,
-                'customer_description' => $currentRule->customer_description,
-                'publication_reason' => $currentRule->publication_reason,
-                'effective_at' => $currentRule->effective_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+            'current_rule' => $currentRule ? $feeService->serializeRule($currentRule) + [
                 'published_by' => $currentRule->publishedBy?->name ?? 'Unknown',
             ] : null,
             'rules' => $rules,
+            'plan_options' => $feeService->getCurrentPlanOptions()->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule)),
+            'plan_rules' => $planRules,
         ]);
     }
 
     /**
      * Publish a new registration fee rule.
      */
-    public function store(Request $request, RegistrationFeeService $feeService): RedirectResponse
+    public function store(StoreFeeRuleRequest $request, RegistrationFeeService $feeService): RedirectResponse
     {
         $viewer = $request->user();
         if (! $this->authorizationService->allows($viewer, AdminPermission::FeesManage)) {
             abort(403, 'Unauthorized to publish fee rules.');
         }
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'min:1', 'max:100'],
-            'model' => ['required', 'string', 'in:fixed,no_fee'],
-            'amount_ngn' => ['required_if:model,fixed', 'nullable', 'numeric', 'min:0.01'],
-            'customer_description' => ['required', 'string', 'min:1', 'max:500'],
-            'publication_reason' => ['required', 'string', 'min:1', 'max:500'],
-        ]);
+        $validated = $request->validated();
 
         $model = FeeRuleModel::from($validated['model']);
-        $amountKobo = $model === FeeRuleModel::Fixed
-            ? (int) round(((float) $validated['amount_ngn']) * 100)
-            : 0;
+        try {
+            $amountKobo = filled($validated['amount_ngn'] ?? null)
+                ? MoneyAmount::parseNairaToKobo((string) $validated['amount_ngn'])
+                : 0;
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['amount_ngn' => [$exception->getMessage()]]);
+        }
 
         $feeService->publishRule($viewer, [
+            'kind' => $validated['kind'] ?? FeeRuleKind::Registration->value,
+            'rule_key' => $validated['rule_key'] ?? 'registration',
+            'timing' => $validated['timing'] ?? null,
+            'basis' => $validated['basis'] ?? null,
+            'settlement_source' => $validated['settlement_source'] ?? null,
+            'basis_points' => $validated['basis_points'] ?? null,
+            'effective_at' => $validated['effective_at'] ?? null,
             'name' => $validated['name'],
             'model' => $model,
             'amount_kobo' => $amountKobo,
             'customer_description' => $validated['customer_description'],
             'publication_reason' => $validated['publication_reason'],
-        ]);
+        ], $request);
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => 'Registration fee rule published successfully.',
+            'message' => ($validated['kind'] ?? FeeRuleKind::Registration->value) === FeeRuleKind::Plan->value
+                ? 'Plan fee option published successfully.'
+                : 'Registration fee rule published successfully.',
         ]);
 
         return redirect()->route('admin.fees.registration.index');

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccessController;
+use App\Http\Controllers\Admin\FeeOverviewController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\RegistrationFeeRuleController;
 use App\Http\Controllers\AgentDirectoryController;
@@ -116,6 +117,14 @@ Route::middleware(['auth'])->group(function () {
         Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
             ->middleware('fresh')
             ->name('access.permissions.update');
+
+        Route::get('fees', [FeeOverviewController::class, 'index'])->name('fees.index');
+        Route::post('fees/obligations/{obligation}/waive', [FeeOverviewController::class, 'waive'])
+            ->middleware('fresh')
+            ->name('fees.obligations.waive');
+        Route::post('fees/obligations/{obligation}/correct', [FeeOverviewController::class, 'correct'])
+            ->middleware('fresh')
+            ->name('fees.obligations.correct');
 
         // Registration Fee Rules (CAM-T06)
         Route::get('fees/registration', [RegistrationFeeRuleController::class, 'index'])->name('fees.registration.index');
