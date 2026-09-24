@@ -14,6 +14,12 @@ class CollectionReadService
     /** @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int} */
     public function position(CustomerProfile $customer, bool $forUpdate = false): array
     {
+        if ($forUpdate) {
+            if (DB::transactionLevel() === 0) {
+                throw new RuntimeException('An authoritative savings position requires a transaction.');
+            }
+            CustomerProfile::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
+        }
         $entries = DB::table('ledger_entries')->join('ledger_accounts', 'ledger_accounts.id', '=', 'ledger_entries.ledger_account_id')
             ->where('ledger_entries.customer_profile_id', $customer->id)
             ->where('ledger_accounts.code', LedgerAccountCode::CustomerSavingsLiability->value)

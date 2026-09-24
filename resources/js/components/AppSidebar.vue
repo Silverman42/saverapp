@@ -29,6 +29,8 @@ import { dashboard } from '@/routes';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { index as plansIndex } from '@/routes/plans';
 import { index as collectionsIndex } from '@/routes/collections';
+import { index as withdrawalsIndex } from '@/routes/withdrawals';
+import { index as reversalsIndex } from '@/routes/reversals';
 import { index as batchesIndex } from '@/routes/collection-batches';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editProfile } from '@/routes/profile';
@@ -68,8 +70,24 @@ const mainNavItems = computed<NavItem[]>(() => {
     ];
 
     if (page.props.features.collections) {
-        items.push({ title: 'Collections', href: collectionsIndex(), icon: Coins });
+        items.push({
+            title: 'Collections',
+            href: collectionsIndex(),
+            icon: Coins,
+        });
     }
+
+    items.push({
+        title: 'Withdrawals',
+        href: withdrawalsIndex(),
+        icon: WalletCards,
+    });
+
+    items.push({
+        title: 'Reversals',
+        href: reversalsIndex(),
+        icon: ShieldAlert,
+    });
 
     if (canViewCustomers.value) {
         items.push({
@@ -80,7 +98,11 @@ const mainNavItems = computed<NavItem[]>(() => {
     }
 
     if (page.props.features.collections && (isAgent.value || isAdmin.value)) {
-        items.push({ title: 'Cash batches', href: batchesIndex(), icon: Briefcase });
+        items.push({
+            title: 'Cash batches',
+            href: batchesIndex(),
+            icon: Briefcase,
+        });
     }
 
     return items;

@@ -69,7 +69,7 @@ class CustomerStatusController extends Controller
                 'summary' => 'Financial summary is unavailable until Module 10.',
                 'plans' => 'Plan schedule details are available from the Customer profile; actual collection progress remains unavailable until the financial modules are connected.',
                 'collections' => 'Collection details are unavailable until Module 07.',
-                'withdrawals' => 'Withdrawal details are unavailable until Module 08.',
+                'withdrawals' => 'Withdrawal request history is available; payout execution awaits an approved method.',
             ],
             'history' => $profile->statusHistories->map(fn (CustomerStatusHistory $entry): array => [
                 'from_status' => $entry->from_status?->displayName() ?? 'Not set',

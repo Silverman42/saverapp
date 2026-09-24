@@ -328,7 +328,8 @@ test('status page shows separate account state and unavailable financial modules
             ->component('customers/Status')
             ->where('customer.account_state', 'active')
             ->where('customer.operational_status', 'restricted')
-            ->where('financial_sections.plans', 'Plan details are unavailable until Module 06.')
+            ->where('financial_sections.plans', 'Plan schedule details are available from the Customer profile; actual collection progress remains unavailable until the financial modules are connected.')
+            ->where('financial_sections.withdrawals', 'Withdrawal request history is available; payout execution awaits an approved method.')
             ->where('history.0.reason', 'Admin-only internal note.')
             ->where('history.0.customer_explanation', 'A temporary review is in progress.'));
 

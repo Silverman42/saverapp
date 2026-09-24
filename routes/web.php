@@ -29,7 +29,9 @@ use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
 use App\Http\Controllers\ReconciliationController;
+use App\Http\Controllers\ReversalController;
 use App\Http\Controllers\ThriftPlanController;
+use App\Http\Controllers\WithdrawalController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -82,6 +84,28 @@ Route::middleware(['auth'])->group(function () {
     Route::post('plans/{plan}/resume', [ThriftPlanController::class, 'resume'])->name('plans.resume');
     Route::post('plans/{plan}/cancel', [ThriftPlanController::class, 'cancel'])->name('plans.cancel');
     Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
+
+    Route::get('withdrawals', [WithdrawalController::class, 'index'])->name('withdrawals.index');
+    Route::get('customers/{customer}/withdrawals/create', [WithdrawalController::class, 'create'])->name('customers.withdrawals.create');
+    Route::post('customers/{customer}/withdrawals/preview', [WithdrawalController::class, 'preview'])->name('customers.withdrawals.preview');
+    Route::post('customers/{customer}/withdrawals', [WithdrawalController::class, 'store'])->name('customers.withdrawals.store');
+    Route::get('withdrawals/attempts/{reference}', [WithdrawalController::class, 'attempt'])->name('withdrawals.attempts.show');
+    Route::get('withdrawals/{withdrawal}', [WithdrawalController::class, 'show'])->name('withdrawals.show');
+    Route::post('withdrawals/{withdrawal}/approve', [WithdrawalController::class, 'approve'])->middleware('fresh')->name('withdrawals.approve');
+    Route::post('withdrawals/{withdrawal}/reject', [WithdrawalController::class, 'reject'])->middleware('fresh')->name('withdrawals.reject');
+    Route::post('withdrawals/{withdrawal}/cancel', [WithdrawalController::class, 'cancel'])->name('withdrawals.cancel');
+    Route::post('withdrawals/{withdrawal}/revoke', [WithdrawalController::class, 'revoke'])->middleware('fresh')->name('withdrawals.revoke');
+
+    // Gated financial corrections (Module 09)
+    Route::get('reversals', [ReversalController::class, 'index'])->name('reversals.index');
+    Route::post('ledger-postings/{posting}/reversals/preview', [ReversalController::class, 'preview'])->name('reversals.preview');
+    Route::post('ledger-postings/{posting}/reversals', [ReversalController::class, 'store'])->name('reversals.store');
+    Route::get('reversals/attempts/{reference}', [ReversalController::class, 'attempt'])->name('reversals.attempts.show');
+    Route::get('reversals/{reversal}', [ReversalController::class, 'show'])->name('reversals.show');
+    Route::get('reversals/{reversal}/review-preview', [ReversalController::class, 'reviewPreview'])->name('reversals.review-preview');
+    Route::post('reversals/{reversal}/approve', [ReversalController::class, 'approve'])->middleware('fresh')->name('reversals.approve');
+    Route::post('reversals/{reversal}/reject', [ReversalController::class, 'reject'])->middleware('fresh')->name('reversals.reject');
+    Route::post('reversals/{reversal}/cancel', [ReversalController::class, 'cancel'])->name('reversals.cancel');
 
     // Cash collections, thrift cards, and reconciliation (Module 07)
     Route::middleware('collections.enabled')->group(function (): void {

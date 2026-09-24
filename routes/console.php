@@ -15,3 +15,7 @@ Schedule::command('authz:expire-restrictions')
 Schedule::command('collections:freeze-batches')
     ->everyMinute()
     ->withoutOverlapping();
+
+Schedule::command('withdrawals:expire')
+    ->everyMinute()
+    ->withoutOverlapping();

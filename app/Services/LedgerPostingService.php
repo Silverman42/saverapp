@@ -11,6 +11,7 @@ use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
+use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
 use App\Models\LedgerAccount;
@@ -62,6 +63,8 @@ class LedgerPostingService
             if ($actor !== null && $actor->account_state !== AccountState::Active) {
                 throw new ConflictHttpException('Inactive actors cannot post fee ledger entries.');
             }
+
+            CustomerProfile::query()->whereKey($command->customerProfileId)->lockForUpdate()->firstOrFail();
 
             $obligation = FeeObligation::query()
                 ->whereKey($command->lines[0]->feeObligationId)

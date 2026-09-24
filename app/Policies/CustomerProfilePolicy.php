@@ -121,6 +121,20 @@ class CustomerProfilePolicy
         return $this->managePlan($user, $customerProfile);
     }
 
+    /** The current eligible Agent may request settlement of an Active or Inactive Customer's existing savings. */
+    public function initiateWithdrawal(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $this->managePlan($user, $customerProfile)
+            && $customerProfile->operational_status->allowsWithdrawalOfExistingFunds();
+    }
+
+    /** An assigned eligible Agent may correct posted history for a non-Archived Customer. */
+    public function initiateReversal(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $this->managePlan($user, $customerProfile)
+            && $customerProfile->operational_status !== CustomerStatus::Archived;
+    }
+
     /**
      * Determine whether the user can reassign the customer.
      * Reassignment requires customers.reassign permission.

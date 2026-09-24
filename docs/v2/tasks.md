@@ -142,7 +142,9 @@ Dependencies: Modules 01–07
 
 | Task                                                                                                           | Specification reference | Status | Evidence or blocker |
 | -------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate withdrawal request, approval, reservation, payout, and audit requirements into implementation tasks. | Sections 19–20          | To Do  | —                   |
+| Translate withdrawal request, approval, reservation, payout, and audit requirements into implementation tasks. | Sections 19–20 | Completed | Staged plan recorded in `docs/v2/implementation_plan/08-withdrawals-and-payout-approvals.md`; proposed defaults and submission gate approved. |
+| Implement gated withdrawal quoting, reservations, review, holds, expiry, scoped views, audit, and notices. | `WDL-T01`–`WDL-T04`, `WDL-T06` | In Progress | Core work and 13 focused withdrawal tests are in place; local MySQL migration, isolated collection tests, type/build checks, routes, and scoped static analysis pass. MySQL concurrency, full acceptance, accessibility, and delivery review remain. |
+| Enable an approved cash or bank payout method, execution recovery, and balanced posting. | `WDL-T05`; `WDL-FR-015`–`019` | Blocked | No approved executor, destination/custody evidence, provider finality, unknown-result recovery, return/reversal bundle, or payout account mapping. Production method registry has no enabled method. |
 
 ## Module 09 — Reversals and Financial Corrections
 
@@ -151,7 +153,10 @@ Dependencies: Modules 01–08
 
 | Task                                                                                                                                     | Specification reference | Status | Evidence or blocker |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate reversal eligibility, review, compensating postings, dependency handling, and evidence requirements into implementation tasks. | Sections 15–16          | To Do  | —                   |
+| Translate reversal eligibility, review, compensating postings, dependency handling, and evidence requirements into implementation tasks. | Sections 15–16          | Completed | Staged plan and approved defaults recorded in `docs/v2/implementation_plan/09-reversals-and-financial-corrections.md`. |
+| Build gated request, review, dependency preview, evidence, scoped views, audit, and notification foundations. | `REV-T01`–`REV-T02`, `REV-T06` | In Progress | Local MySQL migration, scoped request/decision flow, operation replay, read views, masked audit, and durable notices are in place. File evidence, owner dependency graphs, and posting UI remain pending. Production registry enables no type. |
+| Enable full contribution, fee/deduction, and completed-withdrawal compensation. | `REV-T03`–`REV-T05` | Blocked | Module 05–08 compensation, custody, payout/recovery, period, and evidence contracts remain unresolved. |
+| Complete the Module 09 acceptance matrix and release evidence. | `REV-T07`; `REV-AC-001`–`032` | In Progress | Seven focused reversal tests (47 assertions), scoped PHPStan, Vue type checking, production build, Pint, scoped frontend formatting, and route inspection pass. Concurrency, full acceptance, evidence, and owner compensation remain outstanding. |
 
 ## Module 10 — Transaction Ledger, Balances, and Statements
 

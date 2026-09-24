@@ -23,6 +23,7 @@ class CustomerStatusManagementService
     public function __construct(
         protected CustomerActionAuthorizationGuard $actionAuthorizationGuard,
         protected AgentEligibilityService $agentEligibilityService,
+        protected WithdrawalService $withdrawals,
     ) {}
 
     public function transition(
@@ -90,6 +91,8 @@ class CustomerStatusManagementService
                 actor: $context->actor,
             );
             $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
+
+            $this->withdrawals->applyCustomerStatus($lockedCustomer, $targetStatus);
 
             $this->createNotificationIntents($lockedCustomer, $history, $currentStatus, $targetStatus, $effectiveAt);
 
