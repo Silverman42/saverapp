@@ -8,7 +8,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** @property CarbonImmutable $recorded_at */
+/**
+ * @property int $id
+ * @property string $receipt_reference
+ * @property int $customer_profile_id
+ * @property int|null $thrift_plan_id
+ * @property int $recording_agent_profile_id
+ * @property int|null $savings_posting_group_id
+ * @property string $received_date
+ * @property string $timezone
+ * @property int $savings_amount_kobo
+ * @property int $fee_amount_kobo
+ * @property int $tender_amount_kobo
+ * @property CarbonImmutable $recorded_at
+ */
 #[Fillable([
     'receipt_reference', 'attempt_reference', 'payload_hash', 'customer_profile_id', 'thrift_plan_id',
     'recording_agent_profile_id', 'assignment_id', 'collection_batch_id', 'recorded_by_user_id',

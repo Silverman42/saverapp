@@ -40,6 +40,7 @@ class CollectionService
         private FeeObligationService $fees,
         private LedgerPostingService $feeLedger,
         private PublicIdGenerator $references,
+        private LedgerTransactionProjectionService $transactions,
     ) {}
 
     public function amountToKobo(string $amount): int
@@ -212,7 +213,7 @@ class CollectionService
 
             $assignment = $lockedCustomer->currentAssignment;
             $batch = $this->currentBatch($assignment->agent_profile_id, $preview['received_date'], $preview['timezone']);
-            $reference = 'TXN-'.str_replace('-', '', $preview['received_date']).'-'.$this->references->generate('collection_receipt');
+            $reference = 'TXN-'.str_replace('-', '', $preview['received_date']).'-'.$this->references->generate('ledger_transaction');
             $receipt = CollectionReceipt::create([
                 'receipt_reference' => $reference, 'attempt_reference' => $data['attempt_reference'],
                 'payload_hash' => $submittedHash, 'customer_profile_id' => $lockedCustomer->id,
@@ -266,6 +267,7 @@ class CollectionService
                 $this->updatePlanCompletionAndFee($plan, $actor, $lockedCustomer, $receipt);
             }
             $this->balances->position($lockedCustomer, true);
+            $this->transactions->projectReceipt($receipt->refresh());
             AuditEvent::record('collection.receipt_posted', CollectionReceipt::class, $receipt->id, $receipt->receipt_reference, [
                 'customer_profile_id' => $lockedCustomer->id, 'plan_id' => $plan?->plan_id,
                 'recording_agent_profile_id' => $assignment->agent_profile_id,

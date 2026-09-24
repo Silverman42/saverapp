@@ -4,6 +4,8 @@ import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import { create as createCustomerPlan } from '@/routes/customers/plans';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
+import { index as transactionsIndex } from '@/routes/transactions';
+import { preview as statementPreview } from '@/routes/customers/statements';
 import {
     edit as editCustomer,
     index as customersIndex,
@@ -161,6 +163,9 @@ export type CustomerDetail = {
     financial_summary: {
         status: string;
         message: string;
+        liability: string | null;
+        reserved: string | null;
+        available: string | null;
     };
     plans: {
         status: string;
@@ -220,7 +225,9 @@ const props = defineProps<{
     }>;
 }>();
 const planFeeObligations = computed(() =>
-    props.fee_obligations.filter((obligation) => obligation.kind !== 'registration'),
+    props.fee_obligations.filter(
+        (obligation) => obligation.kind !== 'registration',
+    ),
 );
 
 defineOptions({
@@ -809,38 +816,94 @@ const getInvitationBadgeVariant = (
                         </p>
                     </div>
                     <div class="space-y-1">
-                        <p class="text-muted-foreground text-xs font-medium uppercase">
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
                             Outstanding Fee
                         </p>
-                        <p v-if="customer.fee_snapshot.obligation.status === 'unavailable'" class="text-destructive text-xs">
+                        <p
+                            v-if="
+                                customer.fee_snapshot.obligation.status ===
+                                'unavailable'
+                            "
+                            class="text-destructive text-xs"
+                        >
                             {{ customer.fee_snapshot.obligation.message }}
                         </p>
                         <template v-else>
                             <p class="text-foreground font-semibold">
-                                {{ customer.fee_snapshot.obligation.formatted_outstanding_amount ?? '₦0.00' }}
+                                {{
+                                    customer.fee_snapshot.obligation
+                                        .formatted_outstanding_amount ?? '₦0.00'
+                                }}
                             </p>
                             <Badge variant="outline">
-                                {{ customer.fee_snapshot.obligation.obligation_status_label ?? 'No fee due' }}
+                                {{
+                                    customer.fee_snapshot.obligation
+                                        .obligation_status_label ?? 'No fee due'
+                                }}
                             </Badge>
-                            <p v-if="customer.fee_snapshot.obligation.formatted_settled_amount" class="text-muted-foreground text-xs">
-                                Settled {{ customer.fee_snapshot.obligation.formatted_settled_amount }}
-                                <span v-if="customer.fee_snapshot.obligation.formatted_waived_amount">
-                                    · Waived {{ customer.fee_snapshot.obligation.formatted_waived_amount }}
+                            <p
+                                v-if="
+                                    customer.fee_snapshot.obligation
+                                        .formatted_settled_amount
+                                "
+                                class="text-muted-foreground text-xs"
+                            >
+                                Settled
+                                {{
+                                    customer.fee_snapshot.obligation
+                                        .formatted_settled_amount
+                                }}
+                                <span
+                                    v-if="
+                                        customer.fee_snapshot.obligation
+                                            .formatted_waived_amount
+                                    "
+                                >
+                                    · Waived
+                                    {{
+                                        customer.fee_snapshot.obligation
+                                            .formatted_waived_amount
+                                    }}
                                 </span>
                             </p>
                         </template>
                     </div>
                 </div>
-                <div v-if="customer.fee_snapshot.obligation.history?.length" class="mt-5 border-t pt-4">
-                    <h3 class="text-xs font-medium uppercase text-muted-foreground">Fee activity</h3>
+                <div
+                    v-if="customer.fee_snapshot.obligation.history?.length"
+                    class="mt-5 border-t pt-4"
+                >
+                    <h3
+                        class="text-muted-foreground text-xs font-medium uppercase"
+                    >
+                        Fee activity
+                    </h3>
                     <ol class="mt-3 space-y-3">
-                        <li v-for="(entry, index) in customer.fee_snapshot.obligation.history" :key="`${entry.type}-${index}`" class="flex items-start justify-between gap-4 text-xs">
+                        <li
+                            v-for="(entry, index) in customer.fee_snapshot
+                                .obligation.history"
+                            :key="`${entry.type}-${index}`"
+                            class="flex items-start justify-between gap-4 text-xs"
+                        >
                             <div>
-                                <p class="font-medium capitalize">{{ entry.type.replaceAll('_', ' ') }}</p>
-                                <p v-if="entry.description" class="text-muted-foreground">{{ entry.description }}</p>
-                                <p class="text-muted-foreground">{{ entry.recorded_at }}</p>
+                                <p class="font-medium capitalize">
+                                    {{ entry.type.replaceAll('_', ' ') }}
+                                </p>
+                                <p
+                                    v-if="entry.description"
+                                    class="text-muted-foreground"
+                                >
+                                    {{ entry.description }}
+                                </p>
+                                <p class="text-muted-foreground">
+                                    {{ entry.recorded_at }}
+                                </p>
                             </div>
-                            <span class="shrink-0 font-mono">{{ entry.formatted_amount }}</span>
+                            <span class="shrink-0 font-mono">{{
+                                entry.formatted_amount
+                            }}</span>
                         </li>
                     </ol>
                 </div>
@@ -850,31 +913,86 @@ const getInvitationBadgeVariant = (
         <Card v-if="planFeeObligations.length > 0">
             <CardHeader>
                 <CardTitle class="text-base">Plan Fee Obligations</CardTitle>
-                <CardDescription>Plan fees are shown from immutable fee snapshots and recorded obligation entries.</CardDescription>
+                <CardDescription
+                    >Plan fees are shown from immutable fee snapshots and
+                    recorded obligation entries.</CardDescription
+                >
             </CardHeader>
             <CardContent class="space-y-4">
-                <div v-for="obligation in planFeeObligations" :key="obligation.id" class="rounded-lg border p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
+                <div
+                    v-for="obligation in planFeeObligations"
+                    :key="obligation.id"
+                    class="rounded-lg border p-4"
+                >
+                    <div
+                        class="flex flex-wrap items-start justify-between gap-3"
+                    >
                         <div>
-                            <p class="font-medium">{{ obligation.name ?? 'Plan fee' }}</p>
-                            <p class="text-xs text-muted-foreground">{{ obligation.kind }} · rule v{{ obligation.rule_version }}</p>
+                            <p class="font-medium">
+                                {{ obligation.name ?? 'Plan fee' }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ obligation.kind }} · rule v{{
+                                    obligation.rule_version
+                                }}
+                            </p>
                         </div>
-                        <Badge variant="outline">{{ obligation.status_label ?? 'Unavailable' }}</Badge>
+                        <Badge variant="outline">{{
+                            obligation.status_label ?? 'Unavailable'
+                        }}</Badge>
                     </div>
-                    <p v-if="obligation.status === 'unavailable'" class="mt-3 text-xs text-destructive">{{ obligation.message }}</p>
+                    <p
+                        v-if="obligation.status === 'unavailable'"
+                        class="text-destructive mt-3 text-xs"
+                    >
+                        {{ obligation.message }}
+                    </p>
                     <div v-else class="mt-3 grid gap-3 text-xs sm:grid-cols-3">
-                        <p>Assessed <strong>{{ obligation.formatted_assessed_amount }}</strong></p>
-                        <p>Settled <strong>{{ obligation.formatted_settled_amount }}</strong></p>
-                        <p>Outstanding <strong>{{ obligation.formatted_outstanding_amount }}</strong></p>
+                        <p>
+                            Assessed
+                            <strong>{{
+                                obligation.formatted_assessed_amount
+                            }}</strong>
+                        </p>
+                        <p>
+                            Settled
+                            <strong>{{
+                                obligation.formatted_settled_amount
+                            }}</strong>
+                        </p>
+                        <p>
+                            Outstanding
+                            <strong>{{
+                                obligation.formatted_outstanding_amount
+                            }}</strong>
+                        </p>
                     </div>
-                    <ol v-if="obligation.history?.length" class="mt-3 space-y-2 border-t pt-3">
-                        <li v-for="(entry, index) in obligation.history" :key="`${entry.type}-${index}`" class="flex justify-between gap-4 text-xs">
+                    <ol
+                        v-if="obligation.history?.length"
+                        class="mt-3 space-y-2 border-t pt-3"
+                    >
+                        <li
+                            v-for="(entry, index) in obligation.history"
+                            :key="`${entry.type}-${index}`"
+                            class="flex justify-between gap-4 text-xs"
+                        >
                             <div>
-                                <p class="capitalize">{{ entry.type.replaceAll('_', ' ') }}</p>
-                                <p v-if="entry.description" class="text-muted-foreground">{{ entry.description }}</p>
-                                <p class="text-muted-foreground">{{ entry.recorded_at }}</p>
+                                <p class="capitalize">
+                                    {{ entry.type.replaceAll('_', ' ') }}
+                                </p>
+                                <p
+                                    v-if="entry.description"
+                                    class="text-muted-foreground"
+                                >
+                                    {{ entry.description }}
+                                </p>
+                                <p class="text-muted-foreground">
+                                    {{ entry.recorded_at }}
+                                </p>
                             </div>
-                            <span class="font-mono">{{ entry.formatted_amount }}</span>
+                            <span class="font-mono">{{
+                                entry.formatted_amount
+                            }}</span>
                         </li>
                     </ol>
                 </div>
@@ -1019,6 +1137,30 @@ const getInvitationBadgeVariant = (
                 </CardHeader>
                 <CardContent class="space-y-2 text-xs">
                     <div
+                        v-if="customer.financial_summary.status === 'ready'"
+                        class="grid gap-2"
+                    >
+                        <p>
+                            Posted savings:
+                            <strong>{{
+                                customer.financial_summary.liability
+                            }}</strong>
+                        </p>
+                        <p>
+                            Live reservations:
+                            <strong>{{
+                                customer.financial_summary.reserved
+                            }}</strong>
+                        </p>
+                        <p>
+                            Available savings:
+                            <strong>{{
+                                customer.financial_summary.available
+                            }}</strong>
+                        </p>
+                    </div>
+                    <div
+                        v-else
                         class="flex items-start gap-2 rounded-md bg-amber-500/10 p-2.5 text-amber-600 dark:text-amber-400"
                     >
                         <AlertCircle class="mt-0.5 h-4 w-4 shrink-0" />
@@ -1042,21 +1184,42 @@ const getInvitationBadgeVariant = (
                     </CardTitle>
                 </CardHeader>
                 <CardContent class="space-y-2 text-xs">
-                    <div v-if="customer.plans.current_plan" class="bg-muted rounded-md p-2.5">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <Link :href="showPlan(customer.plans.current_plan.id).url" class="text-foreground font-medium hover:underline">
+                    <div
+                        v-if="customer.plans.current_plan"
+                        class="bg-muted rounded-md p-2.5"
+                    >
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <Link
+                                :href="
+                                    showPlan(customer.plans.current_plan.id).url
+                                "
+                                class="text-foreground font-medium hover:underline"
+                            >
                                 {{ customer.plans.current_plan.name }}
                             </Link>
-                            <Badge variant="secondary">{{ customer.plans.current_plan.status_label }}</Badge>
+                            <Badge variant="secondary">{{
+                                customer.plans.current_plan.status_label
+                            }}</Badge>
                         </div>
                         <p class="mt-1 text-[11px]">
-                            {{ customer.plans.current_plan.formatted_contribution_amount }} daily ·
+                            {{
+                                customer.plans.current_plan
+                                    .formatted_contribution_amount
+                            }}
+                            daily ·
                             {{ customer.plans.current_plan.start_date }} –
                             {{ customer.plans.current_plan.scheduled_end_date }}
                         </p>
-                        <p class="mt-1 text-[11px]">{{ customer.plans.message }}</p>
+                        <p class="mt-1 text-[11px]">
+                            {{ customer.plans.message }}
+                        </p>
                     </div>
-                    <div v-else class="bg-muted text-muted-foreground rounded-md p-2.5">
+                    <div
+                        v-else
+                        class="bg-muted text-muted-foreground rounded-md p-2.5"
+                    >
                         <div class="text-foreground font-medium">
                             No open plan
                         </div>
@@ -1065,11 +1228,24 @@ const getInvitationBadgeVariant = (
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2 pt-1">
-                        <Button v-if="customer.plans.can_create" as-child size="sm">
-                            <Link :href="createCustomerPlan(customer.id).url">Create plan</Link>
+                        <Button
+                            v-if="customer.plans.can_create"
+                            as-child
+                            size="sm"
+                        >
+                            <Link :href="createCustomerPlan(customer.id).url"
+                                >Create plan</Link
+                            >
                         </Button>
                         <Button as-child variant="outline" size="sm">
-                            <Link :href="plansIndex({ query: { search: customer.id } }).url">Plan history</Link>
+                            <Link
+                                :href="
+                                    plansIndex({
+                                        query: { search: customer.id },
+                                    }).url
+                                "
+                                >Plan history</Link
+                            >
                         </Button>
                     </div>
                 </CardContent>
@@ -1085,7 +1261,19 @@ const getInvitationBadgeVariant = (
                     </CardTitle>
                 </CardHeader>
                 <CardContent class="space-y-2 text-xs">
+                    <Link
+                        v-if="customer.transactions.status === 'ready'"
+                        :href="
+                            transactionsIndex({
+                                query: { customer: customer.id },
+                            })
+                        "
+                        class="text-primary inline-block underline"
+                    >
+                        View posted transactions
+                    </Link>
                     <div
+                        v-else
                         class="bg-muted text-muted-foreground rounded-md p-2.5"
                     >
                         <div class="text-foreground font-medium">
@@ -1108,7 +1296,15 @@ const getInvitationBadgeVariant = (
                     </CardTitle>
                 </CardHeader>
                 <CardContent class="space-y-2 text-xs">
+                    <Link
+                        v-if="customer.statements.status === 'ready'"
+                        :href="statementPreview(customer.id)"
+                        class="text-primary inline-block underline"
+                    >
+                        Preview statement
+                    </Link>
                     <div
+                        v-else
                         class="bg-muted text-muted-foreground rounded-md p-2.5"
                     >
                         <div class="text-foreground font-medium">

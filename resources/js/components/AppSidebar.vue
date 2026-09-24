@@ -6,6 +6,7 @@ import {
     Coins,
     LayoutDashboard,
     Palette,
+    Receipt,
     ShieldAlert,
     ShieldCheck,
     UserRound,
@@ -31,6 +32,7 @@ import { index as plansIndex } from '@/routes/plans';
 import { index as collectionsIndex } from '@/routes/collections';
 import { index as withdrawalsIndex } from '@/routes/withdrawals';
 import { index as reversalsIndex } from '@/routes/reversals';
+import { index as transactionsIndex } from '@/routes/transactions';
 import { index as batchesIndex } from '@/routes/collection-batches';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editProfile } from '@/routes/profile';
@@ -87,6 +89,12 @@ const mainNavItems = computed<NavItem[]>(() => {
         title: 'Reversals',
         href: reversalsIndex(),
         icon: ShieldAlert,
+    });
+
+    items.push({
+        title: 'Transactions',
+        href: transactionsIndex(),
+        icon: Receipt,
     });
 
     if (canViewCustomers.value) {

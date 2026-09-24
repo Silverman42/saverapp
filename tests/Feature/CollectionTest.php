@@ -24,6 +24,9 @@ use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\CollectionReadService;
 use App\Services\FeeObligationService;
+use App\Services\LedgerTransactionProjectionService;
+use App\Services\LedgerTransactionReadService;
+use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -127,6 +130,39 @@ test('COL-AC-030: one confirmed cash receipt funds slots once and replays by key
         ->and($plan->fresh()->status)->toBe(ThriftPlanStatus::Active);
 });
 
+test('LED-AC-012/032: one receipt projects one scoped transaction after a verified rebuild', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $preview = $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json();
+    $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+
+    $receipt = CollectionReceipt::query()->sole();
+    $reader = app(LedgerTransactionReadService::class);
+    $agentResult = $reader->search($agent, ['from' => $today, 'to' => $today]);
+    expect($agentResult['status'])->toBe('ready')
+        ->and($agentResult['total'])->toBe(1)
+        ->and($agentResult['data'][0]['reference'])->toBe($receipt->receipt_reference)
+        ->and($agentResult['data'][0]['savings_effect_kobo'])->toBe(200000);
+    $statement = app(StatementPreviewService::class)->preview($customer->user, $customer, $today, $today, 'Africa/Lagos');
+    expect($statement)->toMatchArray([
+        'status' => 'ready', 'opening_kobo' => 0, 'activity_kobo' => 200000,
+        'closing_kobo' => 200000, 'current_available_kobo' => 200000,
+    ]);
+    $this->actingAs($customer->user)->get(route('transactions.show', $receipt->receipt_reference))->assertOk();
+    $this->get(route('customers.show', $customer->customer_id))->assertOk();
+    $this->get(route('customers.statements.preview', [
+        'customer' => $customer->customer_id, 'from' => $today, 'to' => $today,
+    ]))->assertOk();
+    $unrelated = CustomerProfile::factory()->create();
+    $this->actingAs($unrelated->user)->get(route('transactions.show', $receipt->receipt_reference))->assertNotFound();
+    $this->get(route('customers.statements.preview', $customer->customer_id))->assertNotFound();
+    $this->get(route('transactions.index', ['from' => $today, 'to' => $today, 'cursor' => 'invalid']))
+        ->assertUnprocessable();
+});
+
 test('COL-AC-002: another eligible Agent cannot record for this Customer', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
     $other = User::factory()->agent()->create([
@@ -198,6 +234,7 @@ test('COL-AC-014: explicit slot allocation funds the chosen future slot', functi
 
 test('COL-AC-009/024: split cash settles a fee without crediting it to savings', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
     $rule = FeeRule::create([
         'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
         'rule_key' => 'test-registration', 'model' => FeeRuleModel::Fixed,
@@ -228,6 +265,12 @@ test('COL-AC-009/024: split cash settles a fee without crediting it to savings',
     expect(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000)
         ->and($obligation->fresh()->outstandingAmountKobo())->toBe(0)
         ->and(CollectionReceipt::query()->firstOrFail()->tender_amount_kobo)->toBe(250000);
+    $projected = app(LedgerTransactionReadService::class)->search($customer->user, ['from' => $today, 'to' => $today]);
+    expect($projected['total'])->toBe(1)
+        ->and($projected['data'][0]['gross_amount_kobo'])->toBe(250000)
+        ->and($projected['data'][0]['fee_amount_kobo'])->toBe(50000)
+        ->and($projected['data'][0]['savings_effect_kobo'])->toBe(200000)
+        ->and($projected['data'][0]['posting_group_count'])->toBe(2);
     $batch = CollectionBatch::query()->firstOrFail();
     $this->get(route('collection-batches.show', $batch))->assertOk()
         ->assertInertia(fn ($page) => $page->where('batch.savings_kobo', 200000)

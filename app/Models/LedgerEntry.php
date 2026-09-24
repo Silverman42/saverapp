@@ -19,6 +19,7 @@ use RuntimeException;
  * @property int|null $customer_profile_id
  * @property int|null $agent_profile_id
  * @property int|null $fee_obligation_id
+ * @property int|null $thrift_plan_id
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
@@ -31,6 +32,7 @@ use RuntimeException;
     'customer_profile_id',
     'agent_profile_id',
     'fee_obligation_id',
+    'thrift_plan_id',
 ])]
 class LedgerEntry extends Model
 {

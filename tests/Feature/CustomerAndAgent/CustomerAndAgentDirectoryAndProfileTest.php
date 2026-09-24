@@ -65,7 +65,7 @@ test('Customer can view own profile but is denied access to other customers and 
             ->component('customers/Show')
             ->where('customer.id', $customerProfile1->customer_id)
             ->where('customer.financial_summary.status', 'unavailable')
-            ->where('customer.plans.status', 'unavailable')
+            ->where('customer.plans.status', 'available')
             ->where('customer.transactions.status', 'unavailable')
             ->where('customer.statements.status', 'unavailable')
             ->missing('customer.notes')

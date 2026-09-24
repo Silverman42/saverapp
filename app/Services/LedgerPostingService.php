@@ -11,6 +11,8 @@ use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
+use App\Models\BusinessProfile;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
@@ -18,6 +20,7 @@ use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -110,6 +113,33 @@ class LedgerPostingService
                 throw new ConflictHttpException('Fee refund exceeds a retained paid or applied amount.');
             }
 
+            $receipt = null;
+            if (in_array($command->sourceType, ['collection_receipt', 'fee_application'], true)) {
+                $parts = explode('-', $command->sourceId, 2);
+                if (! ctype_digit($parts[0])
+                    || ($command->sourceType === 'collection_receipt'
+                        && (($parts[1] ?? null) !== (string) $command->lines[0]->feeObligationId))) {
+                    throw new ConflictHttpException('The fee posting has an invalid collection source.');
+                }
+                $receipt = CollectionReceipt::query()->whereKey((int) $parts[0])->first();
+                if ($receipt === null || (int) $receipt->customer_profile_id !== $command->customerProfileId) {
+                    throw new ConflictHttpException('The fee posting has no authoritative Customer receipt.');
+                }
+            }
+            if ($receipt === null && $command->occurredAt === null) {
+                throw new ConflictHttpException('The fee event has no authoritative occurrence date.');
+            }
+            $effectiveAt = $command->occurredAt ?? now();
+            if ($receipt !== null) {
+                $timezone = $receipt->timezone;
+                $occurredOn = $receipt->received_date;
+                $occurredAt = CarbonImmutable::parse($occurredOn, $timezone)->startOfDay()->utc();
+            } else {
+                $timezone = BusinessProfile::current()->timezone;
+                $occurredOn = CarbonImmutable::instance($effectiveAt)->setTimezone($timezone)->toDateString();
+                $occurredAt = $command->occurredAt;
+            }
+
             $postingReference = 'FEE-'.Str::uuid();
             $group = LedgerPostingGroup::create([
                 'posting_reference' => $postingReference,
@@ -121,7 +151,14 @@ class LedgerPostingService
                 'currency' => $command->currency,
                 'actor_user_id' => $actor?->id,
                 'customer_profile_id' => $command->customerProfileId,
-                'occurred_at' => $command->occurredAt,
+                'occurred_at' => $occurredAt,
+                'occurred_on' => $occurredOn,
+                'business_timezone' => $timezone,
+                'schema_version' => 1,
+                'correlation_id' => $receipt === null
+                    ? $command->sourceType.'-'.$command->sourceId
+                    : 'collection-receipt-'.$receipt->id,
+                'thrift_plan_id' => $receipt?->thrift_plan_id,
                 'committed_at' => now(),
                 'metadata' => $command->metadata,
             ]);
@@ -136,6 +173,8 @@ class LedgerPostingService
                     'customer_profile_id' => $line->customerProfileId,
                     'agent_profile_id' => $line->agentProfileId,
                     'fee_obligation_id' => $line->feeObligationId,
+                    'thrift_plan_id' => $line->accountCode === LedgerAccountCode::CustomerSavingsLiability
+                        ? $receipt?->thrift_plan_id : null,
                 ]);
             }
 
@@ -234,8 +273,7 @@ class LedgerPostingService
         $credits = 0;
 
         foreach ($command->lines as $index => $line) {
-            if (! $line instanceof LedgerPostingLine
-                || $line->amountKobo < 1
+            if ($line->amountKobo < 1
                 || $line->amountKobo > 999_999_999_999
                 || $line->accountCode !== $expected[$index][0]
                 || $line->side !== $expected[$index][1]
@@ -302,6 +340,9 @@ class LedgerPostingService
             ->whereIn('entry_type', array_keys($totals))
             ->get(['entry_type', 'amount_kobo']) as $entry) {
             $entryType = $entry->entry_type->value;
+            if (! array_key_exists($entryType, $totals)) {
+                throw new ConflictHttpException('Fee refund history contains an unsupported entry.');
+            }
             if ($entry->amount_kobo > PHP_INT_MAX - $totals[$entryType]) {
                 throw new \OverflowException('Fee refund history exceeds the supported integer range.');
             }

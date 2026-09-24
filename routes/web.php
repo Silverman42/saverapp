@@ -24,8 +24,10 @@ use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerPhotoController;
 use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\CustomerRegistrationController;
+use App\Http\Controllers\CustomerStatementController;
 use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
 use App\Http\Controllers\ReconciliationController;
@@ -68,6 +70,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('customers/{customer}/name-corrections/{correction}/accept', [ProfileIdentityController::class, 'acceptNameCorrection'])->middleware('fresh')->name('customers.name-corrections.accept');
     Route::post('customers/{customer}/name-corrections/{correction}/reject', [ProfileIdentityController::class, 'rejectNameCorrection'])->middleware('fresh')->name('customers.name-corrections.reject');
     Route::post('customers/{customer}/name-corrections/{correction}/cancel', [ProfileIdentityController::class, 'cancelNameCorrection'])->name('customers.name-corrections.cancel');
+    Route::get('customers/{customer}/ledger-balance', [LedgerTransactionController::class, 'balance'])->name('customers.ledger-balance');
+    Route::get('customers/{customer}/statements/preview', [CustomerStatementController::class, 'preview'])->name('customers.statements.preview');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
 
@@ -86,6 +90,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
 
     Route::get('withdrawals', [WithdrawalController::class, 'index'])->name('withdrawals.index');
+    Route::get('transactions', [LedgerTransactionController::class, 'index'])->name('transactions.index');
+    Route::get('transactions/{transaction}', [LedgerTransactionController::class, 'show'])->name('transactions.show');
     Route::get('customers/{customer}/withdrawals/create', [WithdrawalController::class, 'create'])->name('customers.withdrawals.create');
     Route::post('customers/{customer}/withdrawals/preview', [WithdrawalController::class, 'preview'])->name('customers.withdrawals.preview');
     Route::post('customers/{customer}/withdrawals', [WithdrawalController::class, 'store'])->name('customers.withdrawals.store');

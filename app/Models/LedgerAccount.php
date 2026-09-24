@@ -19,10 +19,16 @@ use RuntimeException;
  * @property string $currency
  * @property string $mapping_status
  * @property int $version
+ * @property string|null $display_name
+ * @property string|null $purpose
+ * @property array<int, string>|null $supported_dimensions
+ * @property CarbonImmutable|null $effective_at
+ * @property CarbonImmutable|null $retired_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
-#[Fillable(['code', 'account_class', 'normal_balance', 'currency', 'mapping_status', 'version'])]
+#[Fillable(['code', 'account_class', 'normal_balance', 'currency', 'mapping_status', 'version',
+    'display_name', 'purpose', 'supported_dimensions', 'effective_at', 'retired_at'])]
 class LedgerAccount extends Model
 {
     protected function casts(): array
@@ -32,6 +38,9 @@ class LedgerAccount extends Model
             'account_class' => LedgerAccountClass::class,
             'normal_balance' => LedgerEntrySide::class,
             'version' => 'integer',
+            'supported_dimensions' => 'array',
+            'effective_at' => 'immutable_datetime',
+            'retired_at' => 'immutable_datetime',
         ];
     }
 

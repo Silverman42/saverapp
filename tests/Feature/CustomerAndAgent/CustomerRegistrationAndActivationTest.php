@@ -28,6 +28,7 @@ use App\Notifications\Auth\CustomerInvitationNotification;
 use App\Services\InvitationSenderReadinessService;
 use App\Services\RegistrationFeeService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -76,13 +77,17 @@ function publishFeeRule(
     $admin->assignRole(UserType::Admin->value);
     $admin->givePermissionTo(AdminPermission::FeesManage->value);
 
+    $request = Request::create(route('admin.fees.registration.store'), 'POST');
+    $request->setLaravelSession(app('session')->driver());
+    $request->session()->put(freshAdminSession());
+
     return app(RegistrationFeeService::class)->publishRule($admin, [
         'name' => $name,
         'model' => $model,
         'amount_kobo' => $amountKobo,
         'customer_description' => $customerDesc,
         'publication_reason' => $reason,
-    ]);
+    ], $request);
 }
 
 /**
@@ -184,7 +189,7 @@ test('Admin with fresh session and fees.manage can view and publish fixed regist
         ->post(route('admin.fees.registration.store'), [
             'name' => 'Standard Customer Fee 2026',
             'model' => 'fixed',
-            'amount_ngn' => 500.00,
+            'amount_ngn' => '500.00',
             'customer_description' => 'Mandatory onboarding charge for new accounts.',
             'publication_reason' => 'Annual governance tariff schedule approval.',
         ]);
@@ -224,6 +229,27 @@ test('Admin can publish explicit zero fee rule', function (): void {
     expect($currentRule->amount_kobo)->toBe(0);
     expect($currentRule->isZero())->toBeTrue();
     expect($currentRule->formattedAmount())->toBe('Free');
+});
+
+test('Admin cannot publish a registration fee rule with an explicitly past effective time', function (): void {
+    $admin = User::factory()->admin()->create();
+    $admin->assignRole(UserType::Admin->value);
+    $admin->givePermissionTo(AdminPermission::FeesManage->value);
+
+    $this->actingAs($admin)
+        ->withSession(freshAdminSession())
+        ->post(route('admin.fees.registration.store'), [
+            'name' => 'Backdated Registration Fee',
+            'model' => 'fixed',
+            'amount_ngn' => '500.00',
+            'customer_description' => 'Mandatory onboarding charge for new accounts.',
+            'publication_reason' => 'Approved tariff schedule.',
+            'effective_at' => now()->subMinute()->toDateTimeString(),
+        ])
+        ->assertSessionHasErrors(['effective_at' => 'Fee rules cannot be published retroactively.']);
+
+    expect(FeeRule::query()->count())->toBe(0);
+    expect(AuditEvent::query()->where('event_type', 'fee_rule.published')->exists())->toBeFalse();
 });
 
 test('Publishing a new rule atomically retires the prior rule and increments version monotonically', function (): void {

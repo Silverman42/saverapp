@@ -11,6 +11,7 @@ use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\CustomerNameCorrectionService;
 use App\Services\FeeObligationService;
+use App\Services\LedgerTransactionReadService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
@@ -32,6 +33,7 @@ class CustomerProfileController extends Controller
         AuthorizationService $authorizationService,
         CustomerNameCorrectionService $nameCorrectionService,
         FeeObligationService $feeObligationService,
+        LedgerTransactionReadService $transactions,
     ): Response {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -107,6 +109,7 @@ class CustomerProfileController extends Controller
             ->first();
         $currentPlanRevision = $currentPlan?->termsRevisions->firstWhere('revision', $currentPlan->current_terms_revision);
         $canManagePlan = Gate::forUser($viewer)->allows('managePlan', $customerProfile);
+        $financialPosition = $transactions->balance($viewer, $customerProfile);
 
         $profileData = [
             'id' => $customerProfile->customer_id,
@@ -138,8 +141,16 @@ class CustomerProfileController extends Controller
             ],
             // Explicit unavailable sections
             'financial_summary' => [
-                'status' => 'unavailable',
-                'message' => 'Financial summary unavailable until Module 10',
+                'status' => $financialPosition['status'],
+                'message' => $financialPosition['status'] === 'ready'
+                    ? 'Posted savings and live withdrawal reservations.'
+                    : 'The ledger projection needs verification before balances can be shown.',
+                'liability' => $financialPosition['status'] === 'ready'
+                    ? MoneyFormatter::formatNaira($financialPosition['liability_kobo']) : null,
+                'reserved' => $financialPosition['status'] === 'ready'
+                    ? MoneyFormatter::formatNaira($financialPosition['reservations_kobo']) : null,
+                'available' => $financialPosition['status'] === 'ready'
+                    ? MoneyFormatter::formatNaira($financialPosition['available_kobo']) : null,
             ],
             'plans' => [
                 'status' => 'available',
@@ -164,12 +175,16 @@ class CustomerProfileController extends Controller
                 'index_url' => route('plans.index'),
             ],
             'transactions' => [
-                'status' => 'unavailable',
-                'message' => 'Transaction ledger unavailable until Module 10',
+                'status' => $financialPosition['status'],
+                'message' => $financialPosition['status'] === 'ready'
+                    ? 'View posted activity in your current scope.'
+                    : 'Transaction history is unavailable pending ledger verification.',
             ],
             'statements' => [
-                'status' => 'unavailable',
-                'message' => 'Statements unavailable until Module 08/10',
+                'status' => $financialPosition['status'],
+                'message' => $financialPosition['status'] === 'ready'
+                    ? 'Preview posted savings activity. Issued statements are not yet available.'
+                    : 'Statement preview is unavailable pending ledger verification.',
             ],
             // Contextual actions
             'actions' => [

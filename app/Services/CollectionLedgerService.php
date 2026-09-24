@@ -10,6 +10,7 @@ use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -43,6 +44,35 @@ class CollectionLedgerService
             throw new LogicException('Collection postings require a valid amount in the owning transaction.');
         }
 
+        $source = $sourceType === 'collection_receipt'
+            ? DB::table('collection_receipts')->where('id', $sourceId)->first()
+            : DB::table('cash_remittances')->where('id', $sourceId)->first();
+        if ($source === null) {
+            throw new ConflictHttpException('The authoritative cash source is unavailable.');
+        }
+        $sourceData = (array) $source;
+        if ($sourceType === 'collection_receipt') {
+            if ((int) $sourceData['customer_profile_id'] !== $customerId
+                || (int) $sourceData['recording_agent_profile_id'] !== $agentId) {
+                throw new ConflictHttpException('Collection source dimensions changed.');
+            }
+            $occurredOn = $sourceData['received_date'];
+            $timezone = $sourceData['timezone'];
+            $planId = $sourceData['thrift_plan_id'];
+            $correlationId = 'collection-receipt-'.$sourceId;
+        } else {
+            if ((int) $sourceData['agent_profile_id'] !== $agentId || $customerId !== null) {
+                throw new ConflictHttpException('Remittance source dimensions changed.');
+            }
+            $occurredOn = $sourceData['handoff_date'];
+            $timezone = DB::table('collection_batches')->where('id', $sourceData['collection_batch_id'])->value('timezone');
+            if (! is_string($timezone)) {
+                throw new ConflictHttpException('The authoritative remittance timezone is unavailable.');
+            }
+            $planId = null;
+            $correlationId = 'cash-remittance-'.$sourceId;
+        }
+
         $accounts = LedgerAccount::query()->whereIn('code', [$debitCode->value, $creditCode->value])
             ->orderBy('id')->lockForUpdate()->get()->keyBy(fn (LedgerAccount $account): string => $account->code->value);
         foreach ([[$debitCode, $debitClass], [$creditCode, $creditClass]] as [$code, $class]) {
@@ -66,7 +96,10 @@ class CollectionLedgerService
             'payload_hash' => hash('sha256', json_encode([$eventType, $sourceType, $sourceId, $customerId, $agentId, $amountKobo], JSON_THROW_ON_ERROR)),
             'source_type' => $sourceType, 'source_id' => $sourceId, 'event_type' => $eventType,
             'currency' => 'NGN', 'actor_user_id' => $actor->id, 'customer_profile_id' => $customerId,
-            'occurred_at' => now(), 'committed_at' => now(), 'metadata' => ['agent_profile_id' => $agentId],
+            'occurred_at' => CarbonImmutable::parse($occurredOn, $timezone)->startOfDay()->utc(),
+            'occurred_on' => $occurredOn, 'business_timezone' => $timezone,
+            'schema_version' => 1, 'correlation_id' => $correlationId, 'thrift_plan_id' => $planId,
+            'committed_at' => now(), 'metadata' => ['agent_profile_id' => $agentId],
         ]);
         foreach ([[$debitCode, LedgerEntrySide::Debit], [$creditCode, LedgerEntrySide::Credit]] as $index => [$code, $side]) {
             LedgerEntry::create([
@@ -75,6 +108,7 @@ class CollectionLedgerService
                 'amount_kobo' => $amountKobo, 'customer_profile_id' => $customerId,
                 'agent_profile_id' => $code === LedgerAccountCode::AgentReceivable ? $agentId : null,
                 'fee_obligation_id' => null,
+                'thrift_plan_id' => $code === LedgerAccountCode::CustomerSavingsLiability ? $planId : null,
             ]);
         }
         AuditEvent::record('ledger.collection_posted', LedgerPostingGroup::class, $group->id, $group->posting_reference, [

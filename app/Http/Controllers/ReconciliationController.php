@@ -12,6 +12,7 @@ use App\Models\CollectionException;
 use App\Services\AuthorizationService;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionService;
+use App\Services\LedgerTransactionProjectionService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,14 +79,14 @@ class ReconciliationController extends Controller
     }
 
     public function remit(CollectionBatch $batch, StoreCashRemittanceRequest $request, AuthorizationService $auth,
-        CollectionService $collections, CollectionLedgerService $ledger): RedirectResponse
+        CollectionService $collections, CollectionLedgerService $ledger, LedgerTransactionProjectionService $transactions): RedirectResponse
     {
         if (! $auth->allows($request->user(), AdminPermission::ReconciliationManage)) {
             throw new AuthorizationException;
         }
         $data = $request->validated();
         $amount = $collections->amountToKobo($data['amount_ngn']);
-        DB::transaction(function () use ($batch, $request, $data, $amount, $ledger): void {
+        DB::transaction(function () use ($batch, $request, $data, $amount, $ledger, $transactions): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $existing = CashRemittance::query()->where('handoff_reference', $data['handoff_reference'])->lockForUpdate()->first();
             if ($existing !== null) {
@@ -118,6 +119,7 @@ class ReconciliationController extends Controller
             ]);
             $remittance->update(['ledger_posting_group_id' => $ledger->postCashRemittance(
                 $remittance->id, $current->agent_profile_id, $amount, $request->user())->id]);
+            $transactions->projectRemittance($remittance->id);
             $current->status = 'in_review';
             $current->version++;
             $current->save();

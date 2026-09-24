@@ -21,6 +21,11 @@ use RuntimeException;
  * @property int|null $actor_user_id
  * @property int|null $customer_profile_id
  * @property CarbonImmutable|null $occurred_at
+ * @property CarbonImmutable|null $occurred_on
+ * @property string|null $business_timezone
+ * @property int $schema_version
+ * @property string|null $correlation_id
+ * @property int|null $thrift_plan_id
  * @property CarbonImmutable $committed_at
  * @property array<string, mixed>|null $metadata
  */
@@ -35,6 +40,11 @@ use RuntimeException;
     'actor_user_id',
     'customer_profile_id',
     'occurred_at',
+    'occurred_on',
+    'business_timezone',
+    'schema_version',
+    'correlation_id',
+    'thrift_plan_id',
     'committed_at',
     'metadata',
 ])]
@@ -45,6 +55,8 @@ class LedgerPostingGroup extends Model
         return [
             'occurred_at' => 'immutable_datetime',
             'committed_at' => 'immutable_datetime',
+            'occurred_on' => 'immutable_date',
+            'schema_version' => 'integer',
             'metadata' => 'array',
         ];
     }

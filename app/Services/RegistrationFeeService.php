@@ -129,11 +129,12 @@ class RegistrationFeeService
 
             $this->validateRuleTerms($kind, $model, $timing, $basis, $settlementSource, $amountKobo, $basisPoints, $ruleKey);
 
+            $now = Carbon::now();
             $effectiveAt = isset($data['effective_at']) && $data['effective_at'] !== ''
                 ? Carbon::parse((string) $data['effective_at'])
-                : now();
+                : $now;
 
-            if ($effectiveAt->lessThan(now())) {
+            if ($effectiveAt->lessThan($now)) {
                 throw ValidationException::withMessages(['effective_at' => ['Fee rules cannot be published retroactively.']]);
             }
 
