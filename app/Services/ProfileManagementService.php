@@ -254,7 +254,7 @@ class ProfileManagementService
                     targetReference: $lockedProfile->agent_id,
                 );
 
-                if ($lockedActor->id !== $agentUser->id && $agentUser->account_state === AccountState::Active) {
+                if ($lockedActor->id !== $agentUser->id) {
                     $this->createNotificationIntent(
                         history: $history,
                         recipient: $agentUser,
@@ -411,12 +411,17 @@ class ProfileManagementService
             targetReference: $targetReference,
             payload: [
                 'operation_id' => $operationId,
+                'before_values' => $before,
+                'after_values' => $after,
+                'reason' => $reason,
                 'changed_fields' => $changedFields,
                 'from_version' => $fromVersion,
                 'to_version' => $toVersion,
                 'outcome' => 'succeeded',
             ],
             actor: $actor,
+
+            context: ['executor' => self::class]
         );
 
         return ProfileChangeHistory::create([
@@ -447,7 +452,7 @@ class ProfileManagementService
         }
 
         $subjectUser = $profile->user;
-        if ($actor->user_type !== UserType::Customer && $subjectUser?->account_state === AccountState::Active) {
+        if ($actor->user_type !== UserType::Customer && $subjectUser !== null) {
             $this->createNotificationIntent(
                 history: $history,
                 recipient: $subjectUser,
@@ -509,8 +514,16 @@ class ProfileManagementService
             'status' => 'pending',
         ]);
 
+        if ($channel === 'database') {
+            app(NotificationPipeline::class)->capture('profile', $intent->id, false);
+        }
+
         DB::afterCommit(static function () use ($intent): void {
-            DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit();
+            if ($intent->channel === 'database') {
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit());
+            } else {
+                DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit();
+            }
         });
     }
 

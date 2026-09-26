@@ -83,6 +83,8 @@ class CustomerActivationController extends Controller
                     'generation' => $invitation->generation,
                 ],
                 actor: null,
+
+                context: ['executor' => self::class]
             );
         }
 
@@ -166,6 +168,8 @@ class CustomerActivationController extends Controller
                     'invitation_id' => $invitation->id,
                 ],
                 actor: $freshUser,
+
+                context: ['executor' => self::class]
             );
 
             return $freshUser;

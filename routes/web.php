@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccessController;
+use App\Http\Controllers\Admin\AuditController;
+use App\Http\Controllers\Admin\BusinessSettingsController;
 use App\Http\Controllers\Admin\FeeOverviewController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\RegistrationFeeRuleController;
+use App\Http\Controllers\Admin\SecurityCaseController;
 use App\Http\Controllers\AgentDirectoryController;
 use App\Http\Controllers\AgentInvitationController;
 use App\Http\Controllers\AgentPhotoController;
@@ -29,6 +32,7 @@ use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\LedgerTransactionController;
+use App\Http\Controllers\NotificationInboxController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
 use App\Http\Controllers\ReconciliationController;
@@ -51,6 +55,13 @@ Route::get('invitations/customer/{token}', [CustomerActivationController::class,
 Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->name('invitations.customer.activate');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('notifications', [NotificationInboxController::class, 'index'])->name('notifications.index');
+    Route::get('notifications/sync', [NotificationInboxController::class, 'sync'])->name('notifications.sync');
+    Route::post('notifications/page-read', [NotificationInboxController::class, 'pageRead'])->name('notifications.page-read');
+    Route::get('notifications/{notification}', [NotificationInboxController::class, 'show'])->whereUuid('notification')->name('notifications.show');
+    Route::patch('notifications/{notification}/read', [NotificationInboxController::class, 'update'])->whereUuid('notification')->name('notifications.read');
+    Route::get('notifications/{notification}/open', [NotificationInboxController::class, 'open'])->whereUuid('notification')->name('notifications.open');
+
     // Customer Registration and Attempts (CAM-T06)
     Route::get('customers/create', [CustomerRegistrationController::class, 'create'])->name('customers.create');
     Route::get('customers/fee-preview', [CustomerRegistrationController::class, 'feePreview'])->name('customers.fee-preview');
@@ -176,6 +187,22 @@ Route::middleware(['auth'])->group(function () {
 
     // Admin Lockout & Abuse Visibility (AUTH-061, AUTH-063)
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::prefix('business-settings')->name('business-settings.')->group(function (): void {
+            Route::get('/', [BusinessSettingsController::class, 'index'])->name('index');
+            Route::post('drafts', [BusinessSettingsController::class, 'store'])->middleware('throttle:30,1')->name('drafts.store');
+            Route::patch('drafts/{draft}', [BusinessSettingsController::class, 'update'])->whereNumber('draft')->name('drafts.update');
+            Route::post('drafts/{draft}/preview', [BusinessSettingsController::class, 'preview'])->whereNumber('draft')->name('drafts.preview');
+            Route::post('drafts/{draft}/publish', [BusinessSettingsController::class, 'publish'])->whereNumber('draft')->middleware(['fresh', 'throttle:10,1'])->name('drafts.publish');
+            Route::post('drafts/{draft}/discard', [BusinessSettingsController::class, 'discard'])->whereNumber('draft')->name('drafts.discard');
+            Route::post('versions/{configuration}/cancel', [BusinessSettingsController::class, 'cancel'])->whereNumber('configuration')->middleware('fresh')->name('versions.cancel');
+            Route::post('versions/{configuration}/rollback', [BusinessSettingsController::class, 'rollback'])->whereNumber('configuration')->name('versions.rollback');
+            Route::get('operations/{operation}', [BusinessSettingsController::class, 'operation'])->whereUuid('operation')->name('operations.show');
+        });
+        Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+        Route::get('audit/{event}', [AuditController::class, 'show'])->whereUlid('event')->name('audit.show');
+        Route::get('security/cases', [SecurityCaseController::class, 'index'])->name('security.index');
+        Route::get('security/cases/{case:case_reference}', [SecurityCaseController::class, 'show'])->name('security.show');
+        Route::patch('security/cases/{case:case_reference}', [SecurityCaseController::class, 'update'])->name('security.update');
         Route::get('lockouts', [LockoutController::class, 'index'])->name('lockouts.index');
         Route::post('lockouts/{user}/unlock', [LockoutController::class, 'unlock'])->name('lockouts.unlock');
 

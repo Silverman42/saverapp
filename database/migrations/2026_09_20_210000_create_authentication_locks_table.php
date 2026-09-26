@@ -34,7 +34,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['user_id', 'lock_category', 'locked_until']);
-            $table->index(['email_normalized', 'lock_category', 'locked_until']);
+            $table->index(['email_normalized', 'lock_category', 'locked_until'], 'auth_locks_email_category_until_index');
         });
     }
 

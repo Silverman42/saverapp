@@ -168,10 +168,11 @@ test('status changes keep access and assignment separate and atomically record r
 
     expect($mailIntent->fresh()->status)->toBe('delivered')
         ->and($databaseIntent->fresh()->status)->toBe('delivered');
-    Notification::assertSentToTimes($customerUser, CustomerStatusNotification::class, 2);
+    Notification::assertSentToTimes($customerUser, CustomerStatusNotification::class, 1);
+    expect($customerUser->notifications()->whereKey($databaseIntent->notification_id)->exists())->toBeTrue();
 });
 
-test('invited Customer receives status email without an inaccessible in-app message', function (): void {
+test('invited Customer retains an inaccessible in-app notice alongside status email', function (): void {
     $admin = makeStatusManager();
     $customer = CustomerProfile::factory()->create();
     $customer->user->forceFill(['account_state' => AccountState::Invited])->save();
@@ -181,7 +182,7 @@ test('invited Customer receives status email without an inaccessible in-app mess
         ->assertRedirect(route('customers.status.edit', $customer->customer_id));
 
     $history = $customer->statusHistories()->firstOrFail();
-    expect($history->notificationIntents()->pluck('channel')->all())->toBe(['mail']);
+    expect($history->notificationIntents()->pluck('channel')->sort()->values()->all())->toBe(['database', 'mail']);
 });
 
 test('current eligible Agent is required to move a Customer into Active', function (): void {

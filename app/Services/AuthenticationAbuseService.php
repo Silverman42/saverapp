@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AdminPermission;
 use App\Enums\UnlockVerificationMethod;
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\AuthenticationLock;
 use App\Models\User;
 use App\Notifications\Auth\AccountUnlockedNotification;
@@ -93,6 +94,13 @@ class AuthenticationAbuseService
         $count1h = count(array_filter($timestamps, fn ($t) => (int) $t >= $cutoff1h));
         $count24h = count($timestamps);
 
+        try {
+            AuditEvent::record('auth.password_failed', User::class, null, null,
+                ['attempt_count' => $count24h], null, ['executor' => self::class, 'outcome' => 'Denied', 'actor_category' => 'unknown']);
+        } catch (\Throwable) {
+            Log::warning('Authentication denial evidence unavailable.', ['event_code' => 'password_failed']);
+        }
+
         // Check if account was already locked for password right before this attempt
         $wasAlreadyLocked = ($user && $user->isTemporarilyLocked('password'))
             || (Cache::has("auth:password:cooldown:{$normalized}") && (int) Cache::get("auth:password:cooldown:{$normalized}") > $now->timestamp);
@@ -105,32 +113,24 @@ class AuthenticationAbuseService
 
             Cache::put("auth:password:cooldown:{$normalized}", $lockedUntil->timestamp, $lockedUntil);
 
-            if ($user) {
-                $user->lockTemporarily($lockDurationMinutes, 'password', $reason);
-            }
-
-            AuthenticationLock::create([
+            $this->captureLock([
                 'user_id' => $user?->id,
                 'email_normalized' => $normalized,
                 'lock_category' => 'password',
                 'reason' => $reason,
                 'failed_attempts_count' => $count24h,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => true,
                 'notification_sent' => true,
-            ]);
+            ], $user);
 
             Log::warning('Password lock (1 hour, review required) applied', [
-                'email_normalized' => $normalized,
                 'failed_count' => $count24h,
-                'ip' => $ip,
             ]);
 
             if ($user && (! $wasAlreadyLocked || $count24h === 20)) {
-                $user->notify(new PasswordLockoutNotification($lockDurationMinutes, $reason));
+                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason))->afterCommit());
             }
 
             return;
@@ -144,32 +144,24 @@ class AuthenticationAbuseService
 
             Cache::put("auth:password:cooldown:{$normalized}", $lockedUntil->timestamp, $lockedUntil);
 
-            if ($user) {
-                $user->lockTemporarily($lockDurationMinutes, 'password', $reason);
-            }
-
-            AuthenticationLock::create([
+            $this->captureLock([
                 'user_id' => $user?->id,
                 'email_normalized' => $normalized,
                 'lock_category' => 'password',
                 'reason' => $reason,
                 'failed_attempts_count' => $count1h,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
                 'notification_sent' => true,
-            ]);
+            ], $user);
 
             Log::warning('Password lock (15 minutes) applied', [
-                'email_normalized' => $normalized,
                 'failed_count' => $count1h,
-                'ip' => $ip,
             ]);
 
             if ($user && (! $wasAlreadyLocked || $count1h === 10)) {
-                $user->notify(new PasswordLockoutNotification($lockDurationMinutes, $reason));
+                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason))->afterCommit());
             }
 
             return;
@@ -183,7 +175,6 @@ class AuthenticationAbuseService
             Cache::put("auth:password:cooldown:{$normalized}", $cooldownUntil->timestamp, $cooldownUntil);
 
             Log::info('Password progressive cooldown delay applied', [
-                'email_normalized' => $normalized,
                 'delay_minutes' => $delayMinutes,
                 'failed_count' => $count15m,
             ]);
@@ -255,21 +246,18 @@ class AuthenticationAbuseService
             $reason = 'Excessive invalid authenticator codes (10 within 1 hour)';
 
             Cache::put("auth:totp:cooldown:{$user->id}", $lockedUntil->timestamp, $lockedUntil);
-            $user->lockTemporarily($lockDurationMinutes, 'mfa', $reason);
 
-            AuthenticationLock::create([
+            $this->captureLock([
                 'user_id' => $user->id,
                 'email_normalized' => IdentityNormalizer::normalizeEmail($user->email),
                 'lock_category' => 'mfa',
                 'reason' => $reason,
                 'failed_attempts_count' => $count1h,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
                 'notification_sent' => true,
-            ]);
+            ], $user);
 
             Log::warning('MFA cooldown (15 minutes) applied', [
                 'user_id' => $user->id,
@@ -277,7 +265,7 @@ class AuthenticationAbuseService
             ]);
 
             if (! $wasAlreadyLocked || $count1h === 10) {
-                $user->notify(new MfaCooldownNotification($lockDurationMinutes, $reason));
+                $user->notify((new MfaCooldownNotification($lockDurationMinutes, $reason))->afterCommit());
             }
         }
 
@@ -286,7 +274,7 @@ class AuthenticationAbuseService
             if ($request->hasSession()) {
                 $request->session()->forget(['login.id', 'login.remember', 'login.totp_attempts', 'login.recovery_attempts']);
             }
-            $user->notify(new TwoFactorFailedAttemptsExceededNotification);
+            $user->notify((new TwoFactorFailedAttemptsExceededNotification)->afterCommit());
 
             Log::warning('Login session terminated due to excessive invalid TOTP attempts', [
                 'user_id' => $user->id,
@@ -354,21 +342,18 @@ class AuthenticationAbuseService
             $reason = 'Excessive invalid recovery codes (10 within 1 hour)';
 
             Cache::put("auth:recovery_code:cooldown:{$user->id}", $lockedUntil->timestamp, $lockedUntil);
-            $user->lockTemporarily($lockDurationMinutes, 'recovery_code', $reason);
 
-            AuthenticationLock::create([
+            $this->captureLock([
                 'user_id' => $user->id,
                 'email_normalized' => IdentityNormalizer::normalizeEmail($user->email),
                 'lock_category' => 'recovery_code',
                 'reason' => $reason,
                 'failed_attempts_count' => $count1h,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
                 'notification_sent' => true,
-            ]);
+            ], $user);
 
             Log::warning('Recovery code cooldown (1 hour) applied', [
                 'user_id' => $user->id,
@@ -376,7 +361,7 @@ class AuthenticationAbuseService
             ]);
 
             if (! $wasAlreadyLocked || $count1h === 10) {
-                $user->notify(new RecoveryCodeCooldownNotification($lockDurationMinutes, $reason));
+                $user->notify((new RecoveryCodeCooldownNotification($lockDurationMinutes, $reason))->afterCommit());
             }
         }
 
@@ -385,7 +370,7 @@ class AuthenticationAbuseService
             if ($request->hasSession()) {
                 $request->session()->forget(['login.id', 'login.remember', 'login.totp_attempts', 'login.recovery_attempts']);
             }
-            $user->notify(new TwoFactorFailedAttemptsExceededNotification);
+            $user->notify((new TwoFactorFailedAttemptsExceededNotification)->afterCommit());
 
             Log::warning('Recovery code login terminated due to excessive invalid attempts', [
                 'user_id' => $user->id,
@@ -446,13 +431,14 @@ class AuthenticationAbuseService
         string $category = 'password',
         UnlockVerificationMethod|string $verificationMethod = UnlockVerificationMethod::InPerson,
         string $reason = 'Identity verified following security protocol',
+        ?string $restrictionToken = null,
     ): void {
         if (is_string($verificationMethod)) {
             $verificationMethod = UnlockVerificationMethod::from($verificationMethod);
         }
         $reason = trim($reason);
 
-        DB::transaction(function () use ($targetUser, $adminUser, $category, $verificationMethod, $reason) {
+        DB::transaction(function () use ($targetUser, $adminUser, $category, $verificationMethod, $reason, $restrictionToken) {
             // 1. Gather involved user IDs and lock in deterministic order
             $idsToLock = collect([$adminUser->id, $targetUser->id])
                 ->unique()
@@ -495,6 +481,10 @@ class AuthenticationAbuseService
                 ->lockForUpdate()
                 ->get();
 
+            if ($restrictionToken === null) {
+                throw ValidationException::withMessages(['restriction_token' => __('Refresh the restriction before unlocking.')]);
+            }
+            app(UnlockState::class)->verify($restrictionToken, $lockedTarget, $lockedActor, $category);
             $isUserLocked = $lockedTarget->isTemporarilyLocked($category);
 
             // Reject expired or missing matching restrictions with 422
@@ -535,9 +525,12 @@ class AuthenticationAbuseService
                 Cache::forget("auth:recovery_code:cooldown:{$lockedTarget->id}");
             }
 
+            AuditEvent::record('auth.manual_unlock', User::class, $lockedTarget->id, null,
+                ['category' => $category, 'verification_method' => $verificationMethod->value, 'restriction_ids' => $activeLocks->pluck('id')->all()], $lockedActor,
+                ['required_permission' => AdminPermission::SecurityOperationsManage->value, 'executor' => self::class]);
             // 7. Queue the account-owner notification only after commit
             DB::afterCommit(function () use ($lockedTarget) {
-                $lockedTarget->notify(new AccountUnlockedNotification('Administrator'));
+                $lockedTarget->notify((new AccountUnlockedNotification('Administrator'))->afterCommit());
             });
 
             Log::info('Account manually unlocked by administrator', [
@@ -545,9 +538,8 @@ class AuthenticationAbuseService
                 'admin_user_id' => $lockedActor->id,
                 'category' => $category,
                 'verification_method' => $verificationMethod->value,
-                'reason' => $reason,
             ]);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -555,15 +547,39 @@ class AuthenticationAbuseService
      */
     public function revokeSessionsForSuspectedCompromise(User $user, string $reason): void
     {
-        $sessionTable = config('session.table', 'sessions');
-        DB::table($sessionTable)->where('user_id', $user->id)->delete();
-        $user->revokeAllTrustedDevices();
+        DB::transaction(function () use ($user, $reason) {
+            (function () use ($user, $reason) {
+                $sessionTable = config('session.table', 'sessions');
+                DB::table($sessionTable)->where('user_id', $user->id)->delete();
+                $user->revokeAllTrustedDevices();
 
-        $user->notify(new CompromiseSessionRevocationNotification($reason));
+                $user->notify((new CompromiseSessionRevocationNotification($reason))->afterCommit());
 
-        Log::warning('Sessions revoked for suspected compromise', [
-            'user_id' => $user->id,
-            'reason' => $reason,
-        ]);
+                Log::warning('Sessions revoked for suspected compromise', [
+                    'user_id' => $user->id,
+                ]);
+
+            })();
+            AuditEvent::record('auth.compromise_sessions_revoked', User::class, $user->id, null,
+                ['changed_fields' => ['revokeSessionsForSuspectedCompromise']], $user, ['executor' => self::class]);
+
+        });
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function captureLock(array $attributes, ?User $user): AuthenticationLock
+    {
+        return DB::transaction(function () use ($attributes, $user): AuthenticationLock {
+            if ($user !== null) {
+                User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                $user->forceFill(['locked_until' => $attributes['locked_until'], 'lock_category' => $attributes['lock_category'], 'lock_reason' => $attributes['reason']])->save();
+            }
+            $lock = AuthenticationLock::create($attributes);
+            AuditEvent::record('auth.lock_created', User::class, $user?->id, null,
+                ['category' => $attributes['lock_category'], 'lock_id' => $lock->id, 'attempt_count' => $attributes['failed_attempts_count']], null,
+                ['executor' => self::class, 'operation_id' => 'lock:'.$lock->id, 'severity' => 'High']);
+
+            return $lock;
+        });
     }
 }

@@ -33,6 +33,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 class CollectionService
 {
     public function __construct(
+        private BusinessSettings $settings,
         private CustomerActionAuthorizationGuard $authorizationGuard,
         private CustomerActivityGate $activityGate,
         private CollectionLedgerService $ledger,
@@ -63,11 +64,14 @@ class CollectionService
     public function preview(User $actor, CustomerProfile $customer, array $data): array
     {
         Gate::forUser($actor)->authorize('recordCollection', $customer);
+        $this->settings->ensureFeature('collections');
+        $configuration = $this->settings->collectionLimits();
+        $limits = $configuration['values'];
         $business = BusinessProfile::current();
         $today = CarbonImmutable::now($business->timezone)->startOfDay();
         $received = CarbonImmutable::createFromFormat('!Y-m-d', $data['received_date'], $business->timezone);
-        if ($received === null || $received->gt($today) || $received->lt($today->subDays(30))) {
-            throw ValidationException::withMessages(['received_date' => ['Choose today or one of the preceding 30 business dates.']]);
+        if ($received === null || $received->gt($today) || $received->lt($today->subDays($limits['late_lookback_days']))) {
+            throw ValidationException::withMessages(['received_date' => ['Choose today or a received date within the configured late lookback.']]);
         }
         if ($received->lt($today) && blank($data['late_reason'] ?? null)) {
             throw ValidationException::withMessages(['late_reason' => ['Explain why this payment is being recorded late.']]);
@@ -94,7 +98,7 @@ class CollectionService
             throw ValidationException::withMessages(['fees' => ['List each fee obligation once.']]);
         }
         $total = $this->checkedAdd($savings, $feeTotal);
-        if ($total === 0 || $total > 999_999_999_999) {
+        if ($total < $limits['receipt_minimum_kobo'] || $total > $limits['receipt_maximum_kobo']) {
             throw ValidationException::withMessages(['savings_ngn' => ['Receipt tender must be positive and within the supported cap.']]);
         }
 
@@ -273,14 +277,17 @@ class CollectionService
                 'recording_agent_profile_id' => $assignment->agent_profile_id,
                 'received_date' => $preview['received_date'], 'tender_kobo' => $preview['tender_kobo'],
                 'savings_kobo' => $preview['savings_kobo'], 'fee_kobo' => $preview['fees_kobo'],
-            ], $actor);
+            ], $actor,
+                context: ['executor' => self::class]
+            );
             $intentId = DB::table('collection_notification_intents')->insertGetId([
                 'notification_id' => (string) Str::uuid(), 'collection_receipt_id' => $receipt->id,
                 'recipient_user_id' => $lockedCustomer->user_id, 'status' => 'pending',
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            app(NotificationPipeline::class)->capture('collection', $intentId, false);
             DB::afterCommit(static function () use ($intentId): void {
-                DeliverCollectionNotificationIntent::dispatch($intentId)->afterCommit();
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverCollectionNotificationIntent::dispatch($intentId)->afterCommit());
             });
 
             return $receipt;
@@ -298,6 +305,7 @@ class CollectionService
 
         return CollectionBatch::create([
             'agent_profile_id' => $agentId, 'received_date' => $date, 'timezone' => $timezone,
+            'business_version' => BusinessProfile::current()->version,
             'revision' => ($latest === null ? 0 : $latest->revision) + 1,
             'predecessor_batch_id' => $latest === null ? null : $latest->id,
             'status' => 'open', 'version' => 1,

@@ -452,7 +452,7 @@ test('successful registration atomically provisions Invited user, Inactive profi
     $audit = AuditEvent::where('target_id', $profile->id)->where('event_type', 'agent.registered')->first();
     expect($audit)->not->toBeNull()
         ->and($audit->actor_id)->toBe($admin->id)
-        ->and($audit->payload['name'])->toBe('Atomic Agent')
+        ->and($audit->payload)->not->toHaveKey('name')
         ->and($audit->payload['operational_status'])->toBe('inactive')
         ->and($audit->payload['account_state'])->toBe('invited');
 

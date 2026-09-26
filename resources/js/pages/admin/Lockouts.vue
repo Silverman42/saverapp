@@ -6,7 +6,13 @@ import { dashboard } from '@/routes';
 import { index as lockoutsIndex } from '@/routes/admin/lockouts';
 import { useVuelidate } from '@vuelidate/core';
 import { minLength, required } from '@vuelidate/validators';
-import { ChevronLeft, ChevronRight, RefreshCw, ShieldCheck, Unlock } from '@lucide/vue';
+import {
+    ChevronLeft,
+    ChevronRight,
+    RefreshCw,
+    ShieldCheck,
+    Unlock,
+} from '@lucide/vue';
 import { toast } from 'vue-sonner';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
@@ -53,6 +59,7 @@ export type LockItem = {
     unlock_verification_method?: string | null;
     unlock_verification_method_label?: string | null;
     can_unlock: boolean;
+    restriction_token: string | null;
 };
 
 export type VerificationMethodOption = {
@@ -104,7 +111,10 @@ const serverErrors = ref<Record<string, string>>({});
 const filtersOpen = ref(false);
 const filterForm = reactive<LockFilters>({ ...props.filters });
 
-watch(() => props.filters, (filters) => Object.assign(filterForm, filters));
+watch(
+    () => props.filters,
+    (filters) => Object.assign(filterForm, filters),
+);
 
 const formState = reactive({
     reason: '',
@@ -160,6 +170,7 @@ const submitUnlock = async () => {
             category: formState.category,
             verification_method: formState.verification_method,
             reason: formState.reason.trim(),
+            restriction_token: selectedLock.value.restriction_token,
         },
         {
             preserveScroll: true,
@@ -217,19 +228,35 @@ const refreshData = () => {
     router.reload();
 };
 
-const activeFilterCount = computed(() => [filterForm.category, filterForm.state].filter((value) => value && value !== 'all').length);
+const activeFilterCount = computed(
+    () =>
+        [filterForm.category, filterForm.state].filter(
+            (value) => value && value !== 'all',
+        ).length,
+);
 
 const applyFilters = (): void => {
     const query: Record<string, string | number> = {};
     if (filterForm.search) query.search = filterForm.search;
-    if (filterForm.category && filterForm.category !== 'all') query.category = filterForm.category;
-    if (filterForm.state && filterForm.state !== 'all') query.state = filterForm.state;
+    if (filterForm.category && filterForm.category !== 'all')
+        query.category = filterForm.category;
+    if (filterForm.state && filterForm.state !== 'all')
+        query.state = filterForm.state;
     if (filterForm.per_page !== 15) query.per_page = filterForm.per_page;
-    router.get(lockoutsIndex.url({ query }), {}, { preserveScroll: true, preserveState: true, replace: true });
+    router.get(
+        lockoutsIndex.url({ query }),
+        {},
+        { preserveScroll: true, preserveState: true, replace: true },
+    );
 };
 
 const resetFilters = (): void => {
-    Object.assign(filterForm, { search: '', category: '', state: '', per_page: 15 });
+    Object.assign(filterForm, {
+        search: '',
+        category: '',
+        state: '',
+        per_page: 15,
+    });
     applyFilters();
 };
 
@@ -282,15 +309,282 @@ const restrictionState = (lock: LockItem): string => {
             @reset-filters="resetFilters"
         >
             <template #filters>
-                <div class="w-fit space-y-1.5"><Label for="lock-category" class="text-xs">Category</Label><Select v-model="filterForm.category" @update:model-value="applyFilters"><SelectTrigger id="lock-category"><SelectValue placeholder="All categories" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="password">Password</SelectItem><SelectItem value="mfa">MFA</SelectItem><SelectItem value="recovery_code">Recovery code</SelectItem></SelectContent></Select></div>
-                <div class="w-fit space-y-1.5"><Label for="lock-state" class="text-xs">Restriction state</Label><Select v-model="filterForm.state" @update:model-value="applyFilters"><SelectTrigger id="lock-state"><SelectValue placeholder="All states" /></SelectTrigger><SelectContent><SelectItem value="all">All states</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="review">Review required</SelectItem><SelectItem value="unlocked">Manually unlocked</SelectItem><SelectItem value="expired">Expired</SelectItem></SelectContent></Select></div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="lock-category" class="text-xs">Category</Label
+                    ><Select
+                        v-model="filterForm.category"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="lock-category"
+                            ><SelectValue
+                                placeholder="All categories" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All categories</SelectItem
+                            ><SelectItem value="password">Password</SelectItem
+                            ><SelectItem value="mfa">MFA</SelectItem
+                            ><SelectItem value="recovery_code"
+                                >Recovery code</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="w-fit space-y-1.5">
+                    <Label for="lock-state" class="text-xs"
+                        >Restriction state</Label
+                    ><Select
+                        v-model="filterForm.state"
+                        @update:model-value="applyFilters"
+                        ><SelectTrigger id="lock-state"
+                            ><SelectValue
+                                placeholder="All states" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All states</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="review"
+                                >Review required</SelectItem
+                            ><SelectItem value="unlocked"
+                                >Manually unlocked</SelectItem
+                            ><SelectItem value="expired"
+                                >Expired</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
             </template>
-            <template #filter-summary><p class="text-muted-foreground text-xs">{{ locks.total }} record{{ locks.total === 1 ? '' : 's' }} match the current filters.</p></template>
+            <template #filter-summary
+                ><p class="text-muted-foreground text-xs">
+                    {{ locks.total }} record{{
+                        locks.total === 1 ? '' : 's'
+                    }}
+                    match the current filters.
+                </p></template
+            >
 
-            <div v-if="locks.data.length === 0" class="py-14 text-center"><div class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"><ShieldCheck class="size-5" /></div><h3 class="mt-4 text-sm font-semibold">No lockouts found</h3><p class="text-muted-foreground mt-1 text-sm">There are no authentication restrictions matching this view.</p></div>
-            <div v-else class="space-y-3"><DirectoryRow v-for="lock in locks.data" :key="lock.id"><div class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(14rem,1.4fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(11rem,1fr)_auto]"><div class="min-w-0"><p class="truncate text-sm font-semibold">{{ lock.user_name || lock.email }}</p><p class="text-muted-foreground truncate text-xs">{{ lock.email }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Category</p><Badge :variant="getCategoryBadgeVariant(lock.lock_category)" class="mt-1 capitalize">{{ lock.lock_category.replace('_', ' ') }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">State</p><Badge :variant="lock.is_active ? 'destructive' : 'secondary'" class="mt-1">{{ restrictionState(lock) }}</Badge></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Attempts</p><p class="mt-1 text-sm">{{ lock.failed_attempts_count }}</p></div><div><p class="text-muted-foreground text-[11px] font-medium uppercase">Locked at</p><p class="mt-1 text-sm">{{ formatDateTime(lock.locked_at) }}</p></div><Button v-if="lock.can_unlock" variant="outline" size="sm" @click="openUnlockDialog(lock)"><Unlock class="size-3.5" /> Manual unlock</Button><span v-else class="text-muted-foreground text-xs">{{ lock.is_active ? 'Cannot unlock' : '—' }}</span></div><div class="lg:hidden"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-sm font-semibold">{{ lock.user_name || lock.email }}</p><p class="text-muted-foreground truncate text-xs">{{ lock.email }}</p></div><Button v-if="lock.can_unlock" variant="outline" size="sm" @click="openUnlockDialog(lock)">Unlock</Button></div><div class="mt-4 grid grid-cols-2 gap-4 text-sm"><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Category</p><Badge :variant="getCategoryBadgeVariant(lock.lock_category)" class="mt-1 capitalize">{{ lock.lock_category.replace('_', ' ') }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">State</p><Badge :variant="lock.is_active ? 'destructive' : 'secondary'" class="mt-1">{{ restrictionState(lock) }}</Badge></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Attempts</p><p class="mt-1">{{ lock.failed_attempts_count }}</p></div><div><p class="text-muted-foreground text-[10px] font-medium uppercase">Locked at</p><p class="mt-1">{{ formatDateTime(lock.locked_at) }}</p></div><div class="col-span-2"><p class="text-muted-foreground text-[10px] font-medium uppercase">Reason</p><p class="mt-1">{{ lock.reason }}</p></div></div></div></DirectoryRow></div>
+            <div v-if="locks.data.length === 0" class="py-14 text-center">
+                <div
+                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
+                >
+                    <ShieldCheck class="size-5" />
+                </div>
+                <h3 class="mt-4 text-sm font-semibold">No lockouts found</h3>
+                <p class="text-muted-foreground mt-1 text-sm">
+                    There are no authentication restrictions matching this view.
+                </p>
+            </div>
+            <div v-else class="space-y-3">
+                <DirectoryRow v-for="lock in locks.data" :key="lock.id"
+                    ><div
+                        class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(14rem,1.4fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(11rem,1fr)_auto]"
+                    >
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold">
+                                {{ lock.user_name || lock.email }}
+                            </p>
+                            <p class="text-muted-foreground truncate text-xs">
+                                {{ lock.email }}
+                            </p>
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Category
+                            </p>
+                            <Badge
+                                :variant="
+                                    getCategoryBadgeVariant(lock.lock_category)
+                                "
+                                class="mt-1 capitalize"
+                                >{{
+                                    lock.lock_category.replace('_', ' ')
+                                }}</Badge
+                            >
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                State
+                            </p>
+                            <Badge
+                                :variant="
+                                    lock.is_active ? 'destructive' : 'secondary'
+                                "
+                                class="mt-1"
+                                >{{ restrictionState(lock) }}</Badge
+                            >
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Attempts
+                            </p>
+                            <p class="mt-1 text-sm">
+                                {{ lock.failed_attempts_count }}
+                            </p>
+                        </div>
+                        <div>
+                            <p
+                                class="text-muted-foreground text-[11px] font-medium uppercase"
+                            >
+                                Locked at
+                            </p>
+                            <p class="mt-1 text-sm">
+                                {{ formatDateTime(lock.locked_at) }}
+                            </p>
+                        </div>
+                        <Button
+                            v-if="lock.can_unlock"
+                            variant="outline"
+                            size="sm"
+                            @click="openUnlockDialog(lock)"
+                            ><Unlock class="size-3.5" /> Manual unlock</Button
+                        ><span v-else class="text-muted-foreground text-xs">{{
+                            lock.is_active ? 'Cannot unlock' : '—'
+                        }}</span>
+                    </div>
+                    <div class="lg:hidden">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-semibold">
+                                    {{ lock.user_name || lock.email }}
+                                </p>
+                                <p
+                                    class="text-muted-foreground truncate text-xs"
+                                >
+                                    {{ lock.email }}
+                                </p>
+                            </div>
+                            <Button
+                                v-if="lock.can_unlock"
+                                variant="outline"
+                                size="sm"
+                                @click="openUnlockDialog(lock)"
+                                >Unlock</Button
+                            >
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Category
+                                </p>
+                                <Badge
+                                    :variant="
+                                        getCategoryBadgeVariant(
+                                            lock.lock_category,
+                                        )
+                                    "
+                                    class="mt-1 capitalize"
+                                    >{{
+                                        lock.lock_category.replace('_', ' ')
+                                    }}</Badge
+                                >
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    State
+                                </p>
+                                <Badge
+                                    :variant="
+                                        lock.is_active
+                                            ? 'destructive'
+                                            : 'secondary'
+                                    "
+                                    class="mt-1"
+                                    >{{ restrictionState(lock) }}</Badge
+                                >
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Attempts
+                                </p>
+                                <p class="mt-1">
+                                    {{ lock.failed_attempts_count }}
+                                </p>
+                            </div>
+                            <div>
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Locked at
+                                </p>
+                                <p class="mt-1">
+                                    {{ formatDateTime(lock.locked_at) }}
+                                </p>
+                            </div>
+                            <div class="col-span-2">
+                                <p
+                                    class="text-muted-foreground text-[10px] font-medium uppercase"
+                                >
+                                    Reason
+                                </p>
+                                <p class="mt-1">{{ lock.reason }}</p>
+                            </div>
+                        </div>
+                    </div></DirectoryRow
+                >
+            </div>
 
-            <template #footer><div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div class="text-muted-foreground flex items-center gap-2 text-sm">Display <Select v-model="filterForm.per_page" @update:model-value="applyFilters"><SelectTrigger class="h-9 w-20"><SelectValue /></SelectTrigger><SelectContent><SelectItem :value="15">15</SelectItem><SelectItem :value="25">25</SelectItem><SelectItem :value="50">50</SelectItem></SelectContent></Select> per page</div><div class="flex items-center justify-between gap-3 sm:justify-end"><span class="text-muted-foreground text-xs">Page {{ locks.current_page }} of {{ locks.last_page }}</span><div class="flex gap-2"><Link v-if="locks.prev_page_url" :href="locks.prev_page_url" preserve-state preserve-scroll><Button variant="outline" size="sm"><ChevronLeft /> Prev</Button></Link><Button v-else variant="outline" size="sm" disabled><ChevronLeft /> Prev</Button><Link v-if="locks.next_page_url" :href="locks.next_page_url" preserve-state preserve-scroll><Button size="sm">Next <ChevronRight /></Button></Link><Button v-else size="sm" disabled>Next <ChevronRight /></Button></div></div></div></template>
+            <template #footer
+                ><div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <div
+                        class="text-muted-foreground flex items-center gap-2 text-sm"
+                    >
+                        Display
+                        <Select
+                            v-model="filterForm.per_page"
+                            @update:model-value="applyFilters"
+                            ><SelectTrigger class="h-9 w-20"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem :value="15">15</SelectItem
+                                ><SelectItem :value="25">25</SelectItem
+                                ><SelectItem :value="50"
+                                    >50</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                        per page
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-3 sm:justify-end"
+                    >
+                        <span class="text-muted-foreground text-xs"
+                            >Page {{ locks.current_page }} of
+                            {{ locks.last_page }}</span
+                        >
+                        <div class="flex gap-2">
+                            <Link
+                                v-if="locks.prev_page_url"
+                                :href="locks.prev_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button variant="outline" size="sm"
+                                    ><ChevronLeft /> Prev</Button
+                                ></Link
+                            ><Button v-else variant="outline" size="sm" disabled
+                                ><ChevronLeft /> Prev</Button
+                            ><Link
+                                v-if="locks.next_page_url"
+                                :href="locks.next_page_url"
+                                preserve-state
+                                preserve-scroll
+                                ><Button size="sm"
+                                    >Next <ChevronRight /></Button></Link
+                            ><Button v-else size="sm" disabled
+                                >Next <ChevronRight
+                            /></Button>
+                        </div>
+                    </div></div
+            ></template>
         </DirectoryPanel>
 
         <!-- Manual Unlock Confirmation Dialog -->

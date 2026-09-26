@@ -157,6 +157,8 @@ class CustomerInvitationManagementService
                     'reason' => $reason ?? 'Operational resend request',
                 ],
                 actor: $freshActor,
+
+                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -252,6 +254,8 @@ class CustomerInvitationManagementService
                     'reason' => $reason ?? 'Operational email correction',
                 ],
                 actor: $freshActor,
+
+                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -320,6 +324,8 @@ class CustomerInvitationManagementService
                     'generation' => $currentInvitation->generation,
                 ],
                 actor: $freshActor,
+
+                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
             );
         });
     }

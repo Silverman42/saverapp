@@ -118,6 +118,8 @@ class CustomerRegistrationService
             }
         }
 
+        app(BusinessSettings::class)->ensureFeature('customer_registration');
+
         // 3. Process photo outside the core transaction if provided
         $photoPath = null;
         if ($photo !== null) {
@@ -145,6 +147,8 @@ class CustomerRegistrationService
             if (! $this->agentEligibilityService->canReceiveAssignment($freshAgent)) {
                 throw new ConflictHttpException('Agent is not currently eligible to register customers.');
             }
+
+            app(BusinessSettings::class)->ensureFeature('customer_registration');
 
             // Verify Authoritative Registration Fee Rule
             $currentRule = $this->registrationFeeService->getCurrentRule(forUpdate: true);
@@ -378,6 +382,8 @@ class CustomerRegistrationService
                     'fee_quote_source_id' => $registrationQuote->sourceId,
                 ],
                 actor: $freshAgent,
+
+                context: ['executor' => self::class]
             );
 
             // Safe post-commit queued delivery

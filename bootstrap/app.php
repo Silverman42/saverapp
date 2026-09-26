@@ -8,6 +8,8 @@ use App\Http\Middleware\EnsureUserType;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RefreshPermissionVersionSession;
+use App\Services\AuditCapture;
+use App\Support\AuditIdentityConflict;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -39,6 +41,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (AuditIdentityConflict $exception, Request $request) {
+            app(AuditCapture::class)->reportConflict($exception);
+
+            return null;
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

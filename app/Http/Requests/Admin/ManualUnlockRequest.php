@@ -44,6 +44,7 @@ class ManualUnlockRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'restriction_token' => ['required', 'string', 'max:4000'],
             'category' => ['required', 'string', 'in:password,mfa,recovery_code'],
             'verification_method' => ['required', new Enum(UnlockVerificationMethod::class)],
             'reason' => ['required', 'string', 'min:5', 'max:255'],

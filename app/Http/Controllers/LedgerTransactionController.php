@@ -41,7 +41,9 @@ class LedgerTransactionController extends Controller
         AuditEvent::record('ledger.transactions_viewed', 'ledger_transaction', null, null, [
             'status' => $result['status'], 'result_count' => $result['total'],
             'projection_version' => $result['state']['version'],
-        ], $request->user());
+        ], $request->user(),
+            context: ['executor' => self::class]
+        );
 
         return Inertia::render('ledger/Index', [
             'result' => $result,
@@ -55,7 +57,9 @@ class LedgerTransactionController extends Controller
         $detail = $transactions->detail($request->user(), $transaction);
         AuditEvent::record('ledger.transaction_viewed', 'ledger_transaction', null, $transaction, [
             'customer_id' => $detail['customer_id'], 'status' => $detail['status'],
-        ], $request->user());
+        ], $request->user(),
+            context: ['executor' => self::class]
+        );
 
         return Inertia::render('ledger/Show', [
             'transaction' => $detail,
@@ -70,7 +74,9 @@ class LedgerTransactionController extends Controller
         $balance = $transactions->balance($request->user(), $profile);
         AuditEvent::record('ledger.balance_viewed', CustomerProfile::class, $profile->id, $profile->customer_id, [
             'status' => $balance['status'],
-        ], $request->user());
+        ], $request->user(),
+            context: ['executor' => self::class]
+        );
 
         return response()->json($balance);
     }

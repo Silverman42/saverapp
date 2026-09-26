@@ -10,6 +10,7 @@ use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
 use App\Enums\ThriftPlanStatus;
+use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
@@ -450,7 +451,9 @@ class WithdrawalService
         AuditEvent::record('withdrawal.'.$eventType, WithdrawalRequest::class, $withdrawal->id, $withdrawal->withdrawal_id,
             ['state' => $withdrawal->state, 'version' => $withdrawal->version,
                 'gross_kobo' => $withdrawal->gross_amount_kobo, 'fee_kobo' => $withdrawal->fee_amount_kobo,
-                'net_kobo' => $withdrawal->net_amount_kobo, 'customer_profile_id' => $withdrawal->customer_profile_id], $actor);
+                'net_kobo' => $withdrawal->net_amount_kobo, 'customer_profile_id' => $withdrawal->customer_profile_id], $actor,
+            context: ['executor' => self::class, 'approver_id' => $withdrawal->reviewed_by_user_id, 'required_permission' => $actor?->user_type === UserType::Admin ? 'withdrawals.review' : null]
+        );
         $this->notices->queue($withdrawal, $event);
     }
 }

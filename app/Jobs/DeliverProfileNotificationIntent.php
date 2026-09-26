@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\ProfileChangeNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
+use App\Services\NotificationPipeline;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,6 +43,12 @@ class DeliverProfileNotificationIntent implements ShouldQueue
     {
         $intent = ProfileNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {
+            return;
+        }
+
+        if ($intent->channel === 'database') {
+            app(NotificationPipeline::class)->deliverOwner('profile', $this->intentId);
+
             return;
         }
 

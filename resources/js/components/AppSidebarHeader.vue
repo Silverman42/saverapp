@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Bell, ChevronDown } from '@lucide/vue';
 import { computed } from 'vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
@@ -14,6 +14,11 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem } from '@/types';
+import { index as notificationInbox } from '@/routes/notifications';
+import {
+    notificationSyncState,
+    useNotificationSync,
+} from '@/composables/useNotificationSync';
 
 withDefaults(
     defineProps<{
@@ -25,6 +30,7 @@ withDefaults(
 );
 
 const page = usePage();
+useNotificationSync();
 const user = computed(() => page.props.auth.user);
 </script>
 
@@ -43,8 +49,35 @@ const user = computed(() => page.props.auth.user);
         </div>
 
         <div class="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="icon" aria-label="Notifications">
-                <Bell class="size-4.5" />
+            <Button
+                v-if="page.props.features.notifications"
+                as-child
+                variant="ghost"
+                size="icon"
+            >
+                <Link
+                    :href="notificationInbox()"
+                    :aria-label="
+                        notificationSyncState.unreadCount === null
+                            ? 'Notifications, count unavailable'
+                            : `Notifications, ${notificationSyncState.unreadCount} unread`
+                    "
+                    class="relative"
+                >
+                    <Bell class="size-4.5" />
+                    <span
+                        v-if="
+                            notificationSyncState.unreadCount !== null &&
+                            notificationSyncState.unreadCount > 0
+                        "
+                        class="bg-primary text-primary-foreground absolute -top-0.5 -right-0.5 min-w-4 rounded-full px-1 text-center text-[10px]"
+                        >{{
+                            notificationSyncState.unreadCount > 99
+                                ? '99+'
+                                : notificationSyncState.unreadCount
+                        }}</span
+                    >
+                </Link>
             </Button>
 
             <DropdownMenu v-if="user">

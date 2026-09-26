@@ -6,6 +6,7 @@ use App\Enums\CustomerStatus;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
+use App\Services\BusinessSettings;
 use App\Services\ReportCatalogue;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -84,10 +85,15 @@ class ReportRequest extends FormRequest
     {
         $filters = array_filter($this->validated(), fn (mixed $value): bool => $value !== null && $value !== '');
         $today = CarbonImmutable::now($timezone);
-        $filters['page_size'] ??= 25;
+        $defaults = app(BusinessSettings::class)->resolve()['values'];
+        $filters['page_size'] ??= $defaults['page_size'];
         $filters['group'] ??= '';
         if (app(ReportCatalogue::class)->get($this->user(), $this->route('report'))['activity']) {
-            $filters['from'] ??= $today->startOfMonth()->toDateString();
+            $filters['from'] ??= match ($defaults['report_range']) {
+                'today' => $today->toDateString(),
+                'week' => $today->startOfWeek($defaults['week_start'] === 'Sunday' ? 0 : 1)->toDateString(),
+                default => $today->startOfMonth()->toDateString(),
+            };
             $filters['to'] ??= $today->toDateString();
         }
         ksort($filters);

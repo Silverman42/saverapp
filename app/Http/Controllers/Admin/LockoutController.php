@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\ManualUnlockRequest;
 use App\Models\AuthenticationLock;
 use App\Models\User;
 use App\Services\AuthenticationAbuseService;
+use App\Services\UnlockState;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -97,6 +98,7 @@ class LockoutController extends Controller
                     'unlock_verification_method' => $lock->unlock_verification_method?->value,
                     'unlock_verification_method_label' => $lock->unlock_verification_method?->label(),
                     'can_unlock' => $canUnlock,
+                    'restriction_token' => $canUnlock ? app(UnlockState::class)->token($user, $currentAdmin, $lock->lock_category) : null,
                 ];
             });
 
@@ -126,7 +128,7 @@ class LockoutController extends Controller
         $verificationMethod = $request->validated('verification_method');
         $reason = $request->validated('reason');
 
-        $abuseService->manualUnlock($user, $request->user(), $category, $verificationMethod, $reason);
+        $abuseService->manualUnlock($user, $request->user(), $category, $verificationMethod, $reason, $request->validated('restriction_token'));
 
         Inertia::flash('toast', [
             'type' => 'success',

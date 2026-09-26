@@ -93,6 +93,8 @@ class AgentStatusManagementService
                     'outcome' => 'succeeded',
                 ],
                 actor: $lockedActor,
+
+                context: ['executor' => self::class, 'required_permission' => $lockedActor?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
             $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
 
@@ -149,6 +151,8 @@ class AgentStatusManagementService
                 targetReference: $customer?->customer_id,
                 payload: ['correction_id' => $correction->id, 'status' => 'invalidated'],
                 actor: $actor,
+
+                context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
         }
     }
@@ -169,9 +173,7 @@ class AgentStatusManagementService
             'url' => route('agents.show', $agent->agent_id),
         ];
         $this->createNotificationIntent($history, $agent, $agentUser, 'subject_agent', 'mail', 'agent_status_changed', $agentPayload);
-        if ($agentUser->account_state === AccountState::Active) {
-            $this->createNotificationIntent($history, $agent, $agentUser, 'subject_agent', 'database', 'agent_status_changed', $agentPayload);
-        }
+        $this->createNotificationIntent($history, $agent, $agentUser, 'subject_agent', 'database', 'agent_status_changed', $agentPayload);
 
         User::query()->where('user_type', UserType::Admin)->where('account_state', AccountState::Active)
             ->orderBy('id')->each(function (User $admin) use ($agent, $history, $statusLabel, $effectiveAt): void {
@@ -210,9 +212,7 @@ class AgentStatusManagementService
                     'url' => route('customers.show', $customer->customer_id),
                 ];
                 $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'mail', 'agent_unavailable', $payload, $customer);
-                if ($recipient->account_state === AccountState::Active) {
-                    $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'database', 'agent_unavailable', $payload, $customer);
-                }
+                $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'database', 'agent_unavailable', $payload, $customer);
             });
     }
 
@@ -240,8 +240,16 @@ class AgentStatusManagementService
             'status' => 'pending',
         ]);
 
+        if ($channel === 'database') {
+            app(NotificationPipeline::class)->capture('agent_status', $intent->id, false);
+        }
+
         DB::afterCommit(static function () use ($intent): void {
-            DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+            if ($intent->channel === 'database') {
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit());
+            } else {
+                DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+            }
         });
     }
 }

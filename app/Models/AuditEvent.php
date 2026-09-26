@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\AuditCapture;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -63,6 +64,7 @@ class AuditEvent extends Model
      * Record a canonical append-only audit event.
      *
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $context
      */
     public static function record(
         string $eventType,
@@ -71,16 +73,15 @@ class AuditEvent extends Model
         ?string $targetReference,
         array $payload,
         ?User $actor = null,
+        array $context = [],
     ): self {
-        return static::create([
-            'event_type' => $eventType,
-            'actor_id' => $actor?->id,
-            'actor_type' => $actor?->user_type?->value,
-            'target_type' => $targetType,
-            'target_id' => $targetId,
-            'target_reference' => $targetReference,
-            'payload' => $payload,
-            'created_at' => now(),
-        ]);
+        $request = app('request');
+        if ($actor !== null && $request->hasSession() && $request->user()?->id === $actor->id && ! array_key_exists('fresh_authentication', $context)) {
+            $context['fresh_authentication'] = (int) $request->session()->get('auth.fresh_until', 0) >= now()->timestamp;
+        }
+
+        return app(AuditCapture::class)->record(
+            $eventType, $targetType, $targetId, $targetReference, $payload, $actor, $context,
+        );
     }
 }

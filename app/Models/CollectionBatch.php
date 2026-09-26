@@ -6,12 +6,12 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['agent_profile_id', 'received_date', 'timezone', 'revision', 'predecessor_batch_id', 'status', 'version', 'frozen_at'])]
+#[Fillable(['business_version', 'agent_profile_id', 'received_date', 'timezone', 'revision', 'predecessor_batch_id', 'status', 'version', 'frozen_at'])]
 class CollectionBatch extends Model
 {
     protected function casts(): array
     {
-        return ['revision' => 'integer', 'version' => 'integer', 'frozen_at' => 'immutable_datetime'];
+        return ['business_version' => 'integer', 'revision' => 'integer', 'version' => 'integer', 'frozen_at' => 'immutable_datetime'];
     }
 
     /** @return HasMany<CollectionReceipt, $this> */

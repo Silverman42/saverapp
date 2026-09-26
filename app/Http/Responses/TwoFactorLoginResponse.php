@@ -2,11 +2,15 @@
 
 namespace App\Http\Responses;
 
+use App\Enums\AccountState;
+use App\Models\AuditEvent;
+use App\Models\User;
 use App\Services\ResumeCookieService;
 use App\Support\RoleDestinationResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -22,7 +26,7 @@ class TwoFactorLoginResponse implements TwoFactorLoginResponseContract
         $user = $request->user();
 
         // Section 5.1 & 8: Record non-extendable password and MFA freshness timestamps
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
         if (! $request->session()->has('auth.login_at')) {
             $request->session()->put('auth.login_at', $now);
         }
@@ -36,6 +40,17 @@ class TwoFactorLoginResponse implements TwoFactorLoginResponseContract
             return $request->wantsJson()
                 ? new JsonResponse(['two_factor_replacement_required' => true], 200)
                 : redirect()->route('two-factor.enrolment');
+        }
+
+        if ($user !== null && $user->account_state === AccountState::Active) {
+            try {
+                AuditEvent::record('auth.login_succeeded', User::class, $user->id, null, [], $user,
+                    ['executor' => self::class, 'operation_id' => hash_hmac('sha256', $request->session()->getId(), (string) config('app.key'))]);
+            } catch (\Throwable $exception) {
+                Auth::logout();
+                $request->session()->invalidate();
+                throw $exception;
+            }
         }
 
         $resumeDestination = $user ? app(ResumeCookieService::class)->consumeResumeDestination($user, $request) : null;

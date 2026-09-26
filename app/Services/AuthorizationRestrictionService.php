@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AdminPermission;
 use App\Enums\AuthorizationRestrictionType;
+use App\Models\AuditEvent;
 use App\Models\AuthorizationRestriction;
 use App\Models\User;
 use Carbon\CarbonInterface;
@@ -81,6 +82,9 @@ class AuthorizationRestrictionService
                 'applied_permission_version' => $newVersion,
             ]);
 
+            AuditEvent::record('authorization.restriction_applied', AuthorizationRestriction::class, $restriction->id, null,
+                ['restriction_id' => $restriction->id, 'restriction_type' => $type->value, 'permission_code' => $permissionCode, 'to_version' => $newVersion], $createdBy,
+                ['executor' => self::class, 'operation_id' => 'restriction:'.$restriction->id]);
             $target->permission_version = $newVersion;
 
             return $restriction;
@@ -121,6 +125,8 @@ class AuthorizationRestrictionService
                 'cleared_permission_version' => $newVersion,
             ]);
 
+            AuditEvent::record('authorization.restriction_cleared', AuthorizationRestriction::class, $freshRestriction->id, null,
+                ['restriction_id' => $freshRestriction->id, 'to_version' => $newVersion], $clearedBy, ['executor' => self::class]);
             $restriction->user->permission_version = $newVersion;
 
             return $freshRestriction;
@@ -169,6 +175,10 @@ class AuthorizationRestrictionService
                 ]);
             }
 
+            foreach ($activeRestrictions as $restriction) {
+                AuditEvent::record('authorization.restriction_cleared', AuthorizationRestriction::class, $restriction->id, null,
+                    ['restriction_id' => $restriction->id, 'to_version' => $newVersion], $clearedBy, ['executor' => self::class]);
+            }
             $user->permission_version = $newVersion;
 
             return $activeRestrictions->count();
@@ -266,6 +276,11 @@ class AuthorizationRestrictionService
                         'clear_reason' => 'Expired by scheduled restriction reaper',
                         'cleared_permission_version' => $newVersion,
                     ]);
+                }
+
+                foreach ($elapsed as $restriction) {
+                    AuditEvent::record('authorization.restriction_expired', AuthorizationRestriction::class, $restriction->id, null,
+                        ['restriction_id' => $restriction->id, 'to_version' => $newVersion], null, ['executor' => self::class, 'outcome' => 'Expired']);
                 }
 
                 return $elapsed->count();

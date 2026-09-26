@@ -42,8 +42,16 @@ class ReversalNoticeService
                     'url' => route('reversals.show', $reversal),
                 ], 'status' => 'pending',
             ]);
+            if ($channel === 'database') {
+                app(NotificationPipeline::class)->capture('reversal', $intent->id, false);
+            }
+
             DB::afterCommit(static function () use ($intent): void {
-                DeliverReversalNotificationIntent::dispatch($intent->id)->afterCommit();
+                if ($intent->channel === 'database') {
+                    app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverReversalNotificationIntent::dispatch($intent->id)->afterCommit());
+                } else {
+                    DeliverReversalNotificationIntent::dispatch($intent->id)->afterCommit();
+                }
             });
         }
     }

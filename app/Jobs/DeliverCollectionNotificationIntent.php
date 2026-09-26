@@ -2,10 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Enums\AccountState;
-use App\Models\CollectionReceipt;
-use App\Models\User;
-use App\Notifications\CollectionReceiptNotification;
+use App\Services\NotificationPipeline;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,7 +10,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 class DeliverCollectionNotificationIntent implements ShouldQueue
@@ -42,24 +38,8 @@ class DeliverCollectionNotificationIntent implements ShouldQueue
         if ($intent === null || $intent->status !== 'pending') {
             return;
         }
-        $receipt = CollectionReceipt::query()->whereKey($intent->collection_receipt_id)->first();
-        $recipient = User::query()->whereKey($intent->recipient_user_id)->first();
-        if ($receipt === null || $recipient === null || $recipient->account_state !== AccountState::Active
-            || $receipt->customerProfile->user_id !== $recipient->id) {
-            DB::table('collection_notification_intents')->where('id', $this->intentId)->update([
-                'status' => 'suppressed', 'suppressed_at' => now(), 'updated_at' => now(),
-            ]);
+        app(NotificationPipeline::class)->deliverOwner('collection', $this->intentId);
 
-            return;
-        }
-        if (! $recipient->notifications()->whereKey($intent->notification_id)->exists()) {
-            Notification::sendNow($recipient, new CollectionReceiptNotification(
-                $intent->notification_id, $receipt->receipt_reference, $receipt->tender_amount_kobo,
-            ), ['database']);
-        }
-        DB::table('collection_notification_intents')->where('id', $this->intentId)->update([
-            'status' => 'delivered', 'delivered_at' => now(), 'updated_at' => now(),
-        ]);
     }
 
     public function failed(?Throwable $exception): void

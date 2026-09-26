@@ -219,6 +219,8 @@ class LedgerPostingService
                     'line_count' => count($command->lines),
                 ],
                 actor: $actor,
+
+                context: ['executor' => self::class]
             );
 
             return $group->load('entries.account');

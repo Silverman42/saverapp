@@ -6,6 +6,7 @@ use App\Enums\CustomerStatus;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
+use App\Services\BusinessSettings;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -72,16 +73,18 @@ class DashboardRequest extends FormRequest
     {
         $filters = $this->validated();
         $today = CarbonImmutable::now($timezone);
-        $filters['period'] ??= 'today';
+        $configuration = app(BusinessSettings::class)->resolve();
+        $defaults = $configuration['values'];
+        $filters['period'] ??= $defaults['dashboard_activity_range'];
         if ($filters['period'] !== 'custom') {
             $filters['from'] = match ($filters['period']) {
-                'week' => $today->startOfWeek()->toDateString(),
+                'week' => $today->startOfWeek($defaults['week_start'] === 'Sunday' ? 0 : 1)->toDateString(),
                 'month' => $today->startOfMonth()->toDateString(),
                 default => $today->toDateString(),
             };
             $filters['to'] = $today->toDateString();
         }
-        $filters['page_size'] ??= 25;
+        $filters['page_size'] ??= $defaults['page_size'];
 
         return $filters;
     }

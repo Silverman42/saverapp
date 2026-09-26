@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\AgentEligibilityCapability;
 use App\Enums\CustomerStatus;
+use App\Enums\UserType;
 use App\Jobs\DeliverCustomerStatusNotificationIntent;
 use App\Models\AgentProfile;
 use App\Models\AuditEvent;
@@ -89,6 +90,8 @@ class CustomerStatusManagementService
                     'outcome' => 'succeeded',
                 ],
                 actor: $context->actor,
+
+                context: ['executor' => self::class, 'required_permission' => $context->actor?->user_type === UserType::Admin ? 'customers.manage' : null]
             );
             $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
 
@@ -157,19 +160,17 @@ class CustomerStatusManagementService
                 includeUrl: false,
             );
 
-            if ($customerUser->account_state === AccountState::Active) {
-                $this->createNotificationIntent(
-                    history: $history,
-                    recipient: $customerUser,
-                    audienceType: 'subject_customer',
-                    channel: 'database',
-                    customer: $customer,
-                    from: $from,
-                    to: $to,
-                    effectiveAt: $effectiveAt,
-                    includeUrl: true,
-                );
-            }
+            $this->createNotificationIntent(
+                history: $history,
+                recipient: $customerUser,
+                audienceType: 'subject_customer',
+                channel: 'database',
+                customer: $customer,
+                from: $from,
+                to: $to,
+                effectiveAt: $effectiveAt,
+                includeUrl: true,
+            );
         }
 
         $agentUser = $customer->currentAssignment?->agentProfile?->user;
@@ -225,8 +226,16 @@ class CustomerStatusManagementService
             'status' => 'pending',
         ]);
 
+        if ($channel === 'database') {
+            app(NotificationPipeline::class)->capture('customer_status', $intent->id, false);
+        }
+
         DB::afterCommit(static function () use ($intent): void {
-            DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+            if ($intent->channel === 'database') {
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit());
+            } else {
+                DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+            }
         });
     }
 

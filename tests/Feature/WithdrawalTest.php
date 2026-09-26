@@ -30,6 +30,7 @@ use App\Models\WithdrawalRequest;
 use App\Services\AgentEligibilityService;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionReadService;
+use App\Services\NotificationPipeline;
 use App\Services\WithdrawalMethodRegistry;
 use App\Services\WithdrawalService;
 use Illuminate\Support\Facades\DB;
@@ -328,4 +329,31 @@ test('reassignment moves pending cancellation authority without changing request
     expect($withdrawal->fresh()->state)->toBe('cancelled')
         ->and($withdrawal->fresh()->submitted_by_user_id)->toBe($agent->id)
         ->and($withdrawal->fresh()->initiating_agent_profile_id)->toBe($assignment->agent_profile_id);
+});
+
+test('pending withdrawal inbox work reroutes once to the currently assigned replacement Agent', function (): void {
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    enableFixtureMethod();
+    Queue::fake();
+    $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);
+    $original = WithdrawalNotificationIntent::query()->where('audience_type', 'current_agent')->firstOrFail();
+    $replacement = User::factory()->agent()->withTwoFactor()->create();
+    $replacementProfile = AgentProfile::factory()->active()->create(['user_id' => $replacement->id]);
+    $assignment->forceFill(['status' => CustomerAssignmentStatus::Ended])->save();
+    CustomerAssignment::factory()->create([
+        'customer_profile_id' => $customer->id, 'agent_profile_id' => $replacementProfile->id,
+        'assigned_by_user_id' => $replacement->id, 'version' => 2,
+    ]);
+    $pipeline = app(NotificationPipeline::class);
+    $pipeline->deliverOwner('withdrawal', $original->id);
+    $pipeline->deliverOwner('withdrawal', $original->id);
+    expect($original->fresh()->status)->toBe('suppressed');
+    $new = DB::table('notification_inbox_intents')->where('recipient_user_id', $replacement->id)->sole();
+    $pipeline->materialize((int) $new->id);
+    config()->set('notifications.enabled', true);
+    $this->actingAs($replacement)->getJson(route('notifications.sync'))->assertOk()->assertJsonPath('unread_count', 1);
+    $this->actingAs($agent)->getJson(route('notifications.sync'))->assertOk()->assertJsonPath('unread_count', 0);
+    expect($withdrawal->fresh()->state)->toBe('pending_review');
+    expect($withdrawal->fresh()->submitted_by_user_id)->toBe($agent->id);
+    expect(DB::table('notification_inbox_intents')->where('recipient_user_id', $replacement->id)->count())->toBe(1);
 });

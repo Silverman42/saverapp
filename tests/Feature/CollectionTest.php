@@ -26,6 +26,7 @@ use App\Services\CollectionReadService;
 use App\Services\FeeObligationService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\LedgerTransactionReadService;
+use App\Services\NotificationPipeline;
 use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -265,6 +266,10 @@ test('COL-AC-009/024: split cash settles a fee without crediting it to savings',
     expect(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000)
         ->and($obligation->fresh()->outstandingAmountKobo())->toBe(0)
         ->and(CollectionReceipt::query()->firstOrFail()->tender_amount_kobo)->toBe(250000);
+    $intent = DB::table('notification_inbox_intents')->where('category', 'financial')->sole();
+    app(NotificationPipeline::class)->materialize((int) $intent->id);
+    expect(json_decode(DB::table('notifications')->where('id', $intent->notification_id)->value('data'), true)['message'])
+        ->toContain('Savings: ₦2,000.00; external fee: ₦500.00; total tender: ₦2,500.00.');
     $projected = app(LedgerTransactionReadService::class)->search($customer->user, ['from' => $today, 'to' => $today]);
     expect($projected['total'])->toBe(1)
         ->and($projected['data'][0]['gross_amount_kobo'])->toBe(250000)

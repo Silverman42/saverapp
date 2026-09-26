@@ -81,6 +81,8 @@ class AgentActivationController extends Controller
                     'generation' => $invitation->generation,
                 ],
                 actor: null,
+
+                context: ['executor' => self::class]
             );
         }
 
@@ -144,6 +146,8 @@ class AgentActivationController extends Controller
                     'invitation_id' => $invitation->id,
                 ],
                 actor: $freshUser,
+
+                context: ['executor' => self::class]
             );
 
             return $freshUser;

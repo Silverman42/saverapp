@@ -16,10 +16,6 @@ class FreezeCollectionBatches extends Command
 {
     public function handle(): int
     {
-        if (! config('collections.enabled')) {
-            return self::SUCCESS;
-        }
-
         CollectionBatch::query()->where('status', 'open')->orderBy('id')->chunkById(100, function ($batches): void {
             foreach ($batches as $batch) {
                 if ($batch->received_date >= CarbonImmutable::now($batch->timezone)->toDateString()) {
@@ -36,7 +32,9 @@ class FreezeCollectionBatches extends Command
                     $current->save();
                     AuditEvent::record('collection.batch_frozen', CollectionBatch::class, $current->id,
                         (string) $current->id, ['agent_profile_id' => $current->agent_profile_id,
-                            'received_date' => $current->received_date, 'revision' => $current->revision]);
+                            'received_date' => $current->received_date, 'revision' => $current->revision],
+                        context: ['executor' => self::class]
+                    );
                 }, attempts: 3);
             }
         });

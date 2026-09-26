@@ -40,8 +40,16 @@ class WithdrawalNoticeService
                     'state' => $withdrawal->state, 'url' => route('withdrawals.show', $withdrawal),
                 ], 'status' => 'pending',
             ]);
+            if ($channel === 'database') {
+                app(NotificationPipeline::class)->capture('withdrawal', $intent->id, false);
+            }
+
             DB::afterCommit(static function () use ($intent): void {
-                DeliverWithdrawalNotificationIntent::dispatch($intent->id)->afterCommit();
+                if ($intent->channel === 'database') {
+                    app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverWithdrawalNotificationIntent::dispatch($intent->id)->afterCommit());
+                } else {
+                    DeliverWithdrawalNotificationIntent::dispatch($intent->id)->afterCommit();
+                }
             });
         }
     }

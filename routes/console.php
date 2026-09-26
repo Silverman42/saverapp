@@ -19,3 +19,9 @@ Schedule::command('collections:freeze-batches')
 Schedule::command('withdrawals:expire')
     ->everyMinute()
     ->withoutOverlapping();
+
+Schedule::command('notifications:drain')->everyMinute()->withoutOverlapping();
+
+Schedule::command('audit:drain')->everyMinute()->withoutOverlapping();
+
+Schedule::command('business:activate-settings --limit=100')->everyMinute()->withoutOverlapping();

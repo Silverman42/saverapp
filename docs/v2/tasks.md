@@ -192,29 +192,44 @@ Dependencies: Modules 01–11
 ## Module 13 — Notifications and Communication
 
 Source: [`13-notifications-and-communication.md`](./modules/13-notifications-and-communication.md)
-Dependencies: Modules 01–12
+Dependencies: Modules 01–12; canonical audit/retention requires Module 14.
 
-| Task                                                                                                                           | Specification reference | Status | Evidence or blocker |
-| ------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------ | ------------------- |
-| Translate event routing, channel, template, preference, delivery, inbox, and retention requirements into implementation tasks. | Sections 17–18          | To Do  | —                   |
+| Task                                                                                                                                             | Specification reference                                | Status                            | Evidence or blocker                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NTF-T01–T03: Implement supported versioned source contracts, durable shared intents, safe templates and current recipient scope.                 | Sections 3–7, 10–12; NTF-FR-004–016, 023–024, 028, 031 | Partially delivered               | Seven existing owner families integrated; atomic materialization and exact assignment binding verified. Full Authentication/permission, fee, report/export and future lifecycle catalogues remain deferred.                                                                                                                                         |
+| NTF-T04: Deliver recipient inbox, scoped counts/search/pagination, independent links and versioned read/page-read.                               | Section 9, 13; NTF-FR-019–021, 033–034                 | Implemented; verification pending | Responsive Inertia pages, header bell, Wayfinder, synchronization and fail-closed cache clearing delivered; authenticated visual/device/accessibility verification unavailable.                                                                                                                                                                     |
+| NTF-T05: Add bounded local retry/recovery, safe import/aliases and approved visibility expiry.                                                   | Sections 10–12, 15; NTF-FR-022–030, 032, 038           | Partially delivered               | Local tests cover retries, queue outage, import, read preservation and expiry; production concurrency/reconstruction/PITR evidence pending. No external email/provider finality claimed.                                                                                                                                                            |
+| NTF-T06: Complete optional preferences, external channel/provider contracts, delivery operations, canonical audit and retention/deletion policy. | Sections 8, 10, 12, 14–16                              | Blocked/deferred                  | Requires approved future owner contracts and Modules 13–14 integration; no notification-management permission introduced.                                                                                                                                                                                                                           |
+| NTF-T07: Record focused evidence and complete all Module 13 acceptance gates.                                                                    | Sections 17–18                                         | In progress                       | 39 focused inbox tests and the 288-test combined regression run pass. Static/frontend and local MySQL rollout evidence is recorded in [Module 13 implementation checkpoint](./implementation_plan/13-notifications-and-communication.md); full-module scenarios remain individually Blocked where incomplete. |
 
 ## Module 14 — Audit, Security Operations, and Retention
 
 Source: [`14-audit-security-operations-and-retention.md`](./modules/14-audit-security-operations-and-retention.md)
 Dependencies: Modules 01–13
 
-| Task                                                                                                                            | Specification reference | Status | Evidence or blocker |
-| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate audit trail, security operations, retention, archival, integrity, and restore requirements into implementation tasks. | Sections 16–17          | To Do  | —                   |
+| Task | Specification reference | Status | Evidence or blocker |
+| --- | --- | --- | --- |
+| Save staged checkpoint and map every requirement/scenario. | AUD-FR-001–029; AUD-AC-001–030 | Completed | [Module 14 checkpoint](./implementation_plan/14-audit-security-operations-and-retention.md) includes all 29 requirements and 30 acceptance scenarios. |
+| AUD-T01: Canonical transactional capture and compatibility. | AUD-FR-001–006 | Implemented for current owners | Additive schema, immutable envelope, protected payload, durable pending work, replay/conflict identity and MySQL append-only controls. |
+| AUD-T02: Producer integration and safe historical import. | AUD-FR-004–009, 023, 025 | Partially delivered / Blocked | Current business/Auth/Authz producers integrated; bounded safe import applied locally to seven records. Future catalogue/aggregation/privacy owner contracts remain gated. |
+| AUD-T03: Versioned search projection and audit workspace. | AUD-FR-010, 012–014, 028 | Implemented; load gate Blocked | Exact grant, safe filters/cursors, partial state/canonical lookup, durable drain and resumable checked rebuild. Production 20M profile not measured. |
+| AUD-T04: Cases and Authentication integration. | AUD-FR-011, 015–017, 025 | Implemented; recovery gate Blocked | Versioned states, eligible ownership, encrypted notes/evidence and signed owner unlock. MySQL capture/case/unlock races pass. Assisted recovery remains unavailable. |
+| AUD-T05: Protected screens and minimal notices. | AUD-FR-024, 027 | Implemented; verification pending | Four responsive Inertia pages, Wayfinder, independent navigation, scope clearing and Module 13 recipient-rechecked case notices. Authenticated desktop/mobile/keyboard/logout checks completed; populated case detail and complete assistive-tech gate pending. |
+| AUD-T06: Integrity, retention, archive and recovery contracts. | AUD-FR-018–023, 026, 029 | Blocked | Classification/readiness recorded; crypto certification, external holds, archive/expiry/restore, legal/storage/key/backup approval remain unavailable. Integrity explicitly Unverified. |
+| Verify focused regressions and record applicable release gates. | AUD-AC-001–030 | Partially verified / Blocked | 585 affected SQLite tests; 43 focused MySQL feature tests and three MySQL process races pass. Scoped static/frontend/build/Pint pass; complete PHP suite and remaining acceptance gates pending. |
 
 ## Module 15 — Business Settings and Configuration
 
 Source: [`15-business-settings-and-configuration.md`](./modules/15-business-settings-and-configuration.md)
 Dependencies: Modules 01–14
 
-| Task                                                                                                                                     | Specification reference | Status | Evidence or blocker |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate business configuration, publication, safety gates, versioning, rollback, and readiness requirements into implementation tasks. | Sections 20–21          | To Do  | —                   |
+| Task | Specification reference | Status | Evidence or blocker |
+| --- | --- | --- | --- |
+| Save staged plan and map every requirement/scenario. | CFG-FR-001–030; CFG-AC-001–042 | Completed | [Module 15 checkpoint](./implementation_plan/15-business-settings-and-configuration.md). |
+| Deliver singleton/import/bootstrap, typed configuration lifecycle, atomic audit/outbox and ordered local activation. | Sections 3–14 | Implemented for supported owners | Encrypted immutable versions, fresh publication/cancellation, conflict-safe scheduling, rollback and unknown-operation recovery; private first-Admin provisioning. |
+| Integrate presentation defaults, prospective limits and role-sensitive settings workspace. | Sections 6–11, 15–16 | Partially delivered | Runtime database snapshots, dashboard/report defaults, batch version and financial gates; authenticated visual/accessibility gate pending. |
+| Certify financial/time/provider/logo/recovery/retention owners and production acceptance. | CFG-FR-006, 010–017, 028–030 | Blocked | Named owner contracts and operational evidence remain unavailable; enablement stays gated. |
+| Verify affected behavior and concurrency. | CFG-AC-001–042 | Partially verified | Focused and affected feature tests plus three isolated MySQL process races pass. Full suite and complete cross-owner release scenarios pending. |
 
 ## Module 16 — Platform Reliability and Data Operations
 

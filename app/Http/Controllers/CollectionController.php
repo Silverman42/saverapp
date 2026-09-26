@@ -224,7 +224,9 @@ class CollectionController extends Controller
                 'reason' => trim($data['reason']),
             ]);
             AuditEvent::record('collection.slot_annotated', CollectionAnnotation::class, $annotation->id,
-                (string) $annotation->id, ['kind' => $annotation->kind, 'slot_id' => $current->id], $request->user());
+                (string) $annotation->id, ['kind' => $annotation->kind, 'slot_id' => $current->id], $request->user(),
+                context: ['executor' => self::class]
+            );
         }, attempts: 3);
 
         return redirect()->route('plans.card', $plan);

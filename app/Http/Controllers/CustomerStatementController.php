@@ -37,7 +37,9 @@ class CustomerStatementController extends Controller
         AuditEvent::record('ledger.statement_previewed', CustomerProfile::class, $profile->id, $profile->customer_id, [
             'from' => $from, 'to' => $to, 'status' => $preview['status'],
             'ledger_watermark' => $preview['ledger_watermark'] ?? null,
-        ], $request->user());
+        ], $request->user(),
+            context: ['executor' => self::class]
+        );
 
         return Inertia::render('ledger/StatementPreview', [
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],

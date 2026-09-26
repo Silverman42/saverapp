@@ -119,6 +119,8 @@ class DeliverCustomerInvitationJob implements ShouldQueue
                     'generation' => $invitation->generation,
                 ],
                 actor: null,
+
+                context: ['executor' => self::class]
             );
         } catch (Throwable $e) {
             $this->handleFailure($invitation, $e);
@@ -153,6 +155,8 @@ class DeliverCustomerInvitationJob implements ShouldQueue
                 'diagnostic_summary' => $sanitizedError,
             ],
             actor: null,
+
+            context: ['executor' => self::class]
         );
     }
 }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/** @property array{title: string, message: string, plan_id: string, status: string, url: string} $payload */
 #[Fillable([
     'notification_id', 'plan_lifecycle_event_id', 'thrift_plan_id', 'customer_profile_id',
     'recipient_user_id', 'audience_type', 'channel', 'purpose', 'payload', 'status',

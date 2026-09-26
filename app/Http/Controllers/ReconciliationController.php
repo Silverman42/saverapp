@@ -124,7 +124,9 @@ class ReconciliationController extends Controller
             $current->version++;
             $current->save();
             AuditEvent::record('collection.remittance_confirmed', CashRemittance::class, $remittance->id,
-                $remittance->handoff_reference, ['batch_id' => $current->id, 'amount_kobo' => $amount], $request->user());
+                $remittance->handoff_reference, ['batch_id' => $current->id, 'amount_kobo' => $amount], $request->user(),
+                context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
+            );
         }, attempts: 3);
 
         return redirect()->route('collection-batches.show', $batch);
@@ -176,7 +178,9 @@ class ReconciliationController extends Controller
             $current->version++;
             $current->save();
             AuditEvent::record('collection.batch_reviewed', CollectionBatch::class, $current->id,
-                (string) $current->id, ['outcome' => $outcome, 'outstanding_kobo' => $outstanding], $request->user());
+                (string) $current->id, ['outcome' => $outcome, 'outstanding_kobo' => $outstanding], $request->user(),
+                context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
+            );
         }, attempts: 3);
 
         return redirect()->route('collection-batches.show', $batch);
@@ -215,7 +219,9 @@ class ReconciliationController extends Controller
             $current->save();
             AuditEvent::record('collection.exception_opened', CollectionException::class, $exception->id,
                 (string) $exception->id, ['batch_id' => $current->id, 'kind' => $data['kind'],
-                    'amount_kobo' => $amount], $request->user());
+                    'amount_kobo' => $amount], $request->user(),
+                context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
+            );
         }, attempts: 3);
 
         return redirect()->route('collection-batches.show', $batch);
@@ -257,7 +263,9 @@ class ReconciliationController extends Controller
             $current->version++;
             $current->save();
             AuditEvent::record('collection.exception_resolved', CollectionException::class, $currentException->id,
-                (string) $currentException->id, ['batch_id' => $current->id, 'reason' => trim($data['reason'])], $request->user());
+                (string) $currentException->id, ['batch_id' => $current->id, 'reason' => trim($data['reason'])], $request->user(),
+                context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
+            );
         }, attempts: 3);
 
         return redirect()->route('collection-batches.show', $batch);
@@ -292,7 +300,9 @@ class ReconciliationController extends Controller
             $current->version++;
             $current->save();
             AuditEvent::record('collection.exception_reopened', CollectionException::class, $currentException->id,
-                (string) $currentException->id, ['batch_id' => $current->id, 'reason' => trim($data['reason'])], $request->user());
+                (string) $currentException->id, ['batch_id' => $current->id, 'reason' => trim($data['reason'])], $request->user(),
+                context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
+            );
         }, attempts: 3);
 
         return redirect()->route('collection-batches.show', $batch);

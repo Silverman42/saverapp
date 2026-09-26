@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\BusinessProfile;
+use App\Services\BusinessSettings;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,7 +17,12 @@ class EnsureCollectionsEnabled
      */
     public function handle(Request $request, Closure $next): Response
     {
-        abort_unless(config('collections.enabled'), 503, 'Cash collections are not enabled yet.');
+        $profile = BusinessProfile::current();
+        if ($profile->getAttribute('effective_configuration_id') === null) {
+            abort_unless(config('collections.enabled'), 503, 'Cash collections are not enabled yet.');
+        } elseif (in_array($request->route()?->getName(), ['customers.collections.create', 'customers.collections.preview', 'customers.collections.store'], true)) {
+            app(BusinessSettings::class)->ensureFeature('collections');
+        }
 
         return $next($request);
     }

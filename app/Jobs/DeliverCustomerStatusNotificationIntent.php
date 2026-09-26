@@ -10,6 +10,7 @@ use App\Models\CustomerStatusNotificationIntent;
 use App\Models\User;
 use App\Notifications\CustomerStatusNotification;
 use App\Services\AgentEligibilityService;
+use App\Services\NotificationPipeline;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -43,6 +44,12 @@ class DeliverCustomerStatusNotificationIntent implements ShouldQueue
     {
         $intent = CustomerStatusNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {
+            return;
+        }
+
+        if ($intent->channel === 'database') {
+            app(NotificationPipeline::class)->deliverOwner('customer_status', $this->intentId);
+
             return;
         }
 

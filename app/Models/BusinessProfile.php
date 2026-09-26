@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
-use RuntimeException;
 
 /**
  * @property int $id
@@ -38,6 +37,18 @@ use RuntimeException;
 ])]
 class BusinessProfile extends Model
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $profile): void {
+            if ($profile->isDirty('business_id') || ($profile->getOriginal('effective_configuration_id') !== null && $profile->isDirty(['display_name', 'legal_name', 'support_email', 'support_phone', 'address', 'timezone', 'version', 'effective_configuration_id']))) {
+                throw new \LogicException('Publish a new configuration version instead of editing trusted business identity or effective settings.');
+            }
+        });
+        static::deleting(function (): void {
+            throw new \LogicException('The trusted business identity cannot be deleted.');
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -56,12 +67,6 @@ class BusinessProfile extends Model
      */
     public static function current(): self
     {
-        $profile = static::query()->first();
-
-        if (! $profile) {
-            throw new RuntimeException('The trusted business identity has not been initialized.');
-        }
-
-        return $profile;
+        return static::query()->sole();
     }
 }

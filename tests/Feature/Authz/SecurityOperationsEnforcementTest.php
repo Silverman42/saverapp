@@ -13,6 +13,7 @@ use App\Notifications\Auth\AdminPasswordResetNotification;
 use App\Notifications\Auth\ResetPasswordNotification;
 use App\Services\AuthenticationAbuseService;
 use App\Services\AuthorizationService;
+use App\Services\UnlockState;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Carbon;
@@ -40,6 +41,7 @@ test('customers and agents are denied from lockout endpoints with 403', function
 
     $this->actingAs($customer)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($customer)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Customer verification attempt',
@@ -47,6 +49,7 @@ test('customers and agents are denied from lockout endpoints with 403', function
 
     $this->actingAs($agent)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($agent)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Agent verification attempt',
@@ -59,6 +62,7 @@ test('baseline admin without security.operations.manage is denied with 403', fun
 
     $this->actingAs($baselineAdmin)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($baselineAdmin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Baseline admin attempt',
@@ -74,6 +78,7 @@ test('admin with role-inherited permission is denied from lockout endpoints with
 
     $this->actingAs($roleAdmin)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($roleAdmin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Role inherited attempt',
@@ -102,6 +107,7 @@ test('admin with active restriction on security.operations.manage is denied with
 
     $this->actingAs($admin)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Restricted admin attempt',
@@ -119,6 +125,7 @@ test('admin with drifted role is denied with 403', function () {
 
     $this->actingAs($admin)->get(route('admin.lockouts.index'))->assertForbidden();
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Drifted admin attempt',
@@ -135,6 +142,7 @@ test('admin with inactive account state is denied from lockout endpoints and red
 
     $this->actingAs($admin)->get(route('admin.lockouts.index'))->assertRedirect(route('login'));
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Suspended admin attempt',
@@ -237,10 +245,12 @@ test('manual unlock rejects missing, invalid category, verification method, or s
     $admin->givePermissionTo(AdminPermission::SecurityOperationsManage->value);
     $targetUser = User::factory()->customer()->create();
 
-    $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [])
+    $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'), ])
         ->assertSessionHasErrors(['category', 'verification_method', 'reason']);
 
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'invalid_category',
         'verification_method' => 'invalid_method',
         'reason' => 'abc', // shorter than 5 chars
@@ -253,6 +263,7 @@ test('manual unlock rejects reason exceeding 255 characters with 422', function 
     $targetUser = User::factory()->customer()->create();
 
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => str_repeat('a', 256),
@@ -266,6 +277,7 @@ test('manual unlock rejects unlock when no active lock exists for requested cate
 
     // Target user has no locks at all
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Attempting to unlock unlocked account',
@@ -289,6 +301,7 @@ test('manual unlock rejects unlock when lock has expired naturally with 422', fu
     ]);
 
     $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Attempting to unlock expired lock',
@@ -333,6 +346,7 @@ test('manual unlock clears only requested category and preserves unrelated locks
 
     // Unlock only password category
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'verified_phone_callback',
         'reason' => 'Verified phone callback completed with account holder',
@@ -385,6 +399,7 @@ test('admin cannot manually unlock their own account and receives 403', function
     ]);
 
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $admin), [
+        'restriction_token' => app(UnlockState::class)->token($admin, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Attempting self-unlock',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\BusinessProfile;
 use App\Services\AuthorizationService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -40,12 +41,12 @@ class HandleInertiaRequests extends Middleware
 
         return [
             ...parent::share($request),
-            'name' => config('app.name'),
+            'name' => BusinessProfile::current()->display_name,
             'auth' => [
                 'user' => $user,
                 'permissions' => $user ? app(AuthorizationService::class)->effectivePermissionCodes($user) : [],
             ],
-            'features' => ['collections' => (bool) config('collections.enabled')],
+            'features' => ['collections' => (bool) config('collections.enabled'), 'notifications' => (bool) config('notifications.enabled')],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

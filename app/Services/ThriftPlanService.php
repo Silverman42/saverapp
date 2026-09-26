@@ -51,6 +51,7 @@ class ThriftPlanService
         Gate::forUser($actor)->authorize('managePlan', $customer);
 
         $customer->loadMissing(['user', 'currentAssignment.agentProfile.user']);
+        app(BusinessSettings::class)->ensureFeature('plan_creation');
         $business = BusinessProfile::current();
         $this->assertBusinessTimezone($business->timezone);
         $this->assertCustomerCanCreate($customer);
@@ -281,6 +282,7 @@ class ThriftPlanService
                 throw new ConflictHttpException('Customer assignment changed. Review the current plan preview.');
             }
             $this->customerActivityGate->assertAllowed($lockedCustomer, CustomerActivity::CreatePlan);
+            app(BusinessSettings::class)->ensureFeature('plan_creation');
             $business = BusinessProfile::query()->lockForUpdate()->firstOrFail();
             $this->assertBusinessTimezone($business->timezone);
 
@@ -399,6 +401,8 @@ class ThriftPlanService
                     'agreement_attested' => true,
                 ],
                 actor: $context->actor,
+
+                context: ['executor' => self::class]
             );
 
             $attempt->thrift_plan_id = $plan->id;
@@ -580,6 +584,8 @@ class ThriftPlanService
                     'reason' => trim((string) $data['reason']),
                 ],
                 actor: $context->actor,
+
+                context: ['executor' => self::class]
             );
 
             $attempt->status = 'committed';
@@ -692,6 +698,8 @@ class ThriftPlanService
                 targetReference: $planRecord->plan_id,
                 payload: ['from' => $fromStatus->value, 'to' => $toStatus->value, 'version' => $planRecord->version, 'reason' => $reason],
                 actor: $context->actor,
+
+                context: ['executor' => self::class]
             );
 
             $attempt->status = 'committed';
@@ -1121,7 +1129,7 @@ class ThriftPlanService
         ?int $currentAgentUserId,
     ): void {
         $customerUser = $customer->user()->first();
-        if ($customerUser !== null && $customerUser->account_state === AccountState::Active) {
+        if ($customerUser !== null) {
             $message = $this->notificationMessage($event);
             $this->createNotificationIntent(
                 event: $event,
@@ -1133,7 +1141,7 @@ class ThriftPlanService
                 message: $message,
             );
 
-            if ($customerUser->email_verified_at !== null) {
+            if ($customerUser->account_state === AccountState::Active && $customerUser->email_verified_at !== null) {
                 $this->createNotificationIntent(
                     event: $event,
                     plan: $plan,
@@ -1190,8 +1198,16 @@ class ThriftPlanService
             'status' => 'pending',
         ]);
 
+        if ($channel === 'database') {
+            app(NotificationPipeline::class)->capture('plan', $intent->id, false);
+        }
+
         DB::afterCommit(static function () use ($intent): void {
-            DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit();
+            if ($intent->channel === 'database') {
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit());
+            } else {
+                DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit();
+            }
         });
     }
 

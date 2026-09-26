@@ -260,6 +260,8 @@ class AgentRegistrationService
                     'account_state' => $user->account_state->value,
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
 
             // Safe post-commit queued delivery

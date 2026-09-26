@@ -186,6 +186,8 @@ class RegistrationFeeService
                     'publication_reason' => $rule->publication_reason,
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $rule;
@@ -227,6 +229,8 @@ class RegistrationFeeService
                     'reason' => trim($reason),
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $rule;

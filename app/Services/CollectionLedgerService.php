@@ -114,7 +114,9 @@ class CollectionLedgerService
         AuditEvent::record('ledger.collection_posted', LedgerPostingGroup::class, $group->id, $group->posting_reference, [
             'event_type' => $eventType, 'source_type' => $sourceType, 'source_id' => $sourceId,
             'customer_profile_id' => $customerId, 'agent_profile_id' => $agentId, 'amount_kobo' => $amountKobo,
-        ], $actor);
+        ], $actor,
+            context: ['executor' => self::class]
+        );
 
         return $group;
     }

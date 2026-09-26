@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\Permission;
 use App\Models\PermissionGrantHistory;
 use App\Models\User;
@@ -192,6 +193,10 @@ class PermissionManagementService
                 ]);
             }
 
+            AuditEvent::record('authorization.permissions_changed', User::class, $lockedTarget->id, null,
+                ['batch_id' => $batchId, 'grants' => $grants, 'revocations' => $revocations,
+                    'from_version' => $expectedPermissionVersion, 'to_version' => $newVersion], $lockedActor,
+                ['required_permission' => AdminPermission::AdminsManage->value, 'executor' => self::class, 'operation_id' => $batchId]);
             // Clear Spatie cached permissions
             app(PermissionRegistrar::class)->forgetCachedPermissions();
 

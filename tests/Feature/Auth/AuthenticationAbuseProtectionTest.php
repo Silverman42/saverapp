@@ -14,6 +14,7 @@ use App\Notifications\Auth\PasswordLockoutNotification;
 use App\Notifications\Auth\RecoveryCodeCooldownNotification;
 use App\Notifications\Auth\TwoFactorFailedAttemptsExceededNotification;
 use App\Services\AuthenticationAbuseService;
+use App\Services\UnlockState;
 use App\Support\IdentityNormalizer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
@@ -412,7 +413,7 @@ test('suspended and deactivated accounts do not become active upon lock expiry o
     $user->lockTemporarily(15, 'password', 'Test lock');
 
     $service = app(AuthenticationAbuseService::class);
-    $service->manualUnlock($user, $admin, 'password', UnlockVerificationMethod::InPerson, 'Valid protocol verification');
+    $service->manualUnlock($user, $admin, 'password', UnlockVerificationMethod::InPerson, 'Valid protocol verification', app(UnlockState::class)->token($user->fresh(), $admin->fresh(), 'password'));
 
     $user->refresh();
     expect($user->account_state)->toBe($state);
@@ -504,6 +505,7 @@ test('admin can manually unlock user account clearing restrictions and queuing n
     ]);
 
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $targetUser), [
+        'restriction_token' => app(UnlockState::class)->token($targetUser, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'approved_video_call',
         'reason' => 'Identity verified via video call',
@@ -529,6 +531,7 @@ test('admin cannot manually unlock their own account', function () {
     $admin->lockTemporarily(15, 'password', 'Self lock');
 
     $response = $this->actingAs($admin)->post(route('admin.lockouts.unlock', $admin), [
+        'restriction_token' => app(UnlockState::class)->token($admin, auth()->user(), 'password'),
         'category' => 'password',
         'verification_method' => 'in_person',
         'reason' => 'Self verification attempt',

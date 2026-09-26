@@ -12,6 +12,7 @@ use App\Enums\FeeRuleModel;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
+use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
@@ -129,6 +130,8 @@ class FeeObligationService
                     'source_id' => $lockedSnapshot->source_id,
                 ],
                 actor: $actor,
+
+                context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $obligation;
@@ -638,6 +641,8 @@ class FeeObligationService
                 'outstanding_after_kobo' => $outstandingAfter,
             ],
             actor: $admin,
+
+            context: ['executor' => self::class, 'required_permission' => $admin?->user_type === UserType::Admin ? 'fees.manage' : null]
         );
 
         $customer = $obligation->customerProfile()->with('user')->first();

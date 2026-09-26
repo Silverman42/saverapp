@@ -9,12 +9,14 @@ const props = withDefaults(
     id: string
     modelValue?: string
     placeholder?: string
+    ariaLabel?: string
     disabled?: boolean
     class?: HTMLAttributes["class"]
   }>(),
   {
     modelValue: "",
     placeholder: "Select date",
+    ariaLabel: "Datepicker input",
     disabled: false,
   },
 )
@@ -42,6 +44,7 @@ function updateModelValue(value: unknown): void {
     :placeholder
     :disabled
     :input-attrs="{ id, autocomplete: 'off' }"
+    :aria-labels="{ input: props.ariaLabel }"
     :ui
     :class="cn('saver-date-picker w-fit', props.class)"
     auto-apply

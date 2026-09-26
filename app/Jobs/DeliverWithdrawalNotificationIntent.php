@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WithdrawalNotificationIntent;
 use App\Notifications\WithdrawalStatusNotification;
 use App\Services\AgentEligibilityService;
+use App\Services\NotificationPipeline;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -44,6 +45,12 @@ class DeliverWithdrawalNotificationIntent implements ShouldQueue
         if ($intent === null || $intent->status !== 'pending') {
             return;
         }
+        if ($intent->channel === 'database') {
+            app(NotificationPipeline::class)->deliverOwner('withdrawal', $this->intentId);
+
+            return;
+        }
+
         $recipient = User::query()->find($intent->recipient_user_id);
         $customer = CustomerProfile::query()->find($intent->customer_profile_id);
         $allowed = false;

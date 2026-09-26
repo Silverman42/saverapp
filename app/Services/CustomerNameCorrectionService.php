@@ -102,6 +102,8 @@ class CustomerNameCorrectionService
                 targetReference: $lockedProfile->customer_id,
             );
 
+            $correction->forceFill(['profile_change_history_id' => $history->id])->save();
+
             $payload = [
                 'title' => 'Review a proposed name correction',
                 'message' => 'An authorized staff member proposed a name correction. Review it in your signed-in account before '.now()->addDays(7)->timezone('Africa/Lagos')->format('j M Y, H:i').'.',
@@ -454,6 +456,8 @@ class CustomerNameCorrectionService
                 'profile_version' => $profile->version,
             ],
             actor: $actor,
+
+            context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'customers.manage' : null]
         );
     }
 

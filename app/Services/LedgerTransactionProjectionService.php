@@ -42,7 +42,9 @@ class LedgerTransactionProjectionService
                 AuditEvent::record('ledger.integrity_incident', LedgerPostingGroup::class, null, $reference, [
                     'category' => 'projection_rebuild',
                     'projection_version' => (int) $state->active_version,
-                ]);
+                ],
+                    context: ['executor' => self::class]
+                );
             }, attempts: 3);
 
             throw $exception;
@@ -97,7 +99,9 @@ class LedgerTransactionProjectionService
             AuditEvent::record('ledger.projection_promoted', LedgerPostingGroup::class, null, (string) $version, [
                 'projection_version' => $version, 'transaction_count' => $transactions,
                 'posting_group_count' => $groups,
-            ]);
+            ],
+                context: ['executor' => self::class]
+            );
 
             return ['version' => $version, 'transactions' => $transactions, 'groups' => $groups];
         }, attempts: 3);

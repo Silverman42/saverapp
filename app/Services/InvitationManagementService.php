@@ -129,6 +129,8 @@ class InvitationManagementService
                     'reason' => $reason,
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -235,6 +237,8 @@ class InvitationManagementService
                     'generation' => $generation,
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -293,6 +297,8 @@ class InvitationManagementService
                     'reason' => $reason,
                 ],
                 actor: $freshAdmin,
+
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'agents.manage' : null]
             );
         });
     }

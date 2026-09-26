@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\AuthenticatorState;
 use App\Jobs\ExpirePendingTwoFactorSetup;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Models\UserRecoveryCode;
 use App\Notifications\Auth\AuthenticatorEnrolledNotification;
@@ -140,33 +141,44 @@ class TwoFactorService
      */
     public function verifyAndConsumeRecoveryCode(User $user, string $code): bool
     {
-        $code = trim($code);
+        return DB::transaction(function () use ($user, $code) {
+            $result = (function () use ($user, $code) {
+                $code = trim($code);
 
-        if ($code === '') {
-            return false;
-        }
+                if ($code === '') {
+                    return false;
+                }
 
-        $codeHash = hash('sha256', $code);
+                $codeHash = hash('sha256', $code);
 
-        return DB::transaction(function () use ($user, $codeHash): bool {
-            /** @var UserRecoveryCode|null $recoveryCode */
-            $recoveryCode = $user->recoveryCodes()
-                ->where('code_hash', $codeHash)
-                ->whereNull('consumed_at')
-                ->lockForUpdate()
-                ->first();
+                return DB::transaction(function () use ($user, $codeHash): bool {
+                    /** @var UserRecoveryCode|null $recoveryCode */
+                    $recoveryCode = $user->recoveryCodes()
+                        ->where('code_hash', $codeHash)
+                        ->whereNull('consumed_at')
+                        ->lockForUpdate()
+                        ->first();
 
-            if (! $recoveryCode) {
-                return false;
+                    if (! $recoveryCode) {
+                        return false;
+                    }
+
+                    $recoveryCode->consume();
+
+                    $remainingCount = $user->recoveryCodes()->whereNull('consumed_at')->count();
+
+                    $user->notify((new RecoveryCodeUsedNotification($remainingCount))->afterCommit());
+
+                    return true;
+                });
+
+            })();
+            if ($result !== false) {
+                AuditEvent::record('auth.recovery_codes_used', User::class, $user->id, null,
+                    ['changed_fields' => ['verifyAndConsumeRecoveryCode']], $user, ['executor' => self::class]);
             }
 
-            $recoveryCode->consume();
-
-            $remainingCount = $user->recoveryCodes()->whereNull('consumed_at')->count();
-
-            $user->notify(new RecoveryCodeUsedNotification($remainingCount));
-
-            return true;
+            return $result;
         });
     }
 
@@ -177,24 +189,33 @@ class TwoFactorService
      */
     public function startEnrolment(User $user): array
     {
-        $secret = $this->generateSecretKey();
-        $expiresAt = Carbon::now()->addMinutes(10);
+        return DB::transaction(function () use ($user) {
+            $result = (function () use ($user) {
+                $secret = $this->generateSecretKey();
+                $expiresAt = Carbon::now()->addMinutes(10);
 
-        $user->forceFill([
-            'two_factor_pending_secret' => Fortify::currentEncrypter()->encrypt($secret),
-            'two_factor_pending_purpose' => 'enrolment',
-            'two_factor_pending_expires_at' => $expiresAt,
-            'two_factor_pending_last_used_timestep' => null,
-            'authenticator_state' => AuthenticatorState::PendingConfirmation,
-        ])->save();
+                $user->forceFill([
+                    'two_factor_pending_secret' => Fortify::currentEncrypter()->encrypt($secret),
+                    'two_factor_pending_purpose' => 'enrolment',
+                    'two_factor_pending_expires_at' => $expiresAt,
+                    'two_factor_pending_last_used_timestep' => null,
+                    'authenticator_state' => AuthenticatorState::PendingConfirmation,
+                ])->save();
 
-        ExpirePendingTwoFactorSetup::dispatch($user->id, $expiresAt->toISOString())
-            ->delay($expiresAt);
+                ExpirePendingTwoFactorSetup::dispatch($user->id, $expiresAt->toISOString())
+                    ->delay($expiresAt);
 
-        return [
-            'secret' => $secret,
-            'qr_code' => $this->qrCodeSvg($user->email, $secret),
-        ];
+                return [
+                    'secret' => $secret,
+                    'qr_code' => $this->qrCodeSvg($user->email, $secret),
+                ];
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['startEnrolment']], $user, ['executor' => self::class]);
+
+            return $result;
+        });
     }
 
     /**
@@ -204,61 +225,70 @@ class TwoFactorService
      */
     public function confirmEnrolment(User $user, string $code): array
     {
-        if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
-            throw ValidationException::withMessages([
-                'code' => [__('No pending authenticator setup was found. Please restart enrolment.')],
-            ]);
-        }
+        return DB::transaction(function () use ($user, $code) {
+            $result = (function () use ($user, $code) {
+                if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
+                    throw ValidationException::withMessages([
+                        'code' => [__('No pending authenticator setup was found. Please restart enrolment.')],
+                    ]);
+                }
 
-        if ($user->two_factor_pending_expires_at->isPast()) {
-            $user->forceFill([
-                'two_factor_pending_secret' => null,
-                'two_factor_pending_purpose' => null,
-                'two_factor_pending_expires_at' => null,
-                'two_factor_pending_last_used_timestep' => null,
-                'authenticator_state' => AuthenticatorState::NotConfigured,
-            ])->save();
+                if ($user->two_factor_pending_expires_at->isPast()) {
+                    $user->forceFill([
+                        'two_factor_pending_secret' => null,
+                        'two_factor_pending_purpose' => null,
+                        'two_factor_pending_expires_at' => null,
+                        'two_factor_pending_last_used_timestep' => null,
+                        'authenticator_state' => AuthenticatorState::NotConfigured,
+                    ])->save();
 
-            throw ValidationException::withMessages([
-                'code' => [__('The authenticator enrolment session has expired. Please restart enrolment.')],
-            ]);
-        }
+                    throw ValidationException::withMessages([
+                        'code' => [__('The authenticator enrolment session has expired. Please restart enrolment.')],
+                    ]);
+                }
 
-        if (! $this->verifyTotp($user, $code, usePending: true)) {
-            throw ValidationException::withMessages([
-                'code' => [__('The provided two-factor authentication code was invalid or replayed.')],
-            ]);
-        }
+                if (! $this->verifyTotp($user, $code, usePending: true)) {
+                    throw ValidationException::withMessages([
+                        'code' => [__('The provided two-factor authentication code was invalid or replayed.')],
+                    ]);
+                }
 
-        $plainCodes = $this->generateRecoveryCodes(10);
+                $plainCodes = $this->generateRecoveryCodes(10);
 
-        DB::transaction(function () use ($user, $plainCodes): void {
-            $user->recoveryCodes()->delete();
+                DB::transaction(function () use ($user, $plainCodes): void {
+                    $user->recoveryCodes()->delete();
 
-            foreach ($plainCodes as $plainCode) {
-                UserRecoveryCode::create([
-                    'user_id' => $user->id,
-                    'code_hash' => hash('sha256', $plainCode),
-                    'consumed_at' => null,
-                ]);
-            }
+                    foreach ($plainCodes as $plainCode) {
+                        UserRecoveryCode::create([
+                            'user_id' => $user->id,
+                            'code_hash' => hash('sha256', $plainCode),
+                            'consumed_at' => null,
+                        ]);
+                    }
 
-            $user->forceFill([
-                'two_factor_secret' => $user->two_factor_pending_secret,
-                'two_factor_confirmed_at' => Carbon::now(),
-                'two_factor_last_used_timestep' => $user->two_factor_pending_last_used_timestep,
-                'two_factor_pending_secret' => null,
-                'two_factor_pending_purpose' => null,
-                'two_factor_pending_expires_at' => null,
-                'two_factor_pending_last_used_timestep' => null,
-                'authenticator_state' => AuthenticatorState::Active,
-                'recovery_codes_acknowledged_at' => null,
-            ])->save();
+                    $user->forceFill([
+                        'two_factor_secret' => $user->two_factor_pending_secret,
+                        'two_factor_confirmed_at' => Carbon::now(),
+                        'two_factor_last_used_timestep' => $user->two_factor_pending_last_used_timestep,
+                        'two_factor_pending_secret' => null,
+                        'two_factor_pending_purpose' => null,
+                        'two_factor_pending_expires_at' => null,
+                        'two_factor_pending_last_used_timestep' => null,
+                        'authenticator_state' => AuthenticatorState::Active,
+                        'recovery_codes_acknowledged_at' => null,
+                    ])->save();
+                });
+
+                $user->notify((new AuthenticatorEnrolledNotification)->afterCommit());
+
+                return $plainCodes;
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['confirmEnrolment']], $user, ['executor' => self::class]);
+
+            return $result;
         });
-
-        $user->notify(new AuthenticatorEnrolledNotification);
-
-        return $plainCodes;
     }
 
     /**
@@ -266,13 +296,21 @@ class TwoFactorService
      */
     public function acknowledgeRecoveryCodes(User $user): void
     {
-        $user->recovery_codes_acknowledged_at = Carbon::now();
+        DB::transaction(function () use ($user) {
+            (function () use ($user) {
+                $user->recovery_codes_acknowledged_at = Carbon::now();
 
-        if ($user->account_state === AccountState::MfaSetupRequired) {
-            $user->account_state = AccountState::Active;
-        }
+                if ($user->account_state === AccountState::MfaSetupRequired) {
+                    $user->account_state = AccountState::Active;
+                }
 
-        $user->save();
+                $user->save();
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['acknowledgeRecoveryCodes']], $user, ['executor' => self::class]);
+
+        });
     }
 
     /**
@@ -282,40 +320,49 @@ class TwoFactorService
      */
     public function startReplacement(User $user, string $currentPassword, string $currentTotp): array
     {
-        $provider = $this->guard->getProvider();
+        return DB::transaction(function () use ($user, $currentPassword, $currentTotp) {
+            $result = (function () use ($user, $currentPassword, $currentTotp) {
+                $provider = $this->guard->getProvider();
 
-        if (! $provider->validateCredentials($user, ['password' => $currentPassword])) {
-            throw ValidationException::withMessages([
-                'current_password' => [__('The provided password does not match our records.')],
-            ]);
-        }
+                if (! $provider->validateCredentials($user, ['password' => $currentPassword])) {
+                    throw ValidationException::withMessages([
+                        'current_password' => [__('The provided password does not match our records.')],
+                    ]);
+                }
 
-        if (! $this->verifyTotp($user, $currentTotp, usePending: false)) {
-            throw ValidationException::withMessages([
-                'current_code' => [__('The current authenticator code was invalid or replayed.')],
-            ]);
-        }
+                if (! $this->verifyTotp($user, $currentTotp, usePending: false)) {
+                    throw ValidationException::withMessages([
+                        'current_code' => [__('The current authenticator code was invalid or replayed.')],
+                    ]);
+                }
 
-        $secret = $this->generateSecretKey();
-        $expiresAt = Carbon::now()->addMinutes(10);
+                $secret = $this->generateSecretKey();
+                $expiresAt = Carbon::now()->addMinutes(10);
 
-        $user->forceFill([
-            'two_factor_pending_secret' => Fortify::currentEncrypter()->encrypt($secret),
-            'two_factor_pending_purpose' => 'replacement',
-            'two_factor_pending_expires_at' => $expiresAt,
-            'two_factor_pending_last_used_timestep' => null,
-            'authenticator_state' => AuthenticatorState::ReplacementPending,
-        ])->save();
+                $user->forceFill([
+                    'two_factor_pending_secret' => Fortify::currentEncrypter()->encrypt($secret),
+                    'two_factor_pending_purpose' => 'replacement',
+                    'two_factor_pending_expires_at' => $expiresAt,
+                    'two_factor_pending_last_used_timestep' => null,
+                    'authenticator_state' => AuthenticatorState::ReplacementPending,
+                ])->save();
 
-        $user->notify(new AuthenticatorReplacementStartedNotification);
+                $user->notify((new AuthenticatorReplacementStartedNotification)->afterCommit());
 
-        ExpirePendingTwoFactorSetup::dispatch($user->id, $expiresAt->toISOString())
-            ->delay($expiresAt);
+                ExpirePendingTwoFactorSetup::dispatch($user->id, $expiresAt->toISOString())
+                    ->delay($expiresAt);
 
-        return [
-            'secret' => $secret,
-            'qr_code' => $this->qrCodeSvg($user->email, $secret),
-        ];
+                return [
+                    'secret' => $secret,
+                    'qr_code' => $this->qrCodeSvg($user->email, $secret),
+                ];
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['startReplacement']], $user, ['executor' => self::class]);
+
+            return $result;
+        });
     }
 
     /**
@@ -325,77 +372,86 @@ class TwoFactorService
      */
     public function confirmReplacement(User $user, string $newCode, ?string $currentSessionId = null): array
     {
-        if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
-            throw ValidationException::withMessages([
-                'code' => [__('No pending replacement was found. Please restart the replacement process.')],
-            ]);
-        }
+        return DB::transaction(function () use ($user, $newCode, $currentSessionId) {
+            $result = (function () use ($user, $newCode, $currentSessionId) {
+                if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
+                    throw ValidationException::withMessages([
+                        'code' => [__('No pending replacement was found. Please restart the replacement process.')],
+                    ]);
+                }
 
-        if ($user->two_factor_pending_expires_at->isPast()) {
-            $user->forceFill([
-                'two_factor_pending_secret' => null,
-                'two_factor_pending_purpose' => null,
-                'two_factor_pending_expires_at' => null,
-                'two_factor_pending_last_used_timestep' => null,
-                'authenticator_state' => AuthenticatorState::Active,
-            ])->save();
+                if ($user->two_factor_pending_expires_at->isPast()) {
+                    $user->forceFill([
+                        'two_factor_pending_secret' => null,
+                        'two_factor_pending_purpose' => null,
+                        'two_factor_pending_expires_at' => null,
+                        'two_factor_pending_last_used_timestep' => null,
+                        'authenticator_state' => AuthenticatorState::Active,
+                    ])->save();
 
-            throw ValidationException::withMessages([
-                'code' => [__('The replacement session has expired. Your current authenticator remains active.')],
-            ]);
-        }
+                    throw ValidationException::withMessages([
+                        'code' => [__('The replacement session has expired. Your current authenticator remains active.')],
+                    ]);
+                }
 
-        if (! $this->verifyTotp($user, $newCode, usePending: true)) {
-            throw ValidationException::withMessages([
-                'code' => [__('The provided code from the new authenticator was invalid or replayed.')],
-            ]);
-        }
+                if (! $this->verifyTotp($user, $newCode, usePending: true)) {
+                    throw ValidationException::withMessages([
+                        'code' => [__('The provided code from the new authenticator was invalid or replayed.')],
+                    ]);
+                }
 
-        $plainCodes = $this->generateRecoveryCodes(10);
+                $plainCodes = $this->generateRecoveryCodes(10);
 
-        DB::transaction(function () use ($user, $plainCodes, $currentSessionId): void {
-            // Delete all existing recovery codes
-            $user->recoveryCodes()->delete();
+                DB::transaction(function () use ($user, $plainCodes, $currentSessionId): void {
+                    // Delete all existing recovery codes
+                    $user->recoveryCodes()->delete();
 
-            // Store new hashed recovery codes
-            foreach ($plainCodes as $plainCode) {
-                UserRecoveryCode::create([
-                    'user_id' => $user->id,
-                    'code_hash' => hash('sha256', $plainCode),
-                    'consumed_at' => null,
-                ]);
-            }
+                    // Store new hashed recovery codes
+                    foreach ($plainCodes as $plainCode) {
+                        UserRecoveryCode::create([
+                            'user_id' => $user->id,
+                            'code_hash' => hash('sha256', $plainCode),
+                            'consumed_at' => null,
+                        ]);
+                    }
 
-            // Atomically swap secrets and update state
-            $user->forceFill([
-                'two_factor_secret' => $user->two_factor_pending_secret,
-                'two_factor_confirmed_at' => Carbon::now(),
-                'two_factor_last_used_timestep' => $user->two_factor_pending_last_used_timestep,
-                'two_factor_pending_secret' => null,
-                'two_factor_pending_purpose' => null,
-                'two_factor_pending_expires_at' => null,
-                'two_factor_pending_last_used_timestep' => null,
-                'authenticator_state' => AuthenticatorState::Active,
-                'recovery_codes_acknowledged_at' => Carbon::now(),
-            ])->save();
+                    // Atomically swap secrets and update state
+                    $user->forceFill([
+                        'two_factor_secret' => $user->two_factor_pending_secret,
+                        'two_factor_confirmed_at' => Carbon::now(),
+                        'two_factor_last_used_timestep' => $user->two_factor_pending_last_used_timestep,
+                        'two_factor_pending_secret' => null,
+                        'two_factor_pending_purpose' => null,
+                        'two_factor_pending_expires_at' => null,
+                        'two_factor_pending_last_used_timestep' => null,
+                        'authenticator_state' => AuthenticatorState::Active,
+                        'recovery_codes_acknowledged_at' => Carbon::now(),
+                    ])->save();
 
-            // Rotate remember token
-            $user->setRememberToken(Str::random(60));
-            $user->save();
+                    // Rotate remember token
+                    $user->setRememberToken(Str::random(60));
+                    $user->save();
 
-            // Revoke every other session and trusted devices in the database
-            $sessionTable = config('session.table', 'sessions');
-            DB::table($sessionTable)
-                ->where('user_id', $user->id)
-                ->when($currentSessionId, fn ($q) => $q->where('id', '!=', $currentSessionId))
-                ->delete();
+                    // Revoke every other session and trusted devices in the database
+                    $sessionTable = config('session.table', 'sessions');
+                    DB::table($sessionTable)
+                        ->where('user_id', $user->id)
+                        ->when($currentSessionId, fn ($q) => $q->where('id', '!=', $currentSessionId))
+                        ->delete();
 
-            $user->revokeAllTrustedDevices();
+                    $user->revokeAllTrustedDevices();
+                });
+
+                $user->notify((new AuthenticatorReplacedNotification)->afterCommit());
+
+                return $plainCodes;
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['confirmReplacement']], $user, ['executor' => self::class]);
+
+            return $result;
         });
-
-        $user->notify(new AuthenticatorReplacedNotification);
-
-        return $plainCodes;
     }
 
     /**
@@ -403,21 +459,29 @@ class TwoFactorService
      */
     public function cancelPendingSetupOrReplacement(User $user): void
     {
-        $wasReplacement = $user->authenticator_state === AuthenticatorState::ReplacementPending;
+        DB::transaction(function () use ($user) {
+            (function () use ($user) {
+                $wasReplacement = $user->authenticator_state === AuthenticatorState::ReplacementPending;
 
-        $user->forceFill([
-            'two_factor_pending_secret' => null,
-            'two_factor_pending_purpose' => null,
-            'two_factor_pending_expires_at' => null,
-            'two_factor_pending_last_used_timestep' => null,
-            'authenticator_state' => $user->hasEnabledTwoFactorAuthentication()
-                ? AuthenticatorState::Active
-                : AuthenticatorState::NotConfigured,
-        ])->save();
+                $user->forceFill([
+                    'two_factor_pending_secret' => null,
+                    'two_factor_pending_purpose' => null,
+                    'two_factor_pending_expires_at' => null,
+                    'two_factor_pending_last_used_timestep' => null,
+                    'authenticator_state' => $user->hasEnabledTwoFactorAuthentication()
+                        ? AuthenticatorState::Active
+                        : AuthenticatorState::NotConfigured,
+                ])->save();
 
-        if ($wasReplacement) {
-            $user->notify(new AuthenticatorReplacementCancelledNotification);
-        }
+                if ($wasReplacement) {
+                    $user->notify((new AuthenticatorReplacementCancelledNotification)->afterCommit());
+                }
+
+            })();
+            AuditEvent::record('auth.mfa_changed', User::class, $user->id, null,
+                ['changed_fields' => ['cancelPendingSetupOrReplacement']], $user, ['executor' => self::class]);
+
+        });
     }
 
     /**
@@ -427,39 +491,48 @@ class TwoFactorService
      */
     public function regenerateRecoveryCodes(User $user, string $password, string $totp): array
     {
-        $provider = $this->guard->getProvider();
+        return DB::transaction(function () use ($user, $password, $totp) {
+            $result = (function () use ($user, $password, $totp) {
+                $provider = $this->guard->getProvider();
 
-        if (! $provider->validateCredentials($user, ['password' => $password])) {
-            throw ValidationException::withMessages([
-                'password' => [__('The provided password does not match our records.')],
-            ]);
-        }
+                if (! $provider->validateCredentials($user, ['password' => $password])) {
+                    throw ValidationException::withMessages([
+                        'password' => [__('The provided password does not match our records.')],
+                    ]);
+                }
 
-        if (! $this->verifyTotp($user, $totp, usePending: false)) {
-            throw ValidationException::withMessages([
-                'code' => [__('The provided two-factor authentication code was invalid or replayed.')],
-            ]);
-        }
+                if (! $this->verifyTotp($user, $totp, usePending: false)) {
+                    throw ValidationException::withMessages([
+                        'code' => [__('The provided two-factor authentication code was invalid or replayed.')],
+                    ]);
+                }
 
-        $plainCodes = $this->generateRecoveryCodes(10);
+                $plainCodes = $this->generateRecoveryCodes(10);
 
-        DB::transaction(function () use ($user, $plainCodes): void {
-            $user->recoveryCodes()->delete();
+                DB::transaction(function () use ($user, $plainCodes): void {
+                    $user->recoveryCodes()->delete();
 
-            foreach ($plainCodes as $plainCode) {
-                UserRecoveryCode::create([
-                    'user_id' => $user->id,
-                    'code_hash' => hash('sha256', $plainCode),
-                    'consumed_at' => null,
-                ]);
-            }
+                    foreach ($plainCodes as $plainCode) {
+                        UserRecoveryCode::create([
+                            'user_id' => $user->id,
+                            'code_hash' => hash('sha256', $plainCode),
+                            'consumed_at' => null,
+                        ]);
+                    }
 
-            $user->recovery_codes_acknowledged_at = Carbon::now();
-            $user->save();
+                    $user->recovery_codes_acknowledged_at = Carbon::now();
+                    $user->save();
+                });
+
+                $user->notify((new RecoveryCodesRegeneratedNotification)->afterCommit());
+
+                return $plainCodes;
+
+            })();
+            AuditEvent::record('auth.recovery_codes_regenerated', User::class, $user->id, null,
+                ['changed_fields' => ['regenerateRecoveryCodes']], $user, ['executor' => self::class]);
+
+            return $result;
         });
-
-        $user->notify(new RecoveryCodesRegeneratedNotification);
-
-        return $plainCodes;
     }
 }

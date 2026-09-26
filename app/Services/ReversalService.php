@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\CustomerProfile;
 use App\Models\LedgerPostingGroup;
@@ -275,7 +276,9 @@ class ReversalService
                 'original_posting_group_id' => $reversal->original_posting_group_id,
                 'state' => $reversal->state, 'version' => $reversal->version,
                 'compensation_posting_group_id' => $reversal->compensation_posting_group_id,
-            ], $actor);
+            ], $actor,
+            context: ['executor' => self::class, 'approver_id' => $reversal->reviewed_by_user_id, 'required_permission' => $actor?->user_type === UserType::Admin ? 'reversals.review' : null]
+        );
         $this->notices->queue($reversal, $event);
     }
 }

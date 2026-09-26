@@ -5,6 +5,10 @@
 **Module status:** Detailed draft for review  
 **Sources and dependencies:** [PRD](../../PRD.md), [User Types](./01-user-types.md), [Authentication](./02-authentication.md), [Roles and Permissions](./03-roles-and-permissions.md), [Customer and Agent Management](./04-customer-and-agent-management.md), [Fees and Deductions](./05-fees-and-deductions.md), [Thrift Plans and Savings Cycles](./06-thrift-plans-and-savings-cycles.md), [Collections, Digital Thrift Card, and Reconciliation](./07-collections-thrift-card-and-reconciliation.md), [Withdrawals and Payout Approvals](./08-withdrawals-and-payout-approvals.md), [Reversals and Financial Corrections](./09-reversals-and-financial-corrections.md), [Transaction Ledger, Balances, and Statements](./10-transaction-ledger-balances-and-statements.md), [Dashboard and Operational Analytics](./11-dashboard-and-operational-analytics.md), [Reports and Exports](./12-reports-and-exports.md)
 
+## Approved staged implementation
+
+The in-app foundation is implemented for seven existing source families. Approved release defaults are `en-NG`, configured business timezone, 25/50/100-row pagination, maximum 366-day date windows, verified historical import and 24-month inbox visibility. Existing email and Authentication delivery remain owner-controlled. This does not approve or certify the remaining draft provider, optional preference, full event catalogue, audit or recovery policies. See the [implementation checkpoint and acceptance evidence](../implementation_plan/13-notifications-and-communication.md).
+
 ## 1. Purpose and specification status
 
 This module defines the common notification event, recipient, template, in-app inbox and channel-delivery system. It makes committed business outcomes visible without duplicating the underlying action, leaking private data, or treating message delivery as financial finality.

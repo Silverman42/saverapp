@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import {
+    Bell,
     Briefcase,
     Coins,
     LayoutDashboard,
@@ -10,6 +11,7 @@ import {
     ChartNoAxesCombined,
     ShieldAlert,
     ShieldCheck,
+    Settings,
     UserRound,
     Users,
     WalletCards,
@@ -28,6 +30,10 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as businessSettings } from '@/routes/admin/business-settings';
+import { index as notificationInbox } from '@/routes/notifications';
+import { index as auditIndex } from '@/routes/admin/audit';
+import { index as securityCasesIndex } from '@/routes/admin/security';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { index as plansIndex } from '@/routes/plans';
 import { index as collectionsIndex } from '@/routes/collections';
@@ -47,15 +53,11 @@ const isAdmin = computed(() => page.props.auth?.user?.user_type === 'admin');
 const isAgent = computed(() => page.props.auth?.user?.user_type === 'agent');
 const canViewCustomers = computed(() => isAdmin.value || isAgent.value);
 const hasSecurityOperationsManage = computed(() => {
-    const permissions =
-        (page.props.auth?.user as { permissions?: string[] } | undefined)
-            ?.permissions ?? [];
+    const permissions = page.props.auth?.permissions ?? [];
     return permissions.includes('security.operations.manage');
 });
 const hasFeesManage = computed(() => {
-    const permissions =
-        (page.props.auth?.user as { permissions?: string[] } | undefined)
-            ?.permissions ?? [];
+    const permissions = page.props.auth?.permissions ?? [];
     return permissions.includes('fees.manage');
 });
 
@@ -121,6 +123,13 @@ const mainNavItems = computed<NavItem[]>(() => {
         });
     }
 
+    if (page.props.features.notifications) {
+        items.push({
+            title: 'Notifications',
+            href: notificationInbox(),
+            icon: Bell,
+        });
+    }
     return items;
 });
 
@@ -134,6 +143,11 @@ const adminNavItems = computed<NavItem[]>(() => {
             title: 'Agents',
             href: '/agents',
             icon: Briefcase,
+        },
+        {
+            title: 'Business settings',
+            href: businessSettings(),
+            icon: Settings,
         },
         {
             title: 'Admin Access',
@@ -150,7 +164,15 @@ const adminNavItems = computed<NavItem[]>(() => {
         });
     }
 
+    if ((page.props.auth?.permissions ?? []).includes('audit.view')) {
+        items.push({ title: 'Audit trail', href: auditIndex(), icon: Receipt });
+    }
     if (hasSecurityOperationsManage.value) {
+        items.push({
+            title: 'Security operations',
+            href: securityCasesIndex(),
+            icon: ShieldCheck,
+        });
         items.push({
             title: 'Lockouts',
             href: '/admin/lockouts',

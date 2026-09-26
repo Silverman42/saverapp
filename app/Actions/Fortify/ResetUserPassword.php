@@ -5,6 +5,7 @@ namespace App\Actions\Fortify;
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Notifications\Auth\AdminPasswordResetNotification;
 use App\Notifications\Auth\PasswordResetSuccessNotification;
@@ -31,36 +32,44 @@ class ResetUserPassword implements ResetsUserPasswords
      */
     public function reset(User $user, array $input): void
     {
-        // Section 7.6 & AC 15: Password reset must not activate an invited account
-        if ($user->account_state === AccountState::Invited) {
-            throw ValidationException::withMessages([
-                'email' => [__('Password reset cannot activate an invited account. Please use your invitation link.')],
-            ]);
-        }
+        DB::transaction(function () use ($user, $input) {
+            (function () use ($user, $input) {
+                // Section 7.6 & AC 15: Password reset must not activate an invited account
+                if ($user->account_state === AccountState::Invited) {
+                    throw ValidationException::withMessages([
+                        'email' => [__('Password reset cannot activate an invited account. Please use your invitation link.')],
+                    ]);
+                }
 
-        // Section 7.3 & 7.4 & AUTH-013 & AC 13: Agent or Admin with MFA must supply valid TOTP code or recovery code
-        $requiresTwoFactor = in_array($user->user_type, [UserType::Agent, UserType::Admin], true)
-            && $user->hasEnabledTwoFactorAuthentication();
+                // Section 7.3 & 7.4 & AUTH-013 & AC 13: Agent or Admin with MFA must supply valid TOTP code or recovery code
+                $requiresTwoFactor = in_array($user->user_type, [UserType::Agent, UserType::Admin], true)
+                    && $user->hasEnabledTwoFactorAuthentication();
 
-        if ($requiresTwoFactor) {
-            $this->validateTwoFactorProof($user, $input);
-        }
+                if ($requiresTwoFactor) {
+                    $this->validateTwoFactorProof($user, $input);
+                }
 
-        // Section 4.3: Validate password using role-specific policy (Customer: min 15; Agent/Admin: min 8)
-        Validator::make($input, [
-            'password' => ['required', 'string', PasswordPolicy::ruleForUser($user), 'confirmed'],
-        ])->validate();
+                // Section 4.3: Validate password using role-specific policy (Customer: min 15; Agent/Admin: min 8)
+                Validator::make($input, [
+                    'password' => ['required', 'string', PasswordPolicy::ruleForUser($user), 'confirmed'],
+                ])->validate();
 
-        // Update password (preserving user_type, account_state, permissions, attribution, and MFA config)
-        $user->forceFill([
-            'password' => $input['password'],
-        ])->save();
+                // Update password (preserving user_type, account_state, permissions, attribution, and MFA config)
+                $user->forceFill([
+                    'password' => $input['password'],
+                ])->save();
 
-        // Section 7.5 & AUTH-015 & AC 14: Post-reset revocation
-        $this->performPostResetRevocation($user);
+                // Section 7.5 & AUTH-015 & AC 14: Post-reset revocation
+                $this->performPostResetRevocation($user);
 
-        // Section 7.5 & AUTH-016: Send security notifications
-        $this->sendResetNotifications($user);
+                // Section 7.5 & AUTH-016: Send security notifications
+                $this->sendResetNotifications($user);
+
+            })();
+            AuditEvent::record('auth.password_reset', User::class, $user->id, null,
+                ['changed_fields' => ['reset']], $user, ['executor' => self::class]);
+
+        });
     }
 
     /**
@@ -145,7 +154,7 @@ class ResetUserPassword implements ResetsUserPasswords
     protected function sendResetNotifications(User $user): void
     {
         // Notify the account owner
-        $user->notify(new PasswordResetSuccessNotification);
+        $user->notify((new PasswordResetSuccessNotification)->afterCommit());
 
         // Section 7.4, AUTH-016 & AUTHZ-019: If Admin password was reset, notify active Admins holding effective security.operations.manage
         if ($user->user_type === UserType::Admin) {
