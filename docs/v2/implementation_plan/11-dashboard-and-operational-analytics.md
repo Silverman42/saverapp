@@ -1,0 +1,81 @@
+# Module 11 — Dashboards and Operational Analytics
+
+## Summary
+
+Replace the shared placeholder with distinct Customer, Agent and Admin dashboards backed by authoritative owner data. Preserve dashboard routes and authentication controls. Deliver supported metrics first; unresolved metrics remain unavailable with explicit dependency reasons. Adopt the Module 11 draft defaults and staged release approach.
+
+## Implementation stages
+
+| ID      | Implementation                                                                                                                                                                                                                  | Status      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| DSH-T01 | Define metric contracts, validated scope-bound filters, typed section manifests and controller-backed role routes. Reuse resource scope and eligibility checks before aggregation.                                              | In Progress |
+| DSH-T02 | Add bulk authoritative Customer/plan counts, savings positions, receipts, recent transactions and supported requests. Separate current portfolio, original recording Agent and custody. Gate incomplete owner contracts.        | In Progress |
+| DSH-T03 | Build Customer own savings/plan/activity/request views, Agent portfolio/daily work/activity/custody views, and Admin business summaries/trends/queues. Reuse components, Wayfinder, accessible states and chart alternatives.   | In Progress |
+| DSH-T04 | Bind reads to consistent cutoffs and versions; refresh visible scope/controls every five seconds and financial sections every 60 seconds. Reauthorize reads, expire invalid cursors and disclose drill-down cutoff differences. | In Progress |
+| DSH-T05 | Record DSH-AC-001–030 evidence, source reconciliation, privacy-safe instrumentation and release blockers.                                                                                                                       | In Progress |
+
+## Interfaces and defaults
+
+- Section payloads include metric codes, definitions, units, date bases, status, values, normalized filters, generation time, cutoff, source version and authorized owner links. No financial-write endpoints.
+- Reuse owner read services and extend them for bulk aggregation. Admin headline liability includes all Customer statuses regardless of operational filters. Liability, reservations, availability, fees and custody remain separate.
+- Scheduled, eligible, covered and outstanding slots are independent from money received. Historical eligibility requires complete owner intervals. Payouts, reversals, drawable earnings and reconciliation metrics are gated individually when contracts are incomplete.
+- NGN integer kobo; initial business timezone Africa/Lagos; Monday-start weeks; inclusive custom ranges of at most 366 dates. Default Today; explicitly labelled trailing 30-day trends.
+- Operational counts exclude Archived by default. Admin Agent filters distinguish Current Agent and Recording Agent; event-time assignment requires verified intervals. Missing historical balance comparisons and zero prior values have explanatory states.
+- Lists default to 25 with 50/100 options. Tasks use owner ordering; activity uses committed time plus stable ID. Tasks reference owner records without introducing new workflow state.
+- Start with uncached scoped reads. Caching requires reliable scope/version invalidation and tests. Derived metrics require compatible source cutoffs; no browser-side financial calculations.
+- Responsive UI uses the shared layout, date picker, cards and formatting, with accessible loading/error states and table alternatives. Exports, PDF, unfinished protected audit and historical analytics remain dependency-gated.
+- No new dependencies. Schema indexes require query-plan evidence.
+
+## Verification and release
+
+Test role isolation, reassignment/revocation, inactive Agents, archived balances, exact arithmetic/reservations, advance/catch-up and mixed receipts, timezone boundaries and validation. Verify unavailable sources never become zero, incompatible cutoffs suppress derived metrics, task deduplication, partial reloads, cursor expiry and drill-down reconciliation.
+
+Run affected Pest tests, Pint, scoped PHPStan, frontend checks/type checking/build and route inspection. Request the complete Pest suite afterward. Check mobile/keyboard/focus/screen-reader states and chart alternatives. Track DSH-AC-001–030 as Passed, Failed or Blocked with evidence; performance, disaster recovery and accessibility conformance claims require their declared profiles.
+
+## Implementation checkpoint — 26 September 2026
+
+- Branch: `codex/module-11-dashboards`. Existing role route names now use a scoped controller-backed read. Shared Vue presentation supplies distinct role headings, sections and permissions.
+- Available: operational Customer/status and plan/lifecycle counts; full permitted liability, live gross reservations and availability; verified receipt savings/fee/cash totals and 30-day exact-value trends; plan funding progress and scheduled coverage; pending-review counts and permission-gated safe task links; scoped recent transaction previews; original-Agent responsibility and Admin business cash custody.
+- Financial reads require a verified current ledger projection with no open integrity incident. MySQL dashboard reads use a repeatable-read transaction. Reservation failure preserves verified liability and suppresses availability. Unknown status or invalid financial aggregates fail closed.
+- Five-second scope polling and 60-second financial polling use Inertia partial reloads. Scope changes clear old displayed data before a fresh read; failed scope/network reads clear it too. No derived-payload cache is enabled.
+- Dashboard lists are bounded previews. Full transaction pagination stays with the existing signed-cursor owner view, which reauthorizes at its current watermark. There is no new dashboard cursor, historical snapshot retention or exact aggregate drill-down contract; metric payloads disclose unavailable drill-downs. Current-owner links disclose cutoff differences.
+- Eligible collection targets, missed/skipped/blocked projections, complete workflow queues, fee obligation/recognition/drawable metrics, posted payout/compensation totals, comparisons, historical assignment analytics, exports/PDF, protected audit and recovery/performance claims remain gated. The scheduled coverage metric is explicitly distinct from eligible coverage and money received.
+- Verification: 55 focused Pest tests pass across Dashboard, DashboardAnalytics, Collection and LedgerTransaction, including 31 dashboard analytics cases. Scoped PHPStan, Pint, Vue type checking and production build pass. Changed Vue/plan formatting and lint pass. Repository-wide `npm run check` reports pre-existing formatting issues in unrelated files; those are not reformatted here.
+- Authenticated visual, mobile, keyboard and screen-reader checks are unverified: the local browser redirected to login. No account was created or authentication bypassed for visual testing. The production capacity/network/device performance profile and MySQL concurrency/restore evidence remain unverified.
+
+## Acceptance evidence
+
+A Blocked scenario includes partial automated evidence where noted; it is not promoted to Passed until every required owner and release gate is verified.
+
+| Scenario   | Status  | Evidence or blocker                                                                                                                     |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| DSH-AC-001 | Passed  | Role-route denial, own-Customer isolation, Agent current assignment, scoped Admin reads and rejected cross-Agent inputs.                |
+| DSH-AC-002 | Passed  | Dashboard POST returns 405 without receipt creation; GET rejects mutation fields.                                                       |
+| DSH-AC-003 | Blocked | Every supported metric carries definition/source/date metadata; matching aggregate drill-down contracts are unfinished.                 |
+| DSH-AC-004 | Blocked | Liability/reservation/custody separation covered; complete fee-income/drawable owner contract absent.                                   |
+| DSH-AC-005 | Blocked | Local midnight, Monday/month and timezone-change fixtures pass; complete prospective configuration and boundary evidence pending.       |
+| DSH-AC-006 | Passed  | Reassignment removes portfolio/detail, preserves original receipts/responsibility and does not transfer them to the new Agent.          |
+| DSH-AC-007 | Passed  | All five plan states produce exact open counts despite elapsed schedule; archived balances do not enter active counts.                  |
+| DSH-AC-008 | Blocked | Advance receipt versus scheduled coverage passes; eligible-target historical intervals absent.                                          |
+| DSH-AC-009 | Blocked | Funding progress supported; exact skipped/missed/blocked and eligibility projection unfinished.                                         |
+| DSH-AC-010 | Blocked | Live reservations subtract once; successful payout/gross debit owner execution remains gated.                                           |
+| DSH-AC-011 | Blocked | Effective financial compensation owner contract unavailable.                                                                            |
+| DSH-AC-012 | Blocked | Mixed external fees/savings reconcile; full fee recognition/book/drawable lifecycle aggregate contract absent.                          |
+| DSH-AC-013 | Blocked | Original-Agent receivable is covered; full remittance/shortage dashboard reconciliation evidence pending.                               |
+| DSH-AC-014 | Blocked | Archived own history and unavailable-source behavior pass; full invitation/account-status matrix pending.                               |
+| DSH-AC-015 | Passed  | Operationally Inactive Agent reads permitted portfolio without collection eligibility; suspended accounts lose dashboard access.        |
+| DSH-AC-016 | Blocked | Baseline counts and revoked review-link protection pass; all owner action/evidence permission gates need full release evidence.         |
+| DSH-AC-017 | Blocked | Pending review records count once and terminal state disappears; broader root-incident/task owner contracts unfinished.                 |
+| DSH-AC-018 | Blocked | Owner links disclose current-watermark semantics; exact aggregate snapshot drill-down support absent.                                   |
+| DSH-AC-019 | Blocked | Range/page-size validation passes; dashboard cursors and historical comparisons are not enabled.                                        |
+| DSH-AC-020 | Blocked | Poll intervals implemented; measured propagation under the declared load profile unverified.                                            |
+| DSH-AC-021 | Blocked | Server reassignment/revocation and MFA-refresh denial pass; browser clearing and cached cursor/link matrix need authenticated evidence. |
+| DSH-AC-022 | Blocked | Ledger and reservation failures preserve independent sections; full independently failed source matrix pending.                         |
+| DSH-AC-023 | Blocked | Snapshot and verified watermark gates implemented; production-engine concurrent incompatibility fixtures pending.                       |
+| DSH-AC-024 | Blocked | Safe task serialization and aggregate-only former-Agent history covered; complete telemetry/cache/URL/privacy audit pending.            |
+| DSH-AC-025 | Blocked | Business exports and artifact execution/download contracts are not enabled.                                                             |
+| DSH-AC-026 | Blocked | Bounded source-code telemetry implemented; protected durable audit and retention policies pending.                                      |
+| DSH-AC-027 | Blocked | Responsive labelled controls, textual states and trend tables implemented; authenticated device/accessibility verification pending.     |
+| DSH-AC-028 | Blocked | Declared production capacity/network/device load profile has not been measured.                                                         |
+| DSH-AC-029 | Blocked | Owner rebuild/unavailable behavior tested; production restoration/promotion and scope-version evidence pending.                         |
+| DSH-AC-030 | Blocked | Undefined/incomplete owner metrics are gated; exhaustive per-owner disable/contract release matrix pending.                             |

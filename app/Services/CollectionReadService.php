@@ -6,11 +6,73 @@ use App\Enums\LedgerAccountCode;
 use App\Models\CustomerProfile;
 use App\Models\ThriftPlan;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class CollectionReadService
 {
+    /** @param Builder<CustomerProfile> $customers */
+    public function scopedLiability(Builder $customers): int
+    {
+        $account = DB::table('ledger_accounts')->where('code', LedgerAccountCode::CustomerSavingsLiability->value)
+            ->where('mapping_status', 'mapped')->where('currency', 'NGN')->where('normal_balance', 'credit')->first();
+        if ($account === null) {
+            throw new RuntimeException('Savings account mapping is unavailable.');
+        }
+        $total = 0;
+        $rows = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
+            ->whereIn('customer_profile_id', (clone $customers)->select('id'))
+            ->selectRaw("customer_profile_id, SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -amount_kobo END) AS liability")
+            ->groupBy('customer_profile_id')->cursor();
+        foreach ($rows as $row) {
+            $liability = filter_var($row->liability, FILTER_VALIDATE_INT);
+            if ($liability === false || $liability < 0) {
+                throw new RuntimeException('Customer savings integrity is unavailable.');
+            }
+            $total = $this->checkedAdd($total, $liability);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Bulk read of the same subsidiary balances used by position(), inside the caller's snapshot.
+     *
+     * @param  Builder<CustomerProfile>  $customers
+     * @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int}
+     */
+    public function scopedPosition(Builder $customers): array
+    {
+        $account = DB::table('ledger_accounts')->where('code', LedgerAccountCode::CustomerSavingsLiability->value)
+            ->where('mapping_status', 'mapped')->where('currency', 'NGN')->where('normal_balance', 'credit')->first();
+        if ($account === null) {
+            throw new RuntimeException('Savings account mapping is unavailable.');
+        }
+        $liabilities = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
+            ->selectRaw("customer_profile_id, SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -amount_kobo END) AS liability")
+            ->groupBy('customer_profile_id');
+        $reservations = DB::table('withdrawal_reservations')->where('status', 'live')
+            ->selectRaw('customer_profile_id, SUM(gross_amount_kobo) AS reserved')->groupBy('customer_profile_id');
+        $rows = (clone $customers)->toBase()
+            ->leftJoinSub($liabilities, 'liabilities', 'liabilities.customer_profile_id', '=', 'customer_profiles.id')
+            ->leftJoinSub($reservations, 'reservations', 'reservations.customer_profile_id', '=', 'customer_profiles.id')
+            ->selectRaw('COALESCE(liability, 0) AS liability, COALESCE(reserved, 0) AS reserved')->cursor();
+        $total = 0;
+        $reservedTotal = 0;
+        foreach ($rows as $row) {
+            $liability = filter_var($row->liability, FILTER_VALIDATE_INT);
+            $reserved = filter_var($row->reserved, FILTER_VALIDATE_INT);
+            if ($liability === false || $reserved === false || $liability < 0 || $reserved < 0 || $reserved > $liability) {
+                throw new RuntimeException('Customer savings or reservation integrity is unavailable.');
+            }
+            $total = $this->checkedAdd($total, $liability);
+            $reservedTotal = $this->checkedAdd($reservedTotal, $reserved);
+        }
+
+        return ['liability_kobo' => $total, 'reservations_kobo' => $reservedTotal, 'available_kobo' => $total - $reservedTotal];
+    }
+
     /** @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int} */
     public function position(CustomerProfile $customer, bool $forUpdate = false): array
     {

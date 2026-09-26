@@ -26,6 +26,7 @@ use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\CustomerRegistrationController;
 use App\Http\Controllers\CustomerStatementController;
 use App\Http\Controllers\CustomerStatusController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ProfileIdentityController;
@@ -37,7 +38,6 @@ use App\Http\Controllers\WithdrawalController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::inertia('/', 'Welcome')->name('home');
 
@@ -159,15 +159,15 @@ Route::middleware(['auth'])->group(function () {
         return redirect()->route(RoleDestinationResolver::resolveRouteName($request->user()));
     })->name('dashboard');
 
-    Route::get('customer/dashboard', fn () => Inertia::render('Dashboard'))
+    Route::get('customer/dashboard', [DashboardController::class, 'index'])
         ->middleware('role:customer')
         ->name('customer.dashboard');
 
-    Route::get('agent/dashboard', fn () => Inertia::render('Dashboard'))
+    Route::get('agent/dashboard', [DashboardController::class, 'index'])
         ->middleware('role:agent')
         ->name('agent.dashboard');
 
-    Route::get('admin/dashboard', fn () => Inertia::render('Dashboard'))
+    Route::get('admin/dashboard', [DashboardController::class, 'index'])
         ->middleware('role:admin')
         ->name('admin.dashboard');
 

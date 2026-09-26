@@ -271,6 +271,11 @@ test('COL-AC-009/024: split cash settles a fee without crediting it to savings',
         ->and($projected['data'][0]['fee_amount_kobo'])->toBe(50000)
         ->and($projected['data'][0]['savings_effect_kobo'])->toBe(200000)
         ->and($projected['data'][0]['posting_group_count'])->toBe(2);
+    $this->get(route('agent.dashboard'))->assertInertia(fn ($page) => $page
+        ->where('dashboard.sections.collections.metrics.0.value', 200000)
+        ->where('dashboard.sections.collections.metrics.1.value', 50000)
+        ->where('dashboard.sections.collections.metrics.2.value', 250000)
+        ->where('dashboard.sections.custody.metrics.0.value', 250000));
     $batch = CollectionBatch::query()->firstOrFail();
     $this->get(route('collection-batches.show', $batch))->assertOk()
         ->assertInertia(fn ($page) => $page->where('batch.savings_kobo', 200000)

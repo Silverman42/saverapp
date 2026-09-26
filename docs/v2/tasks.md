@@ -175,9 +175,10 @@ Dependencies: Modules 01–09
 Source: [`11-dashboard-and-operational-analytics.md`](./modules/11-dashboard-and-operational-analytics.md)
 Dependencies: Modules 01–10
 
-| Task                                                                                                                        | Specification reference | Status | Evidence or blocker |
-| --------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate role-specific dashboard, metric, freshness, drill-down, and accessibility requirements into implementation tasks. | Sections 15–16          | To Do  | —                   |
+| Task                                                                                                                        | Specification reference        | Status      | Evidence or blocker                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Translate role-specific dashboard, metric, freshness, drill-down, and accessibility requirements into implementation tasks. | Sections 15–16                 | Completed   | [Staged Module 11 plan](./implementation_plan/11-dashboard-and-operational-analytics.md); DSH-T01–T05 and 30-scenario evidence matrix recorded.                                                                                                       |
+| Implement DSH-T01–T05 in owner-gated stages.                                                                                | DSH-FR-001–028; DSH-AC-001–030 | In Progress | Scoped role dashboards, verified source summaries, polling, safe owner links and focused tests implemented. Remaining owner, aggregate drill-down, authenticated visual, privacy, concurrency, recovery and performance gates are listed in the plan. |
 
 ## Module 12 — Reports and Exports
 
