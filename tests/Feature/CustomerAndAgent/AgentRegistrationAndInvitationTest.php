@@ -19,9 +19,9 @@ use App\Models\Permission;
 use App\Models\User;
 use App\Notifications\Auth\AgentInvitationNotification;
 use App\Services\AgentRegistrationService;
+use App\Services\PublicIdGenerator;
 use App\Support\IdentityNormalizer;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -478,12 +478,11 @@ test('registration rollback leaves no partial records on persistence failure', f
     $admin = User::factory()->admin()->create();
     $admin->givePermissionTo(AdminPermission::AgentsManage->value);
 
-    // Force public ID generator or another component to throw an exception
-    $service = app(AgentRegistrationService::class);
-
-    DB::shouldReceive('transaction')
+    $this->mock(PublicIdGenerator::class)->shouldReceive('generateForAgent')
         ->once()
         ->andThrow(new RuntimeException('Simulated database write failure'));
+
+    $service = app(AgentRegistrationService::class);
 
     expect(fn () => $service->register($admin, (string) Str::uuid(), [
         'name' => 'Failed Agent',

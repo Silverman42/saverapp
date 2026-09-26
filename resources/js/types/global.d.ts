@@ -1,3 +1,4 @@
+import type { PlatformStatus } from '@/types/platform';
 import type { Auth } from '@/types/auth';
 
 // Extend ImportMeta interface for Vite...
@@ -16,6 +17,7 @@ declare module 'vite/client' {
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
+            platform: PlatformStatus;
             name: string;
             auth: Auth;
             features: { collections: boolean; notifications: boolean };

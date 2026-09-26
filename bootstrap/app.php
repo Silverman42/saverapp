@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnforcePlatformMode;
 use App\Http\Middleware\EnforceSessionLimits;
 use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\EnsureCollectionsEnabled;
@@ -10,6 +11,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RefreshPermissionVersionSession;
 use App\Services\AuditCapture;
 use App\Support\AuditIdentityConflict;
+use App\Support\PlatformBlocked;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,6 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(EnforcePlatformMode::class);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'saver_resume_destination', 'agent_trusted_device']);
 
         $middleware->web(append: [
@@ -41,6 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(fn (PlatformBlocked $exception, Request $request) => $exception->response($request));
         $exceptions->render(function (AuditIdentityConflict $exception, Request $request) {
             app(AuditCapture::class)->reportConflict($exception);
 

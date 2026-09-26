@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlatformBanner from "@/components/PlatformBanner.vue";
 import AuthLayout from '@/layouts/auth/AuthSimpleLayout.vue';
 
 const { title = '', description = '' } = defineProps<{
@@ -9,6 +10,7 @@ const { title = '', description = '' } = defineProps<{
 
 <template>
     <AuthLayout :title="title" :description="description">
+        <PlatformBanner />
         <slot />
     </AuthLayout>
 </template>

@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\CustomerStatusNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -41,6 +42,13 @@ class DeliverCustomerStatusNotificationIntent implements ShouldQueue
     }
 
     public function handle(AgentEligibilityService $eligibilityService): void
+    {
+        app(PlatformGuard::class)->work('external', function () use ($eligibilityService): void {
+            $this->handleAllowed($eligibilityService);
+        });
+    }
+
+    private function handleAllowed(AgentEligibilityService $eligibilityService): void
     {
         $intent = CustomerStatusNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {

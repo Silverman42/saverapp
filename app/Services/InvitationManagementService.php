@@ -39,7 +39,7 @@ class InvitationManagementService
         $business = BusinessProfile::current();
         $this->senderReadinessService->ensureReady($business);
 
-        return DB::transaction(function () use ($agentProfile, $admin, $reason): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($agentProfile, $admin, $reason): array {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->where('id', $admin->id)->lockForUpdate()->firstOrFail();
             if ($freshAdmin->account_state !== AccountState::Active || $freshAdmin->user_type !== UserType::Admin) {
@@ -156,7 +156,7 @@ class InvitationManagementService
         $newEmail = trim($newEmail);
         $normalizedNewEmail = IdentityNormalizer::normalizeEmail($newEmail);
 
-        return DB::transaction(function () use ($agentProfile, $admin, $newEmail, $normalizedNewEmail, $reason): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($agentProfile, $admin, $newEmail, $normalizedNewEmail, $reason): array {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->where('id', $admin->id)->lockForUpdate()->firstOrFail();
             if ($freshAdmin->account_state !== AccountState::Active || $freshAdmin->user_type !== UserType::Admin) {
@@ -256,7 +256,7 @@ class InvitationManagementService
      */
     public function cancel(AgentProfile $agentProfile, User $admin, string $reason): void
     {
-        DB::transaction(function () use ($agentProfile, $admin, $reason): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($agentProfile, $admin, $reason): void {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->where('id', $admin->id)->lockForUpdate()->firstOrFail();
             if ($freshAdmin->account_state !== AccountState::Active || $freshAdmin->user_type !== UserType::Admin) {

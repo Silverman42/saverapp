@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\ReversalStatusNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformGuard;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -37,6 +38,13 @@ class DeliverReversalNotificationIntent implements ShouldQueue
      * Execute the job.
      */
     public function handle(AgentEligibilityService $eligibility): void
+    {
+        app(PlatformGuard::class)->work('external', function () use ($eligibility): void {
+            $this->handleAllowed($eligibility);
+        });
+    }
+
+    private function handleAllowed(AgentEligibilityService $eligibility): void
     {
         $intent = ReversalNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {

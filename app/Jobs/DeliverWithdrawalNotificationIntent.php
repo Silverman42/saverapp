@@ -10,6 +10,7 @@ use App\Models\WithdrawalNotificationIntent;
 use App\Notifications\WithdrawalStatusNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -40,6 +41,13 @@ class DeliverWithdrawalNotificationIntent implements ShouldQueue
     }
 
     public function handle(AgentEligibilityService $eligibility): void
+    {
+        app(PlatformGuard::class)->work('external', function () use ($eligibility): void {
+            $this->handleAllowed($eligibility);
+        });
+    }
+
+    private function handleAllowed(AgentEligibilityService $eligibility): void
     {
         $intent = WithdrawalNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {

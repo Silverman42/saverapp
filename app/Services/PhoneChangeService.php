@@ -11,7 +11,6 @@ use App\Models\ProfileChangeHistory;
 use App\Models\User;
 use App\Support\PhoneNormalizer;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -31,7 +30,7 @@ class PhoneChangeService
             throw ValidationException::withMessages(['phone' => ['Enter a valid phone number.']]);
         }
 
-        DB::transaction(function () use ($actor, $profile, $phone, $normalizedPhone, $reason, $expectedVersion): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $phone, $normalizedPhone, $reason, $expectedVersion): void {
             $context = $this->customerAuthorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $profile->id,
@@ -133,7 +132,7 @@ class PhoneChangeService
             throw ValidationException::withMessages(['phone' => ['Enter a valid phone number.']]);
         }
 
-        DB::transaction(function () use ($actor, $profile, $phone, $normalizedPhone, $reason, $expectedVersion): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $phone, $normalizedPhone, $reason, $expectedVersion): void {
             $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
             $lockedProfile = AgentProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
             $agent = User::query()->whereKey($lockedProfile->user_id)->lockForUpdate()->firstOrFail();

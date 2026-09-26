@@ -35,7 +35,7 @@ class AgentStatusManagementService
         string $reason,
         string $agentExplanation,
     ): AgentProfile {
-        return DB::transaction(function () use ($actor, $agent, $targetStatus, $expectedVersion, $reason, $agentExplanation): AgentProfile {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $agent, $targetStatus, $expectedVersion, $reason, $agentExplanation): AgentProfile {
             $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->first();
             if ($lockedActor === null || ! $this->authorizationService->allows($lockedActor, AdminPermission::AgentsManage)) {
                 throw new AuthorizationException('Current authority to manage Agents is required.');

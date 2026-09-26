@@ -41,7 +41,7 @@ class BusinessSettings
 
     public function import(): BusinessConfigurationVersion
     {
-        return DB::transaction(function (): BusinessConfigurationVersion {
+        return app(PlatformGuard::class)->transaction('mutation', function (): BusinessConfigurationVersion {
             $profile = $this->lockedProfile();
             if ($profile->getAttribute('effective_configuration_id') !== null) {
                 return $this->effectiveVersion($profile);
@@ -140,7 +140,7 @@ class BusinessSettings
     /** @return array<string, mixed> */
     public function preview(User $actor, int $draftId, int $revision, ?string $effectiveAt): array
     {
-        return DB::transaction(function () use ($actor, $draftId, $revision, $effectiveAt): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $draftId, $revision, $effectiveAt): array {
             $current = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
             $this->authorize($current, true);
             $snapshot = $this->resolve(true);
@@ -275,7 +275,7 @@ class BusinessSettings
 
     public function activate(int $configurationId): bool
     {
-        return DB::transaction(function () use ($configurationId): bool {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($configurationId): bool {
             $profile = $this->lockedProfile();
             $version = BusinessConfigurationVersion::query()->findOrFail($configurationId);
             $work = DB::table('business_configuration_work')->where('configuration_id', $configurationId)->lockForUpdate()->firstOrFail();
@@ -388,7 +388,7 @@ class BusinessSettings
             throw ValidationException::withMessages(['operation_id' => 'Use a UUID operation reference.']);
         }
 
-        return DB::transaction(function () use ($actor, $action, $operation, $payload, $callback): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $action, $operation, $payload, $callback): array {
             $current = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
             $this->authorize($current, true);
             $profile = $this->lockedProfile();

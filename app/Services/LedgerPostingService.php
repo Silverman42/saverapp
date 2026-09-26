@@ -21,7 +21,6 @@ use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
 use App\Models\User;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -39,7 +38,7 @@ class LedgerPostingService
         $this->validateCommand($command, $expected);
         $payloadHash = $this->payloadHash($command);
 
-        return DB::transaction(function () use ($command, $expected, $payloadHash): LedgerPostingGroup {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($command, $expected, $payloadHash): LedgerPostingGroup {
             $existing = LedgerPostingGroup::query()
                 ->where('idempotency_key', $command->idempotencyKey)
                 ->orWhere(function ($query) use ($command): void {

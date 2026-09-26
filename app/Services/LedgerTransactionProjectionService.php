@@ -7,6 +7,7 @@ use App\Models\AuditEvent;
 use App\Models\CashRemittance;
 use App\Models\CollectionReceipt;
 use App\Models\LedgerPostingGroup;
+use App\Support\PlatformBlocked;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -20,8 +21,10 @@ class LedgerTransactionProjectionService
     {
         try {
             return $this->rebuildVerified();
+        } catch (PlatformBlocked $exception) {
+            throw $exception;
         } catch (RuntimeException $exception) {
-            DB::transaction(function () use ($exception): void {
+            app(PlatformGuard::class)->transaction('derived', function () use ($exception): void {
                 $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
                 if ($state === null) {
                     return;
@@ -54,7 +57,7 @@ class LedgerTransactionProjectionService
     /** @return array{version: int, transactions: int, groups: int} */
     private function rebuildVerified(): array
     {
-        return DB::transaction(function (): array {
+        return app(PlatformGuard::class)->transaction('derived', function (): array {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null) {
                 throw new RuntimeException('Ledger projection state is unavailable.');
@@ -109,6 +112,13 @@ class LedgerTransactionProjectionService
 
     public function projectReceipt(CollectionReceipt $receipt): void
     {
+        app(PlatformGuard::class)->transaction('derived', function () use ($receipt): void {
+            $this->projectReceiptAllowed($receipt);
+        });
+    }
+
+    private function projectReceiptAllowed(CollectionReceipt $receipt): void
+    {
         $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
         if ($state === null || $state->status !== 'ready') {
             return;
@@ -118,6 +128,13 @@ class LedgerTransactionProjectionService
     }
 
     public function projectRemittance(int $remittanceId): void
+    {
+        app(PlatformGuard::class)->transaction('derived', function () use ($remittanceId): void {
+            $this->projectRemittanceAllowed($remittanceId);
+        });
+    }
+
+    private function projectRemittanceAllowed(int $remittanceId): void
     {
         $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
         if ($state === null || $state->status !== 'ready') {

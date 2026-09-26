@@ -74,6 +74,13 @@ class CustomerRegistrationService
      */
     public function register(User $agent, string $attemptReference, array $data, ?UploadedFile $photo = null): array
     {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($agent, $attemptReference, $data, $photo) {
+            return $this->registerAllowed($agent, $attemptReference, $data, $photo);
+        });
+    }
+
+    private function registerAllowed(User $agent, string $attemptReference, array $data, ?UploadedFile $photo = null): array
+    {
         $business = BusinessProfile::current();
 
         // 1. Check invitation sender readiness
@@ -127,7 +134,7 @@ class CustomerRegistrationService
         }
 
         // 4. Atomic transaction
-        return DB::transaction(function () use (
+        return app(PlatformGuard::class)->transaction('financial', function () use (
             $agent,
             $business,
             $attemptReference,

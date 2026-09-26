@@ -44,6 +44,8 @@ class CollectionLedgerService
             throw new LogicException('Collection postings require a valid amount in the owning transaction.');
         }
 
+        app(PlatformGuard::class)->assertAllowed('financial', true);
+
         $source = $sourceType === 'collection_receipt'
             ? DB::table('collection_receipts')->where('id', $sourceId)->first()
             : DB::table('cash_remittances')->where('id', $sourceId)->first();

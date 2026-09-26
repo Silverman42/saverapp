@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Services\LedgerTransactionProjectionService;
+use App\Services\PlatformGuard;
+use App\Support\PlatformBlocked;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -15,6 +17,17 @@ class RebuildLedgerTransactions extends Command
      * Execute the console command.
      */
     public function handle(LedgerTransactionProjectionService $projections): int
+    {
+        try {
+            return app(PlatformGuard::class)->transaction('derived', function () use ($projections) {
+                return $this->handleAllowed($projections);
+            });
+        } catch (PlatformBlocked) {
+            return 0;
+        }
+    }
+
+    private function handleAllowed(LedgerTransactionProjectionService $projections): int
     {
         $result = $projections->rebuild();
         $this->info("Verified version {$result['version']}: {$result['transactions']} transactions from {$result['groups']} posting groups.");

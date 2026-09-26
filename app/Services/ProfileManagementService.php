@@ -37,6 +37,13 @@ class ProfileManagementService
      */
     public function updateCustomer(User $actor, CustomerProfile $profile, array $input, ?UploadedFile $photo = null): CustomerProfile
     {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $input, $photo) {
+            return $this->updateCustomerAllowed($actor, $profile, $input, $photo);
+        });
+    }
+
+    private function updateCustomerAllowed(User $actor, CustomerProfile $profile, array $input, ?UploadedFile $photo = null): CustomerProfile
+    {
         $isCustomer = $actor->user_type === UserType::Customer && $actor->id === $profile->user_id;
         $allowed = $isCustomer
             ? ['address', 'gender', 'occupation', 'next_of_kin', 'photo', 'remove_photo', 'version']
@@ -48,7 +55,7 @@ class ProfileManagementService
         $oldPhotoPath = null;
 
         try {
-            $updated = DB::transaction(function () use ($actor, $profile, $validated, $newPhotoPath, &$oldPhotoPath): CustomerProfile {
+            $updated = app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $validated, $newPhotoPath, &$oldPhotoPath): CustomerProfile {
                 $context = $this->customerActionAuthorizationGuard->lockAndAuthorize(
                     actor: $actor,
                     customerProfileId: $profile->id,
@@ -164,6 +171,13 @@ class ProfileManagementService
      */
     public function updateAgent(User $actor, AgentProfile $profile, array $input, ?UploadedFile $photo = null): AgentProfile
     {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $input, $photo) {
+            return $this->updateAgentAllowed($actor, $profile, $input, $photo);
+        });
+    }
+
+    private function updateAgentAllowed(User $actor, AgentProfile $profile, array $input, ?UploadedFile $photo = null): AgentProfile
+    {
         $isAgent = $actor->user_type === UserType::Agent && $actor->id === $profile->user_id;
         $allowed = $isAgent
             ? ['address', 'photo', 'remove_photo', 'version']
@@ -175,7 +189,7 @@ class ProfileManagementService
         $oldPhotoPath = null;
 
         try {
-            $updated = DB::transaction(function () use ($actor, $profile, $validated, $newPhotoPath, &$oldPhotoPath): AgentProfile {
+            $updated = app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $validated, $newPhotoPath, &$oldPhotoPath): AgentProfile {
                 $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
                 $lockedProfile = AgentProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
 

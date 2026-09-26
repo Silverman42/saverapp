@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Services\AuthorizationRestrictionService;
+use App\Services\PlatformGuard;
+use App\Support\PlatformBlocked;
 use Illuminate\Console\Command;
 
 class ExpireRestrictionsCommand extends Command
@@ -25,6 +27,17 @@ class ExpireRestrictionsCommand extends Command
      * Execute the console command.
      */
     public function handle(AuthorizationRestrictionService $restrictionService): int
+    {
+        try {
+            return app(PlatformGuard::class)->transaction('mutation', function () use ($restrictionService) {
+                return $this->handleAllowed($restrictionService);
+            });
+        } catch (PlatformBlocked) {
+            return 0;
+        }
+    }
+
+    private function handleAllowed(AuthorizationRestrictionService $restrictionService): int
     {
         $closedCount = $restrictionService->expireElapsedRestrictions();
 

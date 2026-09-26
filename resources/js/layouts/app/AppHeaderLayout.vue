@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlatformBanner from "@/components/PlatformBanner.vue";
 import AppContent from '@/components/AppContent.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import AppShell from '@/components/AppShell.vue';
@@ -18,7 +19,8 @@ withDefaults(defineProps<Props>(), {
     <AppShell variant="header">
         <AppHeader :breadcrumbs="breadcrumbs" />
         <AppContent variant="header">
-            <slot />
+            <PlatformBanner />
+                <slot />
         </AppContent>
         <Toaster />
     </AppShell>

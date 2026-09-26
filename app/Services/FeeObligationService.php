@@ -27,7 +27,6 @@ use App\Support\FeePercentageCalculator;
 use App\Support\MoneyFormatter;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -62,7 +61,7 @@ class FeeObligationService
             throw new \InvalidArgumentException('Fee assessment requires an immutable source identity.');
         }
 
-        return DB::transaction(function () use ($snapshot, $actor): ?FeeObligation {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($snapshot, $actor): ?FeeObligation {
             $lockedSnapshot = FeeSnapshot::query()->whereKey($snapshot->id)->lockForUpdate()->firstOrFail();
             $this->assertSnapshotMatchesRuleQuote($lockedSnapshot);
 
@@ -143,6 +142,13 @@ class FeeObligationService
      */
     public function quote(FeeRule $rule, int $basisKobo, string $sourceType, string $sourceId): FeeQuote
     {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($rule, $basisKobo, $sourceType, $sourceId) {
+            return $this->quoteAllowed($rule, $basisKobo, $sourceType, $sourceId);
+        });
+    }
+
+    private function quoteAllowed(FeeRule $rule, int $basisKobo, string $sourceType, string $sourceId): FeeQuote
+    {
         if ($basisKobo < 0 || $sourceType === '' || $sourceId === '') {
             throw new \InvalidArgumentException('Fee quotes require a non-negative basis and source identity.');
         }
@@ -181,7 +187,7 @@ class FeeObligationService
             throw new ConflictHttpException('Fee quote basis changed. Reconfirm the current amount before proceeding.');
         }
 
-        return DB::transaction(function () use ($quote, $currentBasisKobo): FeeQuote {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($quote, $currentBasisKobo): FeeQuote {
             $rule = FeeRule::query()->whereKey($quote->ruleId)->lockForUpdate()->firstOrFail();
             if ($rule->version !== $quote->ruleVersion
                 || $rule->model !== $quote->model
@@ -234,7 +240,7 @@ class FeeObligationService
         string $attemptReference,
         Request $request,
     ): FeeObligationEntry {
-        return DB::transaction(function () use ($actor, $obligationId, $amountKobo, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
             $this->assertCustomerMayReceiveFeeChanges($obligation);
@@ -265,7 +271,7 @@ class FeeObligationService
         string $attemptReference,
         Request $request,
     ): FeeObligationEntry {
-        return DB::transaction(function () use ($actor, $obligationId, $amountKobo, $direction, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $direction, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
             $this->assertCustomerMayReceiveFeeChanges($obligation);

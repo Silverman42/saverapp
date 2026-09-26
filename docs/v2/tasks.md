@@ -236,6 +236,12 @@ Dependencies: Modules 01–14
 Source: [`16-platform-reliability-and-data-operations.md`](./modules/16-platform-reliability-and-data-operations.md)
 Dependencies: Modules 01–15
 
-| Task                                                                                                                                                     | Specification reference | Status | Evidence or blocker |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------ | ------------------- |
-| Translate reliability, background processing, backup, recovery, deployment, observability, and incident-response requirements into implementation tasks. | Sections 17–18          | To Do  | —                   |
+| Task | Specification reference | Status | Evidence or blocker |
+| --- | --- | --- | --- |
+| Save staged implementation checkpoint and map every requirement/scenario. | OPS-FR-001–040; OPS-AC-001–047 | Completed | [Module 16 checkpoint](./implementation_plan/16-platform-reliability-and-data-operations.md); every row maps to a stage and names local evidence or a release blocker. |
+| Stage 1: implement versioned controls, operator CLI and atomic audit/results. | OPS-FR-001–003, 024–026, 030, 033, 038, 040 | Implemented locally | Five modes, immutable history/results, optimistic operation conflicts and no application Admin transition authority. Existing financial gates retained. |
+| Stage 1: enforce owning-service/HTTP/job/scheduled guards and truthful diagnostics/status. | OPS-AC-001–004, 026–028, 033, 037, 045, 047 | Implemented; partial draft acceptance | Shared/exclusive database fencing, preserved reservations/pending work, safe 503/Inertia surfaces and independent CLI observations; no production readiness claim. |
+| Verify Stage 1 and affected owners. | Approved Stage 1 verification | Locally verified; full suite pending | 36 focused platform tests; affected regression: 609 tests / 4,093 assertions, followed by the response/withdrawal check; three isolated MySQL process races (19 assertions), Vue type checking, production build, Pint and responsive/keyboard checks. Complete PHP suite requested. |
+| Stage 2: leases/retries/dead letters/dry-run replay and unknown-outcome reconciliation. | OPS-FR-007–011; OPS-AC-007–011, 038 | Blocked / not implemented | Owner/provider contracts and immutable recovery evidence required; no replay tool introduced. |
+| Stage 3: isolated restore integrity, projection promotion and correction boundaries. | OPS-FR-018, 034–035; OPS-AC-019–020, 039–042 | Blocked / not implemented | Missing ledger/reservation/fee/audit/identity/configuration/work-watermark checks must retain restrictions. |
+| Stage 4: production hosting, backups/PITR, IAM, retention, keys, alerts, deployment and demonstrated recovery. | Remaining OPS requirements/scenarios; partial Stage 1 residuals | Blocked / not implemented | Draft thresholds remain proposals. External fencing, provider finality, SLO/RPO/RTO and production evidence unavailable. |

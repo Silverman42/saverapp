@@ -274,7 +274,7 @@ test('collection limits require a future business midnight', function () {
     expect(app(BusinessSettings::class)->collectionLimits()['values']['late_lookback_days'])->toBe(365);
 });
 test('presentation defaults change new queries while explicit filters still win', function () {
-    $this->travelTo(now()->setDate(2026, 9, 26));
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
     $actor = configurationManager();
     publishConfiguration($actor, configurationDraft($actor, ['dashboard_activity_range' => 'week', 'page_size' => 50, 'week_start' => 'Sunday']));
     $this->actingAs($actor)->get(route('admin.dashboard'))->assertOk()->assertInertia(fn (Assert $page) => $page->where('filters.from', '2026-09-20')->where('filters.page_size', 50));

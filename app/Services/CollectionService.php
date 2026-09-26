@@ -178,7 +178,7 @@ class CollectionService
     {
         $submittedHash = hash('sha256', json_encode([$actor->id, $customer->id, $data], JSON_THROW_ON_ERROR));
 
-        return DB::transaction(function () use ($actor, $customer, $data, $submittedHash): CollectionReceipt {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $submittedHash): CollectionReceipt {
             $existing = CollectionReceipt::query()->where('attempt_reference', $data['attempt_reference'])->lockForUpdate()->first();
             if ($existing !== null) {
                 if ($existing->recorded_by_user_id !== $actor->id || ! hash_equals($existing->payload_hash, $submittedHash)) {

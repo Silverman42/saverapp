@@ -34,7 +34,7 @@ class EmailChangeService
         RateLimiter::hit($rateLimitKey, 86400);
 
         try {
-            DB::transaction(function () use ($actor, $proposedEmail, $normalizedEmail): void {
+            app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $proposedEmail, $normalizedEmail): void {
                 $user = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
                 if ($user->account_state !== AccountState::Active || $user->email_verified_at === null) {
                     throw ValidationException::withMessages(['email' => ['Email changes are available only for active, verified accounts.']]);
@@ -85,7 +85,7 @@ class EmailChangeService
     public function confirm(int $pendingId, string $plainToken): bool
     {
         $failure = null;
-        $completed = DB::transaction(function () use ($pendingId, $plainToken, &$failure): bool {
+        $completed = app(PlatformGuard::class)->transaction('mutation', function () use ($pendingId, $plainToken, &$failure): bool {
             $pending = PendingEmailChange::query()->whereKey($pendingId)->lockForUpdate()->first();
             if ($pending === null || $pending->expires_at->isPast()) {
                 if ($pending !== null) {

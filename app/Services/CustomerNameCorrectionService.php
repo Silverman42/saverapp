@@ -9,6 +9,7 @@ use App\Models\CustomerNameCorrection;
 use App\Models\CustomerProfile;
 use App\Models\ProfileChangeHistory;
 use App\Models\User;
+use App\Support\PlatformBlocked;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -32,7 +33,7 @@ class CustomerNameCorrectionService
     ): ?CustomerNameCorrection {
         $proposedName = trim($proposedName);
 
-        return DB::transaction(function () use ($actor, $profile, $proposedName, $reason, $expectedVersion): ?CustomerNameCorrection {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $proposedName, $reason, $expectedVersion): ?CustomerNameCorrection {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $profile->id,
@@ -140,7 +141,7 @@ class CustomerNameCorrectionService
     {
         $newName = trim($newName);
 
-        DB::transaction(function () use ($customer, $profile, $newName, $reason, $expectedVersion): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($customer, $profile, $newName, $reason, $expectedVersion): void {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $customer,
                 customerProfileId: $profile->id,
@@ -234,7 +235,7 @@ class CustomerNameCorrectionService
             throw new \InvalidArgumentException('Unsupported name correction decision.');
         }
 
-        return DB::transaction(function () use ($actor, $profile, $correctionId, $decision): CustomerNameCorrection {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $correctionId, $decision): CustomerNameCorrection {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $profile->id,
@@ -325,7 +326,7 @@ class CustomerNameCorrectionService
 
     public function cancel(User $actor, CustomerProfile $profile, int $correctionId): CustomerNameCorrection
     {
-        return DB::transaction(function () use ($actor, $profile, $correctionId): CustomerNameCorrection {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $profile, $correctionId): CustomerNameCorrection {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $profile->id,
@@ -359,7 +360,11 @@ class CustomerNameCorrectionService
     public function visiblePending(CustomerProfile $profile, User $viewer): ?CustomerNameCorrection
     {
         return DB::transaction(function () use ($profile, $viewer): ?CustomerNameCorrection {
-            $this->expirePendingCorrections($profile, $viewer);
+            try {
+                app(PlatformGuard::class)->transaction('mutation', fn () => $this->expirePendingCorrections($profile, $viewer));
+            } catch (PlatformBlocked) {
+                // Expired proposals remain filtered from this read without changing history.
+            }
 
             return CustomerNameCorrection::query()
                 ->where('customer_profile_id', $profile->id)

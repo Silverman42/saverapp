@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Notifications\AgentStatusNotification;
 use App\Services\AuthorizationService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,6 +43,13 @@ class DeliverAgentStatusNotificationIntent implements ShouldQueue
     }
 
     public function handle(AuthorizationService $authorizationService): void
+    {
+        app(PlatformGuard::class)->work('external', function () use ($authorizationService): void {
+            $this->handleAllowed($authorizationService);
+        });
+    }
+
+    private function handleAllowed(AuthorizationService $authorizationService): void
     {
         $intent = AgentStatusNotificationIntent::query()->find($this->intentId);
         if ($intent === null || $intent->status !== 'pending') {

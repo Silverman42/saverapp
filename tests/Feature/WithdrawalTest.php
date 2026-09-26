@@ -31,6 +31,7 @@ use App\Services\AgentEligibilityService;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionReadService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformState;
 use App\Services\WithdrawalMethodRegistry;
 use App\Services\WithdrawalService;
 use Illuminate\Support\Facades\DB;
@@ -356,4 +357,23 @@ test('pending withdrawal inbox work reroutes once to the currently assigned repl
     expect($withdrawal->fresh()->state)->toBe('pending_review');
     expect($withdrawal->fresh()->submitted_by_user_id)->toBe($agent->id);
     expect(DB::table('notification_inbox_intents')->where('recipient_user_id', $replacement->id)->count())->toBe(1);
+});
+
+test('platform freeze retains an expired reservation and permits authorized original outcome lookup', function (): void {
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    enableFixtureMethod();
+    $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);
+    $withdrawal->update(['deadline_at' => now()->subMinute()]);
+    app(PlatformState::class)->transition([
+        'mode' => 'financial_freeze', 'expected_version' => 1, 'operation_id' => (string) Str::uuid(),
+        'operator' => 'operations-service', 'reason' => 'Contain incident', 'incident' => 'INC-200', 'expires_at' => null,
+    ]);
+    $attempt = DB::table('withdrawal_attempts')->where('withdrawal_request_id', $withdrawal->id)->value('attempt_reference');
+
+    $this->artisan('withdrawals:expire')->assertSuccessful();
+    $this->actingAs($agent)->get(route('withdrawals.attempts.show', $attempt))->assertOk();
+    $this->assertDatabaseHas('withdrawal_reservations', ['owner_reference' => $withdrawal->withdrawal_id, 'status' => 'live', 'gross_amount_kobo' => 30000]);
+    expect($withdrawal->fresh()->state)->toBe('pending_review');
+    $this->actingAs(User::factory()->customer()->create())->get(route('withdrawals.attempts.show', $attempt))->assertForbidden();
+    $this->assertDatabaseCount('withdrawal_requests', 1);
 });

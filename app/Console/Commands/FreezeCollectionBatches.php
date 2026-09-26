@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\AuditEvent;
 use App\Models\CollectionBatch;
+use App\Services\PlatformGuard;
+use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -15,6 +17,17 @@ use Illuminate\Support\Facades\DB;
 class FreezeCollectionBatches extends Command
 {
     public function handle(): int
+    {
+        try {
+            return app(PlatformGuard::class)->transaction('financial', function () {
+                return $this->handleAllowed();
+            });
+        } catch (PlatformBlocked) {
+            return 0;
+        }
+    }
+
+    private function handleAllowed(): int
     {
         CollectionBatch::query()->where('status', 'open')->orderBy('id')->chunkById(100, function ($batches): void {
             foreach ($batches as $batch) {

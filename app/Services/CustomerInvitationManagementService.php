@@ -73,7 +73,7 @@ class CustomerInvitationManagementService
         $business = BusinessProfile::current();
         $this->senderReadinessService->ensureReady($business);
 
-        return DB::transaction(function () use ($customerProfile, $actor, $reason): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($customerProfile, $actor, $reason): array {
             /** @var User $freshActor */
             $freshActor = User::query()->where('id', $actor->id)->lockForUpdate()->firstOrFail();
             $this->verifyAuthority($freshActor, $customerProfile);
@@ -186,7 +186,7 @@ class CustomerInvitationManagementService
         $newEmail = trim($newEmail);
         $newEmailNormalized = IdentityNormalizer::normalizeEmail($newEmail);
 
-        return DB::transaction(function () use ($customerProfile, $actor, $newEmail, $newEmailNormalized, $reason): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($customerProfile, $actor, $newEmail, $newEmailNormalized, $reason): array {
             /** @var User $freshActor */
             $freshActor = User::query()->where('id', $actor->id)->lockForUpdate()->firstOrFail();
             $this->verifyAuthority($freshActor, $customerProfile);
@@ -282,7 +282,7 @@ class CustomerInvitationManagementService
             ]);
         }
 
-        DB::transaction(function () use ($customerProfile, $actor, $reason): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($customerProfile, $actor, $reason): void {
             /** @var User $freshActor */
             $freshActor = User::query()->where('id', $actor->id)->lockForUpdate()->firstOrFail();
             $this->verifyAuthority($freshActor, $customerProfile);

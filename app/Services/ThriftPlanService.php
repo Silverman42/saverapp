@@ -247,7 +247,7 @@ class ThriftPlanService
 
         $submittedFingerprint = (string) ($data['preview_fingerprint'] ?? '');
 
-        return DB::transaction(function () use ($actor, $customer, $attemptReference, $data, $submittedFingerprint): array {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $attemptReference, $data, $submittedFingerprint): array {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $customer->id,
@@ -429,7 +429,7 @@ class ThriftPlanService
             throw ValidationException::withMessages(['attempt_reference' => ['A valid operation reference is required.']]);
         }
 
-        return DB::transaction(function () use ($actor, $plan, $attemptReference, $data): ThriftPlan {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $plan, $attemptReference, $data): ThriftPlan {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $plan->customer_profile_id,
@@ -611,7 +611,7 @@ class ThriftPlanService
             throw ValidationException::withMessages(['attempt_reference' => ['A valid operation reference is required.']]);
         }
 
-        return DB::transaction(function () use ($actor, $plan, $action, $attemptReference, $data): ThriftPlan {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $plan, $action, $attemptReference, $data): ThriftPlan {
             $context = $this->authorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $plan->customer_profile_id,

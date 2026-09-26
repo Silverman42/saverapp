@@ -17,7 +17,6 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -87,7 +86,7 @@ class RegistrationFeeService
      */
     public function publishRule(User $admin, array $data, Request $request): FeeRule
     {
-        return DB::transaction(function () use ($admin, $data, $request): FeeRule {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $data, $request): FeeRule {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->whereKey($admin->id)->lockForUpdate()->firstOrFail();
             $this->ensureCanManageFees($freshAdmin);
@@ -199,7 +198,7 @@ class RegistrationFeeService
      */
     public function retireRule(User $admin, int $ruleId, string $reason): FeeRule
     {
-        return DB::transaction(function () use ($admin, $ruleId, $reason): FeeRule {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $ruleId, $reason): FeeRule {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->whereKey($admin->id)->lockForUpdate()->firstOrFail();
             $this->ensureCanManageFees($freshAdmin);

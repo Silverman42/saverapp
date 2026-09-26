@@ -22,6 +22,7 @@ use App\Models\WithdrawalEvent;
 use App\Models\WithdrawalRequest;
 use App\Support\FeePercentageCalculator;
 use App\Support\MoneyAmount;
+use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
@@ -131,7 +132,7 @@ class WithdrawalService
     {
         $hash = $this->attemptHash('submit', $actor->id, $customer->id, $data);
 
-        return DB::transaction(function () use ($actor, $customer, $data, $hash): WithdrawalRequest {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $hash): WithdrawalRequest {
             if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], 'submit', $hash)) {
                 return $existing;
             }
@@ -184,7 +185,7 @@ class WithdrawalService
     {
         $hash = $this->attemptHash($action, $actor->id, $request->id, $data);
 
-        return DB::transaction(function () use ($actor, $request, $action, $data, $hash, $httpRequest): WithdrawalRequest {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $request, $action, $data, $hash, $httpRequest): WithdrawalRequest {
             if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], $action, $hash)) {
                 return $existing;
             }
@@ -261,6 +262,7 @@ class WithdrawalService
         if (DB::transactionLevel() === 0) {
             throw new \LogicException('Withdrawal holds require the owning Customer-status transaction.');
         }
+        app(PlatformGuard::class)->assertAllowed('financial', true);
         $requests = WithdrawalRequest::query()->where('customer_profile_id', $customer->id)
             ->whereIn('state', ['pending_review', 'approved', 'payment_failed'])->lockForUpdate()->get();
         if ($status === CustomerStatus::Archived && $requests->isNotEmpty()) {
@@ -303,43 +305,51 @@ class WithdrawalService
 
     public function expireDue(): int
     {
-        foreach (WithdrawalRequest::query()->where('held', true)->distinct()->pluck('customer_profile_id') as $customerId) {
-            DB::transaction(function () use ($customerId): void {
-                $customer = CustomerProfile::query()->whereKey($customerId)->lockForUpdate()->first();
-                if ($customer !== null && $customer->operational_status !== CustomerStatus::Restricted) {
-                    $this->applyCustomerStatus($customer, $customer->operational_status);
+        try {
+            return app(PlatformGuard::class)->transaction('financial', function () {
+                foreach (WithdrawalRequest::query()->where('held', true)->distinct()->pluck('customer_profile_id') as $customerId) {
+                    app(PlatformGuard::class)->transaction('financial', function () use ($customerId): void {
+                        $customer = CustomerProfile::query()->whereKey($customerId)->lockForUpdate()->first();
+                        if ($customer !== null && $customer->operational_status !== CustomerStatus::Restricted) {
+                            $this->applyCustomerStatus($customer, $customer->operational_status);
+                        }
+                    }, attempts: 3);
                 }
-            }, attempts: 3);
-        }
-        $count = 0;
-        foreach (WithdrawalRequest::query()->whereIn('state', ['pending_review', 'approved', 'payment_failed'])
-            ->where('held', false)->where('deadline_at', '<=', now())->orderBy('id')->pluck('id') as $id) {
-            $expired = DB::transaction(function () use ($id): bool {
-                $reference = WithdrawalRequest::query()->whereKey($id)->first();
-                if ($reference === null) {
-                    return false;
-                }
-                CustomerProfile::query()->whereKey($reference->customer_profile_id)->lockForUpdate()->firstOrFail();
-                $withdrawal = WithdrawalRequest::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-                if ($withdrawal->held || ! in_array($withdrawal->state, ['pending_review', 'approved', 'payment_failed'], true)
-                    || $withdrawal->deadline_at->isFuture()) {
-                    return false;
-                }
-                $before = $withdrawal->state;
-                $this->releaseReservation($withdrawal);
-                $withdrawal->state = 'expired';
-                $withdrawal->live_thrift_plan_id = null;
-                $withdrawal->terminal_at = now();
-                $withdrawal->version++;
-                $withdrawal->save();
-                $this->event($withdrawal, 'expired', $before, null, null, 'The request expired before payout.');
+                $count = 0;
+                foreach (WithdrawalRequest::query()->whereIn('state', ['pending_review', 'approved', 'payment_failed'])
+                    ->where('held', false)->where('deadline_at', '<=', now())->orderBy('id')->pluck('id') as $id) {
+                    $expired = app(PlatformGuard::class)->transaction('financial', function () use ($id): bool {
+                        $reference = WithdrawalRequest::query()->whereKey($id)->first();
+                        if ($reference === null) {
+                            return false;
+                        }
+                        CustomerProfile::query()->whereKey($reference->customer_profile_id)->lockForUpdate()->firstOrFail();
+                        $withdrawal = WithdrawalRequest::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+                        if ($withdrawal->held || ! in_array($withdrawal->state, ['pending_review', 'approved', 'payment_failed'], true)
+                            || $withdrawal->deadline_at->isFuture()) {
+                            return false;
+                        }
+                        $before = $withdrawal->state;
+                        $this->releaseReservation($withdrawal);
+                        $withdrawal->state = 'expired';
+                        $withdrawal->live_thrift_plan_id = null;
+                        $withdrawal->terminal_at = now();
+                        $withdrawal->version++;
+                        $withdrawal->save();
+                        $this->event($withdrawal, 'expired', $before, null, null, 'The request expired before payout.');
 
-                return true;
-            }, attempts: 3);
-            $count += (int) $expired;
-        }
+                        return true;
+                    }, attempts: 3);
+                    $count += (int) $expired;
+                }
 
-        return $count;
+                return $count;
+
+            });
+
+        } catch (PlatformBlocked) {
+            return 0;
+        }
     }
 
     private function feeAmount(FeeSnapshot $snapshot, int $gross, string $type): int

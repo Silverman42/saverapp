@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PlatformBanner from "@/components/PlatformBanner.vue";
 import AppContent from "@/components/AppContent.vue";
 import AppShell from "@/components/AppShell.vue";
 import AppSidebar from "@/components/AppSidebar.vue";
@@ -26,6 +27,7 @@ withDefaults(defineProps<Props>(), {
             <div
                 class="mx-auto w-full max-w-[1350] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
             >
+                <PlatformBanner />
                 <slot />
             </div>
         </AppContent>

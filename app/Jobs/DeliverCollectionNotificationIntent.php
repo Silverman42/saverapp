@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\NotificationPipeline;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,6 +34,13 @@ class DeliverCollectionNotificationIntent implements ShouldQueue
     }
 
     public function handle(): void
+    {
+        app(PlatformGuard::class)->work('external', function (): void {
+            $this->handleAllowed();
+        });
+    }
+
+    private function handleAllowed(): void
     {
         $intent = DB::table('collection_notification_intents')->where('id', $this->intentId)->first();
         if ($intent === null || $intent->status !== 'pending') {

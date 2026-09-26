@@ -13,6 +13,7 @@ use App\Services\AuthorizationService;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionService;
 use App\Services\LedgerTransactionProjectionService;
+use App\Services\PlatformGuard;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -86,7 +87,7 @@ class ReconciliationController extends Controller
         }
         $data = $request->validated();
         $amount = $collections->amountToKobo($data['amount_ngn']);
-        DB::transaction(function () use ($batch, $request, $data, $amount, $ledger, $transactions): void {
+        app(PlatformGuard::class)->transaction('financial', function () use ($batch, $request, $data, $amount, $ledger, $transactions): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $existing = CashRemittance::query()->where('handoff_reference', $data['handoff_reference'])->lockForUpdate()->first();
             if ($existing !== null) {
@@ -142,7 +143,7 @@ class ReconciliationController extends Controller
             'reason' => ['required', 'string', 'min:1', 'max:500'],
             'confirmed' => ['required', 'accepted'],
         ]);
-        DB::transaction(function () use ($batch, $request, $data): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($current->version !== (int) $data['batch_version'] || in_array($current->status, ['open', 'reconciled'], true)) {
                 throw new ConflictHttpException('Batch review changed or is unavailable.');
@@ -200,7 +201,7 @@ class ReconciliationController extends Controller
             'confirmed' => ['required', 'accepted'],
         ]);
         $amount = $collections->amountToKobo($data['amount_ngn']);
-        DB::transaction(function () use ($batch, $request, $data, $amount): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data, $amount): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($current->status === 'open' || $current->version !== (int) $data['batch_version']) {
                 throw new ConflictHttpException('Batch changed before exception reporting.');
@@ -238,7 +239,7 @@ class ReconciliationController extends Controller
             'reason' => ['required', 'string', 'min:1', 'max:500'],
             'confirmed' => ['required', 'accepted'],
         ]);
-        DB::transaction(function () use ($batch, $exception, $request, $data): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $exception, $request, $data): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $currentException = CollectionException::query()->whereKey($exception->id)->lockForUpdate()->firstOrFail();
             if ($currentException->collection_batch_id !== $current->id || $currentException->status !== 'open'
@@ -282,7 +283,7 @@ class ReconciliationController extends Controller
             'reason' => ['required', 'string', 'min:1', 'max:500'],
             'confirmed' => ['required', 'accepted'],
         ]);
-        DB::transaction(function () use ($batch, $exception, $request, $data): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $exception, $request, $data): void {
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $currentException = CollectionException::query()->whereKey($exception->id)->lockForUpdate()->firstOrFail();
             if ($currentException->collection_batch_id !== $current->id || $currentException->status !== 'resolved'

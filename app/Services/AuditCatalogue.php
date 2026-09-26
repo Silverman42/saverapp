@@ -10,6 +10,7 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FAMILIES = [
+        'platform' => ['mode_changed'],
         'business_settings' => ['imported', 'draft_saved', 'draft_discarded', 'previewed', 'published', 'effective', 'cancelled', 'activation_failed', 'bootstrap', 'denied'],
         'invitation' => ['sent', 'delivery_failed', 'resent', 'email_corrected', 'cancelled', 'opened'],
         'customer' => ['registered', 'activated', 'invitation_resent', 'invited_email_corrected', 'invitation_cancelled', 'status_changed', 'profile_updated', 'phone_changed', 'name_changed', 'name_corrected_pre_activation', 'name_correction_proposed', 'name_correction_replaced', 'name_correction_accepted', 'name_correction_rejected', 'name_correction_cancelled', 'name_correction_expired', 'name_correction_invalidated'],
@@ -30,6 +31,7 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FIELDS = [
+        'platform' => ['from_mode', 'to_mode', 'from_version', 'to_version'],
         'business_settings' => ['version', 'base_version', 'changed_fields', 'outcome'],
         'invitation' => ['agent_id', 'generation', 'attempt'],
         'customer' => ['customer_id', 'operational_status', 'account_state', 'fee_version', 'fee_amount_kobo', 'fee_quote_source_type', 'fee_quote_source_id', 'invitation_id', 'generation', 'operation_id', 'changed_fields', 'from_version', 'to_version', 'outcome', 'correction_id', 'status', 'profile_version', 'from_status', 'to_status'],

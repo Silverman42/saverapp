@@ -40,7 +40,7 @@ class SecurityCaseService
     /** @param array<string, mixed> $data */
     public function change(User $actor, SecurityCase $case, array $data): SecurityCase
     {
-        return DB::transaction(function () use ($actor, $case, $data): SecurityCase {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $case, $data): SecurityCase {
             $actor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
             abort_unless($this->authorization->allows($actor, AdminPermission::SecurityOperationsManage), 403);
             $locked = SecurityCase::query()->whereKey($case->id)->lockForUpdate()->firstOrFail();

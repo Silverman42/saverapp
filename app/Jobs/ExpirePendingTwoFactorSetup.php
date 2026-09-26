@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\AuthenticatorState;
 use App\Models\User;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,6 +27,13 @@ class ExpirePendingTwoFactorSetup implements ShouldQueue
      * Execute the job.
      */
     public function handle(): void
+    {
+        app(PlatformGuard::class)->work('mutation', function (): void {
+            $this->handleAllowed();
+        });
+    }
+
+    private function handleAllowed(): void
     {
         $user = User::find($this->userId);
 

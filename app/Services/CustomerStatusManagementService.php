@@ -35,7 +35,7 @@ class CustomerStatusManagementService
         string $reason,
         string $customerExplanation,
     ): CustomerProfile {
-        return DB::transaction(function () use ($actor, $customer, $targetStatus, $expectedVersion, $reason, $customerExplanation): CustomerProfile {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $targetStatus, $expectedVersion, $reason, $customerExplanation): CustomerProfile {
             $context = $this->actionAuthorizationGuard->lockAndAuthorize(
                 actor: $actor,
                 customerProfileId: $customer->id,

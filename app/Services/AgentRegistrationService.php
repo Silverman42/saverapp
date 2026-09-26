@@ -65,6 +65,13 @@ class AgentRegistrationService
      */
     public function register(User $admin, string $attemptReference, array $data, ?UploadedFile $photo = null): array
     {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $attemptReference, $data, $photo) {
+            return $this->registerAllowed($admin, $attemptReference, $data, $photo);
+        });
+    }
+
+    private function registerAllowed(User $admin, string $attemptReference, array $data, ?UploadedFile $photo = null): array
+    {
         $business = BusinessProfile::current();
 
         // 1. Explicitly check invitation sender readiness before accepting registration
@@ -116,7 +123,7 @@ class AgentRegistrationService
         }
 
         // 4. Atomic transaction
-        return DB::transaction(function () use (
+        return app(PlatformGuard::class)->transaction('mutation', function () use (
             $admin,
             $business,
             $attemptReference,

@@ -10,6 +10,7 @@ use App\Models\BusinessProfile;
 use App\Models\Invitation;
 use App\Notifications\Auth\AgentInvitationNotification;
 use App\Services\InvitationSenderReadinessService;
+use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -48,6 +49,13 @@ class DeliverAgentInvitationJob implements ShouldQueue
      * Execute the job.
      */
     public function handle(InvitationSenderReadinessService $senderService): void
+    {
+        app(PlatformGuard::class)->work('external', function () use ($senderService): void {
+            $this->handleAllowed($senderService);
+        });
+    }
+
+    private function handleAllowed(InvitationSenderReadinessService $senderService): void
     {
         /** @var Invitation|null $invitation */
         $invitation = Invitation::with('user')->find($this->invitationId);

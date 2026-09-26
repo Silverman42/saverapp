@@ -7,6 +7,7 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Models\User;
+use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -107,7 +108,7 @@ class NotificationPipeline
     {
         $startedAt = now();
         try {
-            DB::transaction(function () use ($intentId, $startedAt): void {
+            app(PlatformGuard::class)->transaction('external', function () use ($intentId, $startedAt): void {
                 $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
                 if ($intent === null || $intent->status !== 'pending' || ($intent->next_attempt_at !== null && CarbonImmutable::parse($intent->next_attempt_at)->isFuture())) {
                     return;
@@ -155,8 +156,10 @@ class NotificationPipeline
                     $this->rerouteUnresolved($intent, $event);
                 }
             }, attempts: 3);
+        } catch (PlatformBlocked $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
-            DB::transaction(function () use ($intentId, $startedAt, $exception): void {
+            app(PlatformGuard::class)->transaction('external', function () use ($intentId, $startedAt, $exception): void {
                 $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
                 if ($intent === null || $intent->status !== 'pending') {
                     return;

@@ -13,7 +13,6 @@ use App\Models\ReversalRequest;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -107,7 +106,7 @@ class ReversalService
     {
         $payloadHash = $this->payloadHash('submit', $actor, $original->id, $data);
 
-        return DB::transaction(function () use ($actor, $original, $data, $payloadHash): ReversalRequest {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $original, $data, $payloadHash): ReversalRequest {
             $replay = $this->replay($data['attempt_reference'], 'submit', $actor, $payloadHash);
             if ($replay !== null) {
                 Gate::forUser($actor)->authorize('view', $replay->customerProfile);
@@ -158,7 +157,7 @@ class ReversalService
         }
         $payloadHash = $this->payloadHash($action, $actor, $reversal->id, $data);
 
-        return DB::transaction(function () use ($actor, $reversal, $action, $data, $httpRequest, $payloadHash): ReversalRequest {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $reversal, $action, $data, $httpRequest, $payloadHash): ReversalRequest {
             $replay = $this->replay($data['attempt_reference'], $action, $actor, $payloadHash);
             if ($replay !== null) {
                 Gate::forUser($actor)->authorize('view', $replay->customerProfile);

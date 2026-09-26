@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\BusinessProfile;
 use App\Services\AuthorizationService;
+use App\Services\PlatformState;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,6 +42,7 @@ class HandleInertiaRequests extends Middleware
 
         return [
             ...parent::share($request),
+            'platform' => app(PlatformState::class)->publicStatus(),
             'name' => BusinessProfile::current()->display_name,
             'auth' => [
                 'user' => $user,

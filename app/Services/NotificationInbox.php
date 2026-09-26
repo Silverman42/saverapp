@@ -148,7 +148,7 @@ class NotificationInbox
     /** @return array{id: string, read: bool, version: int} */
     public function mark(User $user, string $id, bool $read, int $version): array
     {
-        return DB::transaction(function () use ($user, $id, $read, $version): array {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($user, $id, $read, $version): array {
             $row = $this->visible($user)->where('i.notification_id', $id)->lockForUpdate()->first(['n.id', 'n.read_at', 'n.read_version']);
             abort_if($row === null, 404);
             if (($row->read_at !== null) === $read) {
@@ -168,7 +168,7 @@ class NotificationInbox
             || ! is_array($page['items'] ?? null) || count($page['items']) > 100) {
             throw ValidationException::withMessages(['page_token' => 'This page changed. Refresh before retrying.']);
         }
-        DB::transaction(function () use ($user, $page): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($user, $page): void {
             foreach ($page['items'] as $item) {
                 $this->mark($user, $item['id'], true, $item['version']);
             }

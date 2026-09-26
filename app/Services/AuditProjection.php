@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AuditEvent;
+use App\Support\PlatformBlocked;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use stdClass;
@@ -35,7 +36,7 @@ class AuditProjection
     public function project(int $id): void
     {
         try {
-            DB::transaction(function () use ($id): void {
+            app(PlatformGuard::class)->transaction('derived', function () use ($id): void {
                 $state = DB::table('audit_projection_state')->where('id', 1)->lockForUpdate()->firstOrFail();
                 $work = DB::table('audit_projection_work')->where('canonical_event_id', $id)->lockForUpdate()->first();
                 if ($work === null || $work->status === 'complete') {
@@ -48,6 +49,8 @@ class AuditProjection
                 $watermark = DB::table('canonical_audit_events')->when($firstPending !== null, fn ($q) => $q->where('id', '<', $firstPending))->max('id') ?? 0;
                 DB::table('audit_projection_state')->where('id', 1)->update(['watermark' => $watermark, 'status' => $firstPending === null ? 'current' : 'partial', 'updated_at' => now()]);
             }, attempts: 3);
+        } catch (PlatformBlocked $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             if ($exception instanceof RuntimeException && $exception->getMessage() === 'Audit content verification failed.') {
                 $reference = DB::table('canonical_audit_events')->where('id', $id)->value('event_id');
@@ -78,7 +81,7 @@ class AuditProjection
     {
         $failedReference = null;
         try {
-            return DB::transaction(function () use ($limit, &$failedReference): ?int {
+            return app(PlatformGuard::class)->transaction('derived', function () use ($limit, &$failedReference): ?int {
                 $state = DB::table('audit_projection_state')->where('id', 1)->lockForUpdate()->firstOrFail();
                 $version = $state->rebuild_version === null ? (int) $state->active_version + 1 : (int) $state->rebuild_version;
                 $events = DB::table('canonical_audit_events')->where('id', '>', $state->rebuild_cursor)->orderBy('id')->limit(min(1000, max(1, $limit)))->get();
@@ -115,6 +118,8 @@ class AuditProjection
 
                 return $version;
             }, attempts: 3);
+        } catch (PlatformBlocked $exception) {
+            throw $exception;
         } catch (RuntimeException $exception) {
             DB::table('audit_projection_state')->where('id', 1)->update(['rebuild_cursor' => 0]);
             if ($failedReference !== null && $exception->getMessage() === 'Audit content verification failed.') {

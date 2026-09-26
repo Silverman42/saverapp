@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Jobs\MaterializeNotificationIntent;
+use App\Services\PlatformGuard;
+use App\Support\PlatformBlocked;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -13,6 +15,17 @@ class DrainNotificationIntents extends Command
     protected $description = 'Recover committed in-app notification intents without repeating their source operations';
 
     public function handle(): int
+    {
+        try {
+            return app(PlatformGuard::class)->transaction('external', function () {
+                return $this->handleAllowed();
+            });
+        } catch (PlatformBlocked) {
+            return 0;
+        }
+    }
+
+    private function handleAllowed(): int
     {
         $limit = filter_var($this->option('limit'), FILTER_VALIDATE_INT);
         if ($limit === false || $limit < 1 || $limit > 1000) {

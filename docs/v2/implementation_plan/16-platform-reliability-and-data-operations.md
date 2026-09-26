@@ -1,0 +1,160 @@
+# Module 16 — Staged Platform Reliability implementation checkpoint
+
+Stage 1 (controls and diagnostics) is implemented and locally verified. The complete draft specification and production release remain blocked on the later stages below. No dependency was added and no previously blocked business feature was enabled.
+
+Source: [Module 16 specification](../modules/16-platform-reliability-and-data-operations.md). Canonical progress: [task register](../tasks.md#module-16--platform-reliability-and-data-operations).
+
+## Stages and release boundaries
+
+| Stage | Scope | Status |
+| --- | --- | --- |
+| 1 — Controls and diagnostics | Versioned state/history/results, cooperative mutation fencing, CLI readiness, heartbeat/backlog observations and truthful status surfaces | Implemented; local evidence below |
+| 2 — Background recovery | Bounded retries, explicit leases/checkpoints/dead letters, immutable dry-run replay and provider unknown-outcome reconciliation | Not implemented; blocked on owner/provider contracts |
+| 3 — Restore verification | Isolated ledger/reservation/fee/audit/identity/configuration/work-watermark integrity checks and gated recovery promotion | Not implemented; missing checks must retain restrictions |
+| 4 — Production operations | Approved hosting, PITR/backups, key custody, retention/geography, IAM, external fencing, alert routing, deployments and demonstrated recovery objectives | Not implemented; production release blocked |
+
+A requirement's mapped stage identifies its primary delivery responsibility; a partial Stage 1 row does not imply the entire draft requirement passed. Cross-stage residuals are named in the evidence columns. Draft SLOs, RPO/RTO, retention, clock/capacity thresholds and dual approvals remain proposals until approved and demonstrated.
+
+## Delivered controls
+
+- Additive migration initializes exactly one platform state in **Normal**, version 1, catalogue version 1; it creates immutable transition/operation evidence and heartbeat storage without changing business feature settings. Missing, invalid, incompatible or unreadable state denies protected application work.
+- Modes: **Normal**, **Degraded**, **Financial write freeze**, **Read-only maintenance**, **Unavailable**. Degraded preserves healthy owner-controlled operations; no mode overrides authorization, current configuration, accounting or release checks.
+- Infrastructure operators use Artisan with UUID, expected version, operator reference, reason and incident reference. Each transition, encrypted evidence, original operation result and canonical `platform.mode_changed` audit event commit together. Changed input/stale versions conflict; matching retries return the original result, including after later transitions or expiry. No application Admin route or new permission grants this authority.
+- Optional expiry is descriptive evidence. A restriction remains enforced after expiry until an explicit audited transition. Down migration refuses destructive removal; use a reviewed forward migration for recovery.
+- Catalogue v1 declares explicit HTTP actions, jobs (including the framework queued-notification owner), service owners, scheduled commands, operation dependencies and recovery tiers. Unknown registered write actions/jobs fail closed. Safe reads retain existing authorization. Email-verification GET is correctly classified as mutation; financial previews are read class; attendance annotations remain nonfinancial.
+- Guards acquire the shared singleton lock **before domain locks** and hold it through guarded transactions. Transitions hold the exclusive lock. A completed freeze waits for prior guarded transactions and denies later financial effects. Financial freeze covers postings, reservations/releases, fees/corrections, registration and financially dependent lifecycle changes.
+- Read-only pauses nonfinancial mutations, projection writes, configuration activation and external delivery. Required session/security/audit bookkeeping remains available for authorized reads. `/up` remains process liveness, and Unavailable denies application access with a minimal response.
+- The database queue worker obtains the shared lock before job reservation and retains it through execution/acknowledgement. Read-only/Unavailable do not reserve work or consume attempts; resuming processes existing work. Direct job handlers and owning services are independently guarded. Scheduled financial expiry defers and leaves live reservations unchanged. Paused projection work does not become failed.
+- Safe 503 responses contain a stable code (`platform_operation_paused`, `platform_state_unavailable`, or `platform_operation_unclassified`) and correlation reference. Browser visits use valid standalone Inertia responses without authenticated shared props; JSON requests receive JSON. Valid submitted operation UUIDs are retained in safe responses and displayed without echoing other input. Typed platform props supply mode/version/safe message/observation time; accessible status banners and a standalone unavailable page provide no automatic financial replay.
+
+## Operator interface
+
+```sh
+php artisan platform:status --json
+php artisan platform:check --json
+php artisan platform:set-mode financial_freeze --operation=00000000-0000-4000-8000-000000000001 --expected-version=1 --operator=ops-service --reason="Contain incident" --incident=INC-123 --json
+```
+
+The UUID above is an example; assign one identity per operator intent and reuse the same input only to retrieve that original result. Read the actual current version before making a new transition. `--expires-at` accepts an optional future timestamp and never enables automatic reopening. Operating-system/external IAM must restrict Artisan access in production; an operator reference alone is not authenticated infrastructure identity.
+
+`platform:check` exposes only operational counts/statuses and existing safe owner blockers. It reports database/schema readiness, effective state, scheduler/worker heartbeat age, pending audit/notification/configuration/queue work age, failed-job counts and audit/ledger lag. Missing heartbeat is **Unknown**, evidence older than five minutes is **Stale**, future evidence is **Unverified**. The scheduled one-minute heartbeat and worker polling record their own observations. Unconfigured provider, backup, key custody, clock synchronization, restore and external fencing checks are **Unverified**. A healthy process, fresh heartbeat or successful CLI exit never certifies production or authorizes a mutation; durable owner checks remain decisive.
+
+Request/job logs contain only kind, service class, duration, outcome and correlation reference, propagated through Laravel Context. They omit request/job payloads, credentials, customer amounts/contact data and operator incident evidence. Diagnostic evidence is separate from canonical audit.
+
+## Local rollout and verification
+
+The additive migration was applied to the existing local Herd installation. Browser checks used explicit audited transitions to Read-only and Unavailable, then restored **Normal, version 4**. Existing financial settings and release blockers were retained. No bootstrap or production deployment was performed.
+
+Local evidence:
+
+- 36 focused platform Pest tests cover all modes, owning financial/nonfinancial services, missing/invalid/unreadable state, incompatible catalogue, optimistic conflicts/retries, expired restrictions, audit-failure rollback, queued/direct background guards, safe responses, heartbeat freshness and dependency isolation.
+- Withdrawal regression proves freeze defers expiry without releasing the reservation and authorized committed-result lookup stays duplicate-safe; an unauthorized actor remains denied.
+- Three isolated MySQL process races (19 assertions) cover competing transitions, duplicate same-operation transitions and freeze versus a guarded domain transaction. These demonstrate cooperative database lock ordering, not external failover or crash recovery.
+- Affected authentication/authorization, financial, customer, notifications, audit and settings tests were run; 609 tests passed with 4,093 assertions, followed by the focused response/withdrawal check after adding safe UUID preservation. The existing registration rollback test now injects a failure after user creation so actual database rollback is exercised. The settings date fixture uses a fixed business-timezone instant to avoid current-time dependence.
+- Vue type checking, production build and Pint pass. Desktop unavailable/login surfaces and a 390px mobile viewport were inspected; no horizontal overflow, status semantics and keyboard login navigation were checked, with no recent browser console errors. Comprehensive authenticated role/accessibility and production devices remain release evidence.
+- The complete PHP suite remains a requested user-run gate: `php artisan test --compact`.
+
+## Remaining limitations
+
+Stage 1 provides cooperative application fencing on the shared primary database. Database outages, stale binaries/processes, direct SQL, alternate queue stores/connections, timed-out or killed workers and external provider effects require infrastructure containment and later-stage recovery contracts. Queue timeout must remain below retry-after and external execution must not be declared safe merely because these local tests pass. Holding the platform lock across an external delivery serializes mode completion with cooperative work; it does not prove provider finality or resolve unknown outcomes.
+
+Backup/key/clock/restore evidence remains Unverified; no automatic readiness-driven reopening, generic repair, manual balance edits, cancellation of reservations, offline financial queue or compensating payout is introduced. Production SLI aggregation, cross-owner outage/load testing, IAM, manifests, restore invariants, incident routing, retention and demonstrated recovery objectives remain blocked. Stages 2–4 must preserve restrictions until their own approved evidence passes.
+
+## Requirement evidence register
+
+| Requirement | Draft scope | Primary stage | Status / evidence |
+| --- | --- | --- | --- |
+| OPS-FR-001 | Maintain a versioned dependency catalogue with criticality, owner, mode, health and recovery tier. | 1 | Partial: explicit route/job/owner/command catalogue v1 and unknown-operation rejection; production dependency timeouts, health contracts and fallback certification remain Stage 4. |
+| OPS-FR-002 | Apply dependency-specific fail-closed writes and cutoff-labelled graceful read degradation. | 1 | Partial: absent/invalid/unreadable state fails closed; independent diagnostic failures remain isolated; existing owner gates retained. Full provider/key/object outage certification remains Stage 4. |
+| OPS-FR-003 | Support Normal/Degraded/Financial-freeze/Read-only/Unavailable modes without mutating business state. | 1 | Local control verified: all five modes, direct service guards, shared/exclusive lock ordering, expiry retention and immutable transitions. External containment remains Stage 4. |
+| OPS-FR-004 | Define versioned SLIs that measure valid user-visible outcomes by service class. | 1 | Partial: minimized duration/outcome/class diagnostics; production versioned SLI definitions and aggregation remain Stage 4. |
+| OPS-FR-005 | Measure proposed availability/latency/timeliness SLOs without trading correctness. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-006 | Apply burn-rate/error-budget release controls and immediate correctness/security escalation. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-007 | Bind every side-effect command to durable payload-specific idempotency and outcome lookup. | 2 | Blocked: background recovery and owner/provider contracts. |
+| OPS-FR-008 | Commit domain/audit/outbox durably and consume duplicate delivery through durable inbox keys. | 2 | Blocked: background recovery and owner/provider contracts. |
+| OPS-FR-009 | Run background work with versioned states, leases, heartbeats, checkpoints and bounded retries. | 2 | Blocked: background recovery and owner/provider contracts. |
+| OPS-FR-010 | Replay/dead-letter work only through immutable dry-run/idempotent owner-aware operations. | 2 | Blocked: background recovery and owner/provider contracts. |
+| OPS-FR-011 | Reconcile external unknown outcomes before retry and preserve unresolved truth. | 2 | Blocked: background recovery and owner/provider contracts. |
+| OPS-FR-012 | Back up every authoritative/interpreting dataset at least daily with Tier A PITR. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-013 | Encrypt, isolate, immutably protect and least-privilege backup/key access. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-014 | Align backup retention/holds/geography with approved source policies and eventual expiry. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-015 | Produce monitored checksum/version/cutoff manifests and test readable restores. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-016 | Meet approved tiered RPO/RTO objectives or report/block unsupported claims. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-017 | Restore in isolation, fence writers/side effects and promote progressively without split brain. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-018 | Require ledger/reservation/fee/custody/audit/job/statement/identity integrity before financial writes. | 3 | Blocked: isolated integrity/restore verification. |
+| OPS-FR-019 | Catalogue immutable reviewed migrations with compatibility, validation and recovery strategy. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-020 | Run idempotent checkpointed backfills without rewriting or inferring financial history. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-021 | Preserve published setting/account/timezone versions and prospective effective meaning. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-022 | Use verified roll-forward/rollback and resolve unknown migration phases safely. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-023 | Deploy traceable signed builds through compatibility tests, canary stages and invariant gates. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-024 | Use safe server flags/kill switches that cannot bypass authorization/accounting/audit. | 1 | Local control verified: mode restrictions never enable features or cancel pending outcomes; existing Module 15 gates retained. Production flag governance remains Stage 4. |
+| OPS-FR-025 | Conduct maintenance through server-enforced modes, job draining/fencing and truthful user status. | 1 | Partial: cooperative HTTP/service/queue/schedule fencing, truthful banner/503 page; infrastructure drain/checkpoints and SLO accounting remain Stages 2/4. |
+| OPS-FR-026 | Capture minimized metrics/traces/logs without treating telemetry as ledger/audit. | 1 | Partial: safe request/job fields and propagated correlation references verified locally; complete production metric/trace retention and scanners remain Stage 4. |
+| OPS-FR-027 | Alert/deduplicate on correctness, security, recovery, budget, provider and capacity conditions. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-028 | Forecast/test/scale capacity with headroom while preserving ordering/idempotency/privacy. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-029 | Enforce synchronized UTC/monotonic time and immutable versioned business/plan timezone semantics. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-030 | Separate external infrastructure roles/service identities from application roles/permissions. | 1 | Partial: Artisan-only transitions and no application Admin mode route/grant. External IAM/access exercises remain Stage 4. |
+| OPS-FR-031 | Require time-bound, audited, proposed dual-control high-risk operational access. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-032 | Run severity-based incident containment/recovery/review with preserved evidence. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-033 | Communicate incidents through safe pre-approved status/Module 13 interfaces without false claims. | 1 | Partial: fixed safe messages and unknown-outcome guidance; approved incident communication identity/templates and individual notices remain Stages 2/4. |
+| OPS-FR-034 | Permit source-derived projection/replay/restore repairs without new business effects. | 3 | Blocked: isolated integrity/restore verification. |
+| OPS-FR-035 | Prohibit manual balance/state/history edits and route business corrections to owning workflows. | 3 | Blocked: isolated integrity/restore verification. |
+| OPS-FR-036 | Protect environments/networks/secrets/data copies and privileged records under least privilege. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-037 | Coordinate retention, holds, expiry, privacy and geography across primary/backups/providers. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-038 | Keep offline financial mutation queues disabled in initial scope. | 1 | Local boundary retained: no offline financial queue or automatic submission replay added; complete disconnected-client exercise remains Stage 4. |
+| OPS-FR-039 | Verify production readiness with load, restore, DR, migration, failure and access-control evidence. | 4 | Blocked: approved production architecture, policy and demonstrated operational evidence. |
+| OPS-FR-040 | Block launch/write classes when required owner/policy/dependency/integrity/recovery evidence is absent. | 1 | Partial: diagnostics cannot authorize writes; uncertified owner features stay unavailable. Launch integrity/restore/provider evidence remains Stages 3/4. |
+
+## Acceptance evidence register
+
+All 47 draft scenarios are mapped. “Partial” or “Blocked” is not a production acceptance pass.
+
+| Scenario | Requirements | Draft expected result | Primary stage | Status / evidence |
+| --- | --- | --- | --- | --- |
+| OPS-AC-001 | OPS-FR-001 | Every released endpoint/job declares dependencies, safe modes/owner/recovery tier; unknown dependency prevents write enablement. | 1 | Partial: explicit catalogue and undeclared route/job rejection; complete production dependency certification outstanding. |
+| OPS-AC-002 | OPS-FR-002 | Stop DB/Auth/Ledger/Reservation/Fee/Audit/Object/Provider dependencies individually; only documented operations continue and no unavailable value becomes zero/success. | 1 | Partial: missing/unreadable state, audit rollback and isolated diagnostic failure tests; full dependency outage matrix outstanding. |
+| OPS-AC-003 | OPS-FR-003 | Enter each platform mode; server enforces allowed classes, labels reads/cutoffs and preserves reservations/jobs/outcomes without mutation. | 1 | Local control verified: five mode matrix, owning services, frozen expiry/reservations and queue pause/resume; cross-owner read cutoffs remain owner evidence. |
+| OPS-AC-004 | OPS-FR-004 | SLI excludes valid denial/input error but includes timeout/circuit/maintenance; health traffic cannot inflate user endpoint success. | 1 | Partial: request outcomes classify denials, failures and pauses; /up is excluded. Approved production SLI aggregation outstanding. |
+| OPS-AC-005 | OPS-FR-005 | Production-like measurement reports every proposed SLO/latency class and correctness failures remain zero-budget incidents. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-006 | OPS-FR-006 | Simulate 50/75/100% burn and one integrity event; release controls/escalation activate and month reset does not close evidence. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-007 | OPS-FR-007 | Same operation key/payload across timeout/restart returns one effect; changed payload conflicts after cache expiry; unauthorized lookup reveals nothing. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-008 | OPS-FR-008 | Fault domain/audit/outbox transaction boundaries and duplicate broker delivery; mutation+canonical intent commit once or neither and consumer effect occurs once. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-009 | OPS-FR-009 | Kill worker before/after checkpoints/heartbeat; lease recovery resumes safely, maximum attempts apply and overlapping lease cannot duplicate effect. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-010 | OPS-FR-010 | Dry-run bounded bulk replay identifies completed/conflict/eligible items; execution preserves payload/actor/amount and supports stop/checkpoint. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-011 | OPS-FR-011 | Timeout payout/email/object publication; provider/hash/reference lookup resolves original or keeps Outcome unknown/Dead-letter without duplicate send. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-012 | OPS-FR-012 | Daily backup includes each listed authoritative/version dataset and Tier A PITR log gap stays within proposed five minutes. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-013 | OPS-FR-013 | Production app/Admin/developer credentials cannot read/delete backups/keys; approved time-bound restore identity can access only runbook resources. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-014 | OPS-FR-014, OPS-FR-037 | Expiry/hold/geography tests retain longest approved held data, expire eligible bytes/backups eventually and create no unapproved cross-border replica. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-015 | OPS-FR-015 | Missing/corrupt/truncated/key-unreadable backup fails manifest/restore validation and pages before it can count as success. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-016 | OPS-FR-015 | Monthly sampled and quarterly full restore verify checksums/PITR/objects/holds/keys/source boundaries with recorded elapsed time. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-017 | OPS-FR-016 | Measure simulated Tier A/B/C loss against proposed RPO/RTO; breach is reported/incident, not hidden by process health. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-018 | OPS-FR-017 | DR fences old generation, restores isolated with side effects off, prevents split brain and enables read then write classes only after approval. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-019 | OPS-FR-018 | Corrupt each ledger/source/subsidiary/reservation/fee/batch/audit/job/statement/identity invariant; affected financial writes remain blocked. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-020 | OPS-FR-018 | Clean restored cutoff reproduces control totals/sample statements/audit checkpoints and restarts consumers without duplicate payout/email/financial posting. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-021 | OPS-FR-019 | Migration manifest/checksum/order/compatibility/backup/validation evidence is required; unsigned/unknown migration cannot run. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-022 | OPS-FR-020 | Interrupt/retry a large backfill; checkpoints resume without duplicate/missing rows, source history/actors remain and ambiguous inference blocks. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-023 | OPS-FR-021 | Timezone/account/fee/config change applies prospectively; ordered outbox/ack survives restart, critical feature stays Propagation pending until compatible acks, and old plan/receipt/posting/report retains captured version across deploy/restore. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-024 | OPS-FR-022 | Failed migration detects completed phase; verified roll-forward/rollback preserves concurrent transactions and never blindly reruns script/restores old DB. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-025 | OPS-FR-023 | Signed canary passes contracts/invariants before 25/100%; incompatible event/schema halts and rollback affects code only, not committed money. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-026 | OPS-FR-024 | Client/expired/misconfigured flag cannot bypass server authorization/accounting/audit; kill switch blocks new work without releasing/resolving state. | 1 | Local boundary verified: existing feature gates remain blocked and platform expiry cannot reopen writes; complete production flag matrix outstanding. |
+| OPS-AC-027 | OPS-FR-025 | Maintenance drains/checkpoints/fences and enforces read-only server-side; user sees truthful scope/time and impact counts toward SLO. | 1 | Partial: shared locks wait for prior work; no queued reservation/attempt on read-only; UI safe. Production drain/fence/checkpoint/SLO evidence outstanding. |
+| OPS-AC-028 | OPS-FR-026 | Logs/traces/metrics correlate one command across services while scanners/tests find no credentials, evidence, contact/bank/private notes or personal amount labels. | 1 | Partial: structured diagnostics exclude payloads and secret fields, use correlation references. Production distributed trace/scanner evidence outstanding. |
+| OPS-AC-029 | OPS-FR-027 | Trigger every Critical/budget/queue/provider/capacity alert; incidents deduplicate/update safely and no alert performs business mutation/broadcast. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-030 | OPS-FR-028 | Load 2× forecast plus backup/report/migration/failover; thresholds/headroom/scale controls work without duplicate, scope leak or provider overload. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-031 | OPS-FR-029 | At >500ms clock skew warning fires; >2s/unknown node loses financial/job leadership; UTC/lease/reference/calendar history stays correct after recovery. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-032 | OPS-FR-029 | Midnight/leap/year/DST/business-timezone migration preserves captured plan/receipt/batch/report dates and no browser clock authorizes action. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-033 | OPS-FR-030 | Test application grants against shell/DB/backup/deploy/replay and infrastructure roles against business endpoints; no authority crosses boundary. | 1 | Partial: no application mode endpoint or permission; external shell/DB/backup IAM tests outstanding. |
+| OPS-AC-034 | OPS-FR-031 | Restore/promotion/canonical migration/break-glass requires two proposed external approvals, MFA/time-bound access and complete evidence; expiry revokes it. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-035 | OPS-FR-032 | SEV-0/1/2/3 exercise meets proposed acknowledgement, fencing, evidence, recovery verification and post-incident action requirements. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-036 | OPS-FR-032 | Financial incident preserves original operations/provider evidence, runs controls and refuses compensation/manual edit before owner eligibility. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-037 | OPS-FR-033 | Status template communicates affected capability/time/safe guidance without names/amounts/exploit/unverified claims or Admin broadcast access. | 1 | Partial: safe fixed banner/unavailable guidance with correlation reference; external incident lifecycle/status publication outstanding. |
+| OPS-AC-038 | OPS-FR-033 | Module 13 individual notice rechecks recipient/template; notification outage does not delay containment and unknown financial guidance uses same reference. | 2 | Blocked: background recovery/provider simulation outstanding. |
+| OPS-AC-039 | OPS-FR-034 | Rebuild search/dashboard/audit index and replay event/job twice; derived results match and no source mutation/notification/payout repeats. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-040 | OPS-FR-034 | Restore/recompute promotion validates new projection version atomically while prior verified read remains labelled/available where safe. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-041 | OPS-FR-035 | Attempt SQL/manual UI edits to Customer balance/reservation/ledger/audit/reconciliation; access denies and correction requires owning workflow. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-042 | OPS-FR-035 | Canonical inconsistency uses incident/restore or deterministic reviewed migration with evidence, never generic adjustment/suspense fabrication. | 3 | Blocked: isolated restore/integrity/rebuild exercise outstanding. |
+| OPS-AC-043 | OPS-FR-036 | Network/service/environment isolation, key rotation, dependency scanning and privileged-data-copy controls reject unauthorized path/test copy. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-044 | OPS-FR-037 | Primary/archive/backup/artifact/log retention and hold inventories reconcile; expired source is not retained indefinitely in unmanaged copies. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-045 | OPS-FR-038 | Disconnect mobile/browser, attempt contribution/withdrawal; no local paid/pending-sync mutation exists and reconnect does not auto-post. | 1 | Partial: unavailable guidance preserves the original operation reference and adds no replay/offline queue; full disconnect/reconnect exercise outstanding. |
+| OPS-AC-046 | OPS-FR-039 | Production readiness bundle includes passing load/restore/DR/migration/failure/access controls with versions/cutoffs and unresolved scenarios marked Blocked. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
+| OPS-AC-047 | OPS-FR-040 | Remove each critical owner/policy/key/provider/config/integrity/restore dependency; launch/write class remains Blocked without manual override. | 1 | Partial: normal initialization retains owner blockers; diagnostics are not write authorization. Full launch/restore/key/provider gate removal matrix outstanding. |
