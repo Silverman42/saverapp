@@ -7,6 +7,7 @@ import {
     LayoutDashboard,
     Palette,
     Receipt,
+    ChartNoAxesCombined,
     ShieldAlert,
     ShieldCheck,
     UserRound,
@@ -33,6 +34,7 @@ import { index as collectionsIndex } from '@/routes/collections';
 import { index as withdrawalsIndex } from '@/routes/withdrawals';
 import { index as reversalsIndex } from '@/routes/reversals';
 import { index as transactionsIndex } from '@/routes/transactions';
+import { index as reportsIndex } from '@/routes/reports';
 import { index as batchesIndex } from '@/routes/collection-batches';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editProfile } from '@/routes/profile';
@@ -95,6 +97,12 @@ const mainNavItems = computed<NavItem[]>(() => {
         title: 'Transactions',
         href: transactionsIndex(),
         icon: Receipt,
+    });
+
+    items.push({
+        title: 'Reports',
+        href: reportsIndex(),
+        icon: ChartNoAxesCombined,
     });
 
     if (canViewCustomers.value) {

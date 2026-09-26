@@ -32,6 +32,7 @@ use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
 use App\Http\Controllers\ReconciliationController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReversalController;
 use App\Http\Controllers\ThriftPlanController;
 use App\Http\Controllers\WithdrawalController;
@@ -90,6 +91,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
 
     Route::get('withdrawals', [WithdrawalController::class, 'index'])->name('withdrawals.index');
+    Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show');
     Route::get('transactions', [LedgerTransactionController::class, 'index'])->name('transactions.index');
     Route::get('transactions/{transaction}', [LedgerTransactionController::class, 'show'])->name('transactions.show');
     Route::get('customers/{customer}/withdrawals/create', [WithdrawalController::class, 'create'])->name('customers.withdrawals.create');

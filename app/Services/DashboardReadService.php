@@ -27,6 +27,7 @@ class DashboardReadService
         private AuthorizationService $authorization,
         private CollectionReadService $balances,
         private LedgerTransactionReadService $transactions,
+        private MetricDefinitionService $definitions,
     ) {}
 
     /** @return array{fingerprint: string, can_collect: bool} */
@@ -423,9 +424,6 @@ class DashboardReadService
     /** @return array<string, mixed> */
     private function metric(string $code, string $title, ?int $value, string $unit, string $source, string $dateBasis, string $definition): array
     {
-        return ['code' => $code, 'title' => $title, 'value' => $value, 'unit' => $unit,
-            'display' => $value === null ? 'Not available' : ($unit === 'NGN' ? MoneyFormatter::formatNaira($value) : number_format($value)),
-            'source' => $source, 'date_basis' => $dateBasis, 'definition' => $definition,
-            'drill_down' => null, 'drill_down_reason' => 'Matching owner aggregate drill-down is not yet available.'];
+        return $this->definitions->make($code, $title, $value, $unit, $source, $dateBasis, $definition);
     }
 }
