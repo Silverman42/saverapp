@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\UserType;
+use App\Models\AgentProfile;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia;
 
@@ -43,7 +44,8 @@ test('authenticated inertia response serializes user_type as backed string value
 });
 
 test('authenticated inertia response serializes agent and admin user types', function () {
-    $agent = User::factory()->agent()->create();
+    $agent = User::factory()->agent()->withTwoFactor()->create();
+    AgentProfile::factory()->create(['user_id' => $agent->id]);
     $this->actingAs($agent)
         ->get(route('agent.dashboard'))
         ->assertInertia(fn (AssertableInertia $page) => $page

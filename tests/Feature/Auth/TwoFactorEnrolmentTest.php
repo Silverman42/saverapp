@@ -2,6 +2,7 @@
 
 use App\Enums\AccountState;
 use App\Jobs\ExpirePendingTwoFactorSetup;
+use App\Models\AgentProfile;
 use App\Models\User;
 use App\Models\UserRecoveryCode;
 use App\Notifications\Auth\AuthenticatorEnrolledNotification;
@@ -117,6 +118,7 @@ test('confirming enrolment with valid TOTP code creates 10 recovery codes and fl
 
 test('acknowledging recovery codes completes setup and transitions user to active state', function () {
     $agent = User::factory()->agent()->mfaSetupRequired()->create();
+    AgentProfile::factory()->create(['user_id' => $agent->id]);
 
     // Visit page and confirm TOTP
     $this->actingAs($agent)->get(route('two-factor.enrolment'));

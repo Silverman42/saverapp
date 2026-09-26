@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AgentProfile;
 use App\Models\AgentTrustedDevice;
 use App\Models\User;
 use App\Models\UserRecoveryCode;
@@ -49,6 +50,7 @@ test('customer session enforces 7-day inactivity and 30-day maximum lifetime', f
 
 test('agent session enforces 1-hour inactivity and 24-hour maximum lifetime', function () {
     $agent = User::factory()->agent()->withTwoFactor()->create();
+    AgentProfile::factory()->create(['user_id' => $agent->id]);
 
     $this->actingAs($agent);
 

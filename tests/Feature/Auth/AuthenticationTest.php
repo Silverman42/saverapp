@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AccountState;
+use App\Models\AgentProfile;
 use App\Models\User;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
@@ -114,10 +115,11 @@ test('dashboard route acts as compatibility dispatcher redirecting each role to 
         ->assertRedirect(route('admin.dashboard', absolute: false));
 });
 
-test('each role can access their own dashboard placeholder', function () {
+test('each role can access their own dashboard with required operational context', function () {
     $customer = User::factory()->customer()->create();
-    $agent = User::factory()->agent()->create();
+    $agent = User::factory()->agent()->withTwoFactor()->create();
     $admin = User::factory()->admin()->create();
+    AgentProfile::factory()->create(['user_id' => $agent->id]);
 
     $this->actingAs($customer)->get(route('customer.dashboard'))->assertOk();
     $this->actingAs($agent)->get(route('agent.dashboard'))->assertOk();
@@ -232,6 +234,7 @@ test('authenticated session loses access immediately after suspension or deactiv
 
 test('authenticated session is redirected to enrolment immediately after transitioning to mfa_setup_required', function () {
     $user = User::factory()->agent()->active()->withTwoFactor()->create();
+    AgentProfile::factory()->create(['user_id' => $user->id]);
 
     $this->actingAs($user);
 
