@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\BackgroundRecovery;
+use App\Services\ManagementMailDelivery;
 use App\Services\PlatformGuard;
 use App\Support\PlatformBlocked;
 use Illuminate\Console\Command;
@@ -33,6 +34,7 @@ class DrainNotificationIntents extends Command
             return self::FAILURE;
         }
         app(BackgroundRecovery::class)->dispatchNotifications($limit);
+        app(ManagementMailDelivery::class)->drain($limit);
 
         return self::SUCCESS;
     }

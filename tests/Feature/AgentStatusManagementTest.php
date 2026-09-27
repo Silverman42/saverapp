@@ -293,6 +293,7 @@ test('delivery rechecks management permission and current Customer assignment', 
     Queue::fake([DeliverAgentStatusNotificationIntent::class]);
     Notification::fake();
     $admin = makeAgentStatusAdmin();
+    $recipientAdmin = makeAgentStatusAdmin();
     $agent = makeAgentStatusProfile(true);
     $customer = assignAgentStatusCustomer($agent, $admin);
 
@@ -301,7 +302,7 @@ test('delivery rechecks management permission and current Customer assignment', 
     $adminIntent = AgentStatusNotificationIntent::query()->where('audience_type', 'managing_admin')->firstOrFail();
     $customerIntent = AgentStatusNotificationIntent::query()->where('audience_type', 'assigned_customer')->where('channel', 'database')->firstOrFail();
     $agentIntent = AgentStatusNotificationIntent::query()->where('audience_type', 'subject_agent')->where('channel', 'mail')->firstOrFail();
-    $admin->revokePermissionTo(AdminPermission::AgentsManage->value);
+    $recipientAdmin->revokePermissionTo(AdminPermission::AgentsManage->value);
     $customer->currentAssignment->forceFill(['is_current' => null, 'status' => CustomerAssignmentStatus::Ended])->save();
 
     (new DeliverAgentStatusNotificationIntent($adminIntent->id))->handle(app(AuthorizationService::class));

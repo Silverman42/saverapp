@@ -10,6 +10,7 @@ use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\Invitation;
 use App\Notifications\Auth\CustomerInvitationNotification;
+use App\Services\InvitationDeliveryIssues;
 use App\Services\InvitationSenderReadinessService;
 use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
@@ -86,6 +87,10 @@ class DeliverCustomerInvitationJob implements ShouldQueue
             return;
         }
 
+        if (in_array($invitation->delivery_status, [DeliveryStatus::Sent, DeliveryStatus::Uncertain], true)) {
+            return;
+        }
+
         $business = BusinessProfile::current();
         $senderEmail = $senderService->resolveSenderEmail($business);
         $senderName = $senderService->resolveSenderName($business);
@@ -108,7 +113,7 @@ class DeliverCustomerInvitationJob implements ShouldQueue
                 fromName: $senderName,
             );
 
-            Notification::route('mail', $invitation->target_email)->notify($notification);
+            Notification::route('mail', $invitation->target_email)->notifyNow($notification);
 
             // Update invitation delivery state on success
             $invitation->status = InvitationStatus::Sent;
@@ -133,9 +138,6 @@ class DeliverCustomerInvitationJob implements ShouldQueue
         } catch (Throwable $e) {
             $this->handleFailure($invitation, $e);
 
-            if ($this->attempts() < $this->tries) {
-                throw $e;
-            }
         }
     }
 
@@ -144,27 +146,6 @@ class DeliverCustomerInvitationJob implements ShouldQueue
      */
     protected function handleFailure(Invitation $invitation, Throwable $exception): void
     {
-        $sanitizedError = 'Delivery error: '.class_basename($exception);
-
-        $invitation->status = InvitationStatus::DeliveryFailed;
-        $invitation->delivery_status = DeliveryStatus::Failed;
-        $invitation->delivery_error = $sanitizedError;
-        $invitation->save();
-
-        AuditEvent::record(
-            eventType: 'invitation.delivery_failed',
-            targetType: Invitation::class,
-            targetId: $invitation->id,
-            targetReference: null,
-            payload: [
-                'recipient_email_normalized' => $invitation->target_email_normalized,
-                'generation' => $invitation->generation,
-                'attempt' => $this->attempts(),
-                'diagnostic_summary' => $sanitizedError,
-            ],
-            actor: null,
-
-            context: ['executor' => self::class]
-        );
+        app(InvitationDeliveryIssues::class)->record($invitation->id, $this->generation, 'acceptance_unknown', $this->attempts());
     }
 }

@@ -9,7 +9,6 @@ use App\Enums\CreationAttemptStatus;
 use App\Enums\DeliveryStatus;
 use App\Enums\InvitationStatus;
 use App\Enums\UserType;
-use App\Jobs\DeliverAgentInvitationJob;
 use App\Models\AgentProfile;
 use App\Models\AgentStatusHistory;
 use App\Models\AuditEvent;
@@ -273,7 +272,7 @@ class AgentRegistrationService
 
             // Safe post-commit queued delivery
             DB::afterCommit(function () use ($invitation, $plainToken): void {
-                DeliverAgentInvitationJob::dispatch($invitation->id, $plainToken, 1);
+                app(InvitationDeliveryIssues::class)->dispatch($invitation->id, $plainToken, 1);
             });
 
             return [

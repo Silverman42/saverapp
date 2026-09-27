@@ -27,3 +27,5 @@ Schedule::command('audit:drain')->everyMinute()->withoutOverlapping();
 Schedule::command('business:activate-settings --limit=100')->everyMinute()->withoutOverlapping();
 
 Schedule::command('platform:heartbeat')->everyMinute()->evenInMaintenanceMode()->withoutOverlapping();
+
+Schedule::command('customers:expire-recovery')->everyMinute()->withoutOverlapping();

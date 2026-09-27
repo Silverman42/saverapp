@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\ProfileChangeNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
+use App\Services\ManagementMailDelivery;
 use App\Services\NotificationPipeline;
 use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
@@ -74,15 +75,9 @@ class DeliverProfileNotificationIntent implements ShouldQueue
             return;
         }
 
-        if ($intent->channel === 'database' && $recipient->notifications()->whereKey($intent->notification_id)->exists()) {
-            $intent->forceFill(['status' => 'delivered', 'delivered_at' => now()])->save();
-
-            return;
-        }
-
-        $notification = new ProfileChangeNotification($intent->notification_id, $intent->payload, $intent->channel);
-        Notification::sendNow($recipient, $notification, [$intent->channel]);
-        $intent->forceFill(['status' => 'delivered', 'delivered_at' => now()])->save();
+        app(ManagementMailDelivery::class)->deliver('profile', $intent->id,
+            fn (): bool => $this->recipientIsStillAuthorized($intent, $recipient->fresh(), $eligibilityService, $authorizationService),
+            fn () => Notification::sendNow($recipient, new ProfileChangeNotification($intent->notification_id, $intent->payload, $intent->channel), [$intent->channel]));
     }
 
     public function failed(?Throwable $exception): void
@@ -117,6 +112,9 @@ class DeliverProfileNotificationIntent implements ShouldQueue
                 return $customer->user_id === $recipient->id;
             }
 
+            if ($intent->audience_type === 'customer_manager') {
+                return $recipient->user_type === UserType::Admin && $authorizationService->allows($recipient, AdminPermission::CustomersManage);
+            }
             if ($intent->audience_type === 'current_agent') {
                 $agent = $customer->currentAssignment?->agentProfile;
 

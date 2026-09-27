@@ -74,7 +74,7 @@ class PasswordResetBroker extends BasePasswordBroker
             }
 
             // Section 7.6 & AC 15: Password reset must not activate or send reset link to Invited accounts
-            if ($user instanceof User && $user->account_state === AccountState::Invited) {
+            if ($user instanceof User && ($user->account_state === AccountState::Invited || $user->recovery_pending)) {
                 return static::RESET_LINK_SENT;
             }
 
@@ -104,7 +104,7 @@ class PasswordResetBroker extends BasePasswordBroker
             return static::INVALID_USER;
         }
 
-        if ($user instanceof User && $user->account_state === AccountState::Invited) {
+        if ($user instanceof User && ($user->account_state === AccountState::Invited || $user->recovery_pending)) {
             return static::INVALID_TOKEN;
         }
 

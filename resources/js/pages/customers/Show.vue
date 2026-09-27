@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
@@ -10,6 +11,8 @@ import {
     edit as editCustomer,
     index as customersIndex,
 } from '@/routes/customers';
+import { edit as reassignCustomer } from '@/routes/customers/reassignment';
+import { show as recoverCustomer } from '@/routes/customers/recovery';
 import { edit as manageCustomerStatus } from '@/routes/customers/status';
 import {
     show as showNameCorrection,
@@ -193,6 +196,7 @@ export type CustomerDetail = {
         can_edit: boolean;
         edit_message: string;
         can_reassign: boolean;
+        can_recover?: boolean;
         reassign_message: string;
         can_archive: boolean;
         archive_message: string;
@@ -403,6 +407,16 @@ const getInvitationBadgeVariant = (
 
             <!-- Status Badges -->
             <div class="flex flex-wrap items-center gap-2">
+                <Link
+                    v-if="customer.actions.can_reassign"
+                    :href="reassignCustomer.url(customer.id)"
+                    ><Button variant="outline">Reassign Customer</Button></Link
+                >
+                <Link
+                    v-if="customer.actions.can_recover"
+                    :href="recoverCustomer.url(customer.id)"
+                    ><Button variant="outline">Assisted recovery</Button></Link
+                >
                 <Link
                     v-if="customer.actions.can_edit"
                     :href="editCustomer(customer.id).url"
@@ -1336,8 +1350,8 @@ const getInvitationBadgeVariant = (
                 <div class="flex items-center gap-2">
                     <Lock class="text-muted-foreground h-4 w-4" />
                     <span
-                        >Profile mutations (editing, reassignment, archival) are
-                        read-only until owning tasks are completed.</span
+                        >Actions recheck current permissions and assignment
+                        before saving.</span
                     >
                 </div>
             </CardContent>
@@ -1485,5 +1499,6 @@ const getInvitationBadgeVariant = (
                 </form>
             </DialogContent>
         </Dialog>
+        <ManagementDeliveryPanel subject="customer" :reference="customer.id" />
     </div>
 </template>

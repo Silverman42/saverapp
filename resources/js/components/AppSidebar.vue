@@ -33,6 +33,7 @@ import { dashboard } from '@/routes';
 import { index as businessSettings } from '@/routes/admin/business-settings';
 import { index as notificationInbox } from '@/routes/notifications';
 import { index as auditIndex } from '@/routes/admin/audit';
+import { index as recoveryQueue } from '@/routes/customer-recovery';
 import { index as securityCasesIndex } from '@/routes/admin/security';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { index as plansIndex } from '@/routes/plans';
@@ -168,6 +169,11 @@ const adminNavItems = computed<NavItem[]>(() => {
         items.push({ title: 'Audit trail', href: auditIndex(), icon: Receipt });
     }
     if (hasSecurityOperationsManage.value) {
+        items.push({
+            title: 'Customer recovery',
+            href: recoveryQueue(),
+            icon: ShieldCheck,
+        });
         items.push({
             title: 'Security operations',
             href: securityCasesIndex(),

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuditManagementFailure;
 use App\Http\Middleware\EnforcePlatformMode;
 use App\Http\Middleware\EnforceSessionLimits;
 use App\Http\Middleware\EnsureActiveAccount;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            AuditManagementFailure::class,
             EnsureActiveAccount::class,
             EnforceSessionLimits::class,
             RefreshPermissionVersionSession::class,
@@ -45,6 +47,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['token', 'preview_token', 'password', 'password_confirmation']);
         $exceptions->render(fn (PlatformBlocked $exception, Request $request) => $exception->response($request));
         $exceptions->render(function (AuditIdentityConflict $exception, Request $request) {
             app(AuditCapture::class)->reportConflict($exception);

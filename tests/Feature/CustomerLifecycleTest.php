@@ -274,7 +274,7 @@ test('CAM-AC-029: pending withdrawal and reversal owner records cannot be hidden
     expect(app(ReversalService::class)->archivalStatus($customer))->toBe('blocked');
 });
 
-test('archival notices deduplicate delivery reauthorize recipients and retain failed delivery without repeating status', function () {
+test('archival notices deduplicate delivery reauthorize recipients and retain uncertain delivery without repeating status', function () {
     [$admin, $customer, $agent] = $this->createLifecycleFixture();
     Queue::fake([DeliverCustomerStatusNotificationIntent::class]);
     $payload = $this->lifecyclePayload($customer);
@@ -292,13 +292,9 @@ test('archival notices deduplicate delivery reauthorize recipients and retain fa
     $mail = CustomerStatusNotificationIntent::query()->where('channel', 'mail')->firstOrFail();
     Notification::shouldReceive('sendNow')->once()->andThrow(new RuntimeException('Mail transport unavailable.'));
     $delivery = new DeliverCustomerStatusNotificationIntent($mail->id);
-    try {
-        $delivery->handle(app(AgentEligibilityService::class));
-        $this->fail('Expected mail delivery failure.');
-    } catch (RuntimeException $exception) {
-        $delivery->failed($exception);
-    }
-    expect($mail->fresh()->status)->toBe('failed');
+    $delivery->handle(app(AgentEligibilityService::class));
+    $delivery->handle(app(AgentEligibilityService::class));
+    expect($mail->fresh()->status)->toBe('unknown');
     app(CustomerLifecycleService::class)->execute($admin, $customer, 'archive', $payload);
     expect($customer->fresh()->operational_status)->toBe(CustomerStatus::Archived);
     $this->assertDatabaseCount('customer_status_histories', 1);

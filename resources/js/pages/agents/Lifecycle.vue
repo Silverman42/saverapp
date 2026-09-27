@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
 import { computed, ref, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { dashboard } from '@/routes';
@@ -429,5 +430,6 @@ defineOptions({
                 </ol></CardContent
             ></Card
         >
+        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
     </div>
 </template>

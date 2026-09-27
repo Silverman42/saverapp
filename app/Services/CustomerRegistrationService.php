@@ -10,7 +10,6 @@ use App\Enums\DeliveryStatus;
 use App\Enums\Gender;
 use App\Enums\InvitationStatus;
 use App\Enums\UserType;
-use App\Jobs\DeliverCustomerInvitationJob;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CreationAttempt;
@@ -395,7 +394,7 @@ class CustomerRegistrationService
 
             // Safe post-commit queued delivery
             DB::afterCommit(function () use ($invitation, $plainToken): void {
-                DeliverCustomerInvitationJob::dispatch($invitation->id, $plainToken, 1);
+                app(InvitationDeliveryIssues::class)->dispatch($invitation->id, $plainToken, 1);
             });
 
             return [

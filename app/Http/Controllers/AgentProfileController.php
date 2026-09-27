@@ -180,8 +180,8 @@ class AgentProfileController extends Controller
                 'edit_message' => Gate::forUser($viewer)->allows('update', $agentProfile)
                     ? null
                     : 'Your current access does not allow editing this Agent profile.',
-                'can_reassign_customers' => false,
-                'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
+                'can_reassign_customers' => $viewer->user_type === UserType::Admin && $authorizationService->allows($viewer, AdminPermission::CustomersReassign),
+                'reassign_message' => 'Reassign individual Customers through their Customer profiles.',
                 'can_manage_lifecycle' => Gate::forUser($viewer)->allows('manage', $agentProfile),
                 'lifecycle_message' => Gate::forUser($viewer)->allows('manage', $agentProfile)
                     ? 'Manage Agent operational status.'

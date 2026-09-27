@@ -24,7 +24,7 @@ class EnsureActiveAccount
 
         if ($user) {
             $accessRevoked = (int) $request->session()->get('auth.lifecycle_access_version', 0) !== (int) $user->lifecycle_access_version;
-            if ($accessRevoked || in_array($user->account_state, [AccountState::Suspended, AccountState::Deactivated], true)) {
+            if ($accessRevoked || $user->recovery_pending || in_array($user->account_state, [AccountState::Suspended, AccountState::Deactivated], true)) {
                 $request->session()->forget(['two_factor_replacement_required', 'url.intended']);
                 Cookie::queue(app(ResumeCookieService::class)->clearResumeCookie());
                 Cookie::queue(Cookie::forget(AgentTrustedDeviceService::COOKIE_NAME));

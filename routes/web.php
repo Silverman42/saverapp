@@ -28,12 +28,15 @@ use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerLifecycleController;
 use App\Http\Controllers\CustomerPhotoController;
 use App\Http\Controllers\CustomerProfileController;
+use App\Http\Controllers\CustomerReassignmentController;
+use App\Http\Controllers\CustomerRecoveryController;
 use App\Http\Controllers\CustomerRegistrationController;
 use App\Http\Controllers\CustomerStatementController;
 use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\LedgerTransactionController;
+use App\Http\Controllers\ManagementDeliveryController;
 use App\Http\Controllers\NotificationInboxController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
@@ -56,7 +59,22 @@ Route::post('invitations/agent/{token}', [AgentActivationController::class, 'act
 Route::get('invitations/customer/{token}', [CustomerActivationController::class, 'show'])->name('invitations.customer.show');
 Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->name('invitations.customer.activate');
 
+Route::get('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activation'])->whereUuid('recovery')->name('customer-recovery.activation');
+Route::post('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('customer-recovery.activate');
+
 Route::middleware(['auth'])->group(function () {
+    Route::get('customer-recovery', [CustomerRecoveryController::class, 'index'])->name('customer-recovery.index');
+    Route::get('customers/{customer}/reassignment', [CustomerReassignmentController::class, 'edit'])->name('customers.reassignment.edit');
+    Route::post('customers/{customer}/reassignment/preview', [CustomerReassignmentController::class, 'preview'])->name('customers.reassignment.preview');
+    Route::post('customers/{customer}/reassignment', [CustomerReassignmentController::class, 'store'])->name('customers.reassignment.store');
+    Route::get('customers/{customer}/reassignment/operations/{attempt_reference}', [CustomerReassignmentController::class, 'operation'])->whereUuid('attempt_reference')->name('customers.reassignment.operation');
+    Route::get('customers/{customer}/recovery/review', [CustomerRecoveryController::class, 'show'])->middleware('fresh')->name('customers.recovery.review');
+    Route::get('customers/{customer}/recovery', [CustomerRecoveryController::class, 'show'])->name('customers.recovery.show');
+    Route::post('customers/{customer}/recovery', [CustomerRecoveryController::class, 'store'])->middleware('throttle:10,1')->name('customers.recovery.store');
+    Route::post('customers/{customer}/recovery/{recovery}/{action}', [CustomerRecoveryController::class, 'update'])->whereUuid('recovery')->whereIn('action', ['verify', 'approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1')->name('customers.recovery.update');
+    Route::get('customers/{customer}/recovery/operations/{attempt_reference}', [CustomerRecoveryController::class, 'operation'])->whereUuid('attempt_reference')->name('customers.recovery.operation');
+    Route::get('customers/{customer}/delivery', [ManagementDeliveryController::class, 'customer'])->middleware('throttle:60,1')->name('customers.delivery.index');
+    Route::get('agents/{agent}/delivery', [ManagementDeliveryController::class, 'agent'])->middleware('throttle:60,1')->name('agents.delivery.index');
     Route::get('notifications', [NotificationInboxController::class, 'index'])->name('notifications.index');
     Route::get('notifications/sync', [NotificationInboxController::class, 'sync'])->name('notifications.sync');
     Route::post('notifications/page-read', [NotificationInboxController::class, 'pageRead'])->name('notifications.page-read');
@@ -90,6 +108,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('customers/{customer}/name-corrections/{correction}/cancel', [ProfileIdentityController::class, 'cancelNameCorrection'])->name('customers.name-corrections.cancel');
     Route::get('customers/{customer}/ledger-balance', [LedgerTransactionController::class, 'balance'])->name('customers.ledger-balance');
     Route::get('customers/{customer}/statements/preview', [CustomerStatementController::class, 'preview'])->name('customers.statements.preview');
+    Route::get('customers/{customer}/access', [CustomerProfileController::class, 'access'])->name('customers.access');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
 

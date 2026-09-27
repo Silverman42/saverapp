@@ -194,6 +194,18 @@ class AuthenticationAbuseService
     /**
      * Clear password failure counters and cooldowns for a given identity.
      */
+    public function clearRecoveryActivationFailures(User $user, string $previousEmail): void
+    {
+        foreach (array_unique([IdentityNormalizer::normalizeEmail($previousEmail), $user->email_normalized]) as $email) {
+            Cache::forget("auth:password:failures:{$email}");
+            Cache::forget("auth:password:cooldown:{$email}");
+        }
+        foreach (['totp', 'recovery_code'] as $method) {
+            Cache::forget("auth:{$method}:failures:{$user->id}");
+            Cache::forget("auth:{$method}:cooldown:{$user->id}");
+        }
+    }
+
     public function clearPasswordFailures(string $emailNormalized, ?User $user = null): void
     {
         Cache::forget("auth:password:failures:{$emailNormalized}");

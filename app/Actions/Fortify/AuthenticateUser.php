@@ -38,6 +38,9 @@ class AuthenticateUser
             }
 
             $user = User::findByNormalizedEmail($rawEmail);
+            if ($user?->recovery_pending) {
+                return null;
+            }
 
             // Check if password authentication is currently restricted (AUTH-057, AUTH-060)
             if ($this->abuseService->isPasswordRestricted($rawEmail, $user, $request)) {
@@ -54,7 +57,7 @@ class AuthenticateUser
                 return null;
             }
 
-            if (config('hashing.rehash_on_login', true) && method_exists($provider, 'rehashPasswordIfRequired')) {
+            if (config('hashing.rehash_on_login', true)) {
                 $provider->rehashPasswordIfRequired($user, ['password' => $password]);
             }
 

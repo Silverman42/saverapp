@@ -11,11 +11,13 @@ use App\Models\User;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\CustomerNameCorrectionService;
+use App\Services\CustomerRecoveryService;
 use App\Services\FeeObligationService;
 use App\Services\LedgerTransactionReadService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -23,6 +25,20 @@ use Inertia\Response;
 
 class CustomerProfileController extends Controller
 {
+    public function access(Request $request, string $customer, ResourceScopeService $scope): JsonResponse
+    {
+        $profile = $scope->forCustomers($request->user())->where('customer_id', $customer)->firstOrFail();
+        Gate::authorize('view', $profile);
+        $context = $request->validate(['context' => ['sometimes', 'in:customer,reassignment,recovery']])['context'] ?? 'customer';
+        if ($context === 'reassignment') {
+            Gate::authorize('reassign', $profile);
+        } elseif ($context === 'recovery') {
+            app(CustomerRecoveryService::class)->authorizeView($request->user(), $profile);
+        }
+
+        return response()->json(['accessible' => true])->header('Cache-Control', 'no-store');
+    }
+
     /**
      * Display the specified customer profile.
      */
@@ -193,8 +209,9 @@ class CustomerProfileController extends Controller
                 'edit_message' => Gate::forUser($viewer)->allows('update', $customerProfile)
                     ? null
                     : 'Your current access does not allow editing this Customer profile.',
-                'can_reassign' => false,
-                'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
+                'can_reassign' => Gate::forUser($viewer)->allows('reassign', $customerProfile),
+                'can_recover' => ($viewer->user_type === UserType::Agent && Gate::forUser($viewer)->allows('managePlan', $customerProfile)) || ($viewer->user_type === UserType::Admin && $authorizationService->allows($viewer, AdminPermission::SecurityOperationsManage)),
+                'reassign_message' => 'Customer reassignment requires customers.reassign.',
                 'can_archive' => in_array($customerProfile->operational_status, [CustomerStatus::Active, CustomerStatus::Inactive], true)
                     && Gate::forUser($viewer)->allows('manageLifecycle', $customerProfile),
                 'archive_message' => 'Review archival checks from Manage status.',

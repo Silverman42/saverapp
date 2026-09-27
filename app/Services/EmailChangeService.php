@@ -36,7 +36,8 @@ class EmailChangeService
         try {
             app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $proposedEmail, $normalizedEmail): void {
                 $user = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
-                if ($user->account_state !== AccountState::Active || $user->email_verified_at === null) {
+                app(EmailReservationService::class)->assertAvailable($proposedEmail, $user->id);
+                if ($user->account_state !== AccountState::Active || $user->recovery_pending || $user->email_verified_at === null) {
                     throw ValidationException::withMessages(['email' => ['Email changes are available only for active, verified accounts.']]);
                 }
                 if (hash_equals($user->email_normalized, $normalizedEmail)) {
@@ -98,7 +99,7 @@ class EmailChangeService
             }
 
             $user = User::query()->whereKey($pending->user_id)->lockForUpdate()->firstOrFail();
-            if ($user->account_state !== AccountState::Active || $user->email_verified_at === null
+            if ($user->account_state !== AccountState::Active || $user->recovery_pending || $user->email_verified_at === null
                 || ! hash_equals($user->email_normalized, IdentityNormalizer::normalizeEmail($pending->current_email))) {
                 $pending->delete();
                 $failure = 'token';

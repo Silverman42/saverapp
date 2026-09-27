@@ -572,7 +572,7 @@ test('DeliverAgentInvitationJob records delivery failure without deleting regist
     $user = User::factory()->agent()->invited()->create(['email' => 'fail@saverapp.test']);
     $agentProfile = AgentProfile::factory()->create(['user_id' => $user->id]);
 
-    Notification::shouldReceive('send')
+    Notification::shouldReceive('sendNow')
         ->once()
         ->andThrow(new RuntimeException('SMTP connection timeout'));
 
@@ -599,8 +599,8 @@ test('DeliverAgentInvitationJob records delivery failure without deleting regist
 
     $invitation->refresh();
     expect($invitation->status)->toBe(InvitationStatus::DeliveryFailed)
-        ->and($invitation->delivery_status)->toBe(DeliveryStatus::Failed)
-        ->and($invitation->delivery_error)->toContain('RuntimeException');
+        ->and($invitation->delivery_status)->toBe(DeliveryStatus::Uncertain)
+        ->and($invitation->delivery_error)->toBe('Email acceptance could not be confirmed.');
 
     // Agent profile and User must be preserved!
     expect(User::where('id', $user->id)->exists())->toBeTrue();

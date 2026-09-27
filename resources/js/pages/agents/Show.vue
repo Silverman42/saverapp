@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
@@ -1198,5 +1199,6 @@ const resetAssignmentFilters = (): void => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
     </div>
 </template>

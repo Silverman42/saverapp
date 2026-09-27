@@ -42,6 +42,7 @@ class ProfileManagementService
         });
     }
 
+    /** @param array<string, mixed> $input */
     private function updateCustomerAllowed(User $actor, CustomerProfile $profile, array $input, ?UploadedFile $photo = null): CustomerProfile
     {
         $isCustomer = $actor->user_type === UserType::Customer && $actor->id === $profile->user_id;
@@ -176,6 +177,7 @@ class ProfileManagementService
         });
     }
 
+    /** @param array<string, mixed> $input */
     private function updateAgentAllowed(User $actor, AgentProfile $profile, array $input, ?UploadedFile $photo = null): AgentProfile
     {
         $isAgent = $actor->user_type === UserType::Agent && $actor->id === $profile->user_id;
@@ -466,7 +468,7 @@ class ProfileManagementService
         }
 
         $subjectUser = $profile->user;
-        if ($actor->user_type !== UserType::Customer && $subjectUser !== null) {
+        if ($actor->user_type !== UserType::Customer && $subjectUser !== null && $subjectUser->account_state === AccountState::Active) {
             $this->createNotificationIntent(
                 history: $history,
                 recipient: $subjectUser,
@@ -530,13 +532,15 @@ class ProfileManagementService
 
         if ($channel === 'database') {
             app(NotificationPipeline::class)->capture('profile', $intent->id, false);
+        } else {
+            app(ManagementMailDelivery::class)->register('profile', $intent->id);
         }
 
         DB::afterCommit(static function () use ($intent): void {
             if ($intent->channel === 'database') {
                 app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit());
             } else {
-                DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit();
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverProfileNotificationIntent::dispatch($intent->id)->afterCommit());
             }
         });
     }

@@ -244,13 +244,15 @@ class CustomerStatusManagementService
 
         if ($channel === 'database') {
             app(NotificationPipeline::class)->capture('customer_status', $intent->id, false);
+        } else {
+            app(ManagementMailDelivery::class)->register('customer_status', $intent->id);
         }
 
         DB::afterCommit(static function () use ($intent): void {
             if ($intent->channel === 'database') {
                 app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit());
             } else {
-                DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverCustomerStatusNotificationIntent::dispatch($intent->id)->afterCommit());
             }
         });
     }

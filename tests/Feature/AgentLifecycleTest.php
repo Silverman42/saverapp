@@ -186,7 +186,7 @@ test('completion fails closed on missing cash mapping recovery handover and queu
     $gates = app(AgentOffboardingEligibility::class)->preview($admin, $agent->fresh(), $agent->offboardingCases()->first());
     $checks = collect($gates['checks'])->keyBy('key');
     expect($checks['cash']['status'])->toBe('unavailable');
-    expect($checks['recovery_invitations']['status'])->toBe('unavailable');
+    expect($checks['recovery_invitations']['status'])->toBe('passed');
     expect($checks['queued_work']['status'])->toBe('unavailable');
     expect(fn () => $service->execute($admin, $agent, 'complete-offboarding', $this->agentLifecyclePayload($agent), $request))->toThrow(ValidationException::class);
     expect($agent->user->fresh()->account_state)->toBe(AccountState::Suspended);
@@ -292,6 +292,8 @@ test('lifecycle notices mask internal reasons and delivery rechecks scope and ma
     Queue::fake([DeliverAgentLifecycleNotificationIntent::class, MaterializeNotificationIntent::class]);
     Notification::fake();
     [$admin, $agent] = $this->createAgentLifecycleFixture();
+    $recipientAdmin = User::factory()->admin()->withTwoFactor()->create();
+    $recipientAdmin->givePermissionTo(AdminPermission::AgentsManage);
     $customer = CustomerProfile::factory()->create();
     CustomerAssignment::factory()->create(['agent_profile_id' => $agent->id, 'customer_profile_id' => $customer->id]);
     app(AgentLifecycleService::class)->execute($admin, $agent, 'suspend', $this->agentLifecyclePayload($agent), $this->agentLifecycleRequest($admin));
@@ -303,7 +305,7 @@ test('lifecycle notices mask internal reasons and delivery rechecks scope and ma
     Notification::assertSentTo($agent->user, AgentLifecycleNotification::class);
     Notification::assertCount(1);
     $adminIntent = $intents->where('audience_type', 'managing_admin')->first();
-    $admin->revokePermissionTo(AdminPermission::AgentsManage);
+    $recipientAdmin->revokePermissionTo(AdminPermission::AgentsManage);
     (new DeliverAgentLifecycleNotificationIntent($adminIntent->id))->handle(app(AuthorizationService::class));
     expect($adminIntent->fresh()->status)->toBe('suppressed');
     $customerIntent = $intents->where('audience_type', 'assigned_customer')->where('channel', 'mail')->first();
@@ -390,24 +392,24 @@ test('authoritative empty financial inventory passes while ambiguous reconciliat
     expect($read->agentOffboardingStatus($agent))->toBe('unavailable');
 });
 
-test('notification transport retries preserve lifecycle history and deduplicate successful redelivery', function (): void {
+test('uncertain notification transport preserves lifecycle history and never blindly resends', function (): void {
     Queue::fake([DeliverAgentLifecycleNotificationIntent::class, MaterializeNotificationIntent::class]);
     [$admin, $agent] = $this->createAgentLifecycleFixture();
     app(AgentLifecycleService::class)->execute($admin, $agent, 'suspend', $this->agentLifecyclePayload($agent), $this->agentLifecycleRequest($admin));
     $intent = AgentLifecycleNotificationIntent::query()->where('audience_type', 'subject_agent')->where('channel', 'mail')->firstOrFail();
     Notification::shouldReceive('sendNow')->once()->andThrow(new RuntimeException('Transport unavailable'));
     $job = new DeliverAgentLifecycleNotificationIntent($intent->id);
-    expect(fn () => $job->handle(app(AuthorizationService::class)))->toThrow(RuntimeException::class);
-    expect($intent->fresh()->status)->toBe('pending');
+    $job->handle(app(AuthorizationService::class));
+    expect($intent->fresh()->status)->toBe('unknown');
     expect($agent->user->fresh()->account_state)->toBe(AccountState::Suspended);
     $this->assertDatabaseCount('agent_lifecycle_histories', 1);
     $this->assertDatabaseHas('audit_events', ['event_type' => 'agent.suspend']);
     Notification::fake();
     $job->handle(app(AuthorizationService::class));
     $job->handle(app(AuthorizationService::class));
-    Notification::assertSentTo($agent->user, AgentLifecycleNotification::class);
-    Notification::assertCount(1);
-    expect($intent->fresh()->status)->toBe('delivered');
+    Notification::assertNothingSent();
+    expect($intent->fresh()->status)->toBe('unknown');
+    $this->assertDatabaseCount('management_delivery_attempts', 1);
 });
 
 test('authoritative security closure permits restoration but never clears a temporary authentication lock', function (): void {

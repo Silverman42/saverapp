@@ -320,6 +320,10 @@ class ReversalService
             $query->lockForUpdate();
         }
         foreach ($query->get() as $request) {
+            if (in_array($request->state, ['pending_review'], true) && app(CustomerReassignmentService::class)
+                ->hasVerifiedHandover($request->customerProfile, $agent->id, $forUpdate)) {
+                continue;
+            }
             if (! in_array($request->state, ['rejected', 'cancelled'], true)
                 || $request->reviewed_at === null || $request->live_original_posting_group_id !== null
                 || ! $request->events()->where('event_type', $request->state)->exists()) {

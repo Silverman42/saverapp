@@ -14,6 +14,7 @@ use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Notifications\AgentLifecycleNotification;
 use App\Services\AuthorizationService;
+use App\Services\ManagementMailDelivery;
 use App\Services\NotificationPipeline;
 use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
@@ -23,6 +24,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Throwable;
 
@@ -76,14 +78,9 @@ class DeliverAgentLifecycleNotificationIntent implements ShouldQueue
             return;
         }
 
-        if ($intent->channel === 'database' && $recipient->notifications()->whereKey($intent->notification_id)->exists()) {
-            $intent->forceFill(['status' => 'delivered', 'delivered_at' => now()])->save();
-
-            return;
-        }
-
-        Notification::sendNow($recipient, new AgentLifecycleNotification($intent->notification_id, $intent->payload, $intent->channel), [$intent->channel]);
-        $intent->forceFill(['status' => 'delivered', 'delivered_at' => now(), 'failure_reason' => null])->save();
+        app(ManagementMailDelivery::class)->deliver('agent_lifecycle', $intent->id,
+            fn (): bool => $this->recipientIsStillAuthorized($intent, $recipient->fresh(), $authorizationService),
+            fn () => Notification::sendNow($recipient, new AgentLifecycleNotification($intent->notification_id, $intent->payload, $intent->channel), [$intent->channel]));
     }
 
     public function failed(?Throwable $exception): void
@@ -129,7 +126,7 @@ class DeliverAgentLifecycleNotificationIntent implements ShouldQueue
         $customer = CustomerProfile::query()->find($intent->customer_profile_id);
 
         return $customer !== null
-            && ($agent->operational_status === AgentStatus::Inactive || in_array($agent->user->account_state, [AccountState::Suspended, AccountState::Deactivated], true))
+            && (DB::table('agent_lifecycle_histories')->where('id', $intent->agent_lifecycle_history_id)->value('event_type') === 'agent.restore' ? ($agent->operational_status === AgentStatus::Active && $agent->user->account_state === AccountState::Active) : ($agent->operational_status === AgentStatus::Inactive || in_array($agent->user->account_state, [AccountState::Suspended, AccountState::Deactivated], true)))
             && $customer->user_id === $recipient->id
             && $recipient->user_type === UserType::Customer
             && $customer->operational_status !== CustomerStatus::Archived

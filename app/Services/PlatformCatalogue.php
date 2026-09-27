@@ -6,6 +6,7 @@ use App\Jobs\DeliverAgentInvitationJob;
 use App\Jobs\DeliverAgentLifecycleNotificationIntent;
 use App\Jobs\DeliverAgentStatusNotificationIntent;
 use App\Jobs\DeliverCollectionNotificationIntent;
+use App\Jobs\DeliverCustomerHandoverNotice;
 use App\Jobs\DeliverCustomerInvitationJob;
 use App\Jobs\DeliverCustomerStatusNotificationIntent;
 use App\Jobs\DeliverPlanNotificationIntent;
@@ -28,6 +29,7 @@ class PlatformCatalogue
 
     /** @var array<class-string, string> */
     public const LOCAL_INTENT_JOBS = [
+        DeliverCustomerHandoverNotice::class => 'handover',
         DeliverAgentStatusNotificationIntent::class => 'agent_status',
         DeliverAgentLifecycleNotificationIntent::class => 'agent_lifecycle',
         DeliverCollectionNotificationIntent::class => 'collection',
@@ -67,7 +69,7 @@ class PlatformCatalogue
         'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
         'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'CustomerLifecycleService' => 'financial', 'ThriftPlanService' => 'financial',
         'AgentRegistrationService' => 'mutation', 'AgentStatusManagementService' => 'mutation', 'RegistrationFeeService' => 'mutation',
-        'AgentLifecycleService' => 'mutation',
+        'EmailReservationService' => 'mutation', 'CustomerHandoverNotifications' => 'mutation', 'AgentLifecycleService' => 'mutation', 'CustomerReassignmentService' => 'mutation', 'CustomerRecoveryService' => 'mutation',
         'ProfileManagementService' => 'mutation', 'PhoneChangeService' => 'mutation', 'EmailChangeService' => 'mutation',
         'PermissionManagementService' => 'mutation', 'InvitationManagementService' => 'mutation', 'CustomerInvitationManagementService' => 'mutation',
         'CustomerNameCorrectionService' => 'mutation', 'NotificationInbox' => 'mutation', 'SecurityCaseService' => 'mutation', 'BusinessSettings' => 'mutation',
@@ -76,6 +78,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const COMMANDS = [
+        'customers:expire-recovery' => 'mutation',
         'platform:replay' => 'mutation',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
@@ -90,6 +93,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const HTTP_ACTIONS = [
+        'customers.reassignment.preview' => 'read', 'customers.reassignment.store' => 'mutation', 'customers.recovery.store' => 'mutation', 'customers.recovery.update' => 'mutation', 'customer-recovery.activate' => 'mutation',
         'admin.access.permissions.update' => 'mutation',
         'admin.business-settings.drafts.discard' => 'mutation',
         'admin.business-settings.drafts.preview' => 'mutation',
@@ -156,6 +160,7 @@ class PlatformCatalogue
         'invitations.customer.activate' => 'mutation',
         'login.store' => 'mutation',
         'logout' => 'mutation',
+        'customers.delivery.index' => 'read', 'agents.delivery.index' => 'read',
         'notifications.page-read' => 'mutation',
         'notifications.read' => 'mutation',
         'password.confirm.store' => 'mutation',
@@ -221,6 +226,7 @@ class PlatformCatalogue
             DeliverAgentInvitationJob::class,
             DeliverAgentStatusNotificationIntent::class,
             DeliverCollectionNotificationIntent::class,
+            DeliverCustomerHandoverNotice::class,
             DeliverCustomerInvitationJob::class,
             DeliverCustomerStatusNotificationIntent::class,
             DeliverPlanNotificationIntent::class,

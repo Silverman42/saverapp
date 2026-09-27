@@ -10,6 +10,7 @@ use App\Models\CustomerStatusNotificationIntent;
 use App\Models\User;
 use App\Notifications\CustomerStatusNotification;
 use App\Services\AgentEligibilityService;
+use App\Services\ManagementMailDelivery;
 use App\Services\NotificationPipeline;
 use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
@@ -79,23 +80,9 @@ class DeliverCustomerStatusNotificationIntent implements ShouldQueue
             return;
         }
 
-        if ($intent->channel === 'database' && $recipient->notifications()->whereKey($intent->notification_id)->exists()) {
-            $intent->forceFill(['status' => 'delivered', 'delivered_at' => now()])->save();
-
-            return;
-        }
-
-        Notification::sendNow(
-            $recipient,
-            new CustomerStatusNotification($intent->notification_id, $intent->payload, $intent->channel),
-            [$intent->channel],
-        );
-
-        $intent->forceFill([
-            'status' => 'delivered',
-            'delivered_at' => now(),
-            'failure_reason' => null,
-        ])->save();
+        app(ManagementMailDelivery::class)->deliver('customer_status', $intent->id,
+            fn (): bool => $this->recipientIsStillAuthorized($intent, $recipient->fresh(), $eligibilityService),
+            fn () => Notification::sendNow($recipient, new CustomerStatusNotification($intent->notification_id, $intent->payload, $intent->channel), [$intent->channel]));
     }
 
     public function failed(?Throwable $exception): void

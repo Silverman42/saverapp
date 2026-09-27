@@ -180,7 +180,9 @@ class AgentLifecycleService extends AgentStatusManagementService
                         'from_version' => $beforeVersion, 'to_version' => $profile->version, 'reason' => $input['reason'],
                         'agent_facing_explanation' => $input['agent_explanation'], 'facts' => $facts, 'created_at' => now()])->save();
                     $historyId = $history->id;
-                    $this->lifecycleNotices($profile, $history, in_array($action, ['suspend', 'start-offboarding'], true));
+                    $wasAvailable = $beforeStatus === AgentStatus::Active && $beforeAccount === AccountState::Active;
+                    $isAvailable = $profile->operational_status === AgentStatus::Active && $user->account_state === AccountState::Active;
+                    $this->lifecycleNotices($profile, $history, $wasAvailable && ! $isAvailable, ! $wasAvailable && $isAvailable);
                 }
                 $result = ['attempt_reference' => $input['attempt_reference'], 'action' => $action, 'version' => $profile->version,
                     'account_state' => $user->account_state->value, 'operational_status' => $profile->operational_status->value,
@@ -230,31 +232,44 @@ class AgentLifecycleService extends AgentStatusManagementService
         }
     }
 
-    private function lifecycleNotices(AgentProfile $agent, AgentLifecycleHistory $history, bool $serviceInterrupted): void
+    private function lifecycleNotices(AgentProfile $agent, AgentLifecycleHistory $history, bool $serviceInterrupted, bool $serviceRestored): void
     {
         $this->lifecycleIntent($agent, $history, $agent->user, 'subject_agent', 'mail', 'Your Agent account was updated',
             'Account access is '.$agent->user->account_state->value.'. '.$history->agent_facing_explanation);
         $this->lifecycleIntent($agent, $history, $agent->user, 'subject_agent', 'database', 'Agent account updated',
             'Account access and operational readiness were reviewed. '.$history->agent_facing_explanation);
         User::query()->where('user_type', UserType::Admin)->where('account_state', AccountState::Active)->orderBy('id')->each(function (User $admin) use ($agent, $history): void {
-            if ($this->authorizationService->allows($admin, AdminPermission::AgentsManage)) {
+            if ($admin->id !== $history->actor_user_id && $this->authorizationService->allows($admin, AdminPermission::AgentsManage)) {
                 $this->lifecycleIntent($agent, $history, $admin, 'managing_admin', 'database', 'Agent lifecycle updated', 'An Agent lifecycle action was recorded. Review the management workspace.');
             }
         });
-        if (! $serviceInterrupted) {
+        if (! $serviceInterrupted && ! $serviceRestored) {
             return;
+        }
+        if ($serviceInterrupted && CustomerAssignment::query()->where('agent_profile_id', $agent->id)->where('is_current', 1)
+            ->whereHas('customerProfile', fn ($query) => $query->where('operational_status', '!=', CustomerStatus::Archived->value))->exists()) {
+            User::query()->where('user_type', UserType::Admin)->where('account_state', AccountState::Active)->orderBy('id')
+                ->each(function (User $admin) use ($agent, $history): void {
+                    if ($admin->id !== $history->actor_user_id && $this->authorizationService->allows($admin, AdminPermission::CustomersReassign)) {
+                        $this->lifecycleIntent($agent, $history, $admin, 'service_manager', 'database', 'Customer service interruption',
+                            'An assigned Agent is unavailable. Review affected Customers and reassignment options.');
+                    }
+                });
         }
         $business = BusinessProfile::current();
         $contact = $business->support_email ?: $business->support_phone;
         $message = 'Your assigned Agent is temporarily unavailable. Your Customer status and savings are unchanged. '.($contact ? 'For help, contact '.$contact.'.' : 'Contact the business office for help.');
+        if ($serviceRestored) {
+            $message = 'Your service contact is available again. Your Customer status and savings are unchanged.';
+        }
         CustomerAssignment::query()->where('agent_profile_id', $agent->id)->where('is_current', 1)->with('customerProfile.user')->orderBy('id')
-            ->each(function (CustomerAssignment $assignment) use ($agent, $history, $message): void {
+            ->each(function (CustomerAssignment $assignment) use ($agent, $history, $message, $serviceRestored): void {
                 $customer = $assignment->customerProfile;
                 if ($customer->operational_status === CustomerStatus::Archived) {
                     return;
                 }
                 foreach (['mail', 'database'] as $channel) {
-                    $this->lifecycleIntent($agent, $history, $customer->user, 'assigned_customer', $channel, 'Service contact unavailable', $message, $customer->id);
+                    $this->lifecycleIntent($agent, $history, $customer->user, 'assigned_customer', $channel, $serviceRestored ? 'Service contact restored' : 'Service contact unavailable', $message, $customer->id);
                 }
             });
     }
@@ -270,12 +285,9 @@ class AgentLifecycleService extends AgentStatusManagementService
         if ($channel === 'database') {
             app(NotificationPipeline::class)->capture('agent_lifecycle', $intent->id);
         } else {
+            app(ManagementMailDelivery::class)->register('agent_lifecycle', $intent->id);
             DB::afterCommit(static function () use ($intent): void {
-                try {
-                    DeliverAgentLifecycleNotificationIntent::dispatch($intent->id)->afterCommit();
-                } catch (\Throwable) {
-                    AgentLifecycleNotificationIntent::query()->whereKey($intent->id)->update(['status' => 'failed', 'failure_reason' => 'Queue dispatch unavailable.']);
-                }
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverAgentLifecycleNotificationIntent::dispatch($intent->id)->afterCommit());
             });
         }
     }

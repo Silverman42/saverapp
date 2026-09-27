@@ -13,6 +13,7 @@ use App\Support\PlatformBlocked;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -319,6 +320,10 @@ class CustomerNameCorrectionService
             );
 
             $this->queueCurrentAgentNameNotice($history, $lockedProfile, $context->actor);
+            $this->queueProposalOutcomeNotices($history, $lockedProfile, $correction, $context->actor);
+            $this->profileManagementService->createNotificationIntent($history, $customer, 'subject_customer', 'mail',
+                'customer_name_changed_security_notice', 'customer', $lockedProfile->id,
+                ['title' => 'Your Customer profile name changed', 'message' => 'Your profile name was changed. If you did not make this change, use the account recovery options.', 'fields' => ['name']]);
 
             return $correction;
         });
@@ -444,26 +449,45 @@ class CustomerNameCorrectionService
         );
     }
 
-    protected function recordProposalOutcome(
+    public function recordProposalOutcome(
         CustomerProfile $profile,
         User $actor,
         CustomerNameCorrection $correction,
         string $eventType,
+        ?string $requiredPermission = null,
     ): void {
-        AuditEvent::record(
-            eventType: $eventType,
-            targetType: CustomerProfile::class,
-            targetId: $profile->id,
-            targetReference: $profile->customer_id,
-            payload: [
-                'correction_id' => $correction->id,
-                'status' => $correction->status,
-                'profile_version' => $profile->version,
-            ],
-            actor: $actor,
-
-            context: ['executor' => self::class, 'required_permission' => $actor->user_type === UserType::Admin ? 'customers.manage' : null]
+        $audit = AuditEvent::record(
+            eventType: $eventType, targetType: CustomerProfile::class, targetId: $profile->id, targetReference: $profile->customer_id,
+            payload: ['correction_id' => $correction->id, 'status' => $correction->status, 'profile_version' => $profile->version],
+            actor: $actor, context: ['executor' => self::class, 'required_permission' => $requiredPermission ?? ($actor->user_type === UserType::Admin ? 'customers.manage' : null)]
         );
+        $history = ProfileChangeHistory::create([
+            'operation_id' => (string) Str::uuid(), 'event_type' => $eventType,
+            'target_type' => CustomerProfile::class, 'target_id' => $profile->id, 'subject_user_id' => $profile->user_id,
+            'actor_id' => $actor->id, 'actor_type' => $actor->user_type->value, 'audit_event_id' => $audit->id,
+            'changed_fields' => ['name_correction'], 'before_values' => ['proposal_status' => 'pending'],
+            'after_values' => ['proposal_status' => $correction->status], 'reason' => null,
+            'from_version' => $profile->version, 'to_version' => $profile->version, 'created_at' => now(),
+        ]);
+        $this->queueProposalOutcomeNotices($history, $profile, $correction, $actor);
+    }
+
+    protected function queueProposalOutcomeNotices(ProfileChangeHistory $history, CustomerProfile $profile, CustomerNameCorrection $correction, User $actor): void
+    {
+        $recipients = [];
+        if ($profile->user_id !== $actor->id && $profile->user->account_state === AccountState::Active) {
+            $recipients[] = [$profile->user, 'subject_customer'];
+        }
+        $requester = User::query()->whereKey($correction->requested_by_user_id)->first();
+        if ($requester !== null && $requester->id !== $actor->id && $this->requesterCanStillManage($correction, $profile)
+            && ! ($correction->status === 'accepted' && $requester->user_type === UserType::Agent)) {
+            $recipients[] = [$requester, $requester->user_type === UserType::Admin ? 'customer_manager' : 'current_agent'];
+        }
+        foreach ($recipients as [$recipient, $audience]) {
+            $this->profileManagementService->createNotificationIntent($history, $recipient, $audience, 'database',
+                'name_proposal_outcome', 'customer', $profile->id,
+                ['title' => 'Name correction updated', 'message' => 'The name correction is '.$correction->status.'. Review permitted details in the current profile.', 'fields' => ['name']]);
+        }
     }
 
     protected function queueCurrentAgentNameNotice(ProfileChangeHistory $history, CustomerProfile $profile, User $actor): void

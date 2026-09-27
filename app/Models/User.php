@@ -7,6 +7,7 @@ use App\Enums\AccountState;
 use App\Enums\AuthenticatorState;
 use App\Enums\UserType;
 use App\Notifications\Auth\ResetPasswordNotification;
+use App\Services\EmailReservationService;
 use App\Services\RoleSynchronizationService;
 use App\Support\IdentityNormalizer;
 use Carbon\CarbonInterface;
@@ -92,6 +93,18 @@ class User extends Authenticatable
     /**
      * The "booted" method of the model.
      */
+    /** @param array<string, mixed> $options */
+    public function save(array $options = []): bool
+    {
+        return DB::transaction(function () use ($options): bool {
+            if ($this->isDirty('email') && filled($this->email)) {
+                app(EmailReservationService::class)->assertAvailable($this->email, $this->exists ? $this->id : null);
+            }
+
+            return parent::save($options);
+        });
+    }
+
     protected static function booted(): void
     {
         static::created(function (User $user): void {
@@ -237,7 +250,7 @@ class User extends Authenticatable
     {
         $canSign = $this->account_state->canSignIn() || ($allowSetupOnly && $this->account_state->allowsSetupOnly());
 
-        if (! $canSign) {
+        if (! $canSign || $this->recovery_pending) {
             return false;
         }
 
@@ -499,6 +512,7 @@ class User extends Authenticatable
             'account_state' => AccountState::class,
             'permission_version' => 'integer',
             'lifecycle_access_version' => 'integer',
+            'recovery_pending' => 'boolean',
             'authenticator_state' => AuthenticatorState::class,
             'locked_until' => 'datetime',
         ];

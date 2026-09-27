@@ -94,7 +94,7 @@ class AgentStatusManagementService
                 ],
                 actor: $lockedActor,
 
-                context: ['executor' => self::class, 'required_permission' => $lockedActor?->user_type === UserType::Admin ? 'agents.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $lockedActor->user_type === UserType::Admin ? 'agents.manage' : null]
             );
             $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
 
@@ -143,17 +143,8 @@ class AgentStatusManagementService
                 'resolved_at' => now(),
             ])->save();
 
-            $customer = CustomerProfile::query()->find($correction->customer_profile_id);
-            AuditEvent::record(
-                eventType: 'customer.name_correction_invalidated',
-                targetType: CustomerProfile::class,
-                targetId: $customer?->id,
-                targetReference: $customer?->customer_id,
-                payload: ['correction_id' => $correction->id, 'status' => 'invalidated'],
-                actor: $actor,
-
-                context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'agents.manage' : null]
-            );
+            $customer = CustomerProfile::query()->findOrFail($correction->customer_profile_id);
+            app(CustomerNameCorrectionService::class)->recordProposalOutcome($customer, $actor, $correction, 'customer.name_correction_invalidated', 'agents.manage');
         }
     }
 
@@ -177,7 +168,7 @@ class AgentStatusManagementService
 
         User::query()->where('user_type', UserType::Admin)->where('account_state', AccountState::Active)
             ->orderBy('id')->each(function (User $admin) use ($agent, $history, $statusLabel, $effectiveAt): void {
-                if ($this->authorizationService->allows($admin, AdminPermission::AgentsManage)) {
+                if ($admin->id !== $history->changed_by_user_id && $this->authorizationService->allows($admin, AdminPermission::AgentsManage)) {
                     $this->createNotificationIntent($history, $agent, $admin, 'managing_admin', 'database', 'agent_status_changed', [
                         'title' => 'Agent operational status changed',
                         'message' => 'An Agent operational status changed to '.$statusLabel.'.',
@@ -188,16 +179,30 @@ class AgentStatusManagementService
                 }
             });
 
-        if ($targetStatus !== AgentStatus::Inactive) {
+        if ($agentUser->account_state !== AccountState::Active) {
             return;
+        }
+
+        if ($targetStatus === AgentStatus::Inactive && CustomerAssignment::query()->where('agent_profile_id', $agent->id)->where('is_current', 1)
+            ->whereHas('customerProfile', fn ($query) => $query->where('operational_status', '!=', CustomerStatus::Archived->value))->exists()) {
+            User::query()->where('user_type', UserType::Admin)->where('account_state', AccountState::Active)->orderBy('id')
+                ->each(function (User $admin) use ($agent, $history, $effectiveAt): void {
+                    if ($admin->id !== $history->changed_by_user_id && $this->authorizationService->allows($admin, AdminPermission::CustomersReassign)) {
+                        $this->createNotificationIntent($history, $agent, $admin, 'service_manager', 'database', 'service_interruption', [
+                            'title' => 'Customer service interruption', 'message' => 'An assigned Agent is unavailable.',
+                            'effective_at' => $effectiveAt, 'url' => route('customers.index'),
+                        ]);
+                    }
+                });
         }
 
         $business = BusinessProfile::query()->first();
         $contact = $business?->support_email ?: $business?->support_phone;
+        $restored = $targetStatus === AgentStatus::Active;
         $nextStep = $contact ? 'For help, contact '.$contact.'.' : 'For help, contact the business office.';
         CustomerAssignment::query()->where('agent_profile_id', $agent->id)->where('is_current', 1)
             ->with('customerProfile.user')->orderBy('id')
-            ->each(function (CustomerAssignment $assignment) use ($agent, $history, $effectiveAt, $nextStep): void {
+            ->each(function (CustomerAssignment $assignment) use ($agent, $history, $effectiveAt, $nextStep, $restored): void {
                 $customer = $assignment->customerProfile;
                 $recipient = $customer?->user;
                 if ($customer === null || $customer->operational_status === CustomerStatus::Archived || $recipient === null) {
@@ -205,14 +210,14 @@ class AgentStatusManagementService
                 }
 
                 $payload = [
-                    'title' => 'Your Customer service contact is temporarily unavailable',
-                    'message' => 'Your assigned Agent is temporarily unavailable. Your Customer status and existing savings are unchanged. '.$nextStep,
+                    'title' => $restored ? 'Your service contact is available again' : 'Your Customer service contact is temporarily unavailable',
+                    'message' => $restored ? 'Your service contact is available again. Your Customer status and savings are unchanged.' : 'Your assigned Agent is temporarily unavailable. Your Customer status and existing savings are unchanged. '.$nextStep,
                     'status' => 'Agent unavailable',
                     'effective_at' => $effectiveAt,
                     'url' => route('customers.show', $customer->customer_id),
                 ];
-                $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'mail', 'agent_unavailable', $payload, $customer);
-                $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'database', 'agent_unavailable', $payload, $customer);
+                $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'mail', $restored ? 'agent_available' : 'agent_unavailable', $payload, $customer);
+                $this->createNotificationIntent($history, $agent, $recipient, 'assigned_customer', 'database', $restored ? 'agent_available' : 'agent_unavailable', $payload, $customer);
             });
     }
 
@@ -242,13 +247,15 @@ class AgentStatusManagementService
 
         if ($channel === 'database') {
             app(NotificationPipeline::class)->capture('agent_status', $intent->id, false);
+        } else {
+            app(ManagementMailDelivery::class)->register('agent_status', $intent->id);
         }
 
         DB::afterCommit(static function () use ($intent): void {
             if ($intent->channel === 'database') {
                 app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit());
             } else {
-                DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit();
+                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverAgentStatusNotificationIntent::dispatch($intent->id)->afterCommit());
             }
         });
     }

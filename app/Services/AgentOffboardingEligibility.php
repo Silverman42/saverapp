@@ -11,8 +11,10 @@ use App\Models\AgentOffboardingCase;
 use App\Models\AgentProfile;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
+use App\Models\CustomerRecovery;
 use App\Models\User;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class AgentOffboardingEligibility
@@ -42,8 +44,8 @@ class AgentOffboardingEligibility
                 'Cash liabilities and reconciliation require verified owning-module settlement.', AdminPermission::ReconciliationManage],
             'financial_requests' => ['Pending financial responsibilities', fn (): string => $this->financialStatus($agent, $forUpdate),
                 'Requests must be resolved or have an authoritative handover; unsupported transfers remain unavailable.', null],
-            'recovery_invitations' => ['Customer recovery and invitations', fn (): string => 'unavailable',
-                'The authoritative Customer recovery and handover contract is not yet implemented (CAM-T12).', AdminPermission::SecurityOperationsManage],
+            'recovery_invitations' => ['Customer recovery and invitations', fn (): string => $this->recoveryContinuity($agent, $forUpdate),
+                'Recovery and invitation contact responsibility must follow a verified current assignment.', AdminPermission::SecurityOperationsManage],
             'obligations' => ['Agent security and business obligations', fn (): string => $this->security->agentLifecycleStatus($agent->user, $forUpdate) === 'blocked' ? 'blocked' : 'unavailable',
                 'Security cases require authorized resolution. The complete Agent business-obligation inventory is not yet available.', AdminPermission::SecurityOperationsManage],
             'queued_work' => ['Queued Customer work', fn (): string => 'unavailable',
@@ -109,6 +111,24 @@ class AgentOffboardingEligibility
             }
             $profile->setRelation('user', $user->first());
             if (! $this->eligibility->evaluate($profile, AgentEligibilityCapability::ReceiveAssignment)->isEligible()) {
+                return 'blocked';
+            }
+        }
+
+        return 'passed';
+    }
+
+    private function recoveryContinuity(AgentProfile $agent, bool $forUpdate): string
+    {
+        $ids = CustomerAssignment::query()->where('agent_profile_id', $agent->id)->distinct()->pluck('customer_profile_id');
+        foreach ($ids as $id) {
+            $customer = CustomerProfile::query()->whereKey($id)->when($forUpdate, fn ($q) => $q->lockForUpdate())->first();
+            if ($customer === null) {
+                return 'unavailable';
+            }
+            $pending = CustomerRecovery::query()->where('customer_profile_id', $id)->whereNotNull('open_customer_id')->exists()
+                || DB::table('invitations')->where('user_id', $customer->user_id)->whereIn('status', ['pending_delivery', 'sent', 'opened', 'delivery_failed'])->exists();
+            if ($pending && ! app(CustomerReassignmentService::class)->hasVerifiedHandover($customer, $agent->id, $forUpdate)) {
                 return 'blocked';
             }
         }

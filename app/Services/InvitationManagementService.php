@@ -7,7 +7,6 @@ use App\Enums\AdminPermission;
 use App\Enums\DeliveryStatus;
 use App\Enums\InvitationStatus;
 use App\Enums\UserType;
-use App\Jobs\DeliverAgentInvitationJob;
 use App\Models\AgentProfile;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
@@ -134,7 +133,7 @@ class InvitationManagementService
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
-                DeliverAgentInvitationJob::dispatch($newInvitation->id, $plainToken, $generation);
+                app(InvitationDeliveryIssues::class)->dispatch($newInvitation->id, $plainToken, $generation);
             });
 
             return ['invitation' => $newInvitation];
@@ -242,7 +241,7 @@ class InvitationManagementService
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
-                DeliverAgentInvitationJob::dispatch($newInvitation->id, $plainToken, $generation);
+                app(InvitationDeliveryIssues::class)->dispatch($newInvitation->id, $plainToken, $generation);
             });
 
             return ['invitation' => $newInvitation];

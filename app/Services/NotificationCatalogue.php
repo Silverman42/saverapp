@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BusinessProfile;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use JsonException;
@@ -15,12 +16,14 @@ class NotificationCatalogue
 
     /** @var array<string, list<string>> */
     private const EVENTS = [
+        'invitation_issue' => ['invitation_delivery_issue'],
+        'handover' => ['customer.reassigned', 'auth.customer_recovery_requested', 'auth.customer_recovery_verified', 'auth.customer_recovery_approved', 'auth.customer_recovery_reissued', 'auth.customer_recovery_handover', 'auth.customer_recovery_rejected', 'auth.customer_recovery_cancelled', 'auth.customer_recovery_completed', 'auth.customer_recovery_expired'],
         'business_settings' => ['published', 'effective', 'cancelled', 'activation_failed'],
         'security' => ['security.case_created', 'security.case_assigned', 'security.case_reopened'],
         'profile' => ['customer.profile_updated', 'agent.profile_updated', 'customer.phone_changed', 'agent.phone_changed',
             'customer.name_changed', 'customer.name_correction_proposed', 'customer.name_correction_accepted',
             'customer.name_correction_rejected', 'customer.name_correction_cancelled', 'customer.name_correction_expired',
-            'customer.name_correction_invalidated', 'user.email_changed'],
+            'customer.name_correction_invalidated', 'customer.name_correction_replaced', 'user.email_changed'],
         'customer_status' => ['customer_status'], 'agent_status' => ['agent_status'],
         'agent_lifecycle' => ['agent.suspend', 'agent.restore', 'agent.start_offboarding', 'agent.transfer_owner', 'agent.cancel_offboarding', 'agent.complete_offboarding', 'agent.return'],
         'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
@@ -30,6 +33,8 @@ class NotificationCatalogue
 
     /** @var array<string, array{table: string, source: string, key: string}> */
     public const OWNERS = [
+        'invitation_issue' => ['table' => 'invitation_issue_notification_intents', 'source' => 'invitation_delivery_issues', 'key' => 'invitation_delivery_issue_id'],
+        'handover' => ['table' => 'customer_handover_notices', 'source' => 'customer_handover_events', 'key' => 'customer_handover_event_id'],
         'business_settings' => ['table' => 'business_settings_notification_intents', 'source' => 'business_configuration_events', 'key' => 'business_configuration_event_id'],
         'security' => ['table' => 'security_notification_intents', 'source' => 'security_case_transitions', 'key' => 'security_case_transition_id'],
         'profile' => ['table' => 'profile_notification_intents', 'source' => 'profile_change_histories', 'key' => 'profile_change_history_id'],
@@ -63,6 +68,36 @@ class NotificationCatalogue
         $sourceVersion = $source->request_version ?? $source->plan_version ?? $source->to_version ?? 1;
 
         switch ($family) {
+            case 'invitation_issue':
+                $this->audience($audience, ['current_agent', 'customer_manager', 'managing_admin']);
+                $invitation = DB::table('invitations')->where('id', $source->invitation_id)->firstOrFail();
+                $subject = DB::table($customerId !== null ? 'customer_profiles' : 'agent_profiles')->where('id', $customerId ?? $agentId)->firstOrFail();
+                $this->matchSubject((int) $invitation->user_id, (int) $subject->user_id);
+                $eventType = 'invitation_delivery_issue';
+                $sourceVersion = (int) $invitation->generation;
+                $title = 'Invitation delivery needs attention';
+                $summary = 'Invitation email acceptance is unconfirmed or dispatch is unavailable. Review the current invitation before using its authorized resend or correction workflow.';
+                $actionRequired = true;
+                break;
+            case 'handover':
+                $this->audience($audience, ['subject_customer', 'current_agent', 'subject_agent', 'security_operations_admin']);
+                if (! in_array($eventType, self::EVENTS['handover'], true)) {
+                    throw new InvalidArgumentException('Unknown handover notice.');
+                }
+                $payload = json_decode(Crypt::decryptString($owner->payload), true, flags: JSON_THROW_ON_ERROR);
+                $title = $payload['title'];
+                $summary = $payload['message'];
+                $reference = $source->reference;
+                $sourceVersion = $source->to_version;
+                if ($audience === 'subject_agent') {
+                    $customerId = null;
+                    $agent = DB::table('agent_profiles')->where('id', $agentId)->firstOrFail();
+                    $destination = ['route' => 'agents.show', 'parameters' => [$agent->agent_id]];
+                } elseif ($eventType !== 'customer.reassigned') {
+                    $subject = DB::table('customer_profiles')->where('id', $customerId)->firstOrFail();
+                    $destination = ['route' => 'customers.recovery.show', 'parameters' => [$subject->customer_id]];
+                }
+                break;
             case 'business_settings':
                 if ($audience !== 'settings_manager' || ! in_array($eventType, self::EVENTS['business_settings'], true)) {
                     throw new InvalidArgumentException('Invalid configuration notification contract.');
@@ -95,10 +130,10 @@ class NotificationCatalogue
                     'customer.name_changed' => 'Customer name updated', 'customer.name_correction_proposed' => 'Name correction proposed',
                     'customer.name_correction_accepted' => 'Name correction accepted', 'customer.name_correction_rejected' => 'Name correction rejected',
                     'customer.name_correction_cancelled' => 'Name correction cancelled', 'customer.name_correction_expired' => 'Name correction expired',
-                    'customer.name_correction_invalidated' => 'Name correction unavailable', 'user.email_changed' => 'Account email updated',
+                    'customer.name_correction_replaced' => 'Name correction replaced', 'customer.name_correction_invalidated' => 'Name correction unavailable', 'user.email_changed' => 'Account email updated',
                 ];
                 $title = $titles[$eventType] ?? throw new InvalidArgumentException('Unknown profile event.');
-                if (! in_array($audience, ['subject_customer', 'subject_agent', 'current_agent', 'security_operations_admin'], true)
+                if (! in_array($audience, ['subject_customer', 'subject_agent', 'current_agent', 'customer_manager', 'security_operations_admin'], true)
                     || ! in_array($owner->subject_type, ['customer', 'agent'], true)) {
                     throw new InvalidArgumentException('Unknown profile audience.');
                 }
@@ -108,7 +143,7 @@ class NotificationCatalogue
                 }
                 $customerId = $owner->subject_type === 'customer' ? $subject->id : null;
                 $agentId = $owner->subject_type === 'agent' ? $subject->id : null;
-                if (($customerId === null && in_array($audience, ['subject_customer', 'current_agent'], true))
+                if (($customerId === null && in_array($audience, ['subject_customer', 'current_agent', 'customer_manager'], true))
                     || ($agentId === null && in_array($audience, ['subject_agent', 'security_operations_admin'], true))) {
                     throw new InvalidArgumentException('Invalid profile audience.');
                 }
@@ -142,7 +177,7 @@ class NotificationCatalogue
             case 'agent_status':
                 $agentId = $source->agent_profile_id;
                 $this->matchSubject($owner->agent_profile_id, $agentId);
-                $this->audience($audience, ['subject_agent', 'managing_admin', 'assigned_customer']);
+                $this->audience($audience, ['subject_agent', 'managing_admin', 'assigned_customer', 'service_manager']);
                 $status = $this->state($source->to_status, ['active', 'inactive']);
                 $facts = ['status' => $status];
                 $title = $audience === 'assigned_customer' ? 'Service contact unavailable' : 'Agent status updated';
@@ -152,14 +187,23 @@ class NotificationCatalogue
                 if ($audience === 'subject_agent' && is_string($source->agent_facing_explanation) && $source->agent_facing_explanation !== '') {
                     $summary .= ' '.mb_substr($source->agent_facing_explanation, 0, 500);
                 }
-                if ($audience === 'assigned_customer' && ($customerId === null || $status !== 'inactive')) {
+                if ($audience === 'assigned_customer' && $status === 'active') {
+                    $title = 'Service contact restored';
+                    $summary = 'Your service contact is available again. Your Customer status and savings are unchanged.';
+                }
+                if ($audience === 'assigned_customer' && $customerId === null) {
                     throw new InvalidArgumentException('Invalid service notice.');
+                }
+                if ($audience === 'service_manager') {
+                    $title = 'Customer service interruption';
+                    $summary = 'An assigned Agent is unavailable. Review affected Customers and reassignment options.';
+                    $destination = ['route' => 'customers.index', 'parameters' => []];
                 }
                 break;
             case 'agent_lifecycle':
                 $agentId = $source->agent_profile_id;
                 $this->matchSubject($owner->agent_profile_id, $agentId);
-                $this->audience($audience, ['subject_agent', 'managing_admin', 'assigned_customer']);
+                $this->audience($audience, ['subject_agent', 'managing_admin', 'assigned_customer', 'service_manager']);
                 if (! in_array($eventType, self::EVENTS['agent_lifecycle'], true)) {
                     throw new InvalidArgumentException('Unknown Agent lifecycle notice.');
                 }
@@ -169,14 +213,26 @@ class NotificationCatalogue
                 if ($audience === 'subject_agent') {
                     $summary .= ' '.mb_substr($source->agent_facing_explanation, 0, 500);
                 }
+                if ($audience === 'service_manager') {
+                    if (! in_array($eventType, ['agent.suspend', 'agent.start_offboarding'], true)) {
+                        throw new InvalidArgumentException('Invalid service interruption issue.');
+                    }
+                    $title = 'Customer service interruption';
+                    $summary = 'An assigned Agent is unavailable. Review affected Customers and reassignment options.';
+                    $destination = ['route' => 'customers.index', 'parameters' => []];
+                }
                 if ($audience === 'assigned_customer') {
-                    if ($customerId === null || ! in_array($eventType, ['agent.suspend', 'agent.start_offboarding'], true)) {
+                    if ($customerId === null || ! in_array($eventType, ['agent.suspend', 'agent.start_offboarding', 'agent.restore'], true)) {
                         throw new InvalidArgumentException('Invalid Agent lifecycle service notice.');
                     }
                     $title = 'Service contact unavailable';
                     $business = BusinessProfile::current();
                     $contact = $business->support_email ?: $business->support_phone;
                     $summary = 'Your assigned Agent is temporarily unavailable. Your Customer status and savings are unchanged. '.($contact ? 'For help, contact '.$contact.'.' : 'Contact the business office for help.');
+                    if ($eventType === 'agent.restore') {
+                        $title = 'Service contact restored';
+                        $summary = 'Your service contact is available again. Your Customer status and savings are unchanged.';
+                    }
                 }
                 break;
             case 'plan':
@@ -307,10 +363,12 @@ class NotificationCatalogue
             return false;
         }
         $allowedAudiences = match ($event->family) {
+            'invitation_issue' => ['current_agent', 'customer_manager', 'managing_admin'],
+            'handover' => ['subject_customer', 'current_agent', 'subject_agent', 'security_operations_admin'],
             'business_settings' => ['settings_manager'],
             'security' => ['security_operations_admin'],
-            'profile' => ['subject_customer', 'subject_agent', 'current_agent', 'security_operations_admin'],
-            'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin'],
+            'profile' => ['subject_customer', 'subject_agent', 'current_agent', 'customer_manager', 'security_operations_admin'],
+            'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin', 'service_manager'],
             'collection' => ['subject_customer'],
             default => ['subject_customer', 'current_agent'],
         };

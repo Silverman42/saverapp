@@ -500,6 +500,10 @@ class WithdrawalService
             $query->lockForUpdate();
         }
         foreach ($query->get() as $request) {
+            if (in_array($request->state, ['pending_review', 'approved'], true) && app(CustomerReassignmentService::class)
+                ->hasVerifiedHandover($request->customerProfile, $agent->id, $forUpdate)) {
+                continue;
+            }
             if (! in_array($request->state, ['rejected', 'cancelled', 'revoked', 'expired'], true)) {
                 return 'unavailable';
             }

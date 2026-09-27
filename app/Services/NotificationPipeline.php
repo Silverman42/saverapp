@@ -6,6 +6,8 @@ use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Jobs\MaterializeNotificationIntent;
+use App\Models\AuditEvent;
+use App\Models\CustomerProfile;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -147,7 +149,11 @@ class NotificationPipeline
             if ($intent === null || $intent->status !== 'pending' || ($intent->next_attempt_at !== null && CarbonImmutable::parse($intent->next_attempt_at)->isFuture())) {
                 return;
             }
-            $recipient = User::query()->where('id', $intent->recipient_user_id)->first();
+            $recipient = User::query()->where('id', $intent->recipient_user_id)->lockForUpdate()->first();
+            if ($intent->customer_profile_id !== null) {
+                CustomerProfile::query()->whereKey($intent->customer_profile_id)->lockForUpdate()->first();
+                DB::table('customer_assignments')->where('customer_profile_id', $intent->customer_profile_id)->where('is_current', 1)->lockForUpdate()->first();
+            }
             $status = 'delivered';
             $failureCategory = null;
             $event = DB::table('notification_events')->where('id', $intent->event_id)->first();
@@ -177,6 +183,14 @@ class NotificationPipeline
                     DB::table('notifications')->where('id', $intent->notification_id)->update(['data' => $data, 'type' => 'shared-inbox-v1']);
                 }
             }
+            if (in_array($event?->family, ['invitation_issue', 'profile', 'customer_status', 'agent_status', 'agent_lifecycle', 'handover'], true)) {
+                $family = $intent->customer_profile_id !== null ? 'customer' : 'agent';
+                AuditEvent::record($family.'.delivery_attempt', $family, $intent->customer_profile_id ?? $intent->agent_profile_id, null,
+                    ['notification_reference' => $intent->notification_id, 'source_audit_event_id' => $event->audit_event_id,
+                        'channel' => 'database', 'attempt' => $number, 'category' => $failureCategory], null,
+                    ['executor' => self::class, 'outcome' => $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'),
+                        'operation_id' => 'inbox-attempt:'.$intentId.':'.$number]);
+            }
             DB::table('notification_inbox_attempts')->insert([
                 'intent_id' => $intentId, 'attempt_number' => $number, 'outcome' => $status,
                 'failure_category' => $failureCategory, 'started_at' => $startedAt, 'finished_at' => now(),
@@ -202,6 +216,14 @@ class NotificationPipeline
         $status = in_array($code, ['unsupported_contract', 'invalid_contract', 'source_identity_conflict', 'owner_state_conflict', 'owner_result_unverified'], true)
             ? 'blocked' : ($state === 'dead_letter' ? 'dead_letter' : 'pending');
         if ($attempts > (int) $intent->attempt_count) {
+            $event = DB::table('notification_events')->where('id', $intent->event_id)->first();
+            if (in_array($event?->family, ['invitation_issue', 'profile', 'customer_status', 'agent_status', 'agent_lifecycle', 'handover'], true)) {
+                $family = $intent->customer_profile_id !== null ? 'customer' : 'agent';
+                AuditEvent::record($family.'.delivery_attempt', $family, $intent->customer_profile_id ?? $intent->agent_profile_id, null,
+                    ['notification_reference' => $intent->notification_id, 'source_audit_event_id' => $event->audit_event_id,
+                        'channel' => 'database', 'attempt' => $attempts, 'category' => $code], null,
+                    ['executor' => self::class, 'outcome' => 'Failed', 'operation_id' => 'inbox-attempt:'.$intentId.':'.$attempts]);
+            }
             DB::table('notification_inbox_attempts')->insert([
                 'intent_id' => $intentId, 'attempt_number' => $attempts, 'outcome' => $status,
                 'failure_category' => $code, 'started_at' => now(), 'finished_at' => now(),
@@ -221,12 +243,22 @@ class NotificationPipeline
             || $user->getRoleNames()->count() !== 1 || $user->getRoleNames()->first() !== $user->user_type->value) {
             return $query->whereRaw('1 = 0');
         }
+        $query->where(function (Builder $live): void {
+            $live->where('i.template_id', '!=', 'invitation_issue.invitation_delivery_issue')->orWhereExists(function (Builder $issue): void {
+                $issue->selectRaw('1')->from('notification_events as ne')->join('invitation_delivery_issues as di', 'di.id', '=', 'ne.source_id')
+                    ->join('invitations as invitation', 'invitation.id', '=', 'di.invitation_id')->join('users as invited_user', 'invited_user.id', '=', 'invitation.user_id')
+                    ->whereColumn('ne.id', 'i.event_id')->where('ne.family', 'invitation_issue')->where('invited_user.account_state', 'invited')
+                    ->where('invitation.status', 'delivery_failed')->where('invitation.expires_at', '>', now());
+            });
+        });
         $canReadAssigned = $user->user_type === UserType::Agent && $this->eligibility->canReadAssignedCustomers($user);
+        $canManageCustomers = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::CustomersManage);
         $canManageAgents = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::AgentsManage);
+        $canReassignCustomers = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::CustomersReassign);
         $canManageSettings = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::BusinessSettingsManage);
         $canManageSecurity = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::SecurityOperationsManage);
 
-        return $query->where(function (Builder $audiences) use ($user, $canReadAssigned, $canManageAgents, $canManageSecurity, $canManageSettings): void {
+        return $query->where(function (Builder $audiences) use ($user, $canReadAssigned, $canManageAgents, $canManageCustomers, $canReassignCustomers, $canManageSecurity, $canManageSettings): void {
             $audiences->whereRaw('1 = 0');
             if ($user->user_type === UserType::Customer) {
                 $audiences->orWhere(function (Builder $own) use ($user): void {
@@ -241,8 +273,21 @@ class NotificationPipeline
                                 ->join('customer_profiles as cp', 'cp.id', '=', 'a.customer_profile_id')
                                 ->whereColumn('a.customer_profile_id', 'i.customer_profile_id')->whereColumn('a.agent_profile_id', 'i.agent_profile_id')
                                 ->where('a.is_current', 1)->where('cp.operational_status', '!=', 'archived')
-                                ->where(function (Builder $unavailable): void {
-                                    $unavailable->where('ap.operational_status', 'inactive')->orWhereIn('agent_user.account_state', ['suspended', 'deactivated']);
+                                ->join('notification_events as service_event', 'service_event.id', '=', 'i.event_id')
+                                ->where(function (Builder $state): void {
+                                    $state->where(function (Builder $restored): void {
+                                        $restored->where('ap.operational_status', 'active')->where('agent_user.account_state', 'active')
+                                            ->where(function (Builder $event): void {
+                                                $event->where('service_event.event_type', 'agent.restore')->orWhere('service_event.facts->status', 'active');
+                                            });
+                                    })->orWhere(function (Builder $unavailable): void {
+                                        $unavailable->where(function (Builder $agent): void {
+                                            $agent->where('ap.operational_status', 'inactive')->orWhereIn('agent_user.account_state', ['suspended', 'deactivated']);
+                                        })->where('service_event.event_type', '!=', 'agent.restore')
+                                            ->where(function (Builder $event): void {
+                                                $event->whereNull('service_event.facts->status')->orWhere('service_event.facts->status', '!=', 'active');
+                                            });
+                                    });
                                 });
                         });
                     });
@@ -263,8 +308,24 @@ class NotificationPipeline
                     });
                 }
             }
+            if ($canManageCustomers) {
+                $audiences->orWhereJsonContains('i.audiences', 'customer_manager');
+            }
             if ($canManageAgents) {
                 $audiences->orWhereJsonContains('i.audiences', 'managing_admin');
+            }
+            if ($canReassignCustomers) {
+                $audiences->orWhere(function (Builder $issue): void {
+                    $issue->whereJsonContains('i.audiences', 'service_manager')->whereExists(function (Builder $agent): void {
+                        $agent->selectRaw('1')->from('agent_profiles as ap')->join('users as au', 'au.id', '=', 'ap.user_id')
+                            ->whereColumn('ap.id', 'i.agent_profile_id')
+                            ->where(fn (Builder $unavailable) => $unavailable->where('ap.operational_status', '!=', 'active')->orWhere('au.account_state', '!=', 'active'))
+                            ->whereExists(function (Builder $affected): void {
+                                $affected->selectRaw('1')->from('customer_assignments as ca')->join('customer_profiles as cp', 'cp.id', '=', 'ca.customer_profile_id')
+                                    ->whereColumn('ca.agent_profile_id', 'ap.id')->where('ca.is_current', 1)->where('cp.operational_status', '!=', 'archived');
+                            });
+                    });
+                });
             }
             if ($canManageSettings) {
                 $audiences->orWhereJsonContains('i.audiences', 'settings_manager');

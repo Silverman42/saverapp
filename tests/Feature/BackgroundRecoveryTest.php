@@ -196,7 +196,7 @@ test('notification processing records a single owner attempt across duplicate jo
     $this->assertDatabaseCount('notification_inbox_attempts', 1);
     $this->assertDatabaseCount('notifications', 1);
     $this->assertDatabaseHas('platform_recovery_work', ['id' => $workId, 'attempts' => 1, 'state' => 'succeeded']);
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(MaterializeNotificationIntent::class);
 });
 
 test('corrupt notification contracts dead letter without leaking or materializing content', function () {
@@ -208,7 +208,7 @@ test('corrupt notification contracts dead letter without leaking or materializin
     $this->assertDatabaseCount('notifications', 0);
     $this->assertDatabaseHas('platform_recovery_work', ['id' => $workId, 'failure_code' => 'unsupported_contract']);
     $this->assertDatabaseHas('notification_inbox_intents', ['id' => $source, 'status' => 'blocked']);
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(MaterializeNotificationIntent::class);
 });
 
 test('canonical corruption dead letters the projection without advancing the watermark', function () {
@@ -326,7 +326,7 @@ test('owner scope and expiry are rechecked at execution and suppress an ineligib
     expect(app(BackgroundRecovery::class)->execute($lease))->toBe('cancelled');
     $this->assertDatabaseCount('notifications', 0);
     $this->assertDatabaseHas('notification_inbox_intents', ['id' => $source, 'status' => 'suppressed']);
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(MaterializeNotificationIntent::class);
 })->with(['scope', 'expiry']);
 
 test('changed source identity conflicts with duplicate registration without overwriting immutable work', function () {
@@ -412,6 +412,8 @@ test('a paused notification claim does not inflate owner attempt counts on later
     $this->assertDatabaseHas('notification_inbox_intents', ['id' => $source, 'attempt_count' => 3, 'status' => 'dead_letter']);
     expect(DB::table('notification_inbox_attempts')->where('intent_id', $source)->pluck('attempt_number')->all())->toBe([1, 2, 3]);
     DB::statement('DROP TRIGGER paused_recovery_inbox_outage');
-    Queue::assertPushed(ProjectAuditEvent::class, 2);
+    $this->assertDatabaseCount('notification_inbox_attempts', 3);
+    $this->assertDatabaseCount('canonical_audit_events', 5);
+    Queue::assertPushed(ProjectAuditEvent::class, 5);
     Queue::assertNotPushed(MaterializeNotificationIntent::class);
 });
