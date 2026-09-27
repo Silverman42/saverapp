@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\DeliverAgentInvitationJob;
+use App\Jobs\DeliverAgentLifecycleNotificationIntent;
 use App\Jobs\DeliverAgentStatusNotificationIntent;
 use App\Jobs\DeliverCollectionNotificationIntent;
 use App\Jobs\DeliverCustomerInvitationJob;
@@ -14,6 +15,7 @@ use App\Jobs\DeliverWithdrawalNotificationIntent;
 use App\Jobs\ExpirePendingTwoFactorSetup;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Jobs\ProjectAuditEvent;
+use App\Models\CustomerProfile;
 use App\Support\PlatformBlocked;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\SendQueuedNotifications;
@@ -27,6 +29,7 @@ class PlatformCatalogue
     /** @var array<class-string, string> */
     public const LOCAL_INTENT_JOBS = [
         DeliverAgentStatusNotificationIntent::class => 'agent_status',
+        DeliverAgentLifecycleNotificationIntent::class => 'agent_lifecycle',
         DeliverCollectionNotificationIntent::class => 'collection',
         DeliverCustomerStatusNotificationIntent::class => 'customer_status',
         DeliverPlanNotificationIntent::class => 'plan',
@@ -62,8 +65,9 @@ class PlatformCatalogue
     public const SERVICES = [
         'CollectionService' => 'financial', 'CollectionLedgerService' => 'financial', 'LedgerPostingService' => 'financial',
         'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
-        'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'ThriftPlanService' => 'financial',
+        'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'CustomerLifecycleService' => 'financial', 'ThriftPlanService' => 'financial',
         'AgentRegistrationService' => 'mutation', 'AgentStatusManagementService' => 'mutation', 'RegistrationFeeService' => 'mutation',
+        'AgentLifecycleService' => 'mutation',
         'ProfileManagementService' => 'mutation', 'PhoneChangeService' => 'mutation', 'EmailChangeService' => 'mutation',
         'PermissionManagementService' => 'mutation', 'InvitationManagementService' => 'mutation', 'CustomerInvitationManagementService' => 'mutation',
         'CustomerNameCorrectionService' => 'mutation', 'NotificationInbox' => 'mutation', 'SecurityCaseService' => 'mutation', 'BusinessSettings' => 'mutation',
@@ -105,6 +109,13 @@ class PlatformCatalogue
         'agents.phone-corrections.store' => 'mutation',
         'agents.phone.self' => 'mutation',
         'agents.status.update' => 'mutation',
+        'agents.lifecycle.suspend' => 'mutation',
+        'agents.lifecycle.restore' => 'mutation',
+        'agents.lifecycle.start-offboarding' => 'mutation',
+        'agents.lifecycle.transfer-owner' => 'mutation',
+        'agents.lifecycle.cancel-offboarding' => 'mutation',
+        'agents.lifecycle.complete-offboarding' => 'mutation',
+        'agents.lifecycle.return' => 'mutation',
         'agents.store' => 'mutation',
         'agents.update' => 'mutation',
         'boost.browser-logs' => 'read',
@@ -127,6 +138,9 @@ class PlatformCatalogue
         'customers.phone.self' => 'mutation',
         'customers.plans.store' => 'financial',
         'customers.status.update' => 'financial',
+        'customers.lifecycle.preview' => 'read',
+        'customers.lifecycle.archive' => 'financial',
+        'customers.lifecycle.restore' => 'financial',
         'customers.store' => 'financial',
         'customers.update' => 'mutation',
         'customers.withdrawals.preview' => 'read',
@@ -196,7 +210,12 @@ class PlatformCatalogue
 
     public function jobClass(object $job): string
     {
-        return match ($job::class) {
+        return $this->jobOperation($job::class);
+    }
+
+    public function jobOperation(string $jobClass): string
+    {
+        return match ($jobClass) {
             ProjectAuditEvent::class => 'derived',
             ExpirePendingTwoFactorSetup::class => 'mutation',
             DeliverAgentInvitationJob::class,
@@ -212,5 +231,34 @@ class PlatformCatalogue
             SendQueuedNotifications::class => 'external',
             default => throw new PlatformBlocked('platform_operation_unclassified'),
         };
+    }
+
+    public function archivalWorkStatus(CustomerProfile $customer): string
+    {
+        $planWork = app(ThriftPlanService::class)->archivalWorkStatus($customer);
+        if ($planWork !== 'passed') {
+            return $planWork;
+        }
+        foreach (['jobs', 'failed_jobs'] as $table) {
+            foreach (DB::table($table)->select('payload')->cursor() as $job) {
+                $payload = json_decode($job->payload, true);
+                $class = is_array($payload) ? ($payload['data']['commandName'] ?? null) : null;
+                if (! is_string($class)) {
+                    return 'unavailable';
+                }
+                try {
+                    if ($this->jobOperation($class) === 'financial') {
+                        return 'blocked';
+                    }
+                } catch (PlatformBlocked) {
+                    return 'unavailable';
+                }
+            }
+        }
+        if (DB::table('platform_recovery_work')->whereNotIn('owner', BackgroundRecovery::OWNERS)->exists()) {
+            return 'unavailable';
+        }
+
+        return 'passed';
     }
 }

@@ -246,7 +246,7 @@ test('status endpoints deny unauthorized actors and do not accept archival throu
     $archived = CustomerProfile::factory()->archived()->create();
     $this->actingAs($admin)
         ->get(route('customers.status.edit', $archived->customer_id))
-        ->assertForbidden();
+        ->assertOk();
 
     expect($customer->fresh()->operational_status)->toBe(CustomerStatus::Active)
         ->and($customer->statusHistories()->count())->toBe(0);
@@ -314,7 +314,7 @@ test('stale versions fail and unchanged status is a no-op', function (): void {
         ->and(CustomerStatusNotificationIntent::query()->count())->toBe(0);
 });
 
-test('status page shows separate account state and unavailable financial modules while profile viewers see no internal reason', function (): void {
+test('status page shows separate account state and retained financial history while profile viewers see no internal reason', function (): void {
     $admin = makeStatusManager();
     $customer = CustomerProfile::factory()->create();
     $this->actingAs($admin)
@@ -329,7 +329,7 @@ test('status page shows separate account state and unavailable financial modules
             ->component('customers/Status')
             ->where('customer.account_state', 'active')
             ->where('customer.operational_status', 'restricted')
-            ->where('financial_sections.plans', 'Plan schedule details are available from the Customer profile; actual collection progress remains unavailable until the financial modules are connected.')
+            ->where('financial_sections.plans', 'Plan schedules and contribution progress remain available from the Customer profile.')
             ->where('financial_sections.withdrawals', 'Withdrawal request history is available; payout execution awaits an approved method.')
             ->where('history.0.reason', 'Admin-only internal note.')
             ->where('history.0.customer_explanation', 'A temporary review is in progress.'));

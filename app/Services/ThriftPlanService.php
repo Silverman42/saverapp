@@ -108,7 +108,7 @@ class ThriftPlanService
                 'formatted_contribution_amount' => MoneyFormatter::formatNaira($terms['contribution_amount_kobo']),
                 'expected_gross_kobo' => $expectedGrossKobo,
                 'formatted_expected_gross' => MoneyFormatter::formatNaira($expectedGrossKobo),
-                'scheduled_end_date' => $slots[array_key_last($slots)]['due_date'],
+                'scheduled_end_date' => $startDate->addDays($terms['contribution_days'] - 1)->toDateString(),
             ],
             'fee' => [
                 'rule_id' => $rule->id,
@@ -211,7 +211,7 @@ class ThriftPlanService
                 'formatted_contribution_amount' => MoneyFormatter::formatNaira($terms['contribution_amount_kobo']),
                 'expected_gross_kobo' => $expectedGrossKobo,
                 'formatted_expected_gross' => MoneyFormatter::formatNaira($expectedGrossKobo),
-                'scheduled_end_date' => $slots[array_key_last($slots)]['due_date'],
+                'scheduled_end_date' => $startDate->addDays($terms['contribution_days'] - 1)->toDateString(),
             ],
             'fee' => [
                 'rule_id' => $rule->id,
@@ -374,7 +374,7 @@ class ThriftPlanService
                 fromStatus: null,
                 toStatus: ThriftPlanStatus::Active,
                 actor: $context->actor,
-                assignmentVersion: $context->currentAssignment?->version,
+                assignmentVersion: $context->currentAssignment->version,
                 reason: null,
                 customerExplanation: null,
                 payload: [
@@ -396,7 +396,7 @@ class ThriftPlanService
                     'terms_revision' => 1,
                     'fee_snapshot_id' => $snapshot->id,
                     'business_version' => $business->version,
-                    'assignment_version' => $context->currentAssignment?->version,
+                    'assignment_version' => $context->currentAssignment->version,
                     'predecessor_plan_id' => $predecessor?->plan_id,
                     'agreement_attested' => true,
                 ],
@@ -564,7 +564,7 @@ class ThriftPlanService
                 $planRecord->status,
                 $planRecord->status,
                 $context->actor,
-                $context->currentAssignment?->version,
+                $context->currentAssignment->version,
                 trim((string) $data['reason']),
                 trim((string) $data['customer_explanation']),
                 ['from_version' => $fromVersion, 'terms_revision' => $revisionNumber, 'financial_terms_changed' => $financialTermsChanged],
@@ -685,7 +685,7 @@ class ThriftPlanService
                 $fromStatus,
                 $toStatus,
                 $context->actor,
-                $context->currentAssignment?->version,
+                $context->currentAssignment->version,
                 $reason,
                 $customerExplanation,
                 ['from_version' => $fromVersion],
@@ -729,7 +729,10 @@ class ThriftPlanService
         return $amountKobo;
     }
 
-    /** @param array<string, mixed> $data @return array{name: string, contribution_amount_kobo: int, start_date: string, contribution_days: int, customer_visible_notes: ?string} */
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{name: string, contribution_amount_kobo: int, start_date: string, contribution_days: int<1, 366>, customer_visible_notes: ?string}
+     */
     private function normalizeTerms(array $data, string $timezone): array
     {
         $name = trim((string) ($data['name'] ?? ''));
@@ -1076,7 +1079,10 @@ class ThriftPlanService
         return $attempt;
     }
 
-    /** @param array<string, mixed> $data @param array<string, mixed> $context */
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $context
+     */
     private function requestFingerprint(array $data, array $context): string
     {
         unset($data['attempt_reference']);
@@ -1223,5 +1229,43 @@ class ThriftPlanService
             'cancel' => 'Your unused daily thrift plan has been cancelled.',
             default => 'Your daily thrift plan has been updated.',
         };
+    }
+
+    public function archivalWorkStatus(CustomerProfile $customer): string
+    {
+        $attempts = PlanOperationAttempt::query()->where('customer_profile_id', $customer->id)->orWhereNull('customer_profile_id')->get();
+        foreach ($attempts as $attempt) {
+            if ($attempt->customer_profile_id === null || ! in_array($attempt->operation_type,
+                ['plan_create', 'plan_renew', 'plan_revise', 'plan_pause', 'plan_resume', 'plan_cancel'], true)) {
+                return 'unavailable';
+            }
+            if ($attempt->status !== 'committed') {
+                return $attempt->status === 'in_progress' ? 'blocked' : 'unavailable';
+            }
+            if (! ThriftPlan::query()->whereKey($attempt->thrift_plan_id)->where('customer_profile_id', $customer->id)->exists()) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
+    }
+
+    public function archivalStatus(CustomerProfile $customer): string
+    {
+        $plans = ThriftPlan::query()->where('customer_profile_id', $customer->id)->get();
+        foreach ($plans as $plan) {
+            if (! in_array($plan->getRawOriginal('status'), ['active', 'paused', 'completed', 'closed', 'cancelled'], true)) {
+                return 'unavailable';
+            }
+            if ($plan->status->isOpen()) {
+                return 'blocked';
+            }
+            if ($plan->open_customer_profile_id !== null || $plan->currentTermsRevision() === null
+                || ! $plan->lifecycleEvents()->where('to_status', $plan->status->value)->exists()) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
     }
 }

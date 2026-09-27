@@ -33,8 +33,8 @@ class DeviceEvictionController extends Controller
             return redirect()->route('login');
         }
 
-        $user = User::find($pending['user_id']);
-        if (! $user) {
+        $user = User::query()->whereKey($pending['user_id'])->first();
+        if (! $user || ! $user->canSignIn() || (int) ($pending['access_version'] ?? 0) !== (int) $user->lifecycle_access_version) {
             $request->session()->forget('login.pending_eviction');
 
             return redirect()->route('login');
@@ -68,7 +68,12 @@ class DeviceEvictionController extends Controller
             'session_id' => ['required', 'string'],
         ]);
 
-        $user = User::findOrFail($pending['user_id']);
+        $user = User::query()->whereKey($pending['user_id'])->firstOrFail();
+        if (! $user->canSignIn() || (int) ($pending['access_version'] ?? 0) !== (int) $user->lifecycle_access_version) {
+            $request->session()->forget('login.pending_eviction');
+
+            return redirect()->route('login');
+        }
         $sessionIdToEvict = (string) $request->input('session_id');
 
         $evicted = $this->sessionManager->evictSession($user, $sessionIdToEvict, $request);
@@ -92,8 +97,15 @@ class DeviceEvictionController extends Controller
     /**
      * Complete authentication after eviction or when limit is no longer exceeded.
      */
+    /** @param array<string, mixed> $pending */
     protected function finalizeLogin(Request $request, User $user, array $pending): RedirectResponse
     {
+        $user->refresh();
+        if (! $user->canSignIn() || (int) ($pending['access_version'] ?? 0) !== (int) $user->lifecycle_access_version) {
+            $request->session()->forget('login.pending_eviction');
+
+            return redirect()->route('login');
+        }
         $remember = (bool) ($pending['remember'] ?? false);
         $replacementRequired = (bool) ($pending['replacement_required'] ?? false);
         $trustDevice = (bool) ($pending['trust_device'] ?? false);
@@ -103,7 +115,7 @@ class DeviceEvictionController extends Controller
         Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
 
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
         $request->session()->put('auth.login_at', $now);
         $request->session()->put('auth.last_active_at', $now);
         $request->session()->put('auth.fresh_until', $now + 600);

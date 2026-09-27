@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\AgentProfile;
 use App\Models\AuditEvent;
 use App\Models\CustomerProfile;
 use App\Models\LedgerPostingGroup;
@@ -276,8 +277,56 @@ class ReversalService
                 'state' => $reversal->state, 'version' => $reversal->version,
                 'compensation_posting_group_id' => $reversal->compensation_posting_group_id,
             ], $actor,
-            context: ['executor' => self::class, 'approver_id' => $reversal->reviewed_by_user_id, 'required_permission' => $actor?->user_type === UserType::Admin ? 'reversals.review' : null]
+            context: ['executor' => self::class, 'approver_id' => $reversal->reviewed_by_user_id, 'required_permission' => $actor->user_type === UserType::Admin ? 'reversals.review' : null]
         );
         $this->notices->queue($reversal, $event);
+    }
+
+    public function archivalStatus(CustomerProfile $customer): string
+    {
+        foreach (ReversalRequest::query()->where('customer_profile_id', $customer->id)->get() as $request) {
+            if ($request->state === 'pending_review') {
+                return 'blocked';
+            }
+            if (in_array($request->state, ['rejected', 'cancelled'], true)) {
+                if ($request->reviewed_at === null || $request->live_original_posting_group_id !== null
+                    || ! $request->events()->where('event_type', $request->state)->exists()) {
+                    return 'unavailable';
+                }
+
+                continue;
+            }
+            if ($request->state !== 'approved_posted') {
+                return 'unavailable';
+            }
+            $original = $request->originalPostingGroup;
+            if ($original === null || $this->capabilities->resolve($original) === null) {
+                return 'unavailable';
+            }
+            $group = LedgerPostingGroup::query()->find($request->compensation_posting_group_id);
+            if ($group === null) {
+                return 'unavailable';
+            }
+            $this->assertCompensation($request, $group);
+        }
+
+        return 'passed';
+    }
+
+    public function agentOffboardingStatus(AgentProfile $agent, bool $forUpdate = false): string
+    {
+        $query = ReversalRequest::query()->where('initiating_agent_profile_id', $agent->id)->orderBy('id');
+        if ($forUpdate) {
+            $query->lockForUpdate();
+        }
+        foreach ($query->get() as $request) {
+            if (! in_array($request->state, ['rejected', 'cancelled'], true)
+                || $request->reviewed_at === null || $request->live_original_posting_group_id !== null
+                || ! $request->events()->where('event_type', $request->state)->exists()) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
     }
 }

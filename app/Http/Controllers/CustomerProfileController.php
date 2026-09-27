@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
+use App\Enums\CustomerStatus;
 use App\Enums\UserType;
 use App\Models\Invitation;
 use App\Models\User;
@@ -194,11 +195,11 @@ class CustomerProfileController extends Controller
                     : 'Your current access does not allow editing this Customer profile.',
                 'can_reassign' => false,
                 'reassign_message' => 'Customer reassignment will be available in CAM-T12.',
-                'can_archive' => false,
-                'archive_message' => 'Customer archival will be available in CAM-T09.',
+                'can_archive' => in_array($customerProfile->operational_status, [CustomerStatus::Active, CustomerStatus::Inactive], true)
+                    && Gate::forUser($viewer)->allows('manageLifecycle', $customerProfile),
+                'archive_message' => 'Review archival checks from Manage status.',
                 'can_manage_invitation' => $canManageInvitation,
-                'can_manage_status' => $customerProfile->operational_status->value !== 'archived'
-                    && $viewer->user_type === UserType::Admin
+                'can_manage_status' => $viewer->user_type === UserType::Admin
                     && $authorizationService->allows($viewer, AdminPermission::CustomersManage),
             ],
         ];

@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AdminPermission;
+use App\Enums\CustomerStatus;
 use App\Enums\UserType;
 use App\Http\Requests\StoreCashRemittanceRequest;
 use App\Models\AuditEvent;
 use App\Models\CashRemittance;
 use App\Models\CollectionBatch;
 use App\Models\CollectionException;
+use App\Models\CustomerProfile;
+use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionService;
@@ -88,6 +91,7 @@ class ReconciliationController extends Controller
         $data = $request->validated();
         $amount = $collections->amountToKobo($data['amount_ngn']);
         app(PlatformGuard::class)->transaction('financial', function () use ($batch, $request, $data, $amount, $ledger, $transactions): void {
+            $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $existing = CashRemittance::query()->where('handoff_reference', $data['handoff_reference'])->lockForUpdate()->first();
             if ($existing !== null) {
@@ -144,6 +148,7 @@ class ReconciliationController extends Controller
             'confirmed' => ['required', 'accepted'],
         ]);
         app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data): void {
+            $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($current->version !== (int) $data['batch_version'] || in_array($current->status, ['open', 'reconciled'], true)) {
                 throw new ConflictHttpException('Batch review changed or is unavailable.');
@@ -202,6 +207,7 @@ class ReconciliationController extends Controller
         ]);
         $amount = $collections->amountToKobo($data['amount_ngn']);
         app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data, $amount): void {
+            $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($current->status === 'open' || $current->version !== (int) $data['batch_version']) {
                 throw new ConflictHttpException('Batch changed before exception reporting.');
@@ -240,6 +246,7 @@ class ReconciliationController extends Controller
             'confirmed' => ['required', 'accepted'],
         ]);
         app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $exception, $request, $data): void {
+            $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $currentException = CollectionException::query()->whereKey($exception->id)->lockForUpdate()->firstOrFail();
             if ($currentException->collection_batch_id !== $current->id || $currentException->status !== 'open'
@@ -284,6 +291,7 @@ class ReconciliationController extends Controller
             'confirmed' => ['required', 'accepted'],
         ]);
         app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $exception, $request, $data): void {
+            $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             $currentException = CollectionException::query()->whereKey($exception->id)->lockForUpdate()->firstOrFail();
             if ($currentException->collection_batch_id !== $current->id || $currentException->status !== 'resolved'
@@ -317,5 +325,19 @@ class ReconciliationController extends Controller
             return;
         }
         throw new AuthorizationException;
+    }
+
+    private function lockBatchCustomers(CollectionBatch $batch, User $actor): void
+    {
+        $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
+        if (! app(AuthorizationService::class)->allows($lockedActor, AdminPermission::ReconciliationManage)) {
+            throw new AuthorizationException;
+        }
+        $customerIds = $batch->receipts()->pluck('customer_profile_id')->unique()->all();
+        foreach (CustomerProfile::query()->whereIn('id', $customerIds)->orderBy('id')->lockForUpdate()->get() as $customer) {
+            if ($customer->operational_status === CustomerStatus::Archived) {
+                throw new ConflictHttpException('Restore affected Archived Customers before changing reconciliation evidence.');
+            }
+        }
     }
 }

@@ -62,6 +62,7 @@ class AttemptToAuthenticateWithDeviceLimit
             $request->session()->put('login.pending_eviction', [
                 'user_id' => $user->id,
                 'remember' => $request->boolean('remember'),
+                'access_version' => (int) $user->lifecycle_access_version,
             ]);
 
             throw new HttpResponseException(redirect()->route('device-eviction'));
@@ -76,7 +77,7 @@ class AttemptToAuthenticateWithDeviceLimit
         }
 
         // Initialize session timestamps
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
         $request->session()->put('auth.login_at', $now);
         $request->session()->put('auth.last_active_at', $now);
         $request->session()->put('auth.fresh_until', $now + 600);
@@ -90,7 +91,7 @@ class AttemptToAuthenticateWithDeviceLimit
      */
     protected function fireFailedEvent(Request $request): void
     {
-        event(new Failed($this->guard?->name ?? config('fortify.guard'), null, [
+        event(new Failed(config('fortify.guard') ?? config('auth.defaults.guard'), null, [
             Fortify::username() => $request->{Fortify::username()},
             'password' => $request->password,
         ]));

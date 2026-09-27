@@ -8,12 +8,15 @@ use App\Enums\AdminPermission;
 use App\Enums\CustomerStatus;
 use App\Enums\FeeAssessmentCorrectionDirection;
 use App\Enums\FeeObligationEntryType;
+use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
+use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\AuditEvent;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
@@ -21,6 +24,7 @@ use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
+use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Notifications\FeeObligationNotice;
 use App\Support\FeePercentageCalculator;
@@ -62,6 +66,8 @@ class FeeObligationService
         }
 
         return app(PlatformGuard::class)->transaction('financial', function () use ($snapshot, $actor): ?FeeObligation {
+            User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
+            $customer = CustomerProfile::query()->whereKey($snapshot->customer_profile_id)->lockForUpdate()->firstOrFail();
             $lockedSnapshot = FeeSnapshot::query()->whereKey($snapshot->id)->lockForUpdate()->firstOrFail();
             $this->assertSnapshotMatchesRuleQuote($lockedSnapshot);
 
@@ -81,6 +87,10 @@ class FeeObligationService
                 }
 
                 return $existing;
+            }
+
+            if ($customer->operational_status === CustomerStatus::Archived) {
+                throw new ConflictHttpException('Restore the Archived Customer before assessing a fee.');
             }
 
             $obligation = FeeObligation::create([
@@ -130,7 +140,7 @@ class FeeObligationService
                 ],
                 actor: $actor,
 
-                context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'fees.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $actor->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $obligation;
@@ -242,8 +252,9 @@ class FeeObligationService
     ): FeeObligationEntry {
         return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
+            $source = FeeObligation::query()->findOrFail($obligationId);
+            $this->assertCustomerMayReceiveFeeChanges($source);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
-            $this->assertCustomerMayReceiveFeeChanges($obligation);
 
             return $this->recordAdministrativeEntry(
                 obligation: $obligation,
@@ -273,8 +284,9 @@ class FeeObligationService
     ): FeeObligationEntry {
         return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $direction, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
+            $source = FeeObligation::query()->findOrFail($obligationId);
+            $this->assertCustomerMayReceiveFeeChanges($source);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
-            $this->assertCustomerMayReceiveFeeChanges($obligation);
 
             if ($obligation->settledAmountKobo() > 0 || $obligation->waivedAmountKobo() > 0) {
                 throw new ConflictHttpException('Settled or waived fee obligations require their owning correction workflow.');
@@ -351,7 +363,7 @@ class FeeObligationService
     {
         $customer->loadMissing(['feeObligations.feeSnapshot', 'feeObligations.entries']);
 
-        return $customer->feeObligations->map(function (FeeObligation $obligation): array {
+        return array_values($customer->feeObligations->map(function (FeeObligation $obligation): array {
             $snapshot = $obligation->feeSnapshot;
             if ($snapshot === null) {
                 return [
@@ -401,28 +413,38 @@ class FeeObligationService
                     'recorded_at' => $entry->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                 ])->values()->all(),
             ];
-        })->values()->all();
+        })->values()->all());
     }
 
     /**
-     * Return current authoritative fee and refund results for a future lifecycle caller.
+     * Return current authoritative fee and refund results for lifecycle callers.
      *
      * A zero is returned only when a fee snapshot proves the source terms and every
-     * applicable assessment is represented. Lifecycle remains unavailable while plan
-     * and cycle owners are absent, even when the currently recorded balance is zero.
+     * applicable assessment is represented. Unsupported cycle evidence remains unavailable.
      */
-    public function authoritativePosition(CustomerProfile $customer): FeePosition
+    public function authoritativePosition(CustomerProfile $customer, bool $forUpdate = false): FeePosition
     {
-        $customer->loadMissing(['feeSnapshots.obligation.entries', 'feeObligations.entries']);
+        $customer->load(['feeSnapshots.obligation.entries', 'feeObligations.entries']);
         $snapshots = $customer->feeSnapshots;
-        if ($snapshots->isEmpty()) {
+        if (! $snapshots->contains(fn (FeeSnapshot $snapshot): bool => $snapshot->kind === FeeRuleKind::Registration)) {
             return $this->unavailablePosition('No authoritative fee snapshot is available.');
         }
 
         $outstandingKobo = 0;
         foreach ($snapshots as $snapshot) {
             $obligation = $snapshot->obligation;
+            if ($snapshot->currency !== 'NGN') {
+                return $this->unavailablePosition('Fee currency is unsupported.');
+            }
             if (! $snapshot->isZero() && $obligation === null) {
+                $plan = $snapshot->source_type === 'plan'
+                    ? ThriftPlan::query()->where('plan_id', $snapshot->source_id)->where('customer_profile_id', $customer->id)->first()
+                    : null;
+                if ($plan !== null && $plan->status === ThriftPlanStatus::Cancelled
+                    && ! CollectionReceipt::query()->where('thrift_plan_id', $plan->id)->exists()) {
+                    continue;
+                }
+
                 return $this->unavailablePosition('An applicable fee assessment is missing.');
             }
 
@@ -430,6 +452,10 @@ class FeeObligationService
                 continue;
             }
 
+            if ($obligation->customer_profile_id !== $customer->id || $obligation->currency !== 'NGN'
+                || $obligation->fee_snapshot_id !== $snapshot->id || ! $obligation->entries()->where('entry_type', 'assessment')->exists()) {
+                return $this->unavailablePosition('Fee assessment history is inconsistent.');
+            }
             $amount = $obligation->outstandingAmountKobo();
             if ($amount > PHP_INT_MAX - $outstandingKobo) {
                 throw new \OverflowException('Customer outstanding fee total exceeds the supported integer range.');
@@ -437,7 +463,11 @@ class FeeObligationService
             $outstandingKobo += $amount;
         }
 
-        $refundAccount = LedgerAccount::query()->where('code', LedgerAccountCode::RefundPayable->value)->first();
+        $refundQuery = LedgerAccount::query()->where('code', LedgerAccountCode::RefundPayable->value);
+        if ($forUpdate) {
+            $refundQuery->lockForUpdate();
+        }
+        $refundAccount = $refundQuery->first();
         if ($refundAccount === null
             || $refundAccount->mapping_status !== 'mapped'
             || $refundAccount->account_class !== LedgerAccountClass::RefundPayable
@@ -453,29 +483,42 @@ class FeeObligationService
             );
         }
 
-        $refundTotals = LedgerEntry::query()
-            ->where('ledger_account_id', $refundAccount->id)
-            ->where('customer_profile_id', $customer->id)
-            ->selectRaw('side, SUM(amount_kobo) as amount_kobo')
-            ->groupBy('side')
-            ->pluck('amount_kobo', 'side');
-        $refundPayableKobo = (int) $refundTotals->get(LedgerEntrySide::Credit->value, 0)
-            - (int) $refundTotals->get(LedgerEntrySide::Debit->value, 0);
+        $refundPayableKobo = 0;
+        foreach (LedgerEntry::query()->where('ledger_account_id', $refundAccount->id)
+            ->where('customer_profile_id', $customer->id)->get() as $entry) {
+            $side = $entry->getRawOriginal('side');
+            if ($entry->amount_kobo < 1 || ! in_array($side, ['credit', 'debit'], true)) {
+                return $this->unavailablePosition('Refund payable entries are inconsistent.');
+            }
+            if ($side === 'credit') {
+                if ($refundPayableKobo > PHP_INT_MAX - $entry->amount_kobo) {
+                    return $this->unavailablePosition('Refund payable amount exceeds the supported range.');
+                }
+                $refundPayableKobo += $entry->amount_kobo;
+            } else {
+                $refundPayableKobo -= $entry->amount_kobo;
+            }
+        }
 
         if ($refundPayableKobo < 0) {
             return $this->unavailablePosition('Refund payable entries are inconsistent.');
         }
 
+        $plansClear = app(ThriftPlanService::class)->archivalStatus($customer) === 'passed';
+        $knownObligations = $snapshots->pluck('obligation.id')->filter()->all();
+        if ($customer->feeObligations->contains(fn (FeeObligation $obligation): bool => ! in_array($obligation->id, $knownObligations, true))) {
+            return $this->unavailablePosition('An obligation has no matching authoritative fee snapshot.');
+        }
         $lifecycleMessage = $outstandingKobo > 0 || $refundPayableKobo > 0
             ? 'Outstanding fees or refund payables block the lifecycle action.'
-            : 'Lifecycle eligibility is unavailable until plan and cycle fee contracts are supplied.';
+            : ($plansClear ? 'Fee obligations and refund payables are settled.' : 'Plan and cycle fee eligibility is unavailable.');
 
         return new FeePosition(
             outstandingStatus: 'available',
             outstandingFeeKobo: $outstandingKobo,
             refundPayableStatus: 'available',
             refundPayableKobo: $refundPayableKobo,
-            lifecycleGateStatus: $outstandingKobo > 0 || $refundPayableKobo > 0 ? 'blocked' : 'unavailable',
+            lifecycleGateStatus: $outstandingKobo > 0 || $refundPayableKobo > 0 ? 'blocked' : ($plansClear ? 'available' : 'unavailable'),
             lifecycleGateMessage: $lifecycleMessage,
         );
     }
@@ -648,7 +691,7 @@ class FeeObligationService
             ],
             actor: $admin,
 
-            context: ['executor' => self::class, 'required_permission' => $admin?->user_type === UserType::Admin ? 'fees.manage' : null]
+            context: ['executor' => self::class, 'required_permission' => $admin->user_type === UserType::Admin ? 'fees.manage' : null]
         );
 
         $customer = $obligation->customerProfile()->with('user')->first();

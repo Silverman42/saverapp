@@ -58,6 +58,7 @@ class ResumeCookieService
             'user_type' => $user->user_type->value,
             'path' => $cleanPath,
             'saved_at' => Carbon::now()->timestamp,
+            'access_version' => (int) $user->lifecycle_access_version,
         ];
 
         $encrypted = Crypt::encrypt($payload);
@@ -89,7 +90,6 @@ class ResumeCookieService
         }
 
         try {
-            /** @var array{user_hash?: string, user_type?: string, path?: string, saved_at?: int} $payload */
             $payload = Crypt::decrypt($rawCookie);
         } catch (\Throwable) {
             return null;
@@ -99,9 +99,13 @@ class ResumeCookieService
             return null;
         }
 
+        if ((int) ($payload['access_version'] ?? 0) !== (int) $user->lifecycle_access_version) {
+            return null;
+        }
+
         // Verify account binding
         $expectedHash = $this->hashUserId($user->id);
-        if (! isset($payload['user_hash']) || ! hash_equals($expectedHash, $payload['user_hash'])) {
+        if (! isset($payload['user_hash']) || ! is_string($payload['user_hash']) || ! hash_equals($expectedHash, $payload['user_hash'])) {
             return null;
         }
 
@@ -111,7 +115,7 @@ class ResumeCookieService
         }
 
         // Verify 24-hour expiration
-        if (! isset($payload['saved_at']) || $payload['saved_at'] < Carbon::now()->subHours(24)->timestamp) {
+        if (! isset($payload['saved_at']) || ! is_int($payload['saved_at']) || $payload['saved_at'] < Carbon::now()->subHours(24)->timestamp) {
             return null;
         }
 
@@ -190,7 +194,7 @@ class ResumeCookieService
         // Only allow safe alphanumeric query parameters (like page, sort, filter)
         $allowedQueries = [];
         foreach ($request->query->all() as $key => $val) {
-            if (is_string($key) && is_string($val) && preg_match('/^[a-zA-Z0-9_-]+$/', $key) && strlen($val) < 100) {
+            if (is_string($val) && preg_match('/^[a-zA-Z0-9_-]+$/', $key) && strlen($val) < 100) {
                 $allowedQueries[$key] = $val;
             }
         }

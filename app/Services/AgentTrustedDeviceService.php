@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Cookie as SymfonyCookie;
 
@@ -52,14 +53,25 @@ class AgentTrustedDeviceService
 
         $deviceName = $this->resolveDeviceName($request->userAgent());
 
-        AgentTrustedDevice::create([
-            'user_id' => $user->id,
-            'device_token_hash' => $tokenHash,
-            'device_name' => $deviceName,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'trusted_until' => $trustedUntil,
-        ]);
+        $created = DB::transaction(function () use ($user, $tokenHash, $deviceName, $request, $trustedUntil): bool {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if (! $locked->canSignIn() || $locked->lifecycle_access_version !== $user->lifecycle_access_version) {
+                return false;
+            }
+            AgentTrustedDevice::create([
+                'user_id' => $user->id,
+                'device_token_hash' => $tokenHash,
+                'device_name' => $deviceName,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'trusted_until' => $trustedUntil,
+            ]);
+
+            return true;
+        });
+        if (! $created) {
+            return Cookie::forget(self::COOKIE_NAME);
+        }
 
         return cookie(
             name: self::COOKIE_NAME,

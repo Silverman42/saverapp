@@ -19,6 +19,7 @@ class RedirectIfTwoFactorAuthenticatable extends BaseAction
     public function handle($request, $next)
     {
         $user = $this->validateCredentials($request);
+        $request->session()->put('login.lifecycle_access_version', (int) $user->lifecycle_access_version);
 
         // Section 8.2 & AUTH-047: Agent trusted device bypasses TOTP challenge
         if ($user && $user->user_type === UserType::Agent) {

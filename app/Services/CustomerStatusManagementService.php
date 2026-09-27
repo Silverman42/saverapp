@@ -13,6 +13,7 @@ use App\Models\CustomerProfile;
 use App\Models\CustomerStatusHistory;
 use App\Models\CustomerStatusNotificationIntent;
 use App\Models\User;
+use App\Support\LockedCustomerActionContext;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -59,48 +60,63 @@ class CustomerStatusManagementService
                 $this->ensureCurrentAgentIsEligible($context->currentAgentProfile);
             }
 
-            $fromVersion = $lockedCustomer->version;
-            $lockedCustomer->forceFill([
-                'operational_status' => $targetStatus,
-                'version' => $fromVersion + 1,
-                'updated_by_user_id' => $context->actor->id,
-            ])->save();
+            return $this->persistTransition($context, $targetStatus, $reason, $customerExplanation);
 
-            $effectiveAt = now()->utc();
-            $history = CustomerStatusHistory::create([
-                'customer_profile_id' => $lockedCustomer->id,
+        }, attempts: 3);
+    }
+
+    protected function persistTransition(
+        LockedCustomerActionContext $context,
+        CustomerStatus $targetStatus,
+        string $reason,
+        string $customerExplanation,
+        bool $updateWithdrawalHolds = true,
+    ): CustomerProfile {
+        $lockedCustomer = $context->customerProfile;
+        $currentStatus = $lockedCustomer->operational_status;
+        $fromVersion = $lockedCustomer->version;
+        $lockedCustomer->forceFill([
+            'operational_status' => $targetStatus,
+            'version' => $fromVersion + 1,
+            'updated_by_user_id' => $context->actor->id,
+        ])->save();
+
+        $effectiveAt = now()->utc();
+        $history = CustomerStatusHistory::create([
+            'customer_profile_id' => $lockedCustomer->id,
+            'from_status' => $currentStatus->value,
+            'to_status' => $targetStatus->value,
+            'reason' => trim($reason),
+            'customer_facing_explanation' => trim($customerExplanation),
+            'changed_by_user_id' => $context->actor->id,
+            'created_at' => $effectiveAt,
+        ]);
+
+        $auditEvent = AuditEvent::record(
+            eventType: 'customer.status_changed',
+            targetType: 'customer',
+            targetId: $lockedCustomer->id,
+            targetReference: $lockedCustomer->customer_id,
+            payload: [
                 'from_status' => $currentStatus->value,
                 'to_status' => $targetStatus->value,
-                'reason' => trim($reason),
-                'customer_facing_explanation' => trim($customerExplanation),
-                'changed_by_user_id' => $context->actor->id,
-                'created_at' => $effectiveAt,
-            ]);
+                'from_version' => $fromVersion,
+                'to_version' => $lockedCustomer->version,
+                'outcome' => 'succeeded',
+            ],
+            actor: $context->actor,
 
-            $auditEvent = AuditEvent::record(
-                eventType: 'customer.status_changed',
-                targetType: 'customer',
-                targetId: $lockedCustomer->id,
-                targetReference: $lockedCustomer->customer_id,
-                payload: [
-                    'from_status' => $currentStatus->value,
-                    'to_status' => $targetStatus->value,
-                    'from_version' => $fromVersion,
-                    'to_version' => $lockedCustomer->version,
-                    'outcome' => 'succeeded',
-                ],
-                actor: $context->actor,
+            context: ['executor' => self::class, 'required_permission' => $context->actor->user_type === UserType::Admin ? 'customers.manage' : null]
+        );
+        $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
 
-                context: ['executor' => self::class, 'required_permission' => $context->actor?->user_type === UserType::Admin ? 'customers.manage' : null]
-            );
-            $history->forceFill(['audit_event_id' => $auditEvent->id])->save();
-
+        if ($updateWithdrawalHolds) {
             $this->withdrawals->applyCustomerStatus($lockedCustomer, $targetStatus);
+        }
 
-            $this->createNotificationIntents($lockedCustomer, $history, $currentStatus, $targetStatus, $effectiveAt);
+        $this->createNotificationIntents($lockedCustomer, $history, $currentStatus, $targetStatus, $effectiveAt);
 
-            return $lockedCustomer;
-        }, attempts: 3);
+        return $lockedCustomer;
     }
 
     protected function transitionIsAllowed(CustomerStatus $from, CustomerStatus $to): bool

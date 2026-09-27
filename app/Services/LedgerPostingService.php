@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\LedgerPostingCommand;
 use App\Data\LedgerPostingLine;
 use App\Enums\AccountState;
+use App\Enums\CustomerStatus;
 use App\Enums\FeeLedgerPostingType;
 use App\Enums\FeeObligationEntryType;
 use App\Enums\LedgerAccountClass;
@@ -39,6 +40,15 @@ class LedgerPostingService
         $payloadHash = $this->payloadHash($command);
 
         return app(PlatformGuard::class)->transaction('financial', function () use ($command, $expected, $payloadHash): LedgerPostingGroup {
+            $actor = $command->actor === null
+                ? null
+                : User::query()->whereKey($command->actor->id)->lockForUpdate()->firstOrFail();
+            if ($actor !== null && $actor->account_state !== AccountState::Active) {
+                throw new ConflictHttpException('Inactive actors cannot post fee ledger entries.');
+            }
+
+            $customer = CustomerProfile::query()->whereKey($command->customerProfileId)->lockForUpdate()->firstOrFail();
+
             $existing = LedgerPostingGroup::query()
                 ->where('idempotency_key', $command->idempotencyKey)
                 ->orWhere(function ($query) use ($command): void {
@@ -59,14 +69,9 @@ class LedgerPostingService
                 return $existing->load('entries.account');
             }
 
-            $actor = $command->actor === null
-                ? null
-                : User::query()->whereKey($command->actor->id)->lockForUpdate()->firstOrFail();
-            if ($actor !== null && $actor->account_state !== AccountState::Active) {
-                throw new ConflictHttpException('Inactive actors cannot post fee ledger entries.');
+            if ($customer->operational_status === CustomerStatus::Archived) {
+                throw new ConflictHttpException('Restore the Archived Customer before posting a fee.');
             }
-
-            CustomerProfile::query()->whereKey($command->customerProfileId)->lockForUpdate()->firstOrFail();
 
             $obligation = FeeObligation::query()
                 ->whereKey($command->lines[0]->feeObligationId)

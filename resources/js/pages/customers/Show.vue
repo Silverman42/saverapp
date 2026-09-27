@@ -402,7 +402,7 @@ const getInvitationBadgeVariant = (
             </div>
 
             <!-- Status Badges -->
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <Link
                     v-if="customer.actions.can_edit"
                     :href="editCustomer(customer.id).url"
@@ -413,7 +413,17 @@ const getInvitationBadgeVariant = (
                     v-if="customer.actions.can_manage_status"
                     :href="manageCustomerStatus(customer.id).url"
                 >
-                    <Button variant="outline">Manage status</Button>
+                    <Button variant="outline">{{
+                        customer.operational_status === 'archived'
+                            ? 'Restore to Inactive'
+                            : 'Manage status'
+                    }}</Button>
+                </Link>
+                <Link
+                    v-if="customer.actions.can_archive"
+                    :href="manageCustomerStatus(customer.id).url"
+                >
+                    <Button variant="outline">Archive Customer</Button>
                 </Link>
                 <Badge
                     :variant="

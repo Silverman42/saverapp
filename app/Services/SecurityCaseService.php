@@ -15,9 +15,32 @@ class SecurityCaseService
 {
     public function __construct(private AuthorizationService $authorization) {}
 
+    public function agentLifecycleStatus(User $user, bool $forUpdate = false): string
+    {
+        $query = SecurityCase::query()->where('affected_user_id', $user->id)->orderBy('id');
+        if ($forUpdate) {
+            $query->lockForUpdate();
+        }
+        foreach ($query->get() as $case) {
+            if (in_array($case->state, ['Open', 'Investigating'], true)) {
+                return 'blocked';
+            }
+            if (! in_array($case->state, ['Resolved', 'ClosedNoAction'], true)
+                || ! DB::table('security_case_transitions')->where('security_case_id', $case->id)
+                    ->where('version', $case->version)->where('event_type', 'security.case_state_changed')->exists()) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
+    }
+
     public function signal(int $legacyEventId, ?int $affectedUserId, string $severity = 'High'): SecurityCase
     {
         return DB::transaction(function () use ($legacyEventId, $affectedUserId, $severity): SecurityCase {
+            if ($affectedUserId !== null) {
+                User::query()->whereKey($affectedUserId)->lockForUpdate()->firstOrFail();
+            }
             $event = DB::table('canonical_audit_events')->where('legacy_audit_event_id', $legacyEventId)->firstOrFail();
             abort_unless(in_array($event->event_type, ['auth.lock_created', 'auth.compromise_sessions_revoked', 'audit.identity_conflict', 'ledger.integrity_incident', 'audit.content_mismatch'], true), 422);
             abort_unless(in_array($severity, ['Informational', 'Low', 'Medium', 'High', 'Critical'], true), 422);

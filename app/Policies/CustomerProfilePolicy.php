@@ -160,11 +160,17 @@ class CustomerProfilePolicy
     }
 
     /**
-     * Restore is strictly denied via policy (uses specialized restoration service).
+     * Restoration is authorized here and committed by the dedicated lifecycle service.
      */
     public function restore(User $user, CustomerProfile $customerProfile): bool
     {
-        return false;
+        return $customerProfile->operational_status === CustomerStatus::Archived && $this->manageLifecycle($user, $customerProfile);
+    }
+
+    public function manageLifecycle(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $user->user_type === UserType::Admin
+            && $this->authorizationService->allows($user, AdminPermission::CustomersManage);
     }
 
     /**

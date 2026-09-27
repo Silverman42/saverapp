@@ -237,9 +237,13 @@ class NotificationPipeline
                     })->where(function (Builder $service): void {
                         $service->whereJsonDoesntContain('i.audiences', 'assigned_customer')->orWhereExists(function (Builder $assignment): void {
                             $assignment->selectRaw('1')->from('customer_assignments as a')->join('agent_profiles as ap', 'ap.id', '=', 'a.agent_profile_id')
+                                ->join('users as agent_user', 'agent_user.id', '=', 'ap.user_id')
                                 ->join('customer_profiles as cp', 'cp.id', '=', 'a.customer_profile_id')
                                 ->whereColumn('a.customer_profile_id', 'i.customer_profile_id')->whereColumn('a.agent_profile_id', 'i.agent_profile_id')
-                                ->where('a.is_current', 1)->where('ap.operational_status', 'inactive')->where('cp.operational_status', '!=', 'archived');
+                                ->where('a.is_current', 1)->where('cp.operational_status', '!=', 'archived')
+                                ->where(function (Builder $unavailable): void {
+                                    $unavailable->where('ap.operational_status', 'inactive')->orWhereIn('agent_user.account_state', ['suspended', 'deactivated']);
+                                });
                         });
                     });
                 });

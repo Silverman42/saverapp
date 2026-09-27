@@ -32,6 +32,12 @@ class EnsureFreshAuthentication
                 return response()->json(['message' => __('Fresh authentication required.')], 423);
             }
 
+            if ($request->routeIs('agents.lifecycle.*')) {
+                $request->session()->put('url.intended', route('agents.lifecycle.show', $request->route('agent')));
+
+                return redirect()->route('fresh-authentication');
+            }
+
             return redirect()->guest(route('fresh-authentication'));
         }
 

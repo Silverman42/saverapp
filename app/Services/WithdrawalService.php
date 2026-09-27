@@ -11,6 +11,7 @@ use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
+use App\Models\AgentProfile;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
@@ -465,5 +466,50 @@ class WithdrawalService
             context: ['executor' => self::class, 'approver_id' => $withdrawal->reviewed_by_user_id, 'required_permission' => $actor?->user_type === UserType::Admin ? 'withdrawals.review' : null]
         );
         $this->notices->queue($withdrawal, $event);
+    }
+
+    public function archivalStatus(CustomerProfile $customer): string
+    {
+        foreach (WithdrawalRequest::query()->where('customer_profile_id', $customer->id)->get() as $request) {
+            if (! in_array($request->state, ['rejected', 'cancelled', 'revoked', 'expired'], true)) {
+                return in_array($request->state, ['pending_review', 'approved', 'payment_failed'], true) ? 'blocked' : 'unavailable';
+            }
+            $reservation = DB::table('withdrawal_reservations')->where('id', $request->withdrawal_reservation_id)->first();
+            if ($reservation === null || (int) $reservation->customer_profile_id !== $customer->id
+                || $reservation->owner_reference !== $request->withdrawal_id || $reservation->status !== 'released'
+                || $request->terminal_at === null) {
+                return 'unavailable';
+            }
+        }
+        foreach (DB::table('withdrawal_reservations')->where('customer_profile_id', $customer->id)->get() as $reservation) {
+            if ($reservation->status === 'live') {
+                return 'blocked';
+            }
+            if ($reservation->status !== 'released' || ! WithdrawalRequest::query()->where('withdrawal_reservation_id', $reservation->id)->exists()) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
+    }
+
+    public function agentOffboardingStatus(AgentProfile $agent, bool $forUpdate = false): string
+    {
+        $query = WithdrawalRequest::query()->where('initiating_agent_profile_id', $agent->id)->orderBy('id');
+        if ($forUpdate) {
+            $query->lockForUpdate();
+        }
+        foreach ($query->get() as $request) {
+            if (! in_array($request->state, ['rejected', 'cancelled', 'revoked', 'expired'], true)) {
+                return 'unavailable';
+            }
+            $reservation = DB::table('withdrawal_reservations')->where('id', $request->withdrawal_reservation_id)->first();
+            if ($reservation === null || $reservation->status !== 'released' || $reservation->owner_reference !== $request->withdrawal_id
+                || (int) $reservation->customer_profile_id !== $request->customer_profile_id || $request->terminal_at === null) {
+                return 'unavailable';
+            }
+        }
+
+        return 'passed';
     }
 }

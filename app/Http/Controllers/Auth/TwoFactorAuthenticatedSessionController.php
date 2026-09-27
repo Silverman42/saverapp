@@ -48,14 +48,18 @@ class TwoFactorAuthenticatedSessionController extends Controller
     /**
      * Attempt to authenticate a new session using the two factor authentication code or recovery code.
      */
-    public function store(Request $request)
+    public function store(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         if (! $request->session()->has('login.id')) {
             throw new HttpResponseException(redirect()->route('login'));
         }
 
-        /** @var User $user */
-        $user = User::findOrFail($request->session()->get('login.id'));
+        $user = User::query()->whereKey($request->session()->get('login.id'))->firstOrFail();
+        if (! $user->canSignIn() || (int) $request->session()->get('login.lifecycle_access_version', 0) !== (int) $user->lifecycle_access_version) {
+            $request->session()->forget(['login.id', 'login.remember', 'login.lifecycle_access_version']);
+
+            throw new HttpResponseException(redirect()->route('login'));
+        }
 
         $recoveryCode = $request->input('recovery_code');
         $code = $request->input('code');
@@ -122,8 +126,14 @@ class TwoFactorAuthenticatedSessionController extends Controller
     /**
      * Handle successful two-factor verification.
      */
-    protected function handleSuccess(Request $request, User $user, bool $usedRecoveryCode)
+    protected function handleSuccess(Request $request, User $user, bool $usedRecoveryCode): \Symfony\Component\HttpFoundation\Response
     {
+        $user->refresh();
+        if (! $user->canSignIn() || (int) $request->session()->get('login.lifecycle_access_version', 0) !== (int) $user->lifecycle_access_version) {
+            $request->session()->forget(['login.id', 'login.remember', 'login.lifecycle_access_version']);
+
+            throw new HttpResponseException(redirect()->route('login'));
+        }
         event(new ValidTwoFactorAuthenticationCodeProvided($user));
 
         $remember = (bool) $request->session()->pull('login.remember', false);
@@ -139,6 +149,7 @@ class TwoFactorAuthenticatedSessionController extends Controller
                 'remember' => $remember,
                 'replacement_required' => $usedRecoveryCode,
                 'trust_device' => $trustDevice,
+                'access_version' => (int) $user->lifecycle_access_version,
             ]);
 
             return redirect()->route('device-eviction');
@@ -152,7 +163,7 @@ class TwoFactorAuthenticatedSessionController extends Controller
         $this->guard->login($user, $remember);
         $request->session()->regenerate();
 
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
         $request->session()->put('auth.login_at', $now);
         $request->session()->put('auth.last_active_at', $now);
         $request->session()->put('auth.fresh_until', $now + 600);
@@ -163,7 +174,7 @@ class TwoFactorAuthenticatedSessionController extends Controller
 
         if ($trustDevice) {
             $cookie = $this->trustedDeviceService->createTrustedDevice($user, $request);
-            $response->withCookie($cookie);
+            $response->headers->setCookie($cookie);
         }
 
         return $response;

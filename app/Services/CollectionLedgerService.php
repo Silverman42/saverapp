@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\CustomerStatus;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
+use App\Models\CustomerProfile;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
@@ -45,6 +47,14 @@ class CollectionLedgerService
         }
 
         app(PlatformGuard::class)->assertAllowed('financial', true);
+
+        if ($customerId !== null) {
+            $customer = CustomerProfile::query()->whereKey($customerId)->lockForUpdate()->firstOrFail();
+            $existing = LedgerPostingGroup::query()->where('idempotency_key', $idempotencyKey)->first();
+            if ($existing === null && $customer->operational_status === CustomerStatus::Archived) {
+                throw new ConflictHttpException('Restore the Archived Customer before posting a contribution.');
+            }
+        }
 
         $source = $sourceType === 'collection_receipt'
             ? DB::table('collection_receipts')->where('id', $sourceId)->first()

@@ -22,6 +22,7 @@ class NotificationCatalogue
             'customer.name_correction_rejected', 'customer.name_correction_cancelled', 'customer.name_correction_expired',
             'customer.name_correction_invalidated', 'user.email_changed'],
         'customer_status' => ['customer_status'], 'agent_status' => ['agent_status'],
+        'agent_lifecycle' => ['agent.suspend', 'agent.restore', 'agent.start_offboarding', 'agent.transfer_owner', 'agent.cancel_offboarding', 'agent.complete_offboarding', 'agent.return'],
         'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
         'collection' => ['collection'], 'withdrawal' => ['submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted'],
         'reversal' => ['submitted', 'approved_posted', 'rejected', 'cancelled'],
@@ -34,6 +35,7 @@ class NotificationCatalogue
         'profile' => ['table' => 'profile_notification_intents', 'source' => 'profile_change_histories', 'key' => 'profile_change_history_id'],
         'customer_status' => ['table' => 'customer_status_notification_intents', 'source' => 'customer_status_histories', 'key' => 'customer_status_history_id'],
         'agent_status' => ['table' => 'agent_status_notification_intents', 'source' => 'agent_status_histories', 'key' => 'agent_status_history_id'],
+        'agent_lifecycle' => ['table' => 'agent_lifecycle_notification_intents', 'source' => 'agent_lifecycle_histories', 'key' => 'agent_lifecycle_history_id'],
         'plan' => ['table' => 'plan_notification_intents', 'source' => 'plan_lifecycle_events', 'key' => 'plan_lifecycle_event_id'],
         'collection' => ['table' => 'collection_notification_intents', 'source' => 'collection_receipts', 'key' => 'collection_receipt_id'],
         'withdrawal' => ['table' => 'withdrawal_notification_intents', 'source' => 'withdrawal_events', 'key' => 'withdrawal_event_id'],
@@ -152,6 +154,29 @@ class NotificationCatalogue
                 }
                 if ($audience === 'assigned_customer' && ($customerId === null || $status !== 'inactive')) {
                     throw new InvalidArgumentException('Invalid service notice.');
+                }
+                break;
+            case 'agent_lifecycle':
+                $agentId = $source->agent_profile_id;
+                $this->matchSubject($owner->agent_profile_id, $agentId);
+                $this->audience($audience, ['subject_agent', 'managing_admin', 'assigned_customer']);
+                if (! in_array($eventType, self::EVENTS['agent_lifecycle'], true)) {
+                    throw new InvalidArgumentException('Unknown Agent lifecycle notice.');
+                }
+                $facts = [];
+                $title = 'Agent account updated';
+                $summary = 'An Agent lifecycle action was recorded. Account access and operational readiness remain separate.';
+                if ($audience === 'subject_agent') {
+                    $summary .= ' '.mb_substr($source->agent_facing_explanation, 0, 500);
+                }
+                if ($audience === 'assigned_customer') {
+                    if ($customerId === null || ! in_array($eventType, ['agent.suspend', 'agent.start_offboarding'], true)) {
+                        throw new InvalidArgumentException('Invalid Agent lifecycle service notice.');
+                    }
+                    $title = 'Service contact unavailable';
+                    $business = BusinessProfile::current();
+                    $contact = $business->support_email ?: $business->support_phone;
+                    $summary = 'Your assigned Agent is temporarily unavailable. Your Customer status and savings are unchanged. '.($contact ? 'For help, contact '.$contact.'.' : 'Contact the business office for help.');
                 }
                 break;
             case 'plan':
@@ -285,7 +310,7 @@ class NotificationCatalogue
             'business_settings' => ['settings_manager'],
             'security' => ['security_operations_admin'],
             'profile' => ['subject_customer', 'subject_agent', 'current_agent', 'security_operations_admin'],
-            'agent_status' => ['subject_agent', 'assigned_customer', 'managing_admin'],
+            'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin'],
             'collection' => ['subject_customer'],
             default => ['subject_customer', 'current_agent'],
         };

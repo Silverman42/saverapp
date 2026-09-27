@@ -11,12 +11,14 @@ use App\Support\PasswordPolicy;
 use App\Support\PlatformJobMiddleware;
 use App\Support\PlatformWorker;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -52,6 +54,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Bus::pipeThrough([PlatformJobMiddleware::class]);
+        Event::listen(Login::class, static function (Login $event): void {
+            $request = app('request');
+            if ($event->user instanceof User && $request->hasSession()) {
+                $request->session()->put('auth.lifecycle_access_version', (int) $event->user->lifecycle_access_version);
+            }
+        });
         $this->configureDefaults();
         $this->registerAuthorizationGates();
     }

@@ -9,11 +9,12 @@ use App\Models\CustomerStatusHistory;
 use App\Models\CustomerStatusNotificationIntent;
 use App\Models\User;
 use App\Services\AgentEligibilityService;
+use App\Services\CustomerLifecycleEligibility;
 use App\Services\CustomerStatusManagementService;
 use App\Services\ResourceScopeService;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -36,7 +37,7 @@ class CustomerStatusController extends Controller
             abort(404, 'Record unavailable.');
         }
 
-        Gate::authorize('manageOperationalStatus', $profile);
+        Gate::authorize('manageLifecycle', $profile);
 
         $assignedAgent = $profile->currentAssignment?->agentProfile;
         $currentAgent = null;
@@ -62,13 +63,15 @@ class CustomerStatusController extends Controller
                     ? ucfirst(str_replace('_', ' ', $profile->user->account_state->value))
                     : 'Unknown',
                 'version' => $profile->version,
+                'assignment_version' => $profile->currentAssignment?->version,
                 'current_agent' => $currentAgent,
             ],
+            'lifecycle' => DB::transaction(fn (): array => app(CustomerLifecycleEligibility::class)->preview($actor, $profile)),
             'allowed_targets' => $this->allowedTargets($profile->operational_status),
             'financial_sections' => [
-                'summary' => 'Financial summary is unavailable until Module 10.',
-                'plans' => 'Plan schedule details are available from the Customer profile; actual collection progress remains unavailable until the financial modules are connected.',
-                'collections' => 'Collection details are unavailable until Module 07.',
+                'summary' => 'Financial records remain available from the Customer profile.',
+                'plans' => 'Plan schedules and contribution progress remain available from the Customer profile.',
+                'collections' => 'Collection receipts and allocations remain available from the Customer profile.',
                 'withdrawals' => 'Withdrawal request history is available; payout execution awaits an approved method.',
             ],
             'history' => $profile->statusHistories->map(fn (CustomerStatusHistory $entry): array => [
@@ -127,7 +130,7 @@ class CustomerStatusController extends Controller
             CustomerStatus::Active => [CustomerStatus::Active, CustomerStatus::Inactive, CustomerStatus::Restricted],
             CustomerStatus::Inactive => [CustomerStatus::Inactive, CustomerStatus::Active, CustomerStatus::Restricted],
             CustomerStatus::Restricted => [CustomerStatus::Restricted, CustomerStatus::Active, CustomerStatus::Inactive],
-            CustomerStatus::Archived => throw new AuthorizationException('Archived Customers must use the restoration workflow.'),
+            CustomerStatus::Archived => [],
         };
 
         return array_map(static fn (CustomerStatus $status): array => [

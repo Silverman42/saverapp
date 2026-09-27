@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { dashboard } from '@/routes';
 import { index as agentsIndex, show as agentShow } from '@/routes/agents';
+import { show as showLifecycle } from '@/actions/App/Http/Controllers/AgentLifecycleController';
 import { update as updateAgentStatus } from '@/routes/agents/status';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +88,12 @@ defineOptions({
                 {{ agent.name }} · {{ agent.id }}
             </p>
         </div>
+
+        <Link :href="showLifecycle(agent.id)"
+            ><Button variant="outline"
+                >Manage account access and offboarding</Button
+            ></Link
+        >
 
         <div class="grid gap-4 sm:grid-cols-2">
             <Card>

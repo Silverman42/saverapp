@@ -462,7 +462,7 @@ class CustomerNameCorrectionService
             ],
             actor: $actor,
 
-            context: ['executor' => self::class, 'required_permission' => $actor?->user_type === UserType::Admin ? 'customers.manage' : null]
+            context: ['executor' => self::class, 'required_permission' => $actor->user_type === UserType::Admin ? 'customers.manage' : null]
         );
     }
 
@@ -488,5 +488,16 @@ class CustomerNameCorrectionService
                 'url' => route('customers.show', $profile->customer_id),
             ],
         );
+    }
+
+    public function cancelForArchival(CustomerProfile $profile, User $actor): void
+    {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException('Archival cancellation requires the lifecycle transaction.');
+        }
+        foreach (CustomerNameCorrection::query()->where('customer_profile_id', $profile->id)->where('status', 'pending')->lockForUpdate()->get() as $correction) {
+            $correction->forceFill(['status' => 'cancelled', 'resolved_by_user_id' => $actor->id, 'resolved_at' => now()])->save();
+            $this->recordProposalOutcome($profile, $actor, $correction, 'customer.name_correction_cancelled');
+        }
     }
 }
