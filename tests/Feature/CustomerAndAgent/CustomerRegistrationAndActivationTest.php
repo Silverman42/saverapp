@@ -170,7 +170,7 @@ test('Admin without fresh session is challenged when publishing registration fee
     $response->assertRedirect(route('fresh-authentication'));
 });
 
-test('Admin with fresh session and fees.manage can view and publish fixed registration fee rule', function (): void {
+test('Admin with fresh session and fees.manage can view and publish fixed registration fee rule', function (int|float|string $amountNgn, int $amountKobo, string $formattedAmount): void {
     $admin = User::factory()->admin()->create();
     $admin->assignRole(UserType::Admin->value);
     $admin->givePermissionTo(AdminPermission::FeesManage->value);
@@ -189,24 +189,54 @@ test('Admin with fresh session and fees.manage can view and publish fixed regist
         ->post(route('admin.fees.registration.store'), [
             'name' => 'Standard Customer Fee 2026',
             'model' => 'fixed',
-            'amount_ngn' => '500.00',
+            'amount_ngn' => $amountNgn,
             'customer_description' => 'Mandatory onboarding charge for new accounts.',
             'publication_reason' => 'Annual governance tariff schedule approval.',
         ]);
 
-    $response->assertRedirect(route('admin.fees.registration.index'));
+    $response->assertSessionHasNoErrors()->assertRedirect(route('admin.fees.registration.index'));
 
     $currentRule = FeeRule::currentRegistration()->first();
     expect($currentRule)->not->toBeNull();
     expect($currentRule->version)->toBe(1);
     expect($currentRule->name)->toBe('Standard Customer Fee 2026');
     expect($currentRule->model)->toBe(FeeRuleModel::Fixed);
-    expect($currentRule->amount_kobo)->toBe(50000);
-    expect($currentRule->formattedAmount())->toBe('₦500.00');
+    expect($currentRule->amount_kobo)->toBe($amountKobo);
+    expect($currentRule->formattedAmount())->toBe($formattedAmount);
     expect($currentRule->published_by_user_id)->toBe($admin->id);
 
     expect(AuditEvent::query()->where('event_type', 'fee_rule.published')->exists())->toBeTrue();
-});
+})->with([
+    'numeric whole amount' => [500, 50000, '₦500.00'],
+    'numeric decimal amount' => [500.25, 50025, '₦500.25'],
+    'numeric minimum amount' => [0.01, 1, '₦0.01'],
+    'decimal string amount' => ['500.00', 50000, '₦500.00'],
+]);
+
+test('Admin cannot publish a fixed registration fee with an invalid amount', function (mixed $amountNgn): void {
+    $admin = User::factory()->admin()->create();
+    $admin->assignRole(UserType::Admin->value);
+    $admin->givePermissionTo(AdminPermission::FeesManage->value);
+
+    $this->actingAs($admin)
+        ->withSession(freshAdminSession())
+        ->post(route('admin.fees.registration.store'), [
+            'name' => 'Standard Customer Fee 2026',
+            'model' => 'fixed',
+            'amount_ngn' => $amountNgn,
+            'customer_description' => 'Mandatory onboarding charge for new accounts.',
+            'publication_reason' => 'Approved tariff schedule.',
+        ])
+        ->assertSessionHasErrors('amount_ngn');
+
+    expect(FeeRule::query()->count())->toBe(0);
+    expect(AuditEvent::query()->where('event_type', 'fee_rule.published')->exists())->toBeFalse();
+})->with([
+    'non-numeric amount' => ['invalid'],
+    'negative amount' => [-1],
+    'excess decimal places' => [500.001],
+    'boolean amount' => [true],
+]);
 
 test('Admin can publish explicit zero fee rule', function (): void {
     $admin = User::factory()->admin()->create();

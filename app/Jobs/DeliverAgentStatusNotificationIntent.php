@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Notifications\AgentStatusNotification;
 use App\Services\AuthorizationService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,6 +32,8 @@ class DeliverAgentStatusNotificationIntent implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 30;
+
     /** @var array<int, int> */
     public array $backoff = [30, 120];
 
@@ -44,6 +47,10 @@ class DeliverAgentStatusNotificationIntent implements ShouldQueue
 
     public function handle(AuthorizationService $authorizationService): void
     {
+        if (app(NotificationPipeline::class)->recoverLocalOwner('agent_status', $this->intentId)) {
+            return;
+        }
+
         app(PlatformGuard::class)->work('external', function () use ($authorizationService): void {
             $this->handleAllowed($authorizationService);
         });
@@ -81,6 +88,10 @@ class DeliverAgentStatusNotificationIntent implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
+            return;
+        }
+
         AgentStatusNotificationIntent::query()->whereKey($this->intentId)->where('status', 'pending')->update([
             'status' => 'failed',
             'failure_reason' => 'Delivery failed after retrying.',

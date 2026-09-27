@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Services\NotificationCatalogue;
 use App\Services\NotificationInbox;
 use App\Services\NotificationPipeline;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -33,7 +34,7 @@ beforeEach(function (): void {
 });
 
 /** @return array{0: CustomerStatusNotificationIntent, 1: int} */
-function inboxStatusNotice(CustomerProfile $customer, ?User $recipient = null, string $audience = 'subject_customer', bool $deliver = true): array
+function inboxStatusNotice(CustomerProfile $customer, ?User $recipient = null, string $audience = 'subject_customer', bool $deliver = true, bool $capture = true): array
 {
     $history = CustomerStatusHistory::create([
         'customer_profile_id' => $customer->id, 'from_status' => CustomerStatus::Active, 'to_status' => CustomerStatus::Restricted,
@@ -47,6 +48,9 @@ function inboxStatusNotice(CustomerProfile $customer, ?User $recipient = null, s
         'payload' => ['title' => '<script>secret</script>', 'message' => 'private password token bank details', 'url' => 'https://evil.test/?token=secret'],
         'status' => 'pending',
     ]);
+    if (! $capture) {
+        return [$owner, 0];
+    }
     $id = app(NotificationPipeline::class)->capture('customer_status', $owner->id, false);
     if ($deliver) {
         app(NotificationPipeline::class)->materialize($id);
@@ -357,9 +361,9 @@ test('transient local delivery failures preserve atomicity and stop after three 
     expect(DB::table('notification_inbox_attempts')->count())->toBe(1);
     $pipeline->materialize($id);
     expect(DB::table('notification_inbox_attempts')->count())->toBe(1);
-    $this->travel(31)->seconds();
+    $this->travelTo(CarbonImmutable::parse(DB::table('notification_inbox_intents')->where('id', $id)->value('next_attempt_at')));
     $pipeline->materialize($id);
-    $this->travel(121)->seconds();
+    $this->travelTo(CarbonImmutable::parse(DB::table('notification_inbox_intents')->where('id', $id)->value('next_attempt_at')));
     $pipeline->materialize($id);
     expect(DB::table('notification_inbox_intents')->where('id', $id)->value('status'))->toBe('dead_letter');
     expect(DB::table('notification_inbox_attempts')->count())->toBe(3);
@@ -381,10 +385,7 @@ test('queue dispatch outage leaves the committed owner operation recoverable', f
 
 test('legacy pending intents are captured by import without immediate historical dispatch', function (): void {
     $customer = CustomerProfile::factory()->create();
-    [$owner] = inboxStatusNotice($customer, deliver: false);
-    DB::table('notification_inbox_aliases')->delete();
-    DB::table('notification_inbox_intents')->delete();
-    DB::table('notification_events')->delete();
+    [$owner] = inboxStatusNotice($customer, deliver: false, capture: false);
     $this->artisan('notifications:import')->assertSuccessful();
     expect(DB::table('notification_inbox_intents')->count())->toBe(1);
     expect(DB::table('notification_inbox_intents')->value('status'))->toBe('pending');

@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\ReversalStatusNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -22,6 +23,8 @@ class DeliverReversalNotificationIntent implements ShouldQueue
     use Queueable;
 
     public int $tries = 3;
+
+    public int $timeout = 30;
 
     /** @var array<int, int> */
     public array $backoff = [30, 120];
@@ -39,6 +42,10 @@ class DeliverReversalNotificationIntent implements ShouldQueue
      */
     public function handle(AgentEligibilityService $eligibility): void
     {
+        if (app(NotificationPipeline::class)->recoverLocalOwner('reversal', $this->intentId)) {
+            return;
+        }
+
         app(PlatformGuard::class)->work('external', function () use ($eligibility): void {
             $this->handleAllowed($eligibility);
         });
@@ -87,6 +94,10 @@ class DeliverReversalNotificationIntent implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
+            return;
+        }
+
         ReversalNotificationIntent::query()->whereKey($this->intentId)->where('status', 'pending')
             ->update(['status' => 'failed', 'updated_at' => now()]);
     }

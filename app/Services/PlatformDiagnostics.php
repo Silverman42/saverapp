@@ -38,7 +38,7 @@ class PlatformDiagnostics
         $checks['schema'] = $this->inspect(function (): array {
             $tables = ['platform_state', 'platform_transitions', 'platform_operations', 'platform_heartbeats', 'canonical_audit_events',
                 'audit_projection_work', 'audit_projection_state', 'ledger_posting_groups', 'ledger_projection_state',
-                'notification_inbox_intents', 'business_configuration_work', 'business_configuration_versions', 'jobs', 'failed_jobs'];
+                'notification_inbox_intents', 'platform_recovery_work', 'platform_recovery_attempts', 'platform_replay_manifests', 'platform_replay_approvals', 'platform_replay_runs', 'platform_replay_progress', 'platform_recovery_operations', 'platform_recovery_adoption', 'business_configuration_work', 'business_configuration_versions', 'jobs', 'failed_jobs'];
             $missing = array_values(array_filter($tables, fn (string $table): bool => ! Schema::hasTable($table)));
 
             return ['state' => $missing === [] ? 'Ready' : 'Unavailable', 'missing' => $missing];
@@ -68,6 +68,15 @@ class PlatformDiagnostics
                 'configuration_pending' => $configuration->count(), 'queued_jobs' => $jobs->count(),
                 'oldest_age_seconds' => $oldest === null ? null : max(0, (int) CarbonImmutable::parse($oldest)->diffInSeconds(now(), false)),
                 'failed_jobs' => DB::table('failed_jobs')->count()];
+        });
+        $checks['recovery'] = $this->inspect(function (): array {
+            $counts = DB::table('platform_recovery_work')->select('state')->selectRaw('COUNT(*) AS total')->groupBy('state')->pluck('total', 'state')->all();
+            $oldest = DB::table('platform_recovery_work')->whereIn('state', ['queued', 'retry_scheduled'])->where('available_at', '<=', now())->min('available_at');
+
+            return ['state' => 'Observed', 'counts' => $counts,
+                'expired_leases' => DB::table('platform_recovery_work')->where('state', 'running')->where('lease_expires_at', '<=', now())->count(),
+                'oldest_due_at' => $oldest, 'dead_letters' => (int) ($counts['dead_letter'] ?? 0),
+                'unknown_outcomes' => (int) ($counts['outcome_unknown'] ?? 0)];
         });
         $checks['projections'] = $this->inspect(function (): array {
             $audit = DB::table('audit_projection_state')->where('id', 1)->first();

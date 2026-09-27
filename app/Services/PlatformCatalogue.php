@@ -17,11 +17,37 @@ use App\Jobs\ProjectAuditEvent;
 use App\Support\PlatformBlocked;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class PlatformCatalogue
 {
     public const VERSION = 1;
+
+    /** @var array<class-string, string> */
+    public const LOCAL_INTENT_JOBS = [
+        DeliverAgentStatusNotificationIntent::class => 'agent_status',
+        DeliverCollectionNotificationIntent::class => 'collection',
+        DeliverCustomerStatusNotificationIntent::class => 'customer_status',
+        DeliverPlanNotificationIntent::class => 'plan',
+        DeliverProfileNotificationIntent::class => 'profile',
+        DeliverReversalNotificationIntent::class => 'reversal',
+        DeliverWithdrawalNotificationIntent::class => 'withdrawal',
+    ];
+
+    public function isLocalRecoveryJob(object $job): bool
+    {
+        if ($job instanceof ProjectAuditEvent || $job instanceof MaterializeNotificationIntent) {
+            return true;
+        }
+        $family = self::LOCAL_INTENT_JOBS[$job::class] ?? null;
+        if ($family === null || ! property_exists($job, 'intentId') || ! is_int($job->intentId)) {
+            return false;
+        }
+        $owner = DB::table(NotificationCatalogue::OWNERS[$family]['table'])->where('id', $job->intentId)->first();
+
+        return $owner === null || ($owner->channel ?? 'database') === 'database';
+    }
 
     /** @var array<string, array{class: string, owner: string, dependencies: list<string>, recovery_tier: string}> */
     public const OPERATIONS = [
@@ -46,6 +72,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const COMMANDS = [
+        'platform:replay' => 'mutation',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
         'ledger:rebuild-transactions' => 'derived', 'business:activate-settings' => 'mutation', 'authz:expire-restrictions' => 'mutation',

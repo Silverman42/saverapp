@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Enums\AdminPermission;
 use App\Models\User;
 use App\Services\AuthorizationService;
+use App\Services\UnavailableExternalOutcomeLookup;
+use App\Support\ExternalOutcomeLookup;
 use App\Support\PasswordPolicy;
 use App\Support\PlatformJobMiddleware;
 use App\Support\PlatformWorker;
@@ -27,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(ExternalOutcomeLookup::class, UnavailableExternalOutcomeLookup::class);
         $this->app->extend('queue.worker', function (Worker $worker, Application $app): PlatformWorker {
             return new PlatformWorker($app['queue'], $app['events'], $app[ExceptionHandler::class],
                 fn (): bool => $app->isDownForMaintenance(), function () use ($app): void {

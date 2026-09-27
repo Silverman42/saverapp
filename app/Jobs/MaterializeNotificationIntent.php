@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Services\BackgroundRecovery;
 use App\Services\NotificationPipeline;
-use App\Services\PlatformGuard;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -13,6 +13,8 @@ class MaterializeNotificationIntent implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 30;
+
     /** @var list<int> */
     public array $backoff = [30, 120];
 
@@ -20,13 +22,6 @@ class MaterializeNotificationIntent implements ShouldQueue
 
     public function handle(NotificationPipeline $pipeline): void
     {
-        app(PlatformGuard::class)->work('external', function () use ($pipeline): void {
-            $this->handleAllowed($pipeline);
-        });
-    }
-
-    private function handleAllowed(NotificationPipeline $pipeline): void
-    {
-        $pipeline->materialize($this->intentId);
+        app(BackgroundRecovery::class)->runSource('notification_inbox', $this->intentId);
     }
 }

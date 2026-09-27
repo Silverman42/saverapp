@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\ThriftPlanNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -30,6 +31,8 @@ class DeliverPlanNotificationIntent implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 30;
+
     /** @var array<int, int> */
     public array $backoff = [30, 120];
 
@@ -43,6 +46,10 @@ class DeliverPlanNotificationIntent implements ShouldQueue
 
     public function handle(AgentEligibilityService $eligibilityService): void
     {
+        if (app(NotificationPipeline::class)->recoverLocalOwner('plan', $this->intentId)) {
+            return;
+        }
+
         app(PlatformGuard::class)->work('external', function () use ($eligibilityService): void {
             $this->handleAllowed($eligibilityService);
         });
@@ -84,6 +91,10 @@ class DeliverPlanNotificationIntent implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
+            return;
+        }
+
         PlanNotificationIntent::query()->whereKey($this->intentId)->where('status', 'pending')->update([
             'status' => 'failed',
             'failure_reason' => 'Delivery failed after retrying.',

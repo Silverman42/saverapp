@@ -7,7 +7,6 @@ use App\Support\PlatformBlocked;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use stdClass;
-use Throwable;
 
 class AuditProjection
 {
@@ -35,46 +34,29 @@ class AuditProjection
 
     public function project(int $id): void
     {
-        try {
-            app(PlatformGuard::class)->transaction('derived', function () use ($id): void {
-                $state = DB::table('audit_projection_state')->where('id', 1)->lockForUpdate()->firstOrFail();
-                $work = DB::table('audit_projection_work')->where('canonical_event_id', $id)->lockForUpdate()->first();
-                if ($work === null || $work->status === 'complete') {
-                    return;
-                }
-                $event = DB::table('canonical_audit_events')->where('id', $id)->firstOrFail();
-                $this->writeDocument($event, (int) $state->active_version);
-                DB::table('audit_projection_work')->where('canonical_event_id', $id)->update(['status' => 'complete', 'failure_code' => null, 'updated_at' => now()]);
-                $firstPending = DB::table('audit_projection_work')->where('status', '!=', 'complete')->min('canonical_event_id');
-                $watermark = DB::table('canonical_audit_events')->when($firstPending !== null, fn ($q) => $q->where('id', '<', $firstPending))->max('id') ?? 0;
-                DB::table('audit_projection_state')->where('id', 1)->update(['watermark' => $watermark, 'status' => $firstPending === null ? 'current' : 'partial', 'updated_at' => now()]);
-            }, attempts: 3);
-        } catch (PlatformBlocked $exception) {
-            throw $exception;
-        } catch (Throwable $exception) {
-            if ($exception instanceof RuntimeException && $exception->getMessage() === 'Audit content verification failed.') {
-                $reference = DB::table('canonical_audit_events')->where('id', $id)->value('event_id');
-                $this->verificationFailure($reference);
+        app(BackgroundRecovery::class)->runSource('audit_projection', $id);
+    }
+
+    public function projectOwned(int $id): void
+    {
+        app(PlatformGuard::class)->transaction('derived', function () use ($id): void {
+            $state = DB::table('audit_projection_state')->where('id', 1)->lockForUpdate()->firstOrFail();
+            $work = DB::table('audit_projection_work')->where('canonical_event_id', $id)->lockForUpdate()->first();
+            if ($work === null || $work->status === 'complete') {
+                return;
             }
-            DB::table('audit_projection_work')->where('canonical_event_id', $id)->update(['status' => 'pending', 'attempts' => DB::raw('attempts + 1'), 'available_at' => now()->addMinute(), 'failure_code' => 'projection_unavailable', 'updated_at' => now()]);
-            DB::table('audit_projection_state')->where('id', 1)->update(['status' => 'partial', 'updated_at' => now()]);
-            throw $exception;
-        }
+            $event = DB::table('canonical_audit_events')->where('id', $id)->firstOrFail();
+            $this->writeDocument($event, (int) $state->active_version);
+            DB::table('audit_projection_work')->where('canonical_event_id', $id)->update(['status' => 'complete', 'failure_code' => null, 'updated_at' => now()]);
+            $firstPending = DB::table('audit_projection_work')->where('status', '!=', 'complete')->min('canonical_event_id');
+            $watermark = DB::table('canonical_audit_events')->when($firstPending !== null, fn ($q) => $q->where('id', '<', $firstPending))->max('id') ?? 0;
+            DB::table('audit_projection_state')->where('id', 1)->update(['watermark' => $watermark, 'status' => $firstPending === null ? 'current' : 'partial', 'updated_at' => now()]);
+        }, attempts: 3);
     }
 
     public function drain(int $limit = 100): int
     {
-        $ids = DB::table('audit_projection_work')->where('status', 'pending')->where('available_at', '<=', now())->orderBy('canonical_event_id')->limit($limit)->pluck('canonical_event_id');
-        $count = 0;
-        foreach ($ids as $id) {
-            try {
-                $this->project((int) $id);
-                $count++;
-            } catch (Throwable) { /* Retry eligibility remains durable. */
-            }
-        }
-
-        return $count;
+        return app(BackgroundRecovery::class)->drain('audit_projection', $limit);
     }
 
     public function rebuild(int $limit = 100): ?int
@@ -127,6 +109,22 @@ class AuditProjection
             }
             throw $exception;
         }
+    }
+
+    public function hasVerifiedDocument(stdClass $event, ?int $version): bool
+    {
+        $document = DB::table('audit_search_documents')->where('canonical_event_id', $event->id)->where('index_version', $version)->first();
+        if ($document === null) {
+            return false;
+        }
+        foreach (self::DOCUMENT_FIELDS as $field) {
+            if (($document->{$field} === null) !== ($event->{$field} === null)
+                || ($document->{$field} !== null && (string) $document->{$field} !== (string) $event->{$field})) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function verificationFailure(string $reference): void

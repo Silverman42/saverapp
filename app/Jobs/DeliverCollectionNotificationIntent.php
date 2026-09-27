@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\NotificationPipeline;
+use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,6 +23,8 @@ class DeliverCollectionNotificationIntent implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 30;
+
     /** @var array<int, int> */
     public array $backoff = [30, 120];
 
@@ -35,6 +38,10 @@ class DeliverCollectionNotificationIntent implements ShouldQueue
 
     public function handle(): void
     {
+        if (app(NotificationPipeline::class)->recoverLocalOwner('collection', $this->intentId)) {
+            return;
+        }
+
         app(PlatformGuard::class)->work('external', function (): void {
             $this->handleAllowed();
         });
@@ -52,6 +59,10 @@ class DeliverCollectionNotificationIntent implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
+            return;
+        }
+
         DB::table('collection_notification_intents')->where('id', $this->intentId)
             ->where('status', 'pending')->update(['status' => 'failed', 'updated_at' => now()]);
     }

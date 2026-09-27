@@ -131,6 +131,8 @@ class AuditCapture
         }
         DB::table('audit_projection_work')->insert(['canonical_event_id' => $id, 'status' => 'pending', 'available_at' => now(), 'updated_at' => now()]);
 
+        app(BackgroundRecovery::class)->register('audit_projection', (int) $id);
+
         return (int) $id;
     }
 

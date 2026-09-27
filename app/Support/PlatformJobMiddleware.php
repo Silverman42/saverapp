@@ -17,7 +17,8 @@ class PlatformJobMiddleware
         $operation = $this->catalogue->jobClass($job);
         $outcome = 'failed';
         try {
-            $result = $this->guard->work($operation, fn (): mixed => $next($job));
+            $managed = $this->catalogue->isLocalRecoveryJob($job);
+            $result = $managed ? $next($job) : $this->guard->work($operation, fn (): mixed => $next($job));
             $outcome = 'succeeded';
 
             return $result;

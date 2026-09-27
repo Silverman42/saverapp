@@ -7,7 +7,6 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Models\User;
-use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +70,7 @@ class NotificationPipeline
             DB::table('notification_inbox_aliases')->insertOrIgnore([
                 'intent_id' => $intent->id, 'family' => $family, 'owner_intent_id' => $owner->id, 'notification_id' => $owner->notification_id,
             ]);
+            app(BackgroundRecovery::class)->register('notification_inbox', (int) $intent->id);
             if ($dispatch) {
                 DB::afterCommit(static function () use ($intent): void {
                     try {
@@ -95,89 +95,123 @@ class NotificationPipeline
         }
     }
 
+    public function recoverLocalOwner(string $family, int $ownerId): bool
+    {
+        app(PlatformGuard::class)->assertAllowed('external');
+        $definition = NotificationCatalogue::OWNERS[$family] ?? throw new InvalidArgumentException('Unknown notification family.');
+        $owner = DB::table($definition['table'])->where('id', $ownerId)->first();
+        if ($owner === null) {
+            return true;
+        }
+        if (($owner->channel ?? 'database') !== 'database') {
+            return false;
+        }
+        $this->deliverOwner($family, $ownerId);
+
+        return true;
+    }
+
     public function deliverOwner(string $family, int $ownerId): void
     {
-        $alias = DB::table('notification_inbox_aliases')->where('family', $family)->where('owner_intent_id', $ownerId)->first();
-        $intentId = $alias === null ? $this->capture($family, $ownerId, false) : (int) $alias->intent_id;
+        $intentId = app(PlatformGuard::class)->transaction('external', function () use ($family, $ownerId): ?int {
+            $alias = DB::table('notification_inbox_aliases')->where('family', $family)->where('owner_intent_id', $ownerId)->first();
+
+            return $alias === null ? $this->capture($family, $ownerId, false) : (int) $alias->intent_id;
+        });
         if ($intentId !== null) {
             $this->materialize($intentId);
         }
     }
 
+    public function isRecipientEligible(int $intentId): bool
+    {
+        $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->first();
+        if ($intent === null || CarbonImmutable::parse($intent->expires_at)->isPast()) {
+            return false;
+        }
+        $recipient = User::query()->where('id', $intent->recipient_user_id)->first();
+
+        return $recipient !== null && $this->recipientScope($recipient, false)->where('i.id', $intentId)->exists();
+    }
+
     public function materialize(int $intentId): void
     {
+        app(BackgroundRecovery::class)->runSource('notification_inbox', $intentId);
+    }
+
+    public function materializeOwned(int $intentId): void
+    {
         $startedAt = now();
-        try {
-            app(PlatformGuard::class)->transaction('external', function () use ($intentId, $startedAt): void {
-                $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
-                if ($intent === null || $intent->status !== 'pending' || ($intent->next_attempt_at !== null && CarbonImmutable::parse($intent->next_attempt_at)->isFuture())) {
-                    return;
+        app(PlatformGuard::class)->transaction('external', function () use ($intentId, $startedAt): void {
+            $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
+            if ($intent === null || $intent->status !== 'pending' || ($intent->next_attempt_at !== null && CarbonImmutable::parse($intent->next_attempt_at)->isFuture())) {
+                return;
+            }
+            $recipient = User::query()->where('id', $intent->recipient_user_id)->first();
+            $status = 'delivered';
+            $failureCategory = null;
+            $event = DB::table('notification_events')->where('id', $intent->event_id)->first();
+            if ($event === null || ! $this->catalogue->validatesStoredContract($event, $intent)) {
+                $status = 'blocked';
+                $failureCategory = 'unsupported_contract';
+            } elseif (CarbonImmutable::parse($intent->expires_at)->isPast() || $recipient === null
+                || ! $this->recipientScope($recipient, false)->where('i.id', $intentId)->exists()) {
+                $status = 'suppressed';
+                $failureCategory = 'scope_or_expiry';
+            }
+            $number = (int) $intent->attempt_count + 1;
+            DB::table('notification_inbox_intents')->where('id', $intentId)->update(['status' => 'attempting']);
+            if ($status === 'delivered') {
+                $existing = DB::table('notifications')->where('id', $intent->notification_id)->first();
+                if ($existing !== null && ((int) $existing->notifiable_id !== (int) $recipient->id || $existing->notifiable_type !== $recipient->getMorphClass())) {
+                    throw new InvalidArgumentException('Conflicting notification recipient.');
                 }
-                $recipient = User::query()->where('id', $intent->recipient_user_id)->first();
-                $status = 'delivered';
-                $failureCategory = null;
-                $event = DB::table('notification_events')->where('id', $intent->event_id)->first();
-                if ($event === null || ! $this->catalogue->validatesStoredContract($event, $intent)) {
-                    $status = 'blocked';
-                    $failureCategory = 'unsupported_contract';
-                } elseif (CarbonImmutable::parse($intent->expires_at)->isPast() || $recipient === null
-                    || ! $this->recipientScope($recipient, false)->where('i.id', $intentId)->exists()) {
-                    $status = 'suppressed';
-                    $failureCategory = 'scope_or_expiry';
+                $data = json_encode(['title' => $intent->title, 'message' => $intent->summary, 'reference' => $intent->reference, 'template_id' => $intent->template_id, 'template_version' => 1], JSON_THROW_ON_ERROR);
+                if ($existing === null) {
+                    DB::table('notifications')->insert([
+                        'id' => $intent->notification_id, 'type' => 'shared-inbox-v1', 'notifiable_type' => $recipient->getMorphClass(),
+                        'notifiable_id' => $recipient->id, 'data' => $data, 'read_at' => null,
+                        'created_at' => $intent->created_at, 'updated_at' => now(), 'read_version' => 1,
+                    ]);
+                } else {
+                    DB::table('notifications')->where('id', $intent->notification_id)->update(['data' => $data, 'type' => 'shared-inbox-v1']);
                 }
-                $number = (int) $intent->attempt_count + 1;
-                DB::table('notification_inbox_intents')->where('id', $intentId)->update(['status' => 'attempting']);
-                if ($status === 'delivered') {
-                    $existing = DB::table('notifications')->where('id', $intent->notification_id)->first();
-                    if ($existing !== null && ((int) $existing->notifiable_id !== (int) $recipient->id || $existing->notifiable_type !== $recipient->getMorphClass())) {
-                        throw new InvalidArgumentException('Conflicting notification recipient.');
-                    }
-                    $data = json_encode(['title' => $intent->title, 'message' => $intent->summary, 'reference' => $intent->reference, 'template_id' => $intent->template_id, 'template_version' => 1], JSON_THROW_ON_ERROR);
-                    if ($existing === null) {
-                        DB::table('notifications')->insert([
-                            'id' => $intent->notification_id, 'type' => 'shared-inbox-v1', 'notifiable_type' => $recipient->getMorphClass(),
-                            'notifiable_id' => $recipient->id, 'data' => $data, 'read_at' => null,
-                            'created_at' => $intent->created_at, 'updated_at' => now(), 'read_version' => 1,
-                        ]);
-                    } else {
-                        DB::table('notifications')->where('id', $intent->notification_id)->update(['data' => $data]);
-                    }
-                }
-                DB::table('notification_inbox_attempts')->insert([
-                    'intent_id' => $intentId, 'attempt_number' => $number, 'outcome' => $status,
-                    'failure_category' => $failureCategory, 'started_at' => $startedAt, 'finished_at' => now(),
-                ]);
-                DB::table('notification_inbox_intents')->where('id', $intentId)->update([
-                    'status' => $status, 'failure_category' => $failureCategory, 'attempt_count' => $number,
-                    'delivered_at' => $status === 'delivered' ? now() : null, 'next_attempt_at' => null, 'updated_at' => now(),
-                ]);
-                $this->syncOwners($intentId, $status);
-                if ($status === 'suppressed') {
-                    $this->rerouteUnresolved($intent, $event);
-                }
-            }, attempts: 3);
-        } catch (PlatformBlocked $exception) {
-            throw $exception;
-        } catch (Throwable $exception) {
-            app(PlatformGuard::class)->transaction('external', function () use ($intentId, $startedAt, $exception): void {
-                $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
-                if ($intent === null || $intent->status !== 'pending') {
-                    return;
-                }
-                $number = (int) $intent->attempt_count + 1;
-                $status = $exception instanceof InvalidArgumentException ? 'blocked' : ($number >= 3 ? 'dead_letter' : 'pending');
-                $category = $exception instanceof InvalidArgumentException ? 'invalid_contract' : 'local_delivery_failure';
-                DB::table('notification_inbox_attempts')->insert([
-                    'intent_id' => $intentId, 'attempt_number' => $number, 'outcome' => $status, 'failure_category' => $category,
-                    'started_at' => $startedAt, 'finished_at' => now(),
-                ]);
-                DB::table('notification_inbox_intents')->where('id', $intentId)->update([
-                    'status' => $status, 'attempt_count' => $number, 'failure_category' => $category,
-                    'next_attempt_at' => $status === 'pending' ? now()->addSeconds($number === 1 ? 30 : 120) : null, 'updated_at' => now(),
-                ]);
-                $this->syncOwners($intentId, $status);
-            });
+            }
+            DB::table('notification_inbox_attempts')->insert([
+                'intent_id' => $intentId, 'attempt_number' => $number, 'outcome' => $status,
+                'failure_category' => $failureCategory, 'started_at' => $startedAt, 'finished_at' => now(),
+            ]);
+            DB::table('notification_inbox_intents')->where('id', $intentId)->update([
+                'status' => $status, 'failure_category' => $failureCategory, 'attempt_count' => $number,
+                'delivered_at' => $status === 'delivered' ? now() : null, 'next_attempt_at' => null, 'updated_at' => now(),
+            ]);
+            $this->syncOwners($intentId, $status);
+            if ($status === 'suppressed') {
+                $this->rerouteUnresolved($intent, $event);
+            }
+        }, attempts: 3);
+    }
+
+    public function recordRecoveryFailure(int $intentId, string $state, string $code, ?string $availableAt, bool $countAttempt = true): void
+    {
+        $intent = DB::table('notification_inbox_intents')->where('id', $intentId)->lockForUpdate()->first();
+        if ($intent === null || in_array($intent->status, ['delivered', 'suppressed'], true)) {
+            return;
         }
+        $attempts = (int) $intent->attempt_count + ($countAttempt ? 1 : 0);
+        $status = in_array($code, ['unsupported_contract', 'invalid_contract', 'source_identity_conflict', 'owner_state_conflict', 'owner_result_unverified'], true)
+            ? 'blocked' : ($state === 'dead_letter' ? 'dead_letter' : 'pending');
+        if ($attempts > (int) $intent->attempt_count) {
+            DB::table('notification_inbox_attempts')->insert([
+                'intent_id' => $intentId, 'attempt_number' => $attempts, 'outcome' => $status,
+                'failure_category' => $code, 'started_at' => now(), 'finished_at' => now(),
+            ]);
+        }
+        DB::table('notification_inbox_intents')->where('id', $intentId)->update([
+            'status' => $status, 'attempt_count' => $attempts, 'failure_category' => $code,
+            'next_attempt_at' => $availableAt, 'updated_at' => now(),
+        ]);
+        $this->syncOwners($intentId, $status);
     }
 
     public function recipientScope(User $user, bool $requireAccess = true): Builder

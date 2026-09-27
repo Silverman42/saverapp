@@ -2,11 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\MaterializeNotificationIntent;
+use App\Services\BackgroundRecovery;
 use App\Services\PlatformGuard;
 use App\Support\PlatformBlocked;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class DrainNotificationIntents extends Command
 {
@@ -17,9 +16,9 @@ class DrainNotificationIntents extends Command
     public function handle(): int
     {
         try {
-            return app(PlatformGuard::class)->transaction('external', function () {
-                return $this->handleAllowed();
-            });
+            app(PlatformGuard::class)->assertAllowed('external');
+
+            return $this->handleAllowed();
         } catch (PlatformBlocked) {
             return 0;
         }
@@ -33,9 +32,7 @@ class DrainNotificationIntents extends Command
 
             return self::FAILURE;
         }
-        DB::table('notification_inbox_intents')->where('status', 'pending')
-            ->where(fn ($query) => $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now()))
-            ->orderBy('id')->limit($limit)->pluck('id')->each(fn ($id) => MaterializeNotificationIntent::dispatch((int) $id)->afterCommit());
+        app(BackgroundRecovery::class)->dispatchNotifications($limit);
 
         return self::SUCCESS;
     }

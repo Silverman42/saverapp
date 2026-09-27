@@ -17,9 +17,9 @@ class DrainAuditProjection extends Command
     public function handle(): int
     {
         try {
-            return app(PlatformGuard::class)->transaction('derived', function () {
-                return $this->handleAllowed();
-            });
+            app(PlatformGuard::class)->assertAllowed('derived');
+
+            return $this->handleAllowed();
         } catch (PlatformBlocked) {
             return 0;
         }

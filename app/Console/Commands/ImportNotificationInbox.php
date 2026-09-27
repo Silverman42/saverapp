@@ -51,7 +51,7 @@ class ImportNotificationInbox extends Command
                                     if ($canonical !== null && $canonical->notification_id === $existing->id) {
                                         DB::table('notification_inbox_intents')->where('id', $id)->update(['created_at' => $existing->created_at]);
                                     }
-                                    $pipeline->materialize($id);
+                                    DB::afterCommit(fn () => $pipeline->materialize($id));
                                 }
                             });
                         }

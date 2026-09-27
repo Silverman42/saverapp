@@ -18,9 +18,9 @@ use App\Services\AuthorizationService;
 use App\Services\FeeObligationService;
 use App\Support\MoneyAmount;
 use App\Support\MoneyFormatter;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -217,7 +217,7 @@ class FeeOverviewController extends Controller
         ];
     }
 
-    private function netEarningsSince(int $accountId, Carbon $from): int
+    private function netEarningsSince(int $accountId, CarbonInterface $from): int
     {
         $amounts = LedgerEntry::query()
             ->where('ledger_account_id', $accountId)

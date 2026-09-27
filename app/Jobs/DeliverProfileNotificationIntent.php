@@ -13,6 +13,7 @@ use App\Notifications\ProfileChangeNotification;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\NotificationPipeline;
+use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,6 +30,8 @@ class DeliverProfileNotificationIntent implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 30;
+
     /** @var array<int, int> */
     public array $backoff = [30, 120];
 
@@ -42,6 +45,10 @@ class DeliverProfileNotificationIntent implements ShouldQueue
 
     public function handle(AgentEligibilityService $eligibilityService, AuthorizationService $authorizationService): void
     {
+        if (app(NotificationPipeline::class)->recoverLocalOwner('profile', $this->intentId)) {
+            return;
+        }
+
         app(PlatformGuard::class)->work('external', function () use ($eligibilityService, $authorizationService): void {
             $this->handleAllowed($eligibilityService, $authorizationService);
         });
@@ -80,6 +87,10 @@ class DeliverProfileNotificationIntent implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
+            return;
+        }
+
         ProfileNotificationIntent::query()
             ->whereKey($this->intentId)
             ->where('status', 'pending')
