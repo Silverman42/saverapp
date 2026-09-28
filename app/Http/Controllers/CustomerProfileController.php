@@ -188,6 +188,10 @@ class CustomerProfileController extends Controller
                 'can_create' => $canManagePlan
                     && $customerProfile->operational_status->value === 'active'
                     && $currentPlan === null,
+                'can_record_cash' => (bool) config('collections.enabled')
+                    && $currentPlan?->status->value === 'active'
+                    && $customerProfile->operational_status->value === 'active'
+                    && Gate::forUser($viewer)->allows('recordCollection', $customerProfile),
                 'create_url' => route('customers.plans.create', $customerProfile->customer_id),
                 'index_url' => route('plans.index'),
             ],

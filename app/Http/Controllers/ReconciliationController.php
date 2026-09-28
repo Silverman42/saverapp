@@ -49,11 +49,14 @@ class ReconciliationController extends Controller
     public function show(CollectionBatch $batch, Request $request, AuthorizationService $auth): Response
     {
         $this->mayView($request, $batch);
-        $batch->load(['receipts', 'remittances']);
-        $expected = (int) $batch->receipts->sum('tender_amount_kobo');
-        $savings = (int) $batch->receipts->sum('savings_amount_kobo');
-        $fees = (int) $batch->receipts->sum('fee_amount_kobo');
-        $remitted = (int) $batch->remittances->sum('amount_kobo');
+        $receiptTotals = DB::table('collection_receipts')->where('collection_batch_id', $batch->id)
+            ->selectRaw('COUNT(*) as receipt_count, COALESCE(SUM(tender_amount_kobo), 0) as tender_kobo')
+            ->selectRaw('COALESCE(SUM(savings_amount_kobo), 0) as savings_kobo, COALESCE(SUM(fee_amount_kobo), 0) as fees_kobo')
+            ->first();
+        $expected = (int) $receiptTotals->tender_kobo;
+        $savings = (int) $receiptTotals->savings_kobo;
+        $fees = (int) $receiptTotals->fees_kobo;
+        $remitted = (int) $batch->remittances()->sum('amount_kobo');
         if ($expected !== $savings + $fees) {
             throw new ConflictHttpException('Batch tender components do not match recorded cash.');
         }
@@ -66,18 +69,22 @@ class ReconciliationController extends Controller
                 'expected_kobo' => $expected, 'remitted_kobo' => $remitted,
                 'savings_kobo' => $savings, 'fees_kobo' => $fees,
                 'outstanding_kobo' => $expected - $remitted,
-                'receipts' => $canManage ? $batch->receipts->map(fn ($receipt): array => [
+                'receipt_count' => (int) $receiptTotals->receipt_count,
+            ],
+            'receipts' => $canManage ? $batch->receipts()->orderByDesc('id')->paginate(25, ['*'], 'receipt_page')
+                ->withQueryString()->through(fn ($receipt): array => [
                     'id' => $receipt->receipt_reference, 'tender_kobo' => $receipt->tender_amount_kobo,
-                ]) : [],
-                'remittances' => $batch->remittances->map(fn (CashRemittance $remittance): array => [
+                ]) : null,
+            'remittances' => $batch->remittances()->orderByDesc('id')->paginate(25, ['*'], 'remittance_page')
+                ->withQueryString()->through(fn (CashRemittance $remittance): array => [
                     'reference' => $remittance->handoff_reference, 'amount_kobo' => $remittance->amount_kobo,
                 ]),
-                'exceptions' => CollectionException::query()->where('collection_batch_id', $batch->id)
-                    ->orderBy('id')->get()->map(fn (CollectionException $exception): array => [
-                        'id' => $exception->id, 'kind' => $exception->kind, 'status' => $exception->status,
-                        'amount_kobo' => $exception->amount_kobo, 'reason' => $exception->reason,
-                    ]),
-            ],
+            'exceptions' => CollectionException::query()->where('collection_batch_id', $batch->id)
+                ->orderByDesc('id')->paginate(25, ['*'], 'exception_page')->withQueryString()
+                ->through(fn (CollectionException $exception): array => [
+                    'id' => $exception->id, 'kind' => $exception->kind, 'status' => $exception->status,
+                    'amount_kobo' => $exception->amount_kobo, 'reason' => $canManage ? $exception->reason : null,
+                ]),
             'can_manage' => $canManage,
         ]);
     }

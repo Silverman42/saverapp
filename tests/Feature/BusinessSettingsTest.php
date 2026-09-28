@@ -58,6 +58,36 @@ test('trusted import preserves identity and values without inventing prior histo
     $this->assertDatabaseCount('business_configuration_versions', 1);
     $this->assertDatabaseCount('business_settings_notification_intents', 0);
 });
+test('local cash certification permits audited settings publication only when explicitly enabled', function () {
+    $actor = configurationManager();
+    $settings = app(BusinessSettings::class);
+    $settings->import();
+    expect(app(BusinessSettingsReadiness::class)->checks()['collections']['state'])->toBe('Unavailable');
+    expect(fn () => $settings->saveDraft($actor, ['collections' => true], 1, (string) Str::uuid()))
+        ->toThrow(ValidationException::class);
+
+    config()->set('collections.local_certified', true);
+    expect(app(BusinessSettingsReadiness::class)->checks()['collection_cash']['state'])->toBe('Ready to enable');
+    app()->detectEnvironment(static fn (): string => 'production');
+    try {
+        expect(app(BusinessSettingsReadiness::class)->checks()['collection_cash']['state'])->toBe('Unavailable');
+    } finally {
+        app()->detectEnvironment(static fn (): string => 'testing');
+    }
+    $draft = configurationDraft($actor, ['collections' => true]);
+    publishConfiguration($actor, $draft);
+    $settings->ensureFeature('collections');
+    expect(fn () => $settings->ensureFeature('collection_cash'))->toThrow(HttpException::class);
+
+    $cashDraft = configurationDraft($actor, ['collection_cash' => true]);
+    publishConfiguration($actor, $cashDraft);
+    $settings->ensureFeature('collection_cash');
+    expect($settings->resolve()['values']['collections'])->toBeTrue()
+        ->and($settings->resolve()['values']['collection_cash'])->toBeTrue();
+
+    config()->set('collections.local_certified', false);
+    expect(fn () => $settings->ensureFeature('collections'))->toThrow(HttpException::class);
+});
 test('baseline admins read safe configuration but cannot mutate it', function () {
     app(BusinessSettings::class)->import();
     $admin = User::factory()->admin()->withTwoFactor()->create();

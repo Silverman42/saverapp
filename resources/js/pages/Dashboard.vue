@@ -18,6 +18,7 @@ import { dashboard as dashboardRoute } from '@/routes';
 import { dashboard as customerDashboard } from '@/routes/customer';
 import { dashboard as agentDashboard } from '@/routes/agent';
 import { dashboard as adminDashboard } from '@/routes/admin';
+import { create as createCollection } from '@/routes/customers/collections';
 
 type Filters = {
     period: string;
@@ -50,6 +51,7 @@ type Row = {
     occurred_on?: string;
     committed_at?: string;
     href: string;
+    can_record_cash?: boolean;
 };
 type Manifest = {
     cutoff: string;
@@ -487,9 +489,7 @@ function resetFilters(): void {
                                         }}
                                     </p>
                                 </div>
-                                <span class="text-sm font-medium">{{
-                                    row.amount ?? row.remaining
-                                }}</span>
+                                <div class="flex flex-wrap items-center gap-3"><span class="text-sm font-medium">{{ row.amount ?? row.remaining }}</span><Link v-if="code === 'schedule' && scopeSummary.can_collect && row.can_record_cash && row.customer_id" :href="createCollection(row.customer_id).url" class="text-primary text-sm underline">Record cash</Link></div>
                             </div>
                         </div>
                         <p

@@ -309,11 +309,12 @@ class DashboardReadService
                 ->whereRaw('COALESCE(funding.funded, 0) < slots.expected_amount_kobo')
                 ->orderByDesc(DB::raw('slots.expected_amount_kobo - COALESCE(funding.funded, 0)'))
                 ->orderBy('customer_users.name')->orderBy('slots.id')->limit($filters['page_size'])
-                ->get(['plans.plan_id', 'plans.status', 'customers.customer_id', 'customer_users.name', 'slots.expected_amount_kobo', DB::raw('COALESCE(funding.funded, 0) AS funded')])
+                ->get(['plans.plan_id', 'plans.status', 'customers.customer_id', 'customers.operational_status', 'customer_users.name', 'slots.expected_amount_kobo', DB::raw('COALESCE(funding.funded, 0) AS funded')])
                 ->map(fn (object $row): array => ['customer_id' => $row->customer_id, 'name' => $row->name,
                     'plan_id' => $row->plan_id, 'status' => $row->status,
                     'remaining' => MoneyFormatter::formatNaira($this->integer($row->expected_amount_kobo) - $this->integer($row->funded)),
-                    'href' => route('plans.show', $row->plan_id)])->all();
+                    'href' => route('plans.show', $row->plan_id),
+                    'can_record_cash' => $row->status === 'active' && $row->operational_status === 'active'])->all();
         }
 
         return ['status' => 'Partial', 'metrics' => [

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\UserType;
 use App\Http\Requests\PreviewCollectionRequest;
 use App\Http\Requests\StoreCollectionRequest;
 use App\Models\AuditEvent;
@@ -15,6 +14,7 @@ use App\Models\CustomerProfile;
 use App\Models\ThriftPlan;
 use App\Services\CollectionReadService;
 use App\Services\CollectionService;
+use App\Services\CollectionWorkspaceService;
 use App\Services\ResourceScopeService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -28,20 +28,27 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class CollectionController extends Controller
 {
-    public function index(Request $request, ResourceScopeService $scope): Response
+    public function index(Request $request, ResourceScopeService $scope, CollectionWorkspaceService $workspace): Response
     {
         $business = BusinessProfile::current();
         $today = CarbonImmutable::now($business->timezone)->toDateString();
-        $date = $request->query('date', $today);
+        $filters = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'in:all,paid,partial,pending,missed,advance-covered,blocked'],
+        ]);
+        $date = $filters['date'] ?? $today;
         if (! is_string($date) || ! preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $date)
             || CarbonImmutable::createFromFormat('!Y-m-d', $date, $business->timezone)?->toDateString() !== $date) {
             abort(422, 'Choose a valid business date.');
         }
+        $search = trim((string) ($filters['search'] ?? ''));
+        $status = $filters['status'] ?? 'all';
         $receipts = CollectionReceipt::query()
             ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
             ->with(['customerProfile.user', 'plan'])
             ->where('received_date', $date)
-            ->orderByDesc('recorded_at')->orderByDesc('id')->paginate(25);
+            ->orderByDesc('recorded_at')->orderByDesc('id')->paginate(25)->withQueryString();
         $receipts->setCollection($receipts->getCollection()->map(fn (CollectionReceipt $receipt): array => [
             'id' => $receipt->receipt_reference,
             'customer_id' => $receipt->customerProfile->customer_id,
@@ -53,47 +60,17 @@ class CollectionController extends Controller
             'fees_kobo' => $receipt->fee_amount_kobo,
             'tender_kobo' => $receipt->tender_amount_kobo,
         ]));
-        $dueSlots = null;
-        if ($request->user()->user_type === UserType::Agent) {
-            $slots = ContributionSlot::query()->where('due_date', $date)->whereNotNull('active_ordinal')
-                ->whereIn('thrift_plan_id', ThriftPlan::query()
-                    ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))->select('id'))
-                ->with(['plan.customerProfile.user'])->orderBy('id')->paginate(25, ['*'], 'due_page');
-            $funding = DB::table('collection_allocations')
-                ->join('collection_receipts', 'collection_receipts.id', '=', 'collection_allocations.collection_receipt_id')
-                ->whereIn('collection_allocations.contribution_slot_id', $slots->getCollection()->pluck('id'))
-                ->selectRaw('collection_allocations.contribution_slot_id, SUM(collection_allocations.amount_kobo) as funded_kobo, SUM(CASE WHEN collection_receipts.received_date < ? THEN collection_allocations.amount_kobo ELSE 0 END) as advance_kobo', [$date])
-                ->groupBy('collection_allocations.contribution_slot_id')->get()->keyBy('contribution_slot_id');
-            $slots->setCollection($slots->getCollection()->map(fn (ContributionSlot $slot): array => [
-                'customer_id' => $slot->plan->customerProfile->customer_id,
-                'customer_name' => $slot->plan->customerProfile->user?->name,
-                'plan_id' => $slot->plan->plan_id, 'ordinal' => $slot->active_ordinal,
-                'target_kobo' => $slot->expected_amount_kobo,
-                'funded_kobo' => (int) ($funding[$slot->id]->funded_kobo ?? 0),
-                'advance_kobo' => (int) ($funding[$slot->id]->advance_kobo ?? 0),
-                'blocked' => $slot->plan->status->value !== 'active',
-            ]));
-            $dueSlots = $slots;
-        }
+        $due = $workspace->dueWork($request->user(), $date, $today, $search, $status);
 
         return Inertia::render('collections/Index', [
             'receipts' => $receipts,
             'date' => $date,
             'timezone' => $business->timezone,
-            'totals' => [
-                'tender_kobo' => (int) CollectionReceipt::query()->where('received_date', $date)
-                    ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
-                    ->sum('tender_amount_kobo'),
-                'receipt_count' => CollectionReceipt::query()->where('received_date', $date)
-                    ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
-                    ->count(),
-            ],
-            'assigned_customers' => $request->user()->user_type === UserType::Agent
-                ? $scope->forCustomers($request->user())->with('user')->orderBy('customer_id')->limit(100)
-                    ->get()->map(fn (CustomerProfile $customer): array => [
-                        'id' => $customer->customer_id, 'name' => $customer->user?->name,
-                    ]) : [],
-            'due_slots' => $dueSlots,
+            'totals' => $workspace->received($request->user(), $date),
+            'due_totals' => $due['totals'],
+            'due_slots' => $due['slots'],
+            'filters' => ['search' => $search, 'status' => $status],
+            'viewer_type' => $request->user()->user_type->value,
         ]);
     }
 
@@ -181,7 +158,10 @@ class CollectionController extends Controller
 
         return Inertia::render('collections/Card', [
             'card' => $read->card($plan),
-            'can_record' => Gate::forUser($request->user())->allows('recordCollection', $plan->customerProfile),
+            'can_record' => $plan->status->value === 'active'
+                && $plan->customerProfile->operational_status->value === 'active'
+                && Gate::forUser($request->user())->allows('recordCollection', $plan->customerProfile),
+            'customer_id' => $plan->customerProfile->customer_id,
         ]);
     }
 

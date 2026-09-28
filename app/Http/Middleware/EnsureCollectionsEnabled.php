@@ -18,10 +18,11 @@ class EnsureCollectionsEnabled
     public function handle(Request $request, Closure $next): Response
     {
         $profile = BusinessProfile::current();
-        if ($profile->getAttribute('effective_configuration_id') === null) {
-            abort_unless(config('collections.enabled'), 503, 'Cash collections are not enabled yet.');
-        } elseif (in_array($request->route()?->getName(), ['customers.collections.create', 'customers.collections.preview', 'customers.collections.store'], true)) {
+        abort_unless(config('collections.enabled'), 503, 'Cash collections are not enabled yet.');
+        if ($profile->getAttribute('effective_configuration_id') !== null
+            && in_array($request->route()?->getName(), ['customers.collections.create', 'customers.collections.preview', 'customers.collections.store'], true)) {
             app(BusinessSettings::class)->ensureFeature('collections');
+            app(BusinessSettings::class)->ensureFeature('collection_cash');
         }
 
         return $next($request);

@@ -54,6 +54,9 @@ class BusinessSettingsCatalogue
             'report_exports' => ['Report file exports', 'Features & readiness', false, ['required', 'boolean']],
         ];
         $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'logo_reference', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
+        if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
+            $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
+        }
         $result = [];
         foreach ($items as $code => [$label, $group, $default, $rules]) {
             $result[$code] = ['label' => $label, 'group' => $group, 'default' => $default, 'rules' => $rules,

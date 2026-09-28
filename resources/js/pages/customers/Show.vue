@@ -4,6 +4,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import { create as createCustomerPlan } from '@/routes/customers/plans';
+import { create as createCollection } from '@/routes/customers/collections';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
 import { index as transactionsIndex } from '@/routes/transactions';
 import { preview as statementPreview } from '@/routes/customers/statements';
@@ -183,6 +184,7 @@ export type CustomerDetail = {
             scheduled_end_date: string;
         } | null;
         can_create: boolean;
+        can_record_cash: boolean;
     };
     transactions: {
         status: string;
@@ -1252,6 +1254,15 @@ const getInvitationBadgeVariant = (
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2 pt-1">
+                        <Button
+                            v-if="customer.plans.can_record_cash"
+                            as-child
+                            size="sm"
+                        >
+                            <Link :href="createCollection(customer.id).url"
+                                >Record cash</Link
+                            >
+                        </Button>
                         <Button
                             v-if="customer.plans.can_create"
                             as-child

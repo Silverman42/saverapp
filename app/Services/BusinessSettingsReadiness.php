@@ -30,6 +30,12 @@ class BusinessSettingsReadiness
         foreach ($blocked as $code => [$owner, $blocker]) {
             $checks[$code] = ['state' => 'Unavailable', 'owner' => $owner, 'blocker' => $blocker, 'version' => 1];
         }
+        if (app()->environment(['local', 'testing']) && config('collections.local_certified') === true) {
+            foreach (['collection_cash', 'collections'] as $code) {
+                $checks[$code] = ['state' => 'Ready to enable', 'owner' => 'Module 07 local cash release',
+                    'blocker' => 'Local cash certification only; production release remains unavailable.', 'version' => 2];
+            }
+        }
         $checks['profile'] = ['state' => 'Ready to enable', 'owner' => 'Module 15', 'blocker' => '', 'version' => 1];
         $checks['presentation'] = ['state' => 'Ready to enable', 'owner' => 'Modules 11/12', 'blocker' => '', 'version' => 1];
         $checks['collection_limits'] = ['state' => 'Ready to enable', 'owner' => 'Module 07', 'blocker' => 'Limits do not certify or enable collection methods.', 'version' => 1];

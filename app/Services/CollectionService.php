@@ -65,6 +65,7 @@ class CollectionService
     {
         Gate::forUser($actor)->authorize('recordCollection', $customer);
         $this->settings->ensureFeature('collections');
+        $this->settings->ensureFeature('collection_cash');
         $configuration = $this->settings->collectionLimits();
         $limits = $configuration['values'];
         $business = BusinessProfile::current();
@@ -116,13 +117,17 @@ class CollectionService
                 throw ValidationException::withMessages(['plan_id' => ['This plan uses a different timezone. Cash collection needs an exact received time before its slot dates can be classified.']]);
             }
             $slots = $plan->slots()->whereNotNull('active_ordinal')->orderBy('active_ordinal')->get();
+            $fundedBySlot = DB::table('collection_allocations')
+                ->whereIn('contribution_slot_id', $slots->pluck('id'))
+                ->selectRaw('contribution_slot_id, SUM(amount_kobo) as funded_kobo')
+                ->groupBy('contribution_slot_id')->pluck('funded_kobo', 'contribution_slot_id');
             $requested = [];
             foreach ($data['allocations'] ?? [] as $requestedAllocation) {
                 $requested[(int) $requestedAllocation['slot_id']] = $requestedAllocation;
             }
             $remaining = $savings;
             foreach ($slots as $slot) {
-                $funded = (int) CollectionAllocation::query()->where('contribution_slot_id', $slot->id)->sum('amount_kobo');
+                $funded = (int) ($fundedBySlot[$slot->id] ?? 0);
                 $capacity = $slot->expected_amount_kobo - $funded;
                 if ($capacity < 0) {
                     throw new ConflictHttpException('Slot funding integrity is unavailable.');
@@ -323,7 +328,18 @@ class CollectionService
             $this->fees->assessSnapshot($snapshot, $actor);
         }
         $slots = $plan->slots()->whereNotNull('active_ordinal')->get();
-        $fullyFunded = $slots->isNotEmpty() && $slots->every(fn (ContributionSlot $slot): bool => (int) CollectionAllocation::query()->where('contribution_slot_id', $slot->id)->sum('amount_kobo') === $slot->expected_amount_kobo);
+        $fundedBySlot = DB::table('collection_allocations')
+            ->whereIn('contribution_slot_id', $slots->pluck('id'))
+            ->selectRaw('contribution_slot_id, SUM(amount_kobo) as funded_kobo')
+            ->groupBy('contribution_slot_id')->pluck('funded_kobo', 'contribution_slot_id');
+        $fullyFunded = $slots->isNotEmpty() && $slots->every(function (ContributionSlot $slot) use ($fundedBySlot): bool {
+            $funded = (int) ($fundedBySlot[$slot->id] ?? 0);
+            if ($funded > $slot->expected_amount_kobo) {
+                throw new ConflictHttpException('Slot funding integrity is unavailable.');
+            }
+
+            return $funded === $slot->expected_amount_kobo;
+        });
         if ($fullyFunded) {
             $previous = $plan->status;
             $plan->status = ThriftPlanStatus::Completed;
