@@ -168,14 +168,18 @@ async function lookupAttempt(): Promise<void> {
                 </div>
                 <div class="sm:col-span-2">
                     <Button type="button" :disabled="previewHttp.processing" @click="review">Review allocation and tender</Button>
-                    <p v-for="(error, key) in previewHttp.errors" :key="key" class="text-destructive mt-2 text-sm">{{ error }}</p>
+                    <p v-for="(error, key) in previewHttp.errors" :key="key" role="alert" class="text-destructive mt-2 text-sm">{{ error }}</p>
                 </div>
             </CardContent>
         </Card>
+        <div v-if="Object.keys(form.errors).length" role="alert" class="text-destructive grid gap-1 text-sm">
+            <p v-for="(error, key) in form.errors" :key="key">{{ error }}</p>
+            <p>Review the current details before recording cash again.</p>
+        </div>
         <Card v-if="preview">
             <CardHeader><CardTitle>Confirm cash received</CardTitle></CardHeader>
             <CardContent class="flex flex-col gap-4">
-                <p class="text-sm">Savings {{ money(preview.savings_kobo) }} · fees {{ money(preview.fees_kobo) }} · total cash {{ money(preview.tender_kobo) }}</p>
+                <p role="status" aria-live="polite" class="text-sm">Preview ready. Savings {{ money(preview.savings_kobo) }} · fees {{ money(preview.fees_kobo) }} · total cash {{ money(preview.tender_kobo) }}</p>
                 <p class="text-muted-foreground text-sm">Received date uses {{ preview.timezone }}. This records Customer savings and money held by the Agent.</p>
                 <ul class="grid gap-2 text-sm">
                     <li v-for="slot in preview.allocations" :key="slot.slot_id">{{ slot.due_date }} · {{ money(slot.amount_kobo) }}</li>
@@ -183,7 +187,6 @@ async function lookupAttempt(): Promise<void> {
                 <Button v-if="preview.slot_options.length > 1 && form.allocations.length === 0" type="button" variant="outline" class="w-fit" @click="customizeAllocation">Change slot allocation</Button>
                 <label class="flex items-start gap-3 text-sm"><input v-model="form.confirmed" type="checkbox" /> I confirm that this cash was received and the split above is correct.</label>
                 <div class="flex gap-3"><Button type="button" :disabled="form.processing || !form.confirmed" @click="submit">Record receipt</Button><Link :href="collectionsIndex()" class="text-muted-foreground self-center text-sm underline">Cancel</Link></div>
-                <p v-for="(error, key) in form.errors" :key="key" class="text-destructive text-sm">{{ error }}</p>
             </CardContent>
         </Card>
         <Card v-if="form.allocations.length"><CardHeader><CardTitle>Custom slot allocation</CardTitle></CardHeader><CardContent class="grid gap-3"><p class="text-muted-foreground text-sm">Enter an amount for each chosen slot. Leave unused slots empty, then review again.</p><div v-for="item in form.allocations" :key="item.slot_id" class="grid max-w-xs gap-2"><Label :for="`slot-${item.slot_id}`">{{ customSlots.find((slot) => slot.slot_id === item.slot_id)?.due_date }} · up to {{ money(customSlots.find((slot) => slot.slot_id === item.slot_id)?.capacity_kobo ?? 0) }}</Label><Input :id="`slot-${item.slot_id}`" v-model="item.amount_ngn" inputmode="decimal" placeholder="0.00" /></div><Button type="button" class="w-fit" :disabled="previewHttp.processing" @click="review">Review custom allocation</Button></CardContent></Card>

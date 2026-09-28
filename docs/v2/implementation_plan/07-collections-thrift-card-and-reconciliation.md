@@ -56,9 +56,9 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 | COL-AC-001 | Passed | `CollectionTest.php`: Customer and Admin preview/commit calls are denied with no receipt, slot, or ledger effect. |
 | COL-AC-002 | Passed | `CollectionTest.php`: assigned Agent posts; another Agent and former Agent after reassignment are denied, including a previously reviewed attempt. |
 | COL-AC-003 | Passed | `CollectionTest.php`: Active Invited Customer accepts cash; Inactive, Restricted and Archived Customers are denied. |
-| COL-AC-004 | Blocked | Agent MFA, lock, and lifecycle cases unverified |
-| COL-AC-005 | Blocked | Full amount boundary and cumulative capacity cases unverified |
-| COL-AC-006 | Blocked | Custody mapping promise cases unverified |
+| COL-AC-004 | Passed | `CollectionTest.php` covers MFA incomplete, temporarily locked Active session, Suspended/Deactivated accounts, Paused/Completed/Closed/Cancelled plans, and revoked-session preview/commit denial without posting. |
+| COL-AC-005 | Blocked | Exact NGN parsing and endpoint rejection of zero, negative, extra decimals, cap+1, and unsupported currency pass; cumulative capacity above one tender cap remains unverified. |
+| COL-AC-006 | Blocked | `CollectionTest.php` rejects transfer claims at the cash endpoint and missing custody mapping; complete valid custody evidence/reference contract remains unverified. |
 | COL-AC-007 | Blocked | Timezone change and cross-zone dates unverified |
 | COL-AC-008 | Blocked | Closed period and original-Agent late-date cases unverified |
 | COL-AC-009 | Passed | `CollectionTest.php` split-tender test: ₦2,000 savings and ₦500 fee stay separate. |
@@ -67,14 +67,14 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 | COL-AC-012 | Passed | `CollectionTest.php`: one ₦6,000 receipt funds three ₦2,000 slots; receipt count remains one. |
 | COL-AC-013 | Passed | `CollectionTest.php`: one ₦10,000 receipt funds five future slots and appears once in today's received totals. |
 | COL-AC-014 | Passed | `CollectionTest.php`: suggestion completes the oldest partial slot first; an explicit valid override funds the chosen future date. |
-| COL-AC-015 | Blocked | Cross-Customer and negative allocation cases unverified |
+| COL-AC-015 | Passed | `CollectionTest.php`: over-capacity, another Customer's slot, duplicate slot entries, and negative allocation fail without receipt, allocation, or posting. |
 | COL-AC-016 | Passed | `CollectionTest.php`: final required slot completes the plan in the posting transaction; partial receipts and elapsed final date alone do not. |
 | COL-AC-017 | Blocked | Pause/resume and correction state unverified |
 | COL-AC-018 | Blocked | Complete dated card matrix and accessibility unverified |
 | COL-AC-019 | Passed | `CollectionTest.php` paused-interval test: card shows blocked with no allocation. |
-| COL-AC-020 | Blocked | Versioned annotation has no funding effect; skip noncompletion remains unverified. |
-| COL-AC-021 | Blocked | Paid/partial/future, unauthorized, and stale annotation denials unverified. |
-| COL-AC-022 | Blocked | Catch-up annotation and receipt-date history unverified. |
+| COL-AC-020 | Passed | `CollectionTest.php`: reasoned versioned skip and miss append history and change card annotation only; no allocation/posting occurs and plan remains Active. |
+| COL-AC-021 | Passed | `CollectionTest.php`: unauthorized, stale-version, future skip, Partial and Paid annotation attempts fail without another annotation or funding effect. |
+| COL-AC-022 | Passed | `CollectionTest.php`: later cash makes a skipped slot Paid, while its original reason and the receipt's actual received date remain retained. |
 | COL-AC-023 | Blocked | Posted payout contract unavailable |
 | COL-AC-024 | Passed | `CollectionTest.php`: cash savings posts equal Agent-receivable debit and Customer-liability credit; split fee tender remains separate from savings. |
 | COL-AC-025 | Blocked | Noncash method contract unavailable |
@@ -89,18 +89,18 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 | COL-AC-034 | Blocked | Isolated MySQL race proves capacity is not exceeded and both exact-fit attempts post after stale review is refreshed; simultaneous commits from one unchanged review remain unverified. |
 | COL-AC-035 | Blocked | Assignment/hold/pause/archival race matrix unverified |
 | COL-AC-036 | Blocked | Reservation/reversal execution depends on Modules 08–09 |
-| COL-AC-037 | Blocked | Advance-covered scoped rows and denial unverified |
-| COL-AC-038 | Blocked | Advance/catch-up simultaneous totals unverified |
-| COL-AC-039 | Blocked | Late-date filtered totals and complete filter matrix unverified |
+| COL-AC-037 | Passed | `CollectionTest.php`: assigned Agent sees due and advance-covered rows; an unassigned Agent sees no rows and cannot open the Customer cash form. |
+| COL-AC-038 | Passed | `CollectionTest.php`: yesterday's ₦2,000 advance covers today's due slot while today's ₦6,000 catch-up receipt is counted only in cash received; the two totals stay separate. |
+| COL-AC-039 | Passed | `CollectionTest.php`: scoped 26-row pagination retains whole-filter totals; paid/pending/advance filters and Customer search preserve due totals, while a late-recorded receipt appears once on its received date and zero times in today's received cash. |
 | COL-AC-040 | Blocked | File evidence and scanning contract unavailable |
 | COL-AC-041 | Blocked | Evidence scope after reassignment unavailable |
 | COL-AC-042 | Passed | `CollectionTest.php`: receipts enter actor/date/method batches; repeated midnight freeze preserves version and separate savings/fee totals. |
 | COL-AC-043 | Passed | `CollectionTest.php`: Agent sees only own masked batch status and cannot confirm remittance or review reconciliation; no Agent evidence submission route is exposed. |
-| COL-AC-044 | Blocked | Supplement links to frozen revision; prior reconciled evidence immutability unverified. |
+| COL-AC-044 | Passed | `CollectionTest.php`: a late same-date receipt after confirmed handoff and zero-variance reconciliation creates a linked open supplement while the original reconciled version, receipt and handoff counts stay unchanged. |
 | COL-AC-045 | Passed | `CollectionTest.php`: permitted Admin confirms structured handoff once; Agent and baseline Admin are denied; replay adds no second remittance and Customer liability is unchanged. |
 | COL-AC-046 | Blocked | Original-Agent partial handoff after reassignment unverified |
 | COL-AC-047 | Blocked | Closure failure gates unverified |
-| COL-AC-048 | Blocked | Shortage retains Customer liability and opens exception; exact Agent debt assertion remains. |
+| COL-AC-048 | Passed | `CollectionTest.php`: after a ₦2,000 receipt and ₦1,500 confirmed handoff, a ₦500 shortage opens an exception, retains ₦2,000 Customer liability and exactly ₦500 original Agent debt. |
 | COL-AC-049 | Blocked | Missing-transfer investigation contract unavailable |
 | COL-AC-050 | Blocked | Evidence-backed resolution contract incomplete |
 | COL-AC-051 | Blocked | Reversal compensation owner contract unavailable |
@@ -111,7 +111,7 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 | COL-AC-056 | Blocked | Reversal compensation owner contract unavailable |
 | COL-AC-057 | Blocked | Offboarding reconciliation integration unverified |
 | COL-AC-058 | Blocked | Pending correction archival contract unavailable |
-| COL-AC-059 | Blocked | Dashboard, assigned Customer profile and card now expose the guarded cash form; authenticated Agent/Admin mobile, keyboard and screen-reader review remains unavailable. |
+| COL-AC-059 | Blocked | Dashboard, assigned Customer profile, daily list and card expose the guarded cash form. The form now announces preview readiness and keeps server errors visible after preview invalidation; authenticated Agent/Admin mobile, keyboard and screen-reader review remains unavailable. |
 | COL-AC-060 | Blocked | Notification reassignment redaction unverified |
 | COL-AC-061 | Blocked | Audit scope and immutability matrix unverified |
 | COL-AC-062 | Blocked | Isolated MySQL load profile below meets server p95 targets at 10,000 Customers, 30 Agents, 20,000 plans and 2 million slots; restart/replay, authenticated accessibility, mobile network and concurrent-session profiles remain unverified. |
@@ -119,4 +119,4 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 
 Local server load measurement: isolated MySQL test `CollectionLoadProfileTest.php`, local PHP test client on macOS, in-process network, concurrency 1, 20 samples per operation. Dataset: 10,000 Customers, 30 Agents, 20,000 plans and 2 million slots. Workspace p95 **0.162 s** (target 3 s), search p95 **0.019 s** (target 1 s), durable receipt posting p95 **0.086 s** (target 2 s). All three server targets pass; browser device/network and concurrent-session targets were not measured. Raw result: `/private/tmp/saverapp-collection-load-profile.json`.
 
-Current release evidence: focused collection, settings and plan-dependency feature tests **90 passed, 633 assertions**; isolated MySQL plan/collection races **5 passed, 29 assertions**; complete Pest suite with a 512 MB PHP limit **866 passed, 41 skipped, 6,048 assertions**; scoped PHPStan **0 errors**; Pint, Vue type check, build and collection route inspection **pass**. The guarded load-profile test passes separately on isolated MySQL and is skipped in the normal suite. The standard `php artisan test --compact` command previously exhausted its default 128 MB PHP limit during unrelated settings tests; `php -d memory_limit=512M vendor/bin/pest --compact` passed. Authenticated Agent/Admin mobile, keyboard and screen-reader review and the blocked cash scenarios above remain open. Keep `COLLECTIONS_ENABLED=false` and `COLLECTIONS_LOCAL_CERTIFIED=false` until every applicable local cash gate passes and an authorized Admin publishes both cash settings.
+Current release evidence: affected collection, plan-dependency and Agent lifecycle feature tests **85 passed, 831 assertions** after the cash boundary changes; isolated MySQL plan/collection races **5 passed, 29 assertions**. The earlier wider run passed **866 tests, 41 skipped, 6,048 assertions**, but has not yet been repeated after these changes. Vue type check, build, Pint, scoped app-file PHPStan (**0 errors**), whitespace and route inspection pass. Repository-wide `npm run check` still reports formatting issues in 32 files, including existing documentation/page files; that is not release certification. The guarded load-profile test previously passed separately on isolated MySQL and is skipped in the normal suite; no collection query or posting path changed in this pass. The standard `php artisan test --compact` command previously exhausted its default 128 MB PHP limit during unrelated settings tests. Browser review reached the login page but had no authenticated Agent/Admin session; mobile, keyboard and screen-reader acceptance remains open. Keep `COLLECTIONS_ENABLED=false` and `COLLECTIONS_LOCAL_CERTIFIED=false` until every applicable local cash gate passes and an authorized Admin publishes both cash settings.

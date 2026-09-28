@@ -23,6 +23,8 @@ class PreviewCollectionRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'currency' => ['sometimes', 'in:NGN'],
+            'method' => ['sometimes', 'in:cash'],
             'plan_id' => ['nullable', 'string', 'max:32'],
             'received_date' => ['required', 'date_format:Y-m-d'],
             'savings_ngn' => ['required', 'string', 'regex:/\A(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,2})?\z/'],

@@ -123,7 +123,11 @@ class CollectionService
                 ->groupBy('contribution_slot_id')->pluck('funded_kobo', 'contribution_slot_id');
             $requested = [];
             foreach ($data['allocations'] ?? [] as $requestedAllocation) {
-                $requested[(int) $requestedAllocation['slot_id']] = $requestedAllocation;
+                $slotId = (int) $requestedAllocation['slot_id'];
+                if (isset($requested[$slotId])) {
+                    throw ValidationException::withMessages(['allocations' => ['List each slot only once.']]);
+                }
+                $requested[$slotId] = $requestedAllocation;
             }
             $remaining = $savings;
             foreach ($slots as $slot) {
