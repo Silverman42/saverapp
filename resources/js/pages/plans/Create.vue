@@ -46,6 +46,7 @@ type PlanPreview = {
     business: { timezone: string; version: number };
     terms: {
         name: string;
+        currency: string;
         contribution_amount_kobo: number;
         formatted_contribution_amount: string;
         contribution_days: number;
@@ -61,6 +62,7 @@ type PlanPreview = {
         name: string;
         model: string;
         timing: string;
+        basis: string;
         amount_kobo: number;
         estimate_available: boolean;
         formatted_amount: string;
@@ -258,6 +260,12 @@ const submit = (): void => {
                 </div>
             </CardHeader>
             <CardContent class="space-y-5">
+                <div class="rounded-xl border p-4">
+                    <p class="text-muted-foreground text-xs">Plan and Customer</p>
+                    <p class="mt-1 font-semibold">{{ preview.terms.name }} · {{ preview.customer.name }}</p>
+                    <p class="text-muted-foreground mt-1 text-sm">Daily contributions in {{ preview.terms.currency }}, from {{ preview.terms.start_date }} through {{ preview.terms.scheduled_end_date }} ({{ preview.business.timezone }}).</p>
+                    <p class="mt-2 text-sm">Customer-visible notes: {{ preview.terms.customer_visible_notes || 'None' }}</p>
+                </div>
                 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div class="rounded-xl border p-4"><p class="text-muted-foreground text-xs">Daily contribution</p><p class="mt-1 font-semibold">{{ preview.terms.formatted_contribution_amount }}</p></div>
                     <div class="rounded-xl border p-4"><p class="text-muted-foreground text-xs">Scheduled days</p><p class="mt-1 font-semibold">{{ preview.terms.contribution_days }}</p></div>
@@ -269,6 +277,7 @@ const submit = (): void => {
                     <div class="flex items-center gap-2"><FileCheck2 class="text-primary size-4" /><h2 class="font-medium">Fee terms</h2></div>
                     <p class="mt-2 text-sm font-medium">{{ preview.fee.name }} · {{ preview.fee.formatted_amount }}</p>
                     <p class="text-muted-foreground mt-1 text-sm">{{ preview.fee.customer_description }}</p>
+                    <p class="text-muted-foreground mt-1 text-sm">Basis: {{ preview.fee.basis.replaceAll('_', ' ') }} · Timing: {{ preview.fee.timing.replaceAll('_', ' ') }}</p>
                     <p v-if="!preview.fee.estimate_available" class="text-muted-foreground mt-2 text-xs">This fee is calculated when a withdrawal is quoted; no amount is estimated here.</p>
                     <p v-else class="text-muted-foreground mt-2 text-xs">This is a contractual estimate. Any financial assessment waits for its owning workflow.</p>
                 </div>

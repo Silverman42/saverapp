@@ -61,6 +61,9 @@ class UpdateThriftPlanRequest extends FormRequest
                     $validator->errors()->add($field, "Field [{$field}] is server-managed and cannot be supplied.");
                 }
             }
+            foreach (array_diff(array_keys($input), array_keys($this->rules()), self::PROTECTED_FIELDS, ['_token', '_method']) as $field) {
+                $validator->errors()->add($field, "Field [{$field}] is not supported for this plan action.");
+            }
         });
     }
 }

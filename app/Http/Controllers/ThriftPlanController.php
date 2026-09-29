@@ -25,6 +25,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -121,8 +122,15 @@ class ThriftPlanController extends Controller
             abort(404, 'Record unavailable.');
         }
         Gate::authorize('managePlan', $customerProfile);
+        $this->rejectUnsupportedQuery($request, [
+            'preview', 'name', 'amount_ngn', 'start_date', 'contribution_days',
+            'customer_visible_notes', 'fee_rule_id', 'predecessor_plan_id',
+        ]);
 
         $business = BusinessProfile::current();
+        if (! in_array($business->timezone, timezone_identifiers_list(), true)) {
+            throw ValidationException::withMessages(['timezone' => ['The configured business timezone is not a valid IANA timezone.']]);
+        }
         $feeOptions = $feeService->getCurrentPlanOptions();
         $predecessorId = $request->validate(['predecessor_plan_id' => ['nullable', 'string', 'max:32']])['predecessor_plan_id'] ?? null;
         $today = CarbonImmutable::now($business->timezone)->toDateString();
@@ -260,6 +268,10 @@ class ThriftPlanController extends Controller
         if ($revision === null) {
             abort(404, 'Plan terms unavailable.');
         }
+        $this->rejectUnsupportedQuery($request, [
+            'preview', 'name', 'amount_ngn', 'start_date', 'contribution_days',
+            'customer_visible_notes', 'fee_rule_id', 'reason', 'customer_explanation',
+        ]);
 
         $currentRule = $revision->feeSnapshot->feeRule;
         $options = $feeService->getCurrentPlanOptions()->map(fn ($rule): array => [
@@ -392,6 +404,22 @@ class ThriftPlanController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Plan status updated.']);
 
         return to_route('plans.show', $record->plan_id);
+    }
+
+    /** @param array<int, string> $supportedFields */
+    private function rejectUnsupportedQuery(Request $request, array $supportedFields): void
+    {
+        $unsupportedFields = array_diff(array_keys($request->query()), $supportedFields);
+        if ($unsupportedFields === []) {
+            return;
+        }
+
+        $errors = [];
+        foreach ($unsupportedFields as $field) {
+            $errors[$field] = "Field [{$field}] is not supported for this plan action.";
+        }
+
+        throw ValidationException::withMessages($errors);
     }
 
     public function showAttempt(Request $request, string $reference, ResourceScopeService $scopeService): JsonResponse

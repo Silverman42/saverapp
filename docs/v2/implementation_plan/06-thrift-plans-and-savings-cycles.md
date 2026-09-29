@@ -23,7 +23,7 @@ Agents create and manage plans for currently assigned Customers. Customers see t
 | TPC-T04 | Integrate Module 05 fee options and immutable per-revision terms snapshots; define trigger-time basis assessment for future collection/withdrawal owners without posting from plan actions. | `TPC-FR-009`, `010`, `023`, `024`, `034`, `038` | Partially implemented; trigger-time assessment remains gated on its financial owner |
 | TPC-T05 | Add scoped plan directories, details, schedule/terms previews, lifecycle confirmations, and responsive accessible Inertia pages. | `TPC-FR-002`, `032`, `033` | Implemented |
 | TPC-T06 | Add append-only agreement/lifecycle audit and deduplicated post-commit notification intents using the current assignment and recipient scope. | `TPC-FR-036`, `037` | Implemented |
-| TPC-T07 | Verify core behavior and record Module 06 acceptance evidence; keep financial-owner scenarios blocked until real integrations exist. | `TPC-FR-001`–`038`; `TPC-AC-001`–`051` | In progress; focused SQLite behavior, cash integration, and eight isolated MySQL races pass. The scenario record below identifies remaining verification and owner dependencies. |
+| TPC-T07 | Verify core behavior and record Module 06 acceptance evidence; keep financial-owner scenarios blocked until real integrations exist. | `TPC-FR-001`–`038`; `TPC-AC-001`–`051` | In progress; focused HTTP boundary, SQLite behavior, cash integration, and eight isolated MySQL races pass. The scenario record below identifies remaining verification and owner dependencies. |
 
 ## Interfaces and ownership boundaries
 
@@ -47,27 +47,27 @@ Agents create and manage plans for currently assigned Customers. Customers see t
 
 ### Scenario-by-scenario verification record
 
-Evidence at `c64e838` plus the integrated verification branch: **P** = `tests/Feature/ThriftPlanCollectionDependencyTest.php` (7 tests / 67 assertions); **M** = `tests/Unit/ThriftPlanAndCollectionMySqlConcurrencyTest.php` against the guarded `saverapp_audit_testing` database (8 tests / 54 assertions); **C/N/R/L** = `CollectionTest.php`, `NotificationInboxTest.php`, `ReportTest.php`, and `CustomerLifecycleTest.php` respectively (combined 165 tests / 1,401 assertions). The branch-local Vite build passed and supplied the manifest for authenticated feature requests. These are automated contract checks, not an authenticated browser or production operations sign-off. **Verified** means the stated scenario is covered; **Partial** records a proven subset and its missing check; **Open** has no sufficient scenario exercise; **Blocked** requires an absent authoritative owner or policy. A Partial/Open/Blocked row is not release acceptance.
+Evidence at `c64e838` plus the integrated verification branch: **P** = `tests/Feature/ThriftPlanCollectionDependencyTest.php` (7 tests / 67 assertions); **M** = `tests/Unit/ThriftPlanAndCollectionMySqlConcurrencyTest.php` against the guarded `saverapp_audit_testing` database (8 tests / 54 assertions); **C/N/R/L** = `CollectionTest.php`, `NotificationInboxTest.php`, `ReportTest.php`, and `CustomerLifecycleTest.php` respectively (combined 165 tests / 1,401 assertions). **H** = `tests/Feature/ThriftPlanHttpAcceptanceTest.php` (7 tests / 210 assertions). The focused H/P/C run passes 77 tests / 1,086 assertions; Vue type checking and production build pass. These are automated contract checks, not an authenticated browser or production operations sign-off. **Verified** means the stated scenario is covered; **Partial** records a proven subset and its missing check; **Open** has no sufficient scenario exercise; **Blocked** requires an absent authoritative owner or policy. A Partial/Open/Blocked row is not release acceptance.
 
-Current outcome count: **4 Verified, 31 Partial, 6 Open, 10 Blocked**. The 10 Blocked rows require missing owner contracts; the Partial and Open rows identify test and review work still needed before Module 06 acceptance.
+Current outcome count: **8 Verified, 29 Partial, 4 Open, 10 Blocked**. The 10 Blocked rows require missing owner contracts; the Partial and Open rows identify test and review work still needed before Module 06 acceptance.
 
 | ID | Outcome | Evidence and remaining condition |
 | --- | --- | --- |
-| TPC-AC-001 | Partial | Request validation rejects unsupported fields; exercise the full unsupported-mode matrix through HTTP. |
-| TPC-AC-002 | Partial | P proves direct Admin/Customer pause denial and authorized Agent success; add create, revise, and terminal HTTP calls. |
+| TPC-AC-001 | Verified | H rejects weekly, foreign currency, interest, multiple-owner, bulk and expected-date inputs at preview and commit without plan or financial effects. |
+| TPC-AC-002 | Partial | H denies direct Admin/Customer creation, revision and pause requests; P proves assigned Agent pause. Resume/cancel role matrix and owner-gated closure remain. |
 | TPC-AC-003 | Partial | L and N cover Customer scope in related views; prove plan search/count, ID, revision, and notice non-disclosure together. |
 | TPC-AC-004 | Partial | C and M exercise Agent eligibility around cash; run the plan-specific onboarding, suspension, and temporary-lock matrix. |
 | TPC-AC-005 | Verified | P creates a plan for an Invited Customer without Customer login activation and another plan for an Active Customer; each persists expected slots. |
 | TPC-AC-006 | Partial | L and C exercise status gates; verify every plan mutation against inactive/restricted/archived status and the settlement exception when its owner exists. |
 | TPC-AC-007 | Partial | P and M establish one open plan; exercise Paused and Completed predecessors after the scheduled end and withdrawal. |
 | TPC-AC-008 | Partial | M proves two concurrent create attempts commit at most one cycle; add distinct-Agent and renewal races. |
-| TPC-AC-009 | Open | Exercise boundary, Unicode, precision, overflow, and mismatched relationship requests. |
+| TPC-AC-009 | Verified | H rejects blank/oversize text, subminimum/fractional/overflow amounts, invalid day counts and mismatched Customer identifiers; valid Unicode/minimum amount/366-day creation and maximum amount preview pass. |
 | TPC-AC-010 | Verified | P proves 31 daily preview/stored slots from January 20 through February 19, with distinct local dates. |
 | TPC-AC-011 | Partial | R preserves historical plan timezone; test leap/year/DST slot generation and later business timezone changes. |
-| TPC-AC-012 | Open | Test backdated/too-far start and expected-date override rejection, plus future-start capacity. |
-| TPC-AC-013 | Partial | P creates with an explicit no-fee rule; test absent fee, timezone, and unsupported rule combinations. |
+| TPC-AC-012 | Verified | H rejects backdated and over-365-day starts and an expected-date override; a valid future-start plan occupies open-cycle capacity without posting money. |
+| TPC-AC-013 | Verified | H rejects absent, inapplicable and retired fee rules and an invalid configured timezone at preview/commit; an explicit current no-fee rule creates a plan without guessed charges. |
 | TPC-AC-014 | Partial | P proves a retired fee option conflicts after preview and needs a fresh selection; exercise business configuration changes too. |
-| TPC-AC-015 | Partial | P creates with attestation; verify displayed terms and missing attestation through the request boundary. |
+| TPC-AC-015 | Partial | H verifies preview props and missing-attestation rejection; the creation preview now displays name, notes, dates, timezone and fee basis/timing. Authenticated rendered confirmation review remains. |
 | TPC-AC-016 | Partial | P proves one plan, slots, one operation, and no receipt/ledger posting; assert fee/reservation/registration histories separately. |
 | TPC-AC-017 | Partial | P injects a lifecycle-event write failure and proves rollback of plan, slots, terms, attempt, notice, and ledger; snapshot, slot, and audit fault points remain. |
 | TPC-AC-018 | Verified | P proves same-key replay returns the original plan; changed-payload reuse conflicts without another plan. |
