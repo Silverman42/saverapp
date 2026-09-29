@@ -1,11 +1,16 @@
 <?php
 
+use App\Enums\AccountState;
+use App\Enums\CustomerAssignmentStatus;
+use App\Models\AgentProfile;
 use App\Models\ContributionSlot;
+use App\Models\CustomerAssignment;
 use App\Models\FeeRule;
 use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\PlanOperationAttempt;
 use App\Models\ThriftPlan;
+use App\Models\User;
 use App\Services\CollectionService;
 use App\Services\ThriftPlanService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -17,8 +22,9 @@ use Tests\CreatesLifecycleCustomers;
 
 uses(CreatesLifecycleCustomers::class);
 
-test('plan creation captures slots once and a repeated operation returns the original plan', function (): void {
+test('an invited Customer gets one plan while replay and reassignment preserve the original result', function (): void {
     [, $customer, $agent] = $this->createLifecycleFixture();
+    $customer->user->update(['account_state' => AccountState::Invited]);
     $rule = FeeRule::create([
         'version' => 1, 'name' => 'No plan fee', 'kind' => 'plan', 'rule_key' => 'daily',
         'model' => 'no_fee', 'timing' => 'first_contribution', 'basis' => 'none',
@@ -52,6 +58,24 @@ test('plan creation captures slots once and a repeated operation returns the ori
         ->and(PlanOperationAttempt::where('attempt_reference', $reference)->count())->toBe(1)
         ->and(DB::table('collection_receipts')->count())->toBe(0)
         ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
+
+    $originalAssignment = $customer->currentAssignment;
+    $originalAssignment->update(['status' => CustomerAssignmentStatus::Ended]);
+    $replacement = AgentProfile::factory()->active()->create([
+        'user_id' => User::factory()->agent()->withTwoFactor()->create()->id,
+    ]);
+    CustomerAssignment::factory()->create([
+        'customer_profile_id' => $customer->id,
+        'agent_profile_id' => $replacement->id,
+        'assigned_by_user_id' => $agent->user_id,
+        'version' => $originalAssignment->version + 1,
+    ]);
+
+    $this->actingAs($agent->user)->getJson(route('plans.attempts.show', $reference))->assertNotFound();
+    $this->actingAs($replacement->user)->getJson(route('plans.attempts.show', $reference))->assertNotFound();
+    expect(ThriftPlan::count())->toBe(1)
+        ->and(PlanOperationAttempt::where('attempt_reference', $reference)->count())->toBe(1)
+        ->and($customer->user->fresh()->account_state)->toBe(AccountState::Invited);
 });
 
 test('plan lifecycle rejects a stale version without changing its state', function (): void {

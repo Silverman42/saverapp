@@ -47,9 +47,9 @@ Agents create and manage plans for currently assigned Customers. Customers see t
 
 ### Scenario-by-scenario verification record
 
-Evidence at `c64e838` plus this verification branch: **P** = `tests/Feature/ThriftPlanCollectionDependencyTest.php` (7 tests / 62 assertions); **M** = `tests/Unit/ThriftPlanAndCollectionMySqlConcurrencyTest.php` against the guarded `saverapp_audit_testing` database (8 tests / 54 assertions); **C/N/R/L** = `CollectionTest.php`, `NotificationInboxTest.php`, `ReportTest.php`, and `CustomerLifecycleTest.php` respectively (combined 165 tests / 1,401 assertions). The branch-local Vite build passed and supplied the manifest for authenticated feature requests. These are automated contract checks, not an authenticated browser or production operations sign-off. **Verified** means the stated scenario is covered; **Partial** records a proven subset and its missing check; **Open** has no sufficient scenario exercise; **Blocked** requires an absent authoritative owner or policy. A Partial/Open/Blocked row is not release acceptance.
+Evidence at `c64e838` plus the integrated verification branch: **P** = `tests/Feature/ThriftPlanCollectionDependencyTest.php` (7 tests / 67 assertions); **M** = `tests/Unit/ThriftPlanAndCollectionMySqlConcurrencyTest.php` against the guarded `saverapp_audit_testing` database (8 tests / 54 assertions); **C/N/R/L** = `CollectionTest.php`, `NotificationInboxTest.php`, `ReportTest.php`, and `CustomerLifecycleTest.php` respectively (combined 165 tests / 1,401 assertions). The branch-local Vite build passed and supplied the manifest for authenticated feature requests. These are automated contract checks, not an authenticated browser or production operations sign-off. **Verified** means the stated scenario is covered; **Partial** records a proven subset and its missing check; **Open** has no sufficient scenario exercise; **Blocked** requires an absent authoritative owner or policy. A Partial/Open/Blocked row is not release acceptance.
 
-Current outcome count: **2 Verified, 31 Partial, 8 Open, 10 Blocked**. The 10 Blocked rows require missing owner contracts; the Partial and Open rows identify test and review work still needed before Module 06 acceptance.
+Current outcome count: **4 Verified, 31 Partial, 6 Open, 10 Blocked**. The 10 Blocked rows require missing owner contracts; the Partial and Open rows identify test and review work still needed before Module 06 acceptance.
 
 | ID | Outcome | Evidence and remaining condition |
 | --- | --- | --- |
@@ -57,7 +57,7 @@ Current outcome count: **2 Verified, 31 Partial, 8 Open, 10 Blocked**. The 10 Bl
 | TPC-AC-002 | Partial | P proves direct Admin/Customer pause denial and authorized Agent success; add create, revise, and terminal HTTP calls. |
 | TPC-AC-003 | Partial | L and N cover Customer scope in related views; prove plan search/count, ID, revision, and notice non-disclosure together. |
 | TPC-AC-004 | Partial | C and M exercise Agent eligibility around cash; run the plan-specific onboarding, suspension, and temporary-lock matrix. |
-| TPC-AC-005 | Open | Verify Invited and Active Customer plan creation without requiring Customer login activation. |
+| TPC-AC-005 | Verified | P creates a plan for an Invited Customer without Customer login activation and another plan for an Active Customer; each persists expected slots. |
 | TPC-AC-006 | Partial | L and C exercise status gates; verify every plan mutation against inactive/restricted/archived status and the settlement exception when its owner exists. |
 | TPC-AC-007 | Partial | P and M establish one open plan; exercise Paused and Completed predecessors after the scheduled end and withdrawal. |
 | TPC-AC-008 | Partial | M proves two concurrent create attempts commit at most one cycle; add distinct-Agent and renewal races. |
@@ -71,7 +71,7 @@ Current outcome count: **2 Verified, 31 Partial, 8 Open, 10 Blocked**. The 10 Bl
 | TPC-AC-016 | Partial | P proves one plan, slots, one operation, and no receipt/ledger posting; assert fee/reservation/registration histories separately. |
 | TPC-AC-017 | Partial | P injects a lifecycle-event write failure and proves rollback of plan, slots, terms, attempt, notice, and ledger; snapshot, slot, and audit fault points remain. |
 | TPC-AC-018 | Verified | P proves same-key replay returns the original plan; changed-payload reuse conflicts without another plan. |
-| TPC-AC-019 | Open | Reassign after commit, then request the old operation result as the former Agent. |
+| TPC-AC-019 | Verified | P reassigns after commit; former and replacement Agents cannot retrieve the former Agent's attempt, and no replacement plan or attempt is created. |
 | TPC-AC-020 | Partial | C covers partial receipts and net funding; exercise ten-to-one and one-to-three slot counts explicitly. |
 | TPC-AC-021 | Partial | C proves final net funding can complete a cycle; test final-date expiry with unpaid/partial slots and early advance funding. |
 | TPC-AC-022 | Partial | C and M prove capacity and serial cash allocation; complete advance/catch-up and multi-day boundaries in the Module 07 acceptance matrix. |
@@ -119,8 +119,8 @@ Current outcome count: **2 Verified, 31 Partial, 8 Open, 10 Blocked**. The 10 Bl
 - The Module 06 draft policies are approved as the implementation baseline: daily frequency, 1–366 slots, start date today through 365 days ahead, one open cycle, and financial-term locking after any activity.
 - `Africa/Lagos` is the initial stored business timezone; Module 15 may later manage prospective changes.
 - Zero-activity cancellation and renewal from a verified Cancelled predecessor are in this implementation. Settlement-dependent terminal actions are gated.
-- No dependencies are added. Full financial acceptance remains blocked on Module 07 and the related financial owners, even after plan-core checks pass.
+- No dependencies are added. Full financial acceptance remains blocked on unresolved payout, reversal, fee, settlement, and other owner contracts, even after plan-core checks pass.
 
 ## Implementation status
 
-The original core plan work is committed on `main`. This verification branch adds focused authorization, calendar, stale-fee, rollback, immutability, replay, and cancelled-cycle renewal assertions. It also fixes the plan detail eager-load callback type that made direct HTTP actions fail with 500, and makes a retired fee option conflict after preview rather than returning an ordinary field error. Its worktree-local Composer autoloader and Vite manifest were used for the recorded SQLite and isolated MySQL runs; the latter runs `migrate:fresh` only after checking for `saverapp_audit_testing`. No migration was run against the shared application database. Module 07 cash collection and completion have current automated integration evidence; closure, early termination, reversal compensation, and production cash readiness remain gated on their owning contracts and acceptance. TPC-T07 remains in progress while Partial/Open/Blocked scenarios above remain.
+The core plan and verification work are integrated on `main`. Focused authorization, calendar, stale-fee, rollback, immutability, replay, cancelled-cycle renewal, and reassignment assertions pass. The plan detail eager-load callback no longer fails direct HTTP actions with 500, and a retired fee option conflicts after preview rather than returning an ordinary field error. Branch-local Composer autoloaders and Vite manifests were used for the recorded SQLite and isolated MySQL runs; the latter runs `migrate:fresh` only after checking for `saverapp_audit_testing`. No migration was run against the shared application database. The integrated suite passes 900 tests, skips 44, and records 6,493 assertions; Vue type checking and the production build pass. Module 07 cash collection and completion have automated integration evidence; closure, early termination, reversal compensation, and production cash readiness remain gated on their owning contracts and acceptance. TPC-T07 remains in progress while Partial/Open/Blocked scenarios above remain.

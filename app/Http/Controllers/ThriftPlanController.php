@@ -19,6 +19,7 @@ use App\Services\ThriftPlanService;
 use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -428,7 +429,9 @@ class ThriftPlanController extends Controller
                 'customerProfile.currentAssignment',
                 'termsRevisions.feeSnapshot.feeRule',
                 'termsRevisions.feeSnapshot.obligation',
-                'slots' => fn ($slotQuery) => $slotQuery->whereNotNull('active_ordinal')->orderBy('active_ordinal'),
+                'slots' => function (Relation $slotQuery): void {
+                    $slotQuery->getQuery()->whereNotNull('active_ordinal')->orderBy('active_ordinal');
+                },
                 'lifecycleEvents.actor',
                 'predecessor',
             ])
