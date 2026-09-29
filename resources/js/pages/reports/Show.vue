@@ -40,6 +40,8 @@ const secondaryTitles: Record<string, string> = {
     primary: 'Report results',
     recorded_activity: 'Recorded receipt activity',
     business_cash: 'Business cash custody',
+    batch_reconciliation: 'Cash batch reconciliation',
+    external_receipts: 'External fee receipts',
 };
 const statuses = ['active', 'inactive', 'restricted', 'archived'];
 const planStatuses = ['active', 'paused', 'completed', 'closed', 'cancelled'];
@@ -357,7 +359,11 @@ function cell(value: string | number | boolean | null | undefined): string {
             <Card v-for="(section, code) in visible.sections" :key="code">
                 <CardHeader
                     ><CardTitle class="flex items-center justify-between gap-3"
-                        >{{ secondaryTitles[code] ?? code }}
+                        >{{
+                            definition.code === 'fees' && code === 'primary'
+                                ? 'Obligation activity'
+                                : (secondaryTitles[code] ?? code)
+                        }}
                         <Badge variant="secondary">{{
                             section.status
                         }}</Badge></CardTitle

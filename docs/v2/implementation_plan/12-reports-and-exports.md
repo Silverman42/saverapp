@@ -1,5 +1,15 @@
 # Module 12 — Reports and Exports
 
+## Focused task brief — register reconciliation
+
+- Task: Complete the Module 12 requirement-to-task register entry and record RPT-T01–T09.
+- Result: The register reflects locally verified interactive work, supported-owner gaps, prospective export work, and existing acceptance outcomes without claiming full release.
+- Source: [Module 12 Sections 16–17](../modules/12-reports-and-exports.md); `RPT-FR-001`–`RPT-FR-033`; `RPT-AC-001`–`RPT-AC-044`; the implementation checkpoint below.
+- Scope: Update this plan and [the V2 register](../tasks.md) only; retain the recorded 26 September test results and acceptance statuses.
+- Reference: The staged Module 11 task register and plan use the same evidence-first status approach.
+- Dependencies: Modules 01–11 provide report sources; approved cutoff, renderer, storage, privacy, audit, notification, retention, and recovery contracts gate exports.
+- Verification: Check task IDs and requirement/scenario coverage against the specification and checkpoint, then run `git diff --check`. This documentation change requires no application tests.
+
 ## Approved release and defaults
 
 Implement the staged interactive release from [Module 12](../modules/12-reports-and-exports.md). The user approved the draft reporting defaults and selected interactive reports first. CSV/PDF jobs, artifact storage/downloads, historical snapshots and financial mutations are excluded from this release. No dependencies or application schema changes were added.
@@ -7,6 +17,45 @@ Implement the staged interactive release from [Module 12](../modules/12-reports-
 Activity defaults to the current calendar month through now; snapshot reports use the current cutoff. Use the configured business timezone, initially Africa/Lagos, while retaining receipt/plan local dates and their captured timezones. Interactive ranges allow at most 366 inclusive dates ending no later than today. Page sizes are 25/50/100. An implementation capacity guard limits grouped results to 1,000 groups; larger results require narrower filters or removal of grouping and return no partial totals.
 
 The approved draft export defaults remain prospective. Export permission alone does not enable files: reproducible owner cutoffs, private storage, approved rendering, retention, authorization, canonical audit and recovery evidence must be ready first.
+
+## Prospective export tasks
+
+| Task | Required result | Gate |
+| ---- | --------------- | ---- |
+| RPT-T08 | Resolve owner cutoffs and rendering, storage, privacy, retention, notification, audit, and recovery contracts for `RPT-FR-006`, `RPT-FR-019`–`RPT-FR-028`, and `RPT-FR-030`–`RPT-FR-033`. | Blocked until the named owners approve their contracts and evidence. |
+| RPT-T09 | After RPT-T08, implement and verify Admin-only CSV/PDF job lifecycle, publication, protected download, cleanup, notices, and audit against the export scenarios in Section 17. | Blocked on RPT-T08; no file capability is enabled. |
+
+## Focused task brief — RPT-T03 fee slice
+
+- Task: Extend RPT-T03 with the supported Module 05 fee obligation and Module 07 external receipt data.
+- Result: The interactive fees report shows separate, scoped obligation activity and verified external fee components, each with full totals, its own date basis and continuation. Unsupported fee families remain unavailable.
+- Source: [Module 12 Sections 3, 5.4, 16–17](../modules/12-reports-and-exports.md); `RPT-FR-011`; `RPT-AC-004`, `RPT-AC-017`.
+- Scope: Existing report reader/catalogue, metric definitions, report page labels, focused tests and this register. No routes, exports, schema, dependencies, financial posting or fee owner changes.
+- Reference: Existing contribution report projection, scope-safe query and source-bound cursor patterns; Module 05 immutable obligation entries and Module 07 fee receipt components.
+- Dependencies: Ready ledger projection and enabled collection owner; fee activity is not cash or income. Payout, savings application, refunds, deductions, draws and full acceptance remain owner-gated.
+- Verification: Focused Report, FeeOverview, Collection and LedgerTransaction feature tests; scoped PHPStan, Pint, Vue type check, build and diff review.
+
+### RPT-T03 fee checkpoint — 29 September 2026
+
+The fees report now has obligation activity by entry recorded time and external fee receipts by received date. It separates original assessments, increases, reductions and waivers from cash receipt components. Both sections use current Customer scope, full filtered totals and section-bound encrypted cursors. Missing or inconsistent assessment, component, projection, settlement or ledger evidence fails closed. The schema/metric-definition version is 2; exports remain unavailable.
+
+The fee slice's two failure gates are now covered: a positive obligation without assessment history and a disabled collection owner leave both fee sections Unavailable. The focused Report tests pass (45 tests, 415 assertions), and the Report, FeeOverview, Collection, LedgerTransaction, Dashboard and DashboardAnalytics tests pass together (144 tests, 1,587 assertions). Scoped PHPStan, Pint, Vue type checking, the production build and `git diff --check` pass. Authenticated visual inspection and the user-run complete PHP suite remain unverified. `RPT-AC-017` remains Blocked because savings applications, refunds, other deductions, earnings/draws and complete owner date/status coverage are unavailable; this checkpoint does not change the existing full-module acceptance statuses.
+
+## Focused task brief — RPT-T03 cash batch slice
+
+- Task: Add a separate current cash batch reconciliation section to the interactive custody report.
+- Result: Admins see all or one original Agent's verified batch versions, receipts, remittances, outstanding amount and latest review; Agents see only their own masked batch summaries, including after Customer reassignment. A changed owner source invalidates continuation.
+- Source: [Module 12 Sections 5.6, 16–17](../modules/12-reports-and-exports.md); `RPT-FR-013`; `RPT-AC-020`–`RPT-AC-021`; Module 07 cash batch/remittance/review contracts.
+- Scope: Existing report reader, catalogue, metric definitions, page label, Report feature tests, plan and register. No new route, schema, dependency, export or owner mutation.
+- Reference: Fee section's scoped, source-bound continuation and Module 07's batch and remittance owner workflow.
+- Dependencies: Enabled collection owner, ready ledger projection and mapped custody accounts. Historical opening/movements/closing and complete reconciliation version history remain gated.
+- Verification: Focused Report, Collection and LedgerTransaction tests; scoped PHPStan, Pint, Vue type check, build and diff review.
+
+### RPT-T03 cash batch checkpoint — 29 September 2026
+
+The reconciliation report now has a separate current cash batch section. It shows original-Agent batch revisions and linked supplements, received tender split, confirmed remittances, unremitted cash, unresolved exception count and latest review outcome. Admin Agent filtering follows custody attribution; Agents retain masked own batch summaries after Customer reassignment. Receipt components and remittance postings must agree with the ready ledger projection and owner state, or the section is Unavailable. Batch, receipt, remittance, review, exception and ledger source changes invalidate continuation. The report schema and metric-definition versions are 3. This is current owner state, not a historical opening/movement/closing balance or a complete review history.
+
+The focused Report test file passes 47 tests and 471 assertions. The affected Report, FeeOverview, Collection, LedgerTransaction, Dashboard and DashboardAnalytics run passes 146 tests and 1,643 assertions. Scoped PHPStan, Pint, Vue type checking, the production build and `git diff --check` pass. Authenticated visual inspection, production load/concurrency evidence and the user-run complete PHP suite remain unverified. `RPT-AC-020` and `RPT-AC-021` remain Blocked pending their full historical and reconciliation contracts.
 
 ## Implementation checkpoint — 26 September 2026
 
@@ -67,11 +116,11 @@ A Blocked scenario may have partial automated evidence; it is not promoted to Pa
 | RPT-AC-014 | Blocked | Current liability, archived scope and reservation separation pass; period/lifetime reconciliation incomplete.                                             |
 | RPT-AC-015 | Blocked | Multi-slot counting, mixed receipts, separate actor/current Agent and late-date fixtures pass; net correction and complete allocation reporting deferred. |
 | RPT-AC-016 | Blocked | Pending workflow and hold rows are not posted payouts; complete posted/compensated payout matrix unavailable.                                             |
-| RPT-AC-017 | Blocked | Full fee/deduction family contract unavailable; no assessed-as-income fallback.                                                                           |
+| RPT-AC-017 | Blocked | Scoped obligation and external receipt slices pass, including missing-assessment and disabled-owner gates; savings applications, refunds, other deductions and earnings/draws remain unavailable. |
 | RPT-AC-018 | Blocked | Eligible schedule fulfillment is gated; received activity does not provide its denominator.                                                               |
 | RPT-AC-019 | Blocked | Complete historical eligibility intervals unavailable.                                                                                                    |
-| RPT-AC-020 | Blocked | Original-Agent current responsibility passes; opening/additions/remittances/closing report deferred.                                                      |
-| RPT-AC-021 | Blocked | Complete versioned reconciliation/supplemental-batch report unavailable.                                                                                  |
+| RPT-AC-020 | Blocked | Original-Agent current responsibility, verified batch tender and remittances pass; historical opening/additions/remittances/closing reconciliation remains unavailable. |
+| RPT-AC-021 | Blocked | Current batch revisions, linked late supplements, latest review and unresolved exception state pass; complete versioned reconciliation and variance history remain unavailable. |
 | RPT-AC-022 | Blocked | Current portfolio and recording actor separation pass; historical effective-service reporting unavailable.                                                |
 | RPT-AC-023 | Blocked | Five explicit lifecycle states and agreed targets pass; full funding/withdrawal/fees/settlement report unavailable.                                       |
 | RPT-AC-024 | Blocked | Supported queue counts and safe links pass; complete exception-owner coverage unavailable.                                                                |

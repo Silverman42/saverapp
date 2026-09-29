@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerStatus;
+use App\Enums\FeeObligationEntryType;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
@@ -24,7 +25,7 @@ use Throwable;
 
 class ReportReadService
 {
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 3;
 
     public function __construct(
         private ResourceScopeService $scope,
@@ -84,6 +85,14 @@ class ReportReadService
             $binding = hash('sha256', json_encode([$viewer->id, $code, $scopeSummary['fingerprint'], $queryFilters,
                 self::SCHEMA_VERSION, MetricDefinitionService::VERSION, $business->version], JSON_THROW_ON_ERROR));
             $cursor = $this->decodeCursor($filters['cursor'] ?? null, $binding);
+            $allowedSections = match ($code) {
+                'fees' => ['primary', 'external_receipts'],
+                'reconciliation' => ['primary', 'batch_reconciliation'],
+                default => ['primary'],
+            };
+            if ($cursor !== null && ! in_array($cursor['section'] ?? 'primary', $allowedSections, true)) {
+                abort(422, 'Invalid report cursor. Refresh the report.');
+            }
             $now = CarbonImmutable::now('UTC');
             $cutoff = $cursor === null ? $now : CarbonImmutable::parse($cursor['cutoff']);
             $timezone = $business->timezone;
@@ -103,16 +112,21 @@ class ReportReadService
             }
             $manifest['owner_watermarks']['ledger'] = $state;
             $result = $this->unavailable($definition['reason']);
+            $feeSections = null;
             try {
-                if (in_array($code, ['customer-summary', 'contributions', 'collection-performance', 'reconciliation'], true)) {
+                if (in_array($code, ['customer-summary', 'contributions', 'collection-performance', 'reconciliation', 'fees'], true)) {
                     $this->requireLedger($state);
                 }
                 if (! in_array($code, ['reconciliation'], true) && (clone $customers)->whereNotIn('operational_status', array_column(CustomerStatus::cases(), 'value'))->exists()) {
                     throw new RuntimeException('Customer status unavailable.');
                 }
-                $spec = $this->query($viewer, $code, $customers, $filters, $agentId, $state, $cutoff);
-                if ($spec !== null) {
-                    $result = $this->consume($spec, $filters, $cursor, $binding, $manifest, $definition['reason'], $state);
+                if ($code === 'fees') {
+                    $feeSections = $this->feeSections($viewer, $customers, $filters, $cursor, $binding, $manifest, $state, $cutoff);
+                } else {
+                    $spec = $this->query($viewer, $code, $customers, $filters, $agentId, $state, $cutoff);
+                    if ($spec !== null) {
+                        $result = $this->consume($spec, $filters, $cursor, $binding, $manifest, $definition['reason'], $state);
+                    }
                 }
             } catch (RuntimeException|QueryException $exception) {
                 $result = $this->unavailable('Authoritative report data is unavailable or inconsistent. Retry after its owner is verified.');
@@ -121,7 +135,24 @@ class ReportReadService
                     $result['reason'] = 'This grouping exceeds 1,000 groups. Narrow the filters or remove grouping; no partial totals are displayed.';
                 }
             }
-            $sections = ['primary' => $result];
+            $sections = $feeSections ?? ['primary' => $result];
+            if ($code === 'fees' && $feeSections === null) {
+                $sections['external_receipts'] = $this->unavailable('Verified external fee receipts are unavailable.');
+            }
+            if ($code === 'reconciliation') {
+                try {
+                    $this->requireLedger($state);
+                    if (! config('collections.enabled')) {
+                        throw new RuntimeException('Collections are disabled.');
+                    }
+                    $spec = $this->batchReconciliationSpec($viewer, $agentId, $state, $cutoff);
+                    $sections['batch_reconciliation'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                        'Current verified cash batch snapshot. Historical opening, movement and closing balances and complete variance history remain unavailable.',
+                        $state, 'batch_reconciliation');
+                } catch (RuntimeException|QueryException) {
+                    $sections['batch_reconciliation'] = $this->unavailable('Verified cash batch reconciliation is unavailable or inconsistent.');
+                }
+            }
             if ($code === 'agent-performance') {
                 try {
                     $this->requireLedger($state);
@@ -163,10 +194,10 @@ class ReportReadService
                     $sections['business_cash'] = $this->unavailable('Verified business cash custody is unavailable.');
                 }
             }
-            if ($cursor !== null && in_array($result['status'], ['Unavailable', 'Too large'], true)) {
+            if ($cursor !== null && in_array($sections[$cursor['section'] ?? 'primary']['status'], ['Unavailable', 'Too large'], true)) {
                 abort(422, 'The report source changed or is unavailable. Refresh the report.');
             }
-            Log::debug('reports.read', ['report' => $code, 'status' => $result['status'], 'schema_version' => self::SCHEMA_VERSION]);
+            Log::debug('reports.read', ['report' => $code, 'status' => $sections['primary']['status'], 'schema_version' => self::SCHEMA_VERSION]);
 
             return ['definition' => $definition, 'manifest' => $manifest, 'sections' => $sections];
         });
@@ -199,6 +230,279 @@ class ReportReadService
             })->join('ledger_transaction_projections as projection', 'projection.ledger_transaction_reference_id', '=', 'refs.id')
             ->where('projection.projection_version', $state['version'])->where('projection.source_max_group_id', '<=', $state['watermark'])
             ->where('projection.committed_at', '<=', $cutoff)->where('receipts.recorded_at', '<=', $cutoff);
+    }
+
+    /** @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
+    private function batchReconciliationSpec(User $viewer, ?int $agentId, array $state, CarbonImmutable $cutoff): array
+    {
+        foreach (['agent_receivable_ngn', 'business_cash_ngn'] as $code) {
+            if (! DB::table('ledger_accounts')->where('code', $code)->where('mapping_status', 'mapped')
+                ->where('currency', 'NGN')->where('normal_balance', 'debit')->exists()) {
+                throw new RuntimeException('Cash custody mapping unavailable.');
+            }
+        }
+
+        $components = DB::table('collection_fee_components')->selectRaw('collection_receipt_id, SUM(amount_kobo) AS total')
+            ->groupBy('collection_receipt_id');
+        $receipts = DB::table('collection_receipts as receipts')
+            ->join('collection_batches as receipt_batches', 'receipt_batches.id', '=', 'receipts.collection_batch_id')
+            ->leftJoinSub($components, 'components', 'components.collection_receipt_id', '=', 'receipts.id')
+            ->leftJoin('ledger_transaction_references as receipt_refs', function (JoinClause $join): void {
+                $join->on('receipt_refs.root_id', '=', 'receipts.id')->where('receipt_refs.root_type', 'collection_receipt');
+            })->leftJoin('ledger_transaction_projections as receipt_projection', function (JoinClause $join) use ($state): void {
+                $join->on('receipt_projection.ledger_transaction_reference_id', '=', 'receipt_refs.id')
+                    ->where('receipt_projection.projection_version', $state['version']);
+            })->selectRaw('receipts.collection_batch_id, COUNT(*) AS receipt_count,
+                COALESCE(SUM(receipts.tender_amount_kobo), 0) AS tender,
+                COALESCE(SUM(receipts.savings_amount_kobo), 0) AS savings,
+                COALESCE(SUM(receipts.fee_amount_kobo), 0) AS fees')
+            ->selectRaw("SUM(CASE WHEN receipts.recording_agent_profile_id <> receipt_batches.agent_profile_id
+                OR receipts.received_date <> receipt_batches.received_date OR receipts.timezone <> receipt_batches.timezone
+                OR receipts.tender_amount_kobo <> receipts.savings_amount_kobo + receipts.fee_amount_kobo
+                OR receipts.fee_amount_kobo <> COALESCE(components.total, 0)
+                OR receipts.recorded_at > ? OR receipt_projection.id IS NULL
+                OR receipt_projection.status <> 'posted' OR receipt_projection.type <> 'contribution'
+                OR receipt_projection.currency <> 'NGN' OR receipt_projection.customer_profile_id <> receipts.customer_profile_id
+                OR receipt_projection.occurred_on <> receipts.received_date
+                OR receipt_projection.gross_amount_kobo <> receipts.tender_amount_kobo
+                OR receipt_projection.fee_amount_kobo < receipts.fee_amount_kobo
+                OR receipt_projection.source_max_group_id > ? OR receipt_projection.committed_at > ?
+                THEN 1 ELSE 0 END) AS invalid_receipts", [$cutoff, $state['watermark'], $cutoff])
+            ->groupBy('receipts.collection_batch_id');
+
+        $lines = DB::table('ledger_entries as entries')->join('ledger_accounts as accounts', 'accounts.id', '=', 'entries.ledger_account_id')
+            ->selectRaw("entries.ledger_posting_group_id, COUNT(*) AS line_count,
+                SUM(CASE WHEN accounts.code = 'business_cash_ngn' AND accounts.mapping_status = 'mapped'
+                    AND accounts.currency = 'NGN' AND entries.side = 'debit' AND entries.agent_profile_id IS NULL
+                    THEN entries.amount_kobo ELSE 0 END) AS cash_debit,
+                SUM(CASE WHEN accounts.code = 'agent_receivable_ngn' AND accounts.mapping_status = 'mapped'
+                    AND accounts.currency = 'NGN' AND entries.side = 'credit'
+                    THEN entries.amount_kobo ELSE 0 END) AS receivable_credit,
+                MAX(CASE WHEN accounts.code = 'agent_receivable_ngn' AND entries.side = 'credit'
+                    THEN entries.agent_profile_id ELSE NULL END) AS receivable_agent")
+            ->groupBy('entries.ledger_posting_group_id');
+        $remittances = DB::table('cash_remittances as remittances')
+            ->join('collection_batches as remittance_batches', 'remittance_batches.id', '=', 'remittances.collection_batch_id')
+            ->leftJoin('ledger_posting_groups as posting', 'posting.id', '=', 'remittances.ledger_posting_group_id')
+            ->leftJoinSub($lines, 'lines', 'lines.ledger_posting_group_id', '=', 'posting.id')
+            ->leftJoin('ledger_transaction_references as remittance_refs', function (JoinClause $join): void {
+                $join->on('remittance_refs.root_id', '=', 'remittances.id')->where('remittance_refs.root_type', 'cash_remittance');
+            })->leftJoin('ledger_transaction_projections as remittance_projection', function (JoinClause $join) use ($state): void {
+                $join->on('remittance_projection.ledger_transaction_reference_id', '=', 'remittance_refs.id')
+                    ->where('remittance_projection.projection_version', $state['version']);
+            })->selectRaw('remittances.collection_batch_id, COUNT(*) AS remittance_count,
+                COALESCE(SUM(remittances.amount_kobo), 0) AS remitted')
+            ->selectRaw("SUM(CASE WHEN remittances.agent_profile_id <> remittance_batches.agent_profile_id
+                OR remittances.amount_kobo < 1 OR remittances.created_at > ?
+                OR posting.id IS NULL OR posting.source_type <> 'cash_remittance'
+                OR posting.source_id <> remittances.id OR posting.event_type <> 'cash_remittance'
+                OR posting.currency <> 'NGN' OR posting.committed_at > ? OR posting.id > ?
+                OR lines.line_count <> 2 OR lines.cash_debit <> remittances.amount_kobo
+                OR lines.receivable_credit <> remittances.amount_kobo
+                OR lines.receivable_agent <> remittances.agent_profile_id
+                OR remittance_projection.id IS NULL OR remittance_projection.status <> 'posted'
+                OR remittance_projection.type <> 'remittance' OR remittance_projection.currency <> 'NGN'
+                OR remittance_projection.gross_amount_kobo <> remittances.amount_kobo
+                OR remittance_projection.occurred_on <> remittances.handoff_date
+                OR remittance_projection.source_max_group_id <> posting.id
+                OR remittance_projection.committed_at > ?
+                THEN 1 ELSE 0 END) AS invalid_remittances", [$cutoff, $cutoff, $state['watermark'], $cutoff])
+            ->groupBy('remittances.collection_batch_id');
+
+        $latestReviews = DB::table('collection_batch_reviews')->selectRaw('collection_batch_id, MAX(id) AS latest_id,
+            COUNT(*) AS review_count, MAX(updated_at) AS latest_update')->groupBy('collection_batch_id');
+        $exceptions = DB::table('collection_exceptions')->selectRaw("collection_batch_id,
+            SUM(CASE WHEN status <> 'resolved' THEN 1 ELSE 0 END) AS open_exceptions,
+            COUNT(*) AS exception_count, MAX(id) AS latest_id, MAX(updated_at) AS latest_update")
+            ->groupBy('collection_batch_id');
+
+        $query = DB::table('collection_batches as batches')
+            ->join('agent_profiles as agents', 'agents.id', '=', 'batches.agent_profile_id')
+            ->leftJoin('collection_batches as predecessor', 'predecessor.id', '=', 'batches.predecessor_batch_id')
+            ->leftJoinSub($receipts, 'receipts', 'receipts.collection_batch_id', '=', 'batches.id')
+            ->leftJoinSub($remittances, 'remittances', 'remittances.collection_batch_id', '=', 'batches.id')
+            ->leftJoinSub($latestReviews, 'review_versions', 'review_versions.collection_batch_id', '=', 'batches.id')
+            ->leftJoin('collection_batch_reviews as review', 'review.id', '=', 'review_versions.latest_id')
+            ->leftJoinSub($exceptions, 'exceptions', 'exceptions.collection_batch_id', '=', 'batches.id')
+            ->where('batches.created_at', '<=', $cutoff)
+            ->select('batches.id as reference', 'batches.id as _key', 'batches.received_date', 'agents.agent_id as original_agent',
+                'batches.revision', 'batches.predecessor_batch_id as predecessor', 'batches.status as state',
+                'review.outcome as latest_review', 'review.batch_version as _review_version',
+                'review.expected_kobo as _review_expected', 'review.remitted_kobo as _review_remitted',
+                'review.outstanding_kobo as _review_outstanding', 'batches.version as _version',
+                'batches.updated_at as _updated', 'batches.agent_profile_id as _agent_id', 'batches.timezone as _timezone',
+                'predecessor.agent_profile_id as _predecessor_agent', 'predecessor.received_date as _predecessor_date',
+                'predecessor.timezone as _predecessor_timezone', 'predecessor.revision as _predecessor_revision',
+                'review_versions.review_count as _review_count', 'review_versions.latest_update as _review_update',
+                'exceptions.exception_count as _exception_count', 'exceptions.latest_id as _exception_latest',
+                'exceptions.latest_update as _exception_update', 'receipts.invalid_receipts as _invalid_receipts',
+                'remittances.invalid_remittances as _invalid_remittances')
+            ->selectRaw('COALESCE(receipts.receipt_count, 0) AS receipt_count,
+                COALESCE(receipts.tender, 0) AS gross_tender, COALESCE(receipts.savings, 0) AS savings_component,
+                COALESCE(receipts.fees, 0) AS external_fee_component,
+                COALESCE(remittances.remitted, 0) AS confirmed_remittances,
+                COALESCE(receipts.tender, 0) - COALESCE(remittances.remitted, 0) AS unremitted,
+                COALESCE(exceptions.open_exceptions, 0) AS open_exceptions')
+            ->orderByDesc('batches.received_date')->orderByDesc('batches.id');
+        if ($viewer->user_type === UserType::Agent) {
+            $ownAgent = $viewer->agentProfile?->id;
+            if ($ownAgent === null) {
+                throw new RuntimeException('Agent custody scope unavailable.');
+            }
+            $query->where('batches.agent_profile_id', $ownAgent);
+        } elseif ($agentId !== null) {
+            $query->where('batches.agent_profile_id', $agentId);
+        }
+
+        return ['code' => 'batch_reconciliation', 'query' => $query,
+            'columns' => ['reference' => 'Batch', 'received_date' => 'Received date', 'original_agent' => 'Original Agent',
+                'revision' => 'Revision', 'predecessor' => 'Previous batch', 'state' => 'Current state',
+                'receipt_count' => 'Receipts', 'gross_tender' => 'Gross tender', 'savings_component' => 'Savings component',
+                'external_fee_component' => 'External fee component', 'confirmed_remittances' => 'Confirmed remittances',
+                'unremitted' => 'Unremitted cash', 'open_exceptions' => 'Open exceptions', 'latest_review' => 'Latest review'],
+            'money' => ['gross_tender', 'savings_component', 'external_fee_component', 'confirmed_remittances', 'unremitted'],
+            'counts' => ['batch_count' => null, 'receipt_count' => 'receipt_count', 'open_exceptions' => 'open_exceptions'],
+            'link' => $viewer->user_type === UserType::Admin ? 'collection-batches.show' : null,
+            'reference' => 'reference', 'viewer' => $viewer];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>|null  $cursor
+     * @param  array<string, mixed>  $manifest
+     * @param  array<string, mixed>  $state
+     * @return array<string, array<string, mixed>>
+     */
+    private function feeSections(User $viewer, EloquentBuilder $customers, array $filters, ?array $cursor, string $binding, array $manifest, array $state, CarbonImmutable $cutoff): array
+    {
+        $scope = $this->customerQuery($customers)->select('customers.id', 'customers.customer_id as customer',
+            'customer_users.name as name', 'current_agents.agent_id as current_agent');
+        $start = CarbonImmutable::parse($manifest['utc_start'])->toDateTimeString();
+        $end = CarbonImmutable::parse($filters['to'], $manifest['timezone'])->addDay()->startOfDay()->utc()->toDateTimeString();
+        if (! config('collections.enabled')) {
+            throw new RuntimeException('The fee receipt owner is disabled.');
+        }
+
+        $missingAssessment = DB::table('fee_obligations as obligations')
+            ->whereIn('obligations.customer_profile_id', (clone $customers)->select('id'))
+            ->where('obligations.created_at', '<=', $cutoff)->where('obligations.amount_kobo', '>', 0)
+            ->whereNotExists(function (Builder $query) use ($cutoff): void {
+                $query->selectRaw('1')->from('fee_obligation_entries as entries')
+                    ->whereColumn('entries.fee_obligation_id', 'obligations.id')
+                    ->where('entries.entry_type', FeeObligationEntryType::Assessment->value)
+                    ->where('entries.created_at', '<=', $cutoff);
+            })->exists();
+        if ($missingAssessment) {
+            throw new RuntimeException('Fee assessment history is incomplete.');
+        }
+
+        $activity = DB::table('fee_obligation_entries as entries')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'entries.fee_obligation_id')
+            ->join('fee_snapshots as snapshots', 'snapshots.id', '=', 'obligations.fee_snapshot_id')
+            ->joinSub($scope, 'scope', 'scope.id', '=', 'obligations.customer_profile_id')
+            ->whereIn('entries.entry_type', [
+                FeeObligationEntryType::Assessment->value,
+                FeeObligationEntryType::AssessmentCorrectionIncrease->value,
+                FeeObligationEntryType::AssessmentCorrection->value,
+                FeeObligationEntryType::Waiver->value,
+            ])->where('entries.created_at', '>=', $start)->where('entries.created_at', '<', $end)
+            ->where('entries.created_at', '<=', $cutoff)
+            ->select('scope.customer', 'scope.name', 'scope.current_agent', 'snapshots.name as fee_name',
+                'obligations.kind', 'entries.entry_type as activity', 'entries.created_at as date',
+                'entries.id as _key', 'entries.amount_kobo as _amount', 'entries.currency as _entry_currency',
+                'obligations.currency as _obligation_currency', 'snapshots.currency as _snapshot_currency',
+                'obligations.amount_kobo as _original_amount', 'obligations.customer_profile_id as _obligation_customer',
+                'snapshots.customer_profile_id as _snapshot_customer', 'snapshots.kind as _snapshot_kind')
+            ->selectRaw("CASE WHEN entries.entry_type = 'assessment' THEN entries.amount_kobo ELSE 0 END AS gross_assessed")
+            ->selectRaw("CASE WHEN entries.entry_type = 'assessment_correction_increase' THEN entries.amount_kobo ELSE 0 END AS assessment_increase")
+            ->selectRaw("CASE WHEN entries.entry_type = 'assessment_correction' THEN entries.amount_kobo ELSE 0 END AS assessment_reduction")
+            ->selectRaw("CASE WHEN entries.entry_type = 'waiver' THEN entries.amount_kobo ELSE 0 END AS waived_fees")
+            ->orderByDesc('entries.created_at')->orderByDesc('entries.id');
+        $activitySpec = ['code' => 'fee_obligations', 'query' => $activity,
+            'columns' => ['customer' => 'Customer ID', 'name' => 'Customer', 'current_agent' => 'Current Agent',
+                'fee_name' => 'Fee', 'kind' => 'Fee kind', 'activity' => 'Activity', 'date' => 'Recorded (UTC)',
+                'gross_assessed' => 'Gross assessed', 'assessment_increase' => 'Assessment increase',
+                'assessment_reduction' => 'Assessment reduction', 'waived_fees' => 'Waived'],
+            'money' => ['gross_assessed', 'assessment_increase', 'assessment_reduction', 'waived_fees'],
+            'counts' => [], 'link' => 'customers.show', 'reference' => 'customer', 'viewer' => $viewer];
+
+        $componentTotals = DB::table('collection_fee_components')
+            ->selectRaw('collection_receipt_id, SUM(amount_kobo) AS component_total')->groupBy('collection_receipt_id');
+        $ledgerTotals = DB::table('ledger_entries as lines')
+            ->join('ledger_accounts as accounts', 'accounts.id', '=', 'lines.ledger_account_id')
+            ->selectRaw("lines.ledger_posting_group_id, COUNT(*) AS line_count,
+                SUM(CASE WHEN accounts.code = 'agent_receivable_ngn' AND lines.side = 'debit' THEN lines.amount_kobo ELSE 0 END) AS agent_debit,
+                SUM(CASE WHEN accounts.code = 'fee_income_ngn' AND lines.side = 'credit' THEN lines.amount_kobo ELSE 0 END) AS fee_credit")
+            ->groupBy('lines.ledger_posting_group_id');
+        $feeReceiptCount = DB::table('collection_receipts as receipts')
+            ->whereIn('receipts.customer_profile_id', (clone $customers)->select('id'))
+            ->where('receipts.recorded_at', '<=', $cutoff)
+            ->whereBetween('receipts.received_date', [$filters['from'], $filters['to']])
+            ->where('receipts.fee_amount_kobo', '>', 0)->count();
+        $verifiedFeeReceiptCount = $this->verifiedReceipts($state, $cutoff)
+            ->whereIn('receipts.customer_profile_id', (clone $customers)->select('id'))
+            ->whereBetween('receipts.received_date', [$filters['from'], $filters['to']])
+            ->where('receipts.fee_amount_kobo', '>', 0)->count();
+        if ($feeReceiptCount !== $verifiedFeeReceiptCount) {
+            throw new RuntimeException('Fee receipt projections are incomplete.');
+        }
+        $unmatchedReceipt = $this->verifiedReceipts($state, $cutoff)
+            ->joinSub($this->customerQuery($customers)->select('customers.id'), 'scope', 'scope.id', '=', 'receipts.customer_profile_id')
+            ->leftJoinSub($componentTotals, 'components', 'components.collection_receipt_id', '=', 'receipts.id')
+            ->whereBetween('receipts.received_date', [$filters['from'], $filters['to']])
+            ->where('receipts.fee_amount_kobo', '>', 0)
+            ->whereRaw('receipts.fee_amount_kobo <> COALESCE(components.component_total, 0)')->exists();
+        if ($unmatchedReceipt) {
+            throw new RuntimeException('Fee receipt components are incomplete.');
+        }
+
+        $receipts = $this->verifiedReceipts($state, $cutoff)
+            ->join('collection_fee_components as components', 'components.collection_receipt_id', '=', 'receipts.id')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'components.fee_obligation_id')
+            ->join('fee_snapshots as snapshots', 'snapshots.id', '=', 'obligations.fee_snapshot_id')
+            ->join('ledger_posting_groups as posting', 'posting.id', '=', 'components.ledger_posting_group_id')
+            ->leftJoin('fee_obligation_entries as settlement', function (JoinClause $join): void {
+                $join->on('settlement.fee_obligation_id', '=', 'obligations.id')
+                    ->on('settlement.ledger_posting_reference', '=', 'posting.posting_reference')
+                    ->where('settlement.entry_type', FeeObligationEntryType::Settlement->value);
+            })->leftJoinSub($ledgerTotals, 'ledger_totals', 'ledger_totals.ledger_posting_group_id', '=', 'posting.id')
+            ->joinSub($this->customerQuery($customers)->select('customers.id', 'customers.customer_id as customer',
+                'customer_users.name as name', 'current_agents.agent_id as current_agent'), 'scope', 'scope.id', '=', 'receipts.customer_profile_id')
+            ->whereBetween('receipts.received_date', [$filters['from'], $filters['to']])
+            ->select('scope.customer', 'scope.name', 'scope.current_agent', 'snapshots.name as fee_name',
+                'obligations.kind', 'receipts.receipt_reference as reference', 'receipts.received_date as date',
+                'receipts.timezone as receipt_timezone', 'components.amount_kobo as external_fees_received',
+                'components.id as _key', 'components.fee_obligation_id as _obligation_id',
+                'obligations.customer_profile_id as _obligation_customer', 'snapshots.customer_profile_id as _snapshot_customer',
+                'obligations.currency as _obligation_currency', 'snapshots.currency as _snapshot_currency',
+                'snapshots.kind as _snapshot_kind',
+                'components.amount_kobo as _component_amount', 'receipts.id as _receipt_id',
+                'receipts.customer_profile_id as _receipt_customer', 'receipts.fee_amount_kobo as _receipt_fees',
+                'receipts.savings_amount_kobo as _receipt_savings', 'receipts.tender_amount_kobo as _receipt_tender',
+                'projection.status as _projection_status', 'projection.gross_amount_kobo as _projection_tender',
+                'projection.fee_amount_kobo as _projection_fees', 'posting.event_type as _posting_type',
+                'posting.source_type as _posting_source_type', 'posting.source_id as _posting_source_id',
+                'posting.customer_profile_id as _posting_customer', 'posting.currency as _posting_currency',
+                'posting.id as _posting_id',
+                'posting.committed_at as _posting_committed', 'settlement.amount_kobo as _settlement_amount',
+                'settlement.currency as _settlement_currency', 'ledger_totals.line_count as _line_count',
+                'ledger_totals.agent_debit as _agent_debit', 'ledger_totals.fee_credit as _fee_credit')
+            ->orderByDesc('receipts.received_date')->orderByDesc('components.id');
+        $receiptSpec = ['code' => 'fee_external_receipts', 'query' => $receipts,
+            'columns' => ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer',
+                'current_agent' => 'Current Agent', 'fee_name' => 'Fee', 'kind' => 'Fee kind',
+                'date' => 'Received date', 'receipt_timezone' => 'Receipt timezone',
+                'external_fees_received' => 'External fee received'],
+            'money' => ['external_fees_received'], 'counts' => [], 'link' => 'collections.show', 'reference' => 'reference', 'viewer' => $viewer];
+
+        return [
+            'primary' => $this->consume($activitySpec, $filters, $cursor, $binding, $manifest,
+                'Recorded fee obligation activity only. Assessment and waiver are not cash or income; unsupported fee families remain unavailable.', $state, 'primary'),
+            'external_receipts' => $this->consume($receiptSpec, $filters, $cursor, $binding, $manifest,
+                'Verified external fee components by receipt date. Cash tender is counted once in the collection owner; this section excludes savings principal.', $state, 'external_receipts'),
+        ];
     }
 
     /** @param EloquentBuilder<CustomerProfile> $customers
@@ -389,14 +693,18 @@ class ReportReadService
      * @param  array<string, mixed>  $state
      * @return array<string, mixed>
      */
-    private function consume(array $spec, array $filters, ?array $cursor, string $binding, array $manifest, string $reason, array $state): array
+    private function consume(array $spec, array $filters, ?array $cursor, string $binding, array $manifest, string $reason, array $state, string $section = 'primary'): array
     {
+        $sectionCursor = ($cursor['section'] ?? 'primary') === $section ? $cursor : null;
         $digest = hash_init('sha256');
         $tables = match ($spec['code']) {
             'customer-summary' => ['withdrawal_reservations'],
             'withdrawals' => ['withdrawal_requests', 'withdrawal_reservations'],
             'plans' => ['thrift_plans', 'plan_terms_revisions'],
             'exceptions' => ['withdrawal_requests', 'reversal_requests'],
+            'batch_reconciliation' => ['collection_batches', 'collection_receipts', 'collection_fee_components',
+                'cash_remittances', 'collection_batch_reviews', 'collection_exceptions', 'ledger_posting_groups',
+                'ledger_entries', 'ledger_accounts', 'ledger_transaction_references', 'ledger_transaction_projections'],
             default => [],
         };
         $ownerVersions = [];
@@ -408,7 +716,7 @@ class ReportReadService
         $groups = [];
         $rows = [];
         $total = 0;
-        $offset = $cursor['offset'] ?? 0;
+        $offset = $sectionCursor['offset'] ?? 0;
         foreach ($spec['query']->lazy(500) as $object) {
             $row = (array) $object;
             hash_update($digest, json_encode($row, JSON_THROW_ON_ERROR));
@@ -417,6 +725,35 @@ class ReportReadService
             }
             if ($spec['code'] === 'plans' && ThriftPlanStatus::tryFrom($row['state']) === null) {
                 throw new RuntimeException('Plan status unavailable.');
+            }
+            if ($spec['code'] === 'fee_obligations') {
+                $amount = $this->integer($row['_amount']);
+                if ($amount === 0 || $row['_entry_currency'] !== 'NGN' || $row['_obligation_currency'] !== 'NGN'
+                    || $row['_snapshot_currency'] !== 'NGN' || $row['_obligation_customer'] !== $row['_snapshot_customer']
+                    || $row['kind'] !== $row['_snapshot_kind']
+                    || ($row['activity'] === FeeObligationEntryType::Assessment->value
+                        && $amount !== $this->integer($row['_original_amount']))) {
+                    throw new RuntimeException('Fee obligation activity disagrees with its owner.');
+                }
+            }
+            if ($spec['code'] === 'fee_external_receipts') {
+                $amount = $this->integer($row['_component_amount']);
+                if ($amount === 0 || $row['_obligation_currency'] !== 'NGN' || $row['_snapshot_currency'] !== 'NGN'
+                    || $row['_settlement_currency'] !== 'NGN' || $row['_posting_currency'] !== 'NGN'
+                    || $row['_obligation_customer'] !== $row['_receipt_customer']
+                    || $row['_snapshot_customer'] !== $row['_receipt_customer'] || $row['kind'] !== $row['_snapshot_kind']
+                    || $row['_posting_customer'] !== $row['_receipt_customer']
+                    || $row['_posting_type'] !== 'external_fee_receipt' || $row['_posting_source_type'] !== 'collection_receipt'
+                    || $row['_posting_source_id'] !== $row['_receipt_id'].'-'.$row['_obligation_id']
+                    || $row['_projection_status'] !== 'posted' || $this->integer($row['_projection_fees']) !== $this->integer($row['_receipt_fees'])
+                    || $this->integer($row['_projection_tender']) !== $this->integer($row['_receipt_tender'])
+                    || $this->add($this->integer($row['_receipt_savings']), $this->integer($row['_receipt_fees'])) !== $this->integer($row['_receipt_tender'])
+                    || $this->integer($row['_settlement_amount']) !== $amount || $this->integer($row['_line_count']) !== 2
+                    || $this->integer($row['_agent_debit']) !== $amount || $this->integer($row['_fee_credit']) !== $amount
+                    || $this->integer($row['_posting_id']) > $state['watermark']
+                    || CarbonImmutable::parse($row['_posting_committed'], 'UTC')->greaterThan(CarbonImmutable::parse($manifest['cutoff']))) {
+                    throw new RuntimeException('External fee receipt disagrees with its posting.');
+                }
             }
             if (isset($row['received_savings'])) {
                 $savings = $this->integer($row['received_savings']);
@@ -432,6 +769,48 @@ class ReportReadService
                 if ($reserved > $liability) {
                     $row['live_payout_reservations'] = null;
                     $row['available_savings'] = null;
+                }
+            }
+            if ($spec['code'] === 'batch_reconciliation') {
+                $tender = $this->integer($row['gross_tender']);
+                $savings = $this->integer($row['savings_component']);
+                $fees = $this->integer($row['external_fee_component']);
+                $remitted = $this->integer($row['confirmed_remittances']);
+                $outstanding = $this->integer($row['unremitted']);
+                $receiptCount = $this->integer($row['receipt_count']);
+                $openExceptions = $this->integer($row['open_exceptions']);
+                $revision = $this->integer($row['revision']);
+                $version = $this->integer($row['_version']);
+                if ($receiptCount === 0 || $revision < 1 || $this->integer($row['_invalid_receipts']) !== 0
+                    || ($row['_invalid_remittances'] !== null && $this->integer($row['_invalid_remittances']) !== 0)
+                    || $this->add($savings, $fees) !== $tender || $remitted > $tender
+                    || $tender - $remitted !== $outstanding
+                    || ! in_array($row['state'], ['open', 'ready_for_review', 'in_review', 'exception', 'reconciled'], true)
+                    || ($revision === 1 && $row['predecessor'] !== null)
+                    || ($revision > 1 && ($row['predecessor'] === null
+                        || $row['_predecessor_agent'] !== $row['_agent_id']
+                        || $row['_predecessor_date'] !== $row['received_date']
+                        || $row['_predecessor_timezone'] !== $row['_timezone']
+                        || $this->integer($row['_predecessor_revision']) + 1 !== $revision))) {
+                    throw new RuntimeException('Cash batch source disagrees with its owner.');
+                }
+                if ($row['latest_review'] !== null) {
+                    $reviewExpected = $this->integer($row['_review_expected']);
+                    $reviewRemitted = $this->integer($row['_review_remitted']);
+                    if ($reviewExpected !== $tender || $reviewRemitted > $remitted
+                        || $reviewRemitted > $reviewExpected
+                        || $this->integer($row['_review_outstanding']) !== $reviewExpected - $reviewRemitted
+                        || $this->integer($row['_review_version']) >= $version
+                        || ! in_array($row['latest_review'], ['reconciled', 'exception'], true)) {
+                        throw new RuntimeException('Cash batch review disagrees with its owner.');
+                    }
+                } elseif ($row['_review_count'] !== null) {
+                    throw new RuntimeException('Cash batch review is missing.');
+                }
+                if ($row['state'] === 'reconciled' && ($row['latest_review'] !== 'reconciled'
+                    || $this->integer($row['_review_version']) + 1 !== $version
+                    || $outstanding !== 0 || $openExceptions !== 0)) {
+                    throw new RuntimeException('Reconciled cash batch is inconsistent.');
                 }
             }
             $values = [];
@@ -480,7 +859,7 @@ class ReportReadService
             $total++;
         }
         $fingerprint = hash_final($digest);
-        if ($cursor !== null && ! hash_equals($cursor['source'], $fingerprint)) {
+        if ($sectionCursor !== null && ! hash_equals($sectionCursor['source'], $fingerprint)) {
             abort(422, 'The report source changed. Refresh the report before continuing.');
         }
         $metrics = [];
@@ -502,6 +881,7 @@ class ReportReadService
             'total' => $total, 'groups' => array_values($groups), 'source_version' => $fingerprint,
             'next_cursor' => $offset + count($rows) < $total ? Crypt::encryptString(json_encode([
                 'binding' => $binding, 'source' => $fingerprint, 'cutoff' => $manifest['cutoff'], 'offset' => $offset + count($rows),
+                'section' => $section,
             ], JSON_THROW_ON_ERROR)) : null];
     }
 

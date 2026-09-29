@@ -3,6 +3,7 @@
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerAssignmentStatus;
+use App\Enums\FeeObligationEntryType;
 use App\Enums\FeeRuleBasis;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
@@ -11,9 +12,12 @@ use App\Enums\FeeSettlementSource;
 use App\Enums\ThriftPlanStatus;
 use App\Models\AgentProfile;
 use App\Models\BusinessProfile;
+use App\Models\CollectionBatch;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
+use App\Models\FeeObligation;
+use App\Models\FeeObligationEntry;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
 use App\Models\FinancialPeriod;
@@ -30,6 +34,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 function reportFixture(): array
 {
@@ -100,6 +105,30 @@ function reportReceiptPayload(CustomerProfile $customer, CustomerAssignment $ass
     ];
 }
 
+function reportFeeObligation(User $agent, CustomerProfile $customer, int $amountKobo = 50000): FeeObligation
+{
+    $rule = FeeRule::create([
+        'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
+        'rule_key' => 'test-registration', 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt,
+        'currency' => 'NGN', 'amount_kobo' => $amountKobo, 'customer_description' => 'Registration fee',
+        'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
+        'publication_reason' => 'Test registration fee.',
+    ]);
+    $snapshot = FeeSnapshot::create([
+        'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
+        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Registration cash fee',
+        'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt,
+        'currency' => 'NGN', 'amount_kobo' => $amountKobo, 'basis_amount_kobo' => 0,
+        'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
+    ]);
+
+    return app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
+}
+
 function reportPostReceipt(array $fixture, string $amount = '2000.00', ?string $receivedDate = null): void
 {
     [$agent, $customer, $assignment, $plan, $today] = $fixture;
@@ -111,7 +140,7 @@ function reportPostReceipt(array $fixture, string $amount = '2000.00', ?string $
         FinancialPeriod::factory()->create(['month' => substr($date, 0, 7).'-01', 'changed_by_user_id' => $agent->id]);
     }
     $payload = reportReceiptPayload($customer->fresh(), $assignment->fresh(), $plan->fresh(), $receivedDate ?? $today, $amount);
-    if ($receivedDate !== null && $receivedDate !== $today) {
+    if ($date !== CarbonImmutable::now(BusinessProfile::current()->timezone)->toDateString()) {
         $payload['late_reason'] = 'Received on the recorded business date.';
     }
     $preview = test()->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)->assertOk()->json();
@@ -281,12 +310,24 @@ test('reassignment removes former customer details but preserves original agent 
     $newAgent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
     $newProfile = AgentProfile::factory()->active()->create(['user_id' => $newAgent->id]);
     $assignment->update(['status' => CustomerAssignmentStatus::Ended, 'is_current' => null, 'ended_at' => now()]);
-    CustomerAssignment::factory()->create(['customer_profile_id' => $customer->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
+    $newAssignment = CustomerAssignment::factory()->create(['customer_profile_id' => $customer->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
 
     expect(reportData($agent, 'contributions')['sections']['primary']['rows'])->toBe([]);
     expect(reportData($newAgent, 'contributions')['sections']['primary']['rows'])->toHaveCount(1);
     expect(reportValue(reportData($agent, 'reconciliation'), 'agent_receivable'))->toBe(200000);
     expect(reportValue(reportData($newAgent, 'reconciliation'), 'agent_receivable'))->toBe(0);
+    expect(reportData($agent, 'reconciliation')['sections']['batch_reconciliation']['rows'])->toHaveCount(1);
+    expect(reportData($newAgent, 'reconciliation')['sections']['batch_reconciliation']['rows'])->toBe([]);
+    reportPostReceipt([$newAgent, $customer, $newAssignment, $fixture[3], $fixture[4]], '1000.00');
+    $admin = User::factory()->admin()->create();
+    $originalBatch = CollectionBatch::query()->where('agent_profile_id', $agent->agentProfile->id)->sole();
+    $currentBatch = CollectionBatch::query()->where('agent_profile_id', $newProfile->id)->sole();
+    $oldScope = reportData($admin, 'reconciliation', ['agent' => $agent->agentProfile->agent_id, 'agent_basis' => 'custody']);
+    $newScope = reportData($admin, 'reconciliation', ['agent' => $newProfile->agent_id, 'agent_basis' => 'custody']);
+    expect($oldScope['sections']['batch_reconciliation']['rows'][0]['reference'])->toBe($originalBatch->id);
+    expect($newScope['sections']['batch_reconciliation']['rows'][0]['reference'])->toBe($currentBatch->id);
+    expect(reportValue($oldScope, 'gross_tender', 'batch_reconciliation'))->toBe(200000);
+    expect(reportValue($newScope, 'gross_tender', 'batch_reconciliation'))->toBe(100000);
     $activity = reportData($agent, 'agent-performance')['sections']['recorded_activity'];
     expect($activity['metrics'][1]['value'])->toBe(200000);
     expect($activity['rows'])->toBe([]);
@@ -387,10 +428,16 @@ test('report scope polling reauthorizes without executing report financial reads
 test('disabled collection owners cannot be bypassed through reports', function (): void {
     $fixture = reportFixture();
     reportPostReceipt($fixture);
+    reportFeeObligation($fixture[0], $fixture[1]);
     config()->set('collections.enabled', false);
 
     expect(reportData($fixture[1]->user, 'contributions')['sections']['primary']['status'])->toBe('Unavailable');
-    expect(reportData($fixture[0], 'reconciliation')['sections']['primary']['status'])->toBe('Unavailable');
+    $reconciliation = reportData($fixture[0], 'reconciliation');
+    expect($reconciliation['sections']['primary']['status'])->toBe('Unavailable');
+    expect($reconciliation['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
+    $fees = reportData($fixture[1]->user, 'fees');
+    expect($fees['sections']['primary']['status'])->toBe('Unavailable');
+    expect($fees['sections']['external_receipts']['status'])->toBe('Unavailable');
 });
 
 test('mixed cash separates savings fees and tender without multiplying receipts', function (): void {
@@ -398,25 +445,7 @@ test('mixed cash separates savings fees and tender without multiplying receipts'
     [$agent, $customer, $assignment, $plan, $today] = $fixture;
     config()->set('collections.enabled', true);
     app(LedgerTransactionProjectionService::class)->rebuild();
-    $rule = FeeRule::create([
-        'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
-        'rule_key' => 'test-registration', 'model' => FeeRuleModel::Fixed,
-        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => 50000, 'customer_description' => 'Registration fee',
-        'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
-        'publication_reason' => 'Test registration fee.',
-    ]);
-    $snapshot = FeeSnapshot::create([
-        'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
-        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Registration cash fee',
-        'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
-        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => 50000, 'basis_amount_kobo' => 0,
-        'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
-    ]);
-    $obligation = app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
+    $obligation = reportFeeObligation($agent, $customer);
     $payload = reportReceiptPayload($customer, $assignment, $plan, $today, '2000.00');
     $payload['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '500.00']];
     $preview = $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
@@ -432,7 +461,188 @@ test('mixed cash separates savings fees and tender without multiplying receipts'
     expect(reportValue($data, 'cash_received'))->toBe(250000);
     expect(reportValue($data, 'posted_receipt_count'))->toBe(1);
     expect(reportValue(reportData($agent, 'reconciliation'), 'agent_receivable'))->toBe(250000);
+    $batchData = reportData($agent, 'reconciliation');
+    $batchSection = $batchData['sections']['batch_reconciliation'];
+    expect(reportValue($batchData, 'gross_tender', 'batch_reconciliation'))->toBe(250000);
+    expect(reportValue($batchData, 'savings_component', 'batch_reconciliation'))->toBe(200000);
+    expect(reportValue($batchData, 'external_fee_component', 'batch_reconciliation'))->toBe(50000);
+    expect($batchSection['rows'][0]['href'])->toBeNull();
+    foreach (['customer', 'handoff', 'location', 'attestation', 'reason'] as $privateField) {
+        expect(implode(' ', array_keys($batchSection['rows'][0])))->not->toContain($privateField);
+    }
     expect($data['sections']['primary']['groups'][0]['metrics'][0]['value'])->toBe(200000);
+    $fees = reportData($customer->user, 'fees');
+    expect(reportValue($fees, 'gross_assessed'))->toBe(50000);
+    expect(reportValue($fees, 'external_fees_received', 'external_receipts'))->toBe(50000);
+    expect($fees['sections']['external_receipts']['rows'])->toHaveCount(1);
+    expect($fees['sections']['external_receipts']['rows'][0]['external_fees_received'])->toBe('₦500.00');
+});
+
+test('fee obligation activity keeps assessment corrections and waivers separate from external cash', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-25 12:00:00', 'Africa/Lagos'));
+    $fixture = reportFixture();
+    [$agent, $customer] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    foreach ([
+        FeeObligationEntryType::AssessmentCorrectionIncrease->value => 10000,
+        FeeObligationEntryType::AssessmentCorrection->value => 5000,
+        FeeObligationEntryType::Waiver->value => 2000,
+    ] as $type => $amount) {
+        $source = (string) Str::uuid();
+        FeeObligationEntry::create([
+            'fee_obligation_id' => $obligation->id, 'entry_type' => $type,
+            'amount_kobo' => $amount, 'currency' => 'NGN', 'source_type' => 'report_test',
+            'source_id' => $source, 'idempotency_key' => $source, 'actor_user_id' => $agent->id,
+            'customer_description' => 'Test fee activity',
+        ]);
+    }
+
+    $firstDay = reportData($customer->user, 'fees', ['from' => '2026-09-25', 'to' => '2026-09-25']);
+    $secondDay = reportData($customer->user, 'fees', ['from' => '2026-09-26', 'to' => '2026-09-26']);
+
+    expect(reportValue($firstDay, 'gross_assessed'))->toBe(50000);
+    expect(reportValue($firstDay, 'assessment_increase'))->toBe(0);
+    expect(reportValue($secondDay, 'gross_assessed'))->toBe(0);
+    expect(reportValue($secondDay, 'assessment_increase'))->toBe(10000);
+    expect(reportValue($secondDay, 'assessment_reduction'))->toBe(5000);
+    expect(reportValue($secondDay, 'waived_fees'))->toBe(2000);
+    expect(reportValue($secondDay, 'external_fees_received', 'external_receipts'))->toBe(0);
+    expect($secondDay['sections']['primary']['total'])->toBe(3);
+});
+
+test('positive fee obligation without assessment history makes both fee sections unavailable', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    DB::table('fee_obligation_entries')->where('fee_obligation_id', $obligation->id)
+        ->where('entry_type', FeeObligationEntryType::Assessment->value)->delete();
+
+    $fees = reportData($customer->user, 'fees');
+
+    expect($fees['sections']['primary']['status'])->toBe('Unavailable');
+    expect($fees['sections']['external_receipts']['status'])->toBe('Unavailable');
+});
+
+test('fee-only receipt is external cash while a former Agent loses Customer fee detail', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer, $assignment, $plan, $today] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    $payload = reportReceiptPayload($customer, $assignment, $plan, $today, '0');
+    unset($payload['plan_id'], $payload['plan_version']);
+    $payload['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '500.00']];
+    $preview = $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json();
+    $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect()->assertSessionHasNoErrors();
+
+    expect(reportValue(reportData($customer->user, 'fees'), 'external_fees_received', 'external_receipts'))->toBe(50000);
+    expect(reportValue(reportData($customer->user, 'contributions'), 'received_savings'))->toBe(0);
+    $newAgent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
+    $newProfile = AgentProfile::factory()->active()->create(['user_id' => $newAgent->id]);
+    $assignment->update(['status' => CustomerAssignmentStatus::Ended, 'is_current' => null, 'ended_at' => now()]);
+    CustomerAssignment::factory()->create(['customer_profile_id' => $customer->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
+
+    expect(reportData($agent, 'fees')['sections']['primary']['rows'])->toBe([]);
+    expect(reportData($agent, 'fees')['sections']['external_receipts']['rows'])->toBe([]);
+    expect(reportValue(reportData($newAgent, 'fees'), 'external_fees_received', 'external_receipts'))->toBe(50000);
+    $this->actingAs($agent)->get(route('reports.show', ['report' => 'fees', 'customer' => $customer->customer_id]))->assertNotFound();
+});
+
+test('fee report fails closed when a receipt component or its projection is inconsistent', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer, $assignment, $plan, $today] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    $payload = reportReceiptPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '500.00']];
+    $preview = $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)->assertOk()->json();
+    $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect()->assertSessionHasNoErrors();
+    $componentId = DB::table('collection_fee_components')->value('id');
+    DB::table('collection_fee_components')->where('id', $componentId)->update(['amount_kobo' => 49000]);
+
+    expect(reportData($customer->user, 'fees')['sections']['external_receipts']['status'])->toBe('Unavailable');
+    DB::table('collection_fee_components')->where('id', $componentId)->update(['amount_kobo' => 50000]);
+    DB::table('ledger_entries')->where('fee_obligation_id', $obligation->id)->where('side', 'credit')->update(['amount_kobo' => 49000]);
+
+    expect(reportData($customer->user, 'fees')['sections']['external_receipts']['status'])->toBe('Unavailable');
+    DB::table('ledger_entries')->where('fee_obligation_id', $obligation->id)->where('side', 'credit')->update(['amount_kobo' => 50000]);
+    DB::table('ledger_transaction_projections')->delete();
+
+    expect(reportData($customer->user, 'fees')['sections']['external_receipts']['status'])->toBe('Unavailable');
+});
+
+test('fee obligation pagination retains full totals and rejects changed activity', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    foreach (range(1, 25) as $index) {
+        FeeObligationEntry::create([
+            'fee_obligation_id' => $obligation->id, 'entry_type' => FeeObligationEntryType::Waiver,
+            'amount_kobo' => 1, 'currency' => 'NGN', 'source_type' => 'report_test',
+            'source_id' => 'waiver-'.$index, 'idempotency_key' => 'report-waiver-'.$index,
+            'actor_user_id' => $agent->id, 'customer_description' => 'Test waiver',
+        ]);
+    }
+
+    $first = reportData($customer->user, 'fees');
+    $cursor = $first['sections']['primary']['next_cursor'];
+    $second = reportData($customer->user, 'fees', ['cursor' => $cursor]);
+
+    expect($first['sections']['primary']['total'])->toBe(26);
+    expect($first['sections']['primary']['rows'])->toHaveCount(25);
+    expect($second['sections']['primary']['rows'])->toHaveCount(1);
+    expect($second['sections']['external_receipts']['total'])->toBe(0);
+    FeeObligationEntry::create([
+        'fee_obligation_id' => $obligation->id, 'entry_type' => FeeObligationEntryType::Waiver,
+        'amount_kobo' => 1, 'currency' => 'NGN', 'source_type' => 'report_test',
+        'source_id' => 'later-waiver', 'idempotency_key' => 'report-later-waiver',
+        'actor_user_id' => $agent->id, 'customer_description' => 'Later waiver',
+    ]);
+
+    $this->actingAs($customer->user)->getJson(route('reports.show', ['report' => 'fees', 'cursor' => $cursor]))->assertUnprocessable();
+});
+
+test('external fee receipts paginate independently and reject a newly posted receipt', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer, $assignment, $plan, $today] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $obligation = reportFeeObligation($agent, $customer);
+    $postFee = function () use ($agent, $customer, $assignment, $plan, $today, $obligation): void {
+        $payload = reportReceiptPayload($customer->fresh(), $assignment->fresh(), $plan->fresh(), $today, '0');
+        unset($payload['plan_id'], $payload['plan_version']);
+        $payload['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '0.01']];
+        $preview = $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)->assertOk()->json();
+        $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+        $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect()->assertSessionHasNoErrors();
+    };
+    foreach (range(1, 26) as $index) {
+        $postFee();
+    }
+
+    $first = reportData($customer->user, 'fees');
+    $cursor = $first['sections']['external_receipts']['next_cursor'];
+    $second = reportData($customer->user, 'fees', ['cursor' => $cursor]);
+
+    expect($first['sections']['external_receipts']['total'])->toBe(26);
+    expect(reportValue($first, 'external_fees_received', 'external_receipts'))->toBe(26);
+    expect($first['sections']['external_receipts']['rows'])->toHaveCount(25);
+    expect($second['sections']['external_receipts']['rows'])->toHaveCount(1);
+    expect($second['sections']['primary']['rows'])->toHaveCount(1);
+    $postFee();
+
+    $this->actingAs($customer->user)->getJson(route('reports.show', ['report' => 'fees', 'cursor' => $cursor]))->assertUnprocessable();
 });
 
 test('late receipts retain occurrence dates and plan timezones after business timezone changes', function (): void {
@@ -484,7 +694,85 @@ test('custody failures do not hide independently verified business cash', functi
 
     expect($data['sections']['primary']['status'])->toBe('Unavailable');
     expect($data['sections']['business_cash']['status'])->toBe('Current');
+    expect($data['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
     expect(reportValue($data, 'business_cash', 'business_cash'))->toBe(0);
+});
+
+test('cash batch report shows scoped partial remittance and reviewed shortage without changing custody totals', function (): void {
+    $fixture = reportFixture();
+    reportPostReceipt($fixture);
+    $batch = CollectionBatch::query()->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $admin = User::factory()->admin()->create();
+    $admin->givePermissionTo(AdminPermission::ReconciliationManage->value);
+    $this->withSession(['auth.login_at' => now()->timestamp, 'auth.last_active_at' => now()->timestamp]);
+    $this->actingAs($admin)->post(route('collection-batches.remittances.store', $batch), [
+        'handoff_reference' => 'REPORT-BATCH-HANDOFF', 'amount_ngn' => '1500.00',
+        'handoff_date' => CarbonImmutable::now('Africa/Lagos')->toDateString(),
+        'receiving_location' => 'Lagos office', 'source_attestation' => 'Counted cash.',
+        'batch_version' => $batch->fresh()->version, 'confirmed' => true,
+    ])->assertRedirect(route('collection-batches.show', $batch))->assertSessionHasNoErrors();
+    $this->post(route('collection-batches.review', $batch), [
+        'batch_version' => $batch->fresh()->version, 'reason' => 'Shortage under investigation.',
+        'confirmed' => true,
+    ])->assertRedirect(route('collection-batches.show', $batch))->assertSessionHasNoErrors();
+
+    $data = reportData($admin, 'reconciliation', ['agent' => $fixture[0]->agentProfile->agent_id, 'agent_basis' => 'custody']);
+    $section = $data['sections']['batch_reconciliation'];
+
+    expect($section['status'])->toBe('Partial');
+    expect(reportValue($data, 'batch_count', 'batch_reconciliation'))->toBe(1);
+    expect(reportValue($data, 'gross_tender', 'batch_reconciliation'))->toBe(200000);
+    expect(reportValue($data, 'confirmed_remittances', 'batch_reconciliation'))->toBe(150000);
+    expect(reportValue($data, 'unremitted', 'batch_reconciliation'))->toBe(50000);
+    expect(reportValue($data, 'open_exceptions', 'batch_reconciliation'))->toBe(1);
+    expect($section['rows'][0]['state'])->toBe('exception');
+    expect($section['rows'][0]['latest_review'])->toBe('exception');
+    expect($section['rows'][0]['href'])->toBe(route('collection-batches.show', $batch));
+    expect(reportValue($data, 'agent_receivable'))->toBe(50000);
+    $postingId = DB::table('cash_remittances')->value('ledger_posting_group_id');
+    DB::table('ledger_entries')->where('ledger_posting_group_id', $postingId)
+        ->where('side', 'debit')->update(['amount_kobo' => 149999]);
+    expect(reportData($admin, 'reconciliation')['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
+    DB::table('ledger_entries')->where('ledger_posting_group_id', $postingId)
+        ->where('side', 'debit')->update(['amount_kobo' => 150000]);
+    DB::table('collection_batch_reviews')->update(['outstanding_kobo' => 0]);
+    expect(reportData($admin, 'reconciliation')['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
+});
+
+test('cash batch report retains frozen original and linked late supplement', function (): void {
+    $fixture = reportFixture();
+    reportPostReceipt($fixture);
+    $original = CollectionBatch::query()->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->withSession(['auth.login_at' => now()->timestamp, 'auth.last_active_at' => now()->timestamp]);
+    reportPostReceipt($fixture, '1000.00', $fixture[4]);
+    $admin = User::factory()->admin()->create();
+
+    $data = reportData($admin, 'reconciliation');
+    $rows = $data['sections']['batch_reconciliation']['rows'];
+
+    expect($rows)->toHaveCount(2);
+    expect(reportValue($data, 'batch_count', 'batch_reconciliation'))->toBe(2);
+    expect(reportValue($data, 'gross_tender', 'batch_reconciliation'))->toBe(300000);
+    expect($rows[0]['revision'])->toBe(2);
+    expect($rows[0]['predecessor'])->toBe($original->id);
+    expect($rows[1]['revision'])->toBe(1);
+    expect($rows[1]['state'])->toBe('ready_for_review');
+    $firstPage = reportData($admin, 'reconciliation', ['page_size' => 1]);
+    $cursor = $firstPage['sections']['batch_reconciliation']['next_cursor'];
+
+    expect($cursor)->not->toBeNull();
+    CollectionBatch::query()->whereKey($original->id)->update(['version' => $original->fresh()->version + 1]);
+    expect(fn () => reportData($admin, 'reconciliation', ['page_size' => 1, 'cursor' => $cursor]))
+        ->toThrow(HttpException::class);
+    DB::table('collection_receipts')->where('collection_batch_id', $original->id)->update(['tender_amount_kobo' => 200001]);
+
+    expect(reportData($admin, 'reconciliation')['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
+    expect(fn () => reportData($admin, 'reconciliation', ['page_size' => 1, 'cursor' => $cursor]))
+        ->toThrow(HttpException::class);
 });
 
 test('cursor invalidates on new postings permission revocation and reassignment', function (): void {
