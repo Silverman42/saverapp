@@ -1418,7 +1418,7 @@ test('COL-AC-043/045/046: only a reconciliation manager can confirm original Age
     $replacement = User::factory()->agent()->withTwoFactor()->create();
     $replacementProfile = AgentProfile::factory()->active()->create(['user_id' => $replacement->id]);
     $assignment->update(['status' => CustomerAssignmentStatus::Ended]);
-    CustomerAssignment::factory()->create([
+    $replacementAssignment = CustomerAssignment::factory()->create([
         'customer_profile_id' => $customer->id, 'agent_profile_id' => $replacementProfile->id,
         'assigned_by_user_id' => $replacement->id, 'status' => CustomerAssignmentStatus::Current, 'version' => 2,
     ]);
@@ -1456,6 +1456,21 @@ test('COL-AC-043/045/046: only a reconciliation manager can confirm original Age
     expect((int) $agentBalances[$assignment->agent_profile_id])->toBe(100000)
         ->and($agentBalances->has($replacementProfile->id))->toBeFalse()
         ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000);
+
+    $replacementReceipt = collectionPayload($customer->fresh(), $replacementAssignment, $plan->fresh(), $today, '2000.00');
+    $replacementPreview = $this->actingAs($replacement)->postJson(route('customers.collections.preview', $customer->customer_id), $replacementReceipt)
+        ->assertOk()->json();
+    $replacementReceipt['preview_fingerprint'] = $replacementPreview['preview_fingerprint'];
+    $this->post(route('customers.collections.store', $customer->customer_id), $replacementReceipt)->assertRedirect();
+    $replacementBatch = CollectionBatch::query()->where('agent_profile_id', $replacementProfile->id)->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->travelBack();
+    $this->actingAs($manager)->post(route('collection-batches.remittances.store', $replacementBatch), [
+        ...$handoff, 'batch_version' => $replacementBatch->fresh()->version,
+    ])->assertStatus(409);
+    expect(DB::table('cash_remittances')->count())->toBe(1)
+        ->and($replacementBatch->fresh()->remittances()->count())->toBe(0);
 });
 
 test('COL-AC-044: a later receipt creates a linked batch supplement without reopening a frozen revision', function (): void {
