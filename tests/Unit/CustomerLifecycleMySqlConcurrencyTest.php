@@ -3,6 +3,7 @@
 use App\Enums\AdminPermission;
 use App\Models\CustomerProfile;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\CollectionReadService;
@@ -28,6 +29,7 @@ beforeEach(function () {
         $this->markTestSkipped('Requires the isolated saverapp_audit_testing MySQL database.');
     }
     $this->artisan('migrate:fresh', ['--no-interaction' => true])->assertSuccessful();
+    FinancialPeriod::factory()->create();
 });
 
 function lifecycleMysqlTask(int $actorId, int $customerId, string $action, array $payload): Closure
@@ -165,7 +167,12 @@ test('mysql archival versus real collection posting retains the receipt and refu
     ]);
     expect($results)->toBe(['blocked', 'posted']);
     $this->assertDatabaseCount('collection_receipts', 1);
-    expect($customer->fresh()->operational_status->value)->toBe('active');
+    expect($customer->fresh()->operational_status->value)->toBe('active')
+        ->and(DB::table('collection_receipts')->value('recorded_by_user_id'))->toBe($agent->user_id)
+        ->and(DB::table('collection_receipts')->value('assignment_id'))->toBe($customer->currentAssignment->id)
+        ->and(DB::table('collection_allocations')->count())->toBe(1)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe(100000);
 });
 
 function enableLifecycleReservationFixture(): void

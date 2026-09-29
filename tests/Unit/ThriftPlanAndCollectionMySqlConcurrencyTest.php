@@ -1,12 +1,22 @@
 <?php
 
+use App\Enums\AdminPermission;
+use App\Enums\CustomerStatus;
 use App\Models\CustomerProfile;
 use App\Models\FeeRule;
+use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\CollectionService;
+use App\Services\CustomerStatusManagementService;
+use App\Services\FinancialPeriodService;
 use App\Services\ThriftPlanService;
+use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Request;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,6 +32,7 @@ beforeEach(function (): void {
         $this->markTestSkipped('Requires the isolated saverapp_audit_testing MySQL database.');
     }
     $this->artisan('migrate:fresh', ['--no-interaction' => true])->assertSuccessful();
+    FinancialPeriod::factory()->create();
 });
 
 function planMysqlTask(int $actorId, int $customerId, string $reference, array $data): Closure
@@ -40,9 +51,31 @@ function planMysqlTask(int $actorId, int $customerId, string $reference, array $
     };
 }
 
-function receiptMysqlTask(int $actorId, int $customerId, string $reference, array $data): Closure
+function restrictCustomerMysqlTask(int $actorId, int $customerId, int $version): Closure
 {
-    return static function () use ($actorId, $customerId, $reference, $data): string {
+    return static function () use ($actorId, $customerId, $version): string {
+        if (DB::getDriverName() !== 'mysql' || DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
+            throw new RuntimeException('Unsafe Customer restriction database.');
+        }
+        try {
+            app(CustomerStatusManagementService::class)->transition(
+                User::findOrFail($actorId), CustomerProfile::findOrFail($customerId), CustomerStatus::Restricted,
+                $version, 'Financial review hold.', 'Your account is under review.',
+            );
+
+            return 'restricted';
+        } catch (ValidationException|ConflictHttpException|AuthorizationException) {
+            return 'blocked';
+        }
+    };
+}
+
+function receiptMysqlTask(int $actorId, int $customerId, string $reference, array $data, ?string $at = null): Closure
+{
+    return static function () use ($actorId, $customerId, $reference, $data, $at): string {
+        if ($at !== null) {
+            CarbonImmutable::setTestNow($at);
+        }
         if (DB::getDriverName() !== 'mysql' || DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
             throw new RuntimeException('Unsafe collection concurrency database.');
         }
@@ -51,7 +84,30 @@ function receiptMysqlTask(int $actorId, int $customerId, string $reference, arra
                 [...$data, 'attempt_reference' => $reference]);
 
             return 'posted';
-        } catch (ValidationException|ConflictHttpException) {
+        } catch (ValidationException|ConflictHttpException|AuthorizationException) {
+            return 'blocked';
+        }
+    };
+}
+
+function periodCloseMysqlTask(int $adminId, string $month, string $at): Closure
+{
+    return static function () use ($adminId, $month, $at): string {
+        CarbonImmutable::setTestNow($at);
+        if (DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
+            throw new RuntimeException('Unsafe period race database.');
+        }
+        $request = Request::create('/admin/financial-periods/'.$month.'/close', 'POST');
+        $session = new Store('financial-period-race', new ArraySessionHandler(600));
+        $session->put(['auth.fresh_until' => now()->addMinutes(10)->timestamp,
+            'auth.password_confirmed_at' => now()->timestamp, 'auth.mfa_confirmed_at' => now()->timestamp]);
+        $request->setLaravelSession($session);
+        try {
+            app(FinancialPeriodService::class)->transition(User::findOrFail($adminId), $month, 'close', 1,
+                'All prior-month cash batches are settled.', $request);
+
+            return 'closed';
+        } catch (ConflictHttpException|AuthorizationException) {
             return 'blocked';
         }
     };
@@ -134,6 +190,39 @@ test('competing receipts cannot exceed a slot and keep balanced postings', funct
     expect(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1);
 });
 
+test('receipt posting and month close serialize to one valid outcome', function (): void {
+    $period = FinancialPeriod::query()->sole();
+    $month = $period->month->format('Y-m');
+    $nextMonth = $period->month->startOfMonth()->addMonth()->setTime(12, 0);
+    $this->travelTo($nextMonth);
+    [$admin, $customer, $agent] = $this->createLifecycleFixture();
+    $admin->givePermissionTo(AdminPermission::FinancialPeriodsManage);
+    LedgerAccount::query()->whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
+    $plan = $this->createLifecyclePlan($customer, $agent->user);
+    $payload = $this->lifecycleCollectionPayload($customer, $plan);
+    $payload['received_date'] = $period->month->endOfMonth()->toDateString();
+    $payload['late_reason'] = 'Cash received at the previous month end.';
+    $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent->user, $customer, $payload)['preview_fingerprint'];
+    $actorId = $agent->user_id;
+    $adminId = $admin->id;
+    $customerId = $customer->id;
+    $reference = (string) Str::uuid();
+    $at = $nextMonth->toIso8601String();
+
+    $results = Concurrency::driver('process')->run([
+        receiptMysqlTask($actorId, $customerId, $reference, $payload, $at),
+        periodCloseMysqlTask($adminId, $month, $at),
+    ]);
+
+    expect($results)->toContain('blocked');
+    expect(collect($results)->filter(fn (string $result): bool => $result !== 'blocked'))->toHaveCount(1);
+    $posted = DB::table('collection_receipts')->count();
+    expect($posted)->toBe($results[0] === 'posted' ? 1 : 0)
+        ->and($period->fresh()->status)->toBe($posted === 1 ? 'open' : 'closed')
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe($posted)
+        ->and(DB::table('collection_allocations')->count())->toBe($posted);
+});
+
 test('exactly fitting independent cash attempts both post after a stale review is refreshed', function (): void {
     [, $customer, $agent] = $this->createLifecycleFixture();
     LedgerAccount::query()->whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
@@ -169,6 +258,59 @@ test('exactly fitting independent cash attempts both post after a stale review i
         ->first();
     expect((int) $entryTotals->debit_kobo)->toBe(200000)
         ->and((int) $entryTotals->credit_kobo)->toBe(200000);
+    expect(DB::table('collection_allocations')->distinct()->count('contribution_slot_id'))->toBe(1)
+        ->and(DB::table('collection_receipts')->distinct()->count('recorded_by_user_id'))->toBe(1);
+});
+
+test('collection and a Customer restriction serialize without partial money', function (): void {
+    [$admin, $customer, $agent] = $this->createLifecycleFixture();
+    LedgerAccount::query()->whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
+    $plan = $this->createLifecyclePlan($customer, $agent->user);
+    $payload = $this->lifecycleCollectionPayload($customer, $plan);
+    $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent->user, $customer, $payload)['preview_fingerprint'];
+
+    $results = Concurrency::driver('process')->run([
+        restrictCustomerMysqlTask($admin->id, $customer->id, $customer->version),
+        receiptMysqlTask($agent->user_id, $customer->id, (string) Str::uuid(), $payload),
+    ]);
+
+    expect($results[0])->toBe('restricted')
+        ->and($results[1])->toBeIn(['posted', 'blocked'])
+        ->and($customer->fresh()->operational_status)->toBe(CustomerStatus::Restricted);
+    $receiptCount = $results[1] === 'posted' ? 1 : 0;
+    expect(DB::table('collection_receipts')->count())->toBe($receiptCount)
+        ->and(DB::table('collection_allocations')->count())->toBe($receiptCount)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe($receiptCount)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe($receiptCount * 100000);
+    if ($receiptCount === 1) {
+        expect((int) DB::table('collection_receipts')->value('recorded_by_user_id'))->toBe($agent->user_id)
+            ->and((int) DB::table('collection_receipts')->value('assignment_id'))->toBe($customer->currentAssignment->id);
+    }
+});
+
+test('collection and a plan pause serialize without a partial receipt', function (): void {
+    [, $customer, $agent] = $this->createLifecycleFixture();
+    LedgerAccount::query()->whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
+    $plan = $this->createLifecyclePlan($customer, $agent->user);
+    $payload = $this->lifecycleCollectionPayload($customer, $plan);
+    $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent->user, $customer, $payload)['preview_fingerprint'];
+    $pause = ['customer_version' => $customer->version, 'assignment_version' => $customer->currentAssignment->version,
+        'plan_version' => $plan->version, 'reason' => 'Customer requested a pause.',
+        'customer_explanation' => 'Your plan is paused.'];
+
+    $results = Concurrency::driver('process')->run([
+        planTransitionMysqlTask($agent->user_id, $plan->id, (string) Str::uuid(), $pause),
+        receiptMysqlTask($agent->user_id, $customer->id, (string) Str::uuid(), $payload),
+    ]);
+
+    expect($results)->toContain('blocked');
+    expect(in_array('paused', $results, true) || in_array('posted', $results, true))->toBeTrue();
+    $receiptCount = $results[1] === 'posted' ? 1 : 0;
+    expect(DB::table('collection_receipts')->count())->toBe($receiptCount)
+        ->and(DB::table('collection_allocations')->count())->toBe($receiptCount)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe($receiptCount)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe($receiptCount * 100000);
+    expect($plan->fresh()->status->value)->toBe($results[0] === 'paused' ? 'paused' : 'active');
 });
 
 test('competing plan revisions append one new terms version', function (): void {

@@ -19,7 +19,7 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
-test('all 13 gates allow explicitly granted active administrators', function () {
+test('all catalogue gates allow explicitly granted active administrators', function () {
     $admin = User::factory()->admin()->create();
     $admin->givePermissionTo(AdminPermission::values());
 
@@ -32,7 +32,7 @@ test('all 13 gates allow explicitly granted active administrators', function () 
     }
 
     $effectiveCodes = $authService->effectivePermissionCodes($admin);
-    expect(count($effectiveCodes))->toBe(13);
+    expect(count($effectiveCodes))->toBe(count(AdminPermission::cases()));
     foreach (AdminPermission::values() as $code) {
         expect($effectiveCodes)->toContain($code);
     }

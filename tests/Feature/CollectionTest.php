@@ -3,6 +3,7 @@
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerAssignmentStatus;
+use App\Enums\FeeObligationEntryType;
 use App\Enums\FeeRuleBasis;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
@@ -18,14 +19,18 @@ use App\Models\CollectionReceipt;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
+use App\Models\FeeObligationEntry;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialPeriod;
 use App\Models\PlanLifecycleEvent;
 use App\Models\PlanTermsRevision;
+use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\AuditCapture;
 use App\Services\CollectionReadService;
+use App\Services\CollectionReceivedTime;
 use App\Services\CollectionService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\FeeObligationService;
@@ -35,7 +40,9 @@ use App\Services\NotificationPipeline;
 use App\Services\StatementPreviewService;
 use App\Services\ThriftPlanService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -121,6 +128,10 @@ function collectionFixture(int $days = 2, int $startOffsetDays = 0, int $slotAmo
         'customer_description' => 'No fee', 'acknowledged_at' => now(),
     ]);
     $today = CarbonImmutable::now('Africa/Lagos')->toDateString();
+    $thisMonth = CarbonImmutable::parse($today, 'Africa/Lagos')->startOfMonth();
+    foreach ([$thisMonth, $thisMonth->subMonth()] as $month) {
+        FinancialPeriod::factory()->create(['month' => $month->toDateString()]);
+    }
     $startDate = CarbonImmutable::parse($today, 'Africa/Lagos')->addDays($startOffsetDays)->toDateString();
     $terms = PlanTermsRevision::create([
         'thrift_plan_id' => $plan->id, 'revision' => 1, 'name' => 'Daily plan',
@@ -152,6 +163,45 @@ function collectionPayload(CustomerProfile $customer, CustomerAssignment $assign
         'fees' => [], 'allocations' => [], 'late_reason' => '', 'notes' => '', 'confirmed' => true,
     ];
 }
+
+test('a missing or closed financial month rejects cash before a receipt is posted', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '1000.00');
+    $period = FinancialPeriod::query()->whereDate('month', substr($today, 0, 7).'-01')->firstOrFail();
+    $period->delete();
+    $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertStatus(409);
+    $period = FinancialPeriod::factory()->create(['month' => substr($today, 0, 7).'-01', 'status' => 'closed']);
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)->assertStatus(409);
+    expect(CollectionReceipt::query()->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
+});
+
+test('closing the financial month after review rejects the stale receipt atomically', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '1000.00');
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    FinancialPeriod::query()->whereDate('month', substr($today, 0, 7).'-01')->update(['status' => 'closed']);
+
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
+    expect(CollectionReceipt::query()->count())->toBe(0)
+        ->and(DB::table('collection_allocations')->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
+});
+
+test('reopening an old financial month does not extend the receipt lookback', function (): void {
+    [$agent, $customer, $assignment, $plan] = collectionFixture();
+    $oldDate = CarbonImmutable::now('Africa/Lagos')->subMonths(2)->startOfMonth()->toDateString();
+    FinancialPeriod::factory()->create(['month' => $oldDate, 'status' => 'open']);
+    $payload = collectionPayload($customer, $assignment, $plan, $oldDate, '1000.00');
+    $payload['late_reason'] = 'Late submission.';
+
+    $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['received_date']);
+    expect(CollectionReceipt::query()->count())->toBe(0);
+});
 
 test('inactive Customers Agents and paused plans cannot accept new savings cash', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
@@ -190,6 +240,40 @@ test('COL-AC-030: one confirmed cash receipt funds slots once and replays by key
         ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1)
         ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(300000)
         ->and($plan->fresh()->status)->toBe(ThriftPlanStatus::Active);
+});
+
+test('COL-AC-031: separate keys post identical cash only up to remaining slot capacity', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture(1);
+    $this->actingAs($agent);
+    foreach (['1000.00', '1000.00'] as $amount) {
+        $payload = collectionPayload($customer, $assignment, $plan->fresh(), $today, $amount);
+        $payload['preview_fingerprint'] = $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+            ->assertOk()->json('preview_fingerprint');
+        $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    }
+    $third = collectionPayload($customer, $assignment, $plan->fresh(), $today, '1000.00');
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $third)
+        ->assertUnprocessable()->assertJsonValidationErrors(['plan_id']);
+
+    expect(CollectionReceipt::count())->toBe(2)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe(200000)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(2)
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000);
+});
+
+test('COL-AC-005: cumulative savings can exceed the single receipt tender cap', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture(2, 0, 600_000_000_000);
+    $this->actingAs($agent);
+    foreach (['6000000000.00', '6000000000.00'] as $amount) {
+        $payload = collectionPayload($customer, $assignment, $plan->fresh(), $today, $amount);
+        $payload['preview_fingerprint'] = $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+            ->assertOk()->json('preview_fingerprint');
+        $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    }
+
+    expect(CollectionReceipt::count())->toBe(2)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe(1_200_000_000_000)
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(1_200_000_000_000);
 });
 
 test('LED-AC-012/032: one receipt projects one scoped transaction after a verified rebuild', function (): void {
@@ -354,6 +438,38 @@ test('COL-AC-028: audit capture failure rolls back receipt allocation ledger bat
         ->and(DB::table('collection_notification_intents')->count())->toBe(0);
 });
 
+test('COL-AC-061: receipt and remittance audit evidence retains actors without private cash notes', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['notes'] = 'PRIVATE-CASH-NOTE-9264';
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+
+    $batch = CollectionBatch::query()->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->travelBack();
+    $admin = User::factory()->admin()->create();
+    $admin->givePermissionTo(AdminPermission::ReconciliationManage->value);
+    $this->actingAs($admin)->post(route('collection-batches.remittances.store', $batch), [
+        'handoff_reference' => 'AUDIT-HANDOFF-001', 'amount_ngn' => '2000.00',
+        'handoff_date' => $today, 'receiving_location' => 'Lagos office',
+        'source_attestation' => 'PRIVATE-ATTESTATION-5731',
+        'batch_version' => $batch->fresh()->version, 'confirmed' => true,
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    foreach (['collection.receipt_posted' => $agent->id, 'collection.remittance_confirmed' => $admin->id] as $eventType => $actorId) {
+        $event = DB::table('canonical_audit_events')->where('event_type', $eventType)->sole();
+        expect((int) $event->actor_id)->toBe($actorId)
+            ->and($event->content)->not->toContain('PRIVATE-CASH-NOTE-9264')
+            ->not->toContain('PRIVATE-ATTESTATION-5731');
+        expect(fn () => DB::table('canonical_audit_events')->where('id', $event->id)->update(['outcome' => 'Changed']))
+            ->toThrow(QueryException::class);
+    }
+});
+
 test('COL-AC-028/029: fee assessment failure rolls back a reviewed cash receipt', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
     $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
@@ -370,6 +486,46 @@ test('COL-AC-028/029: fee assessment failure rolls back a reviewed cash receipt'
         ->and(DB::table('fee_obligation_entries')->count())->toBe(0)
         ->and(DB::table('collection_batches')->count())->toBe(0)
         ->and(DB::table('collection_notification_intents')->count())->toBe(0);
+});
+
+test('COL-AC-029: queue dispatch outage retains one posted receipt and recoverable notice', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent, $customer, $payload)['preview_fingerprint'];
+    Queue::shouldReceive('connection')->andThrow(new RuntimeException('Queue unavailable'));
+
+    $this->actingAs($agent)->post(route('customers.collections.store', $customer->customer_id), $payload)
+        ->assertRedirect()->assertSessionHasNoErrors();
+
+    expect(CollectionReceipt::count())->toBe(1)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1)
+        ->and(DB::table('collection_notification_intents')->where('status', 'pending')->count())->toBe(1)
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000);
+});
+
+test('COL-AC-029/062: search outage and rebuild preserve one receipt, card and batch across replay', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $receipt = CollectionReceipt::query()->sole();
+    $batch = CollectionBatch::query()->sole();
+    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']);
+
+    expect(app(LedgerTransactionReadService::class)->search($customer->user, [])['status'])->toBe('unavailable')
+        ->and(app(CollectionReadService::class)->card($plan->fresh())['paid_slots'])->toBe(1)
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000)
+        ->and($batch->receipts()->sum('tender_amount_kobo'))->toBe(200000);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)
+        ->assertRedirect(route('collections.show', $receipt));
+
+    expect(app(LedgerTransactionReadService::class)->search($customer->user, [])['total'])->toBe(1)
+        ->and(CollectionReceipt::count())->toBe(1)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1)
+        ->and($batch->receipts()->count())->toBe(1);
 });
 
 test('COL-AC-011/016: partial receipts fill exact residual before a plan completes', function (): void {
@@ -513,16 +669,86 @@ test('COL-AC-008: the thirty-day local lookback requires a reason and rejects ol
     expect(CollectionReceipt::query()->count())->toBe(0);
 });
 
-test('COL-AC-007: a changed business timezone explicitly blocks ambiguous plan date collection', function (): void {
+test('COL-AC-007: a cross-zone receipt uses the actual instant for plan-day advance status', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-30T03:00:00Z'));
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    BusinessProfile::current()->update(['timezone' => 'America/Los_Angeles', 'version' => 2]);
+    FinancialPeriod::factory()->create(['timezone' => 'America/Los_Angeles', 'month' => '2026-09-01']);
+    $payload = collectionPayload($customer, $assignment, $plan, '2026-09-29', '4000.00');
+    $payload['business_version'] = 2;
+    $payload['received_local_time'] = '16:30';
+    $payload['received_utc_offset'] = '-07:00';
+
+    $this->actingAs($agent)->getJson(route('customers.collections.time-options', $customer->customer_id).'?'.http_build_query([
+        'plan_id' => $plan->plan_id, 'received_date' => '2026-09-29', 'received_local_time' => '16:30',
+    ]))->assertOk()->assertJsonPath('options.0.offset', '-07:00');
+    $preview = $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->assertJsonPath('received_at_utc', '2026-09-29T23:30:00+00:00')
+        ->assertJsonPath('plan_received_date', '2026-09-30')->json();
+    $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $receipt = CollectionReceipt::query()->sole();
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)
+        ->assertRedirect(route('collections.show', $receipt));
+    $payload['received_local_time'] = '16:31';
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
+    BusinessProfile::current()->update(['timezone' => 'Europe/London', 'version' => 3]);
+    expect($receipt->received_date)->toBe('2026-09-29')
+        ->and($receipt->received_at_utc->toIso8601String())->toBe('2026-09-29T23:30:00+00:00')
+        ->and($receipt->batch->timezone)->toBe('America/Los_Angeles')
+        ->and($receipt->batch->received_date)->toBe('2026-09-29')
+        ->and($receipt->allocations()->orderBy('id')->pluck('is_advance')->all())->toBe([false, true])
+        ->and($plan->fresh()->currentTermsRevision()->timezone)->toBe('Africa/Lagos')
+        ->and(app(CollectionReadService::class)->card($plan->fresh())['paid_slots'])->toBe(2)
+        ->and(CollectionReceipt::count())->toBe(1);
+});
+
+test('COL-AC-007: cross-zone time validation rejects gaps, invalid offsets, future instants and stale previews', function (): void {
+    $receivedTimes = app(CollectionReceivedTime::class);
+    expect($receivedTimes->options('2026-03-29', '01:30', 'Europe/London'))->toBe([])
+        ->and(array_column($receivedTimes->options('2026-10-25', '01:30', 'Europe/London'), 'offset'))
+        ->toBe(['+01:00', '+00:00']);
+
+    $this->travelTo(CarbonImmutable::parse('2026-09-30T03:00:00Z'));
+    [$agent, $customer, $assignment, $plan] = collectionFixture();
+    BusinessProfile::current()->update(['timezone' => 'America/Los_Angeles', 'version' => 2]);
+    FinancialPeriod::factory()->create(['timezone' => 'America/Los_Angeles', 'month' => '2026-09-01']);
+    $payload = collectionPayload($customer, $assignment, $plan, '2026-09-29', '1000.00');
+    $payload['business_version'] = 2;
+    $payload['received_local_time'] = '16:30';
+    $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['received_local_time']);
+    $payload['received_utc_offset'] = '+00:00';
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['received_utc_offset']);
+    $payload['received_utc_offset'] = '-07:00';
+    $preview = $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)->assertOk()->json();
+    $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
+    $payload['received_local_time'] = '16:31';
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
+    $payload['received_local_time'] = '20:30';
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['received_local_time']);
+    expect(CollectionReceipt::count())->toBe(0);
+});
+
+test('cross-zone offset choices require the current assigned Agent and a plan owned by the Customer', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
     BusinessProfile::current()->update(['timezone' => 'Europe/London', 'version' => 2]);
-    $payload = collectionPayload($customer, $assignment, $plan, $today, '1000.00');
-    $payload['business_version'] = 2;
+    $url = route('customers.collections.time-options', $customer->customer_id).'?'.http_build_query([
+        'plan_id' => $plan->plan_id, 'received_date' => $today, 'received_local_time' => '12:00',
+    ]);
+    $this->getJson($url)->assertUnauthorized();
+    $this->actingAs(User::factory()->admin()->create())->getJson($url)->assertForbidden();
+    $this->actingAs(User::factory()->agent()->create())->getJson($url)->assertNotFound();
+    $this->actingAs($agent)->getJson($url)->assertOk()->assertJsonCount(1, 'options');
 
-    $this->actingAs($agent)->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
-        ->assertUnprocessable()->assertJsonValidationErrors(['plan_id']);
-    expect(CollectionReceipt::count())->toBe(0)
-        ->and($plan->fresh()->currentTermsRevision()->timezone)->toBe('Africa/Lagos');
+    $sameZonePayload = collectionPayload($customer, $assignment, $plan, $today, '1000.00');
+    BusinessProfile::current()->update(['timezone' => 'Africa/Lagos', 'version' => 3]);
+    $sameZonePayload['received_local_time'] = '12:00';
+    $sameZonePayload['received_utc_offset'] = '+01:00';
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $sameZonePayload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['received_local_time']);
 });
 
 test('COL-AC-010/029: a stale preview or missing custody mapping leaves no receipt', function (): void {
@@ -541,6 +767,33 @@ test('COL-AC-010/029: a stale preview or missing custody mapping leaves no recei
     $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
     expect(CollectionReceipt::query()->count())->toBe(0)
         ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
+});
+
+test('COL-AC-010: a real plan terms revision invalidates a reviewed cash receipt', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $terms = [
+        'name' => 'Revised daily plan', 'amount_ngn' => '1000.00',
+        'start_date' => $today, 'contribution_days' => 3,
+        'customer_visible_notes' => '',
+        'fee_rule_id' => $plan->currentTermsRevision()->feeSnapshot->fee_rule_id,
+        'fee_rule_version' => 1, 'customer_version' => $customer->version,
+        'assignment_version' => $assignment->version, 'business_version' => 1,
+        'plan_version' => $plan->version, 'terms_revision' => 1,
+        'customer_agreement_attested' => true, 'reason' => 'Customer agreed to smaller daily slots.',
+        'customer_explanation' => 'Three smaller daily slots.',
+    ];
+    $plans = app(ThriftPlanService::class);
+    $terms['preview_fingerprint'] = $plans->previewRevision($agent, $plan, $terms)['preview_fingerprint'];
+    $plans->revise($agent, $plan, (string) Str::uuid(), $terms);
+
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
+    expect(CollectionReceipt::count())->toBe(0)
+        ->and(DB::table('collection_allocations')->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(0);
 });
 
 test('COL-AC-015: over-capacity receipt leaves no financial effect', function (): void {
@@ -672,6 +925,91 @@ test('COL-AC-009/024: split cash settles a fee without crediting it to savings',
         ->and((int) $batch->receipts()->sum('fee_amount_kobo'))->toBe(50000);
 });
 
+test('COL-AC-010: fee settlement after preview cannot post the stale tender', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $rule = FeeRule::create([
+        'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
+        'rule_key' => 'stale-registration', 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt, 'currency' => 'NGN',
+        'amount_kobo' => 50000, 'customer_description' => 'Registration fee',
+        'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
+        'publication_reason' => 'Test registration fee.',
+    ]);
+    $snapshot = FeeSnapshot::create([
+        'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
+        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Registration cash fee',
+        'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt, 'currency' => 'NGN',
+        'amount_kobo' => 50000, 'basis_amount_kobo' => 0,
+        'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
+    ]);
+    $obligation = app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
+    expect($obligation->outstandingAmountKobo())->toBe(50000)
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(0)
+        ->and(app(CollectionReadService::class)->position($customer)['reservations_kobo'])->toBe(0);
+    $stale = collectionPayload($customer, $assignment, $plan, $today, '0');
+    $stale['plan_id'] = null;
+    $stale['plan_version'] = null;
+    $stale['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '500.00']];
+    $stale['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $stale)
+        ->assertOk()->json('preview_fingerprint');
+    $settling = [...$stale, 'attempt_reference' => (string) Str::uuid()];
+    $this->post(route('customers.collections.store', $customer->customer_id), $settling)->assertRedirect();
+
+    $this->postJson(route('customers.collections.store', $customer->customer_id), $stale)
+        ->assertUnprocessable()->assertJsonValidationErrors(['fees']);
+    expect(CollectionReceipt::count())->toBe(1)
+        ->and($obligation->fresh()->outstandingAmountKobo())->toBe(0)
+        ->and(DB::table('collection_fee_components')->count())->toBe(1);
+});
+
+test('COL-AC-010: a corrected fee assessment requires review even when its balance returns to the same amount', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $rule = FeeRule::create([
+        'version' => 1, 'name' => 'Cash fee', 'kind' => FeeRuleKind::Registration,
+        'rule_key' => 'corrected-registration', 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt, 'currency' => 'NGN',
+        'amount_kobo' => 50000, 'customer_description' => 'Registration fee',
+        'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
+        'publication_reason' => 'Test registration fee.',
+    ]);
+    $snapshot = FeeSnapshot::create([
+        'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
+        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Cash fee',
+        'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
+        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => FeeSettlementSource::ExternalReceipt, 'currency' => 'NGN',
+        'amount_kobo' => 50000, 'basis_amount_kobo' => 0,
+        'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
+    ]);
+    $obligation = app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '0');
+    $payload['plan_id'] = null;
+    $payload['plan_version'] = null;
+    $payload['fees'] = [['obligation_id' => $obligation->id, 'amount_ngn' => '500.00']];
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+
+    foreach ([FeeObligationEntryType::AssessmentCorrectionIncrease, FeeObligationEntryType::AssessmentCorrection] as $entryType) {
+        FeeObligationEntry::create([
+            'fee_obligation_id' => $obligation->id, 'entry_type' => $entryType,
+            'amount_kobo' => 100, 'currency' => 'NGN', 'source_type' => 'test_correction',
+            'source_id' => (string) Str::uuid(), 'idempotency_key' => (string) Str::uuid(),
+            'actor_user_id' => $agent->id, 'reason' => 'Correct fee terms.',
+        ]);
+    }
+    expect($obligation->fresh()->outstandingAmountKobo())->toBe(50000);
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertStatus(409);
+    expect(CollectionReceipt::query()->count())->toBe(0)
+        ->and(DB::table('collection_fee_components')->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
+});
+
 test('COL-AC-026: live gross reservation reduces available savings without changing funded slots', function (): void {
     [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
     $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
@@ -703,6 +1041,132 @@ test('COL-AC-019: a paused interval is shown as blocked without inventing a paym
 
     expect(app(CollectionReadService::class)->card($plan->fresh())['slots'][1]['status'])->toBe('blocked')
         ->and(DB::table('collection_allocations')->count())->toBe(0);
+});
+
+test('COL-AC-018: the card keeps paid partial missed blocked and pending days distinct through pause and resume', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture(5, -3);
+    $slots = $plan->slots()->orderBy('active_ordinal')->get();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '3000.00');
+    $payload['allocations'] = [
+        ['slot_id' => $slots[0]->id, 'amount_ngn' => '2000.00'],
+        ['slot_id' => $slots[1]->id, 'amount_ngn' => '1000.00'],
+    ];
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $initial = app(CollectionReadService::class)->card($plan->fresh());
+    expect(array_column($initial['slots'], 'status'))->toBe(['paid', 'partial', 'missed', 'pending', 'pending']);
+
+    $plan->update(['status' => ThriftPlanStatus::Paused, 'version' => 3]);
+    PlanLifecycleEvent::create([
+        'thrift_plan_id' => $plan->id, 'event_type' => 'pause',
+        'from_status' => ThriftPlanStatus::Active, 'to_status' => ThriftPlanStatus::Paused,
+        'actor_user_id' => $agent->id, 'assignment_version' => $assignment->version,
+        'plan_version' => 3, 'reason' => 'Customer requested a pause.',
+        'customer_explanation' => 'Plan paused.', 'payload' => [], 'effective_at' => now(),
+    ]);
+    expect(array_column(app(CollectionReadService::class)->card($plan->fresh())['slots'], 'status'))
+        ->toBe(['paid', 'partial', 'missed', 'blocked', 'blocked']);
+
+    $this->travel(1)->days();
+    $plan->update(['status' => ThriftPlanStatus::Active, 'version' => 4]);
+    PlanLifecycleEvent::create([
+        'thrift_plan_id' => $plan->id, 'event_type' => 'resume',
+        'from_status' => ThriftPlanStatus::Paused, 'to_status' => ThriftPlanStatus::Active,
+        'actor_user_id' => $agent->id, 'assignment_version' => $assignment->version,
+        'plan_version' => 4, 'reason' => 'Customer resumed the plan.',
+        'customer_explanation' => 'Plan resumed.', 'payload' => [], 'effective_at' => now(),
+    ]);
+    $resumed = app(CollectionReadService::class)->card($plan->fresh());
+    expect(array_column($resumed['slots'], 'status'))->toBe(['paid', 'partial', 'missed', 'blocked', 'pending'])
+        ->and($resumed['paid_slots'])->toBe(1)
+        ->and($resumed['funded_kobo'])->toBe(300000);
+});
+
+test('COL-AC-047: pending receipt correction blocks cash batch and financial month closure', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-03T10:00:00Z'));
+    [$agent, $customer, $assignment, $plan] = collectionFixture(2, -3);
+    $payload = collectionPayload($customer, $assignment, $plan, '2026-09-30', '2000.00');
+    $payload['late_reason'] = 'Cash received during field visit.';
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $receipt = CollectionReceipt::query()->sole();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $batch = CollectionBatch::query()->sole();
+    $admin = User::factory()->admin()->withTwoFactor()->create();
+    $admin->givePermissionTo([AdminPermission::ReconciliationManage->value, AdminPermission::FinancialPeriodsManage->value]);
+    $this->actingAs($admin)->post(route('collection-batches.remittances.store', $batch), [
+        'handoff_reference' => 'PENDING-CORRECTION-HANDOFF', 'amount_ngn' => '2000.00',
+        'handoff_date' => '2026-10-03', 'receiving_location' => 'Lagos office',
+        'source_attestation' => 'Counted and received cash.', 'batch_version' => $batch->version,
+        'confirmed' => true,
+    ])->assertRedirect();
+
+    $createCorrection = static fn (): ReversalRequest => ReversalRequest::create([
+        'reversal_id' => (string) Str::uuid(), 'customer_profile_id' => $customer->id,
+        'original_posting_group_id' => $receipt->savings_posting_group_id,
+        'live_original_posting_group_id' => $receipt->savings_posting_group_id,
+        'requested_by_user_id' => $agent->id, 'initiating_agent_profile_id' => $assignment->agent_profile_id,
+        'assignment_id' => $assignment->id, 'state' => 'pending_review', 'version' => 1,
+        'reason_category' => 'duplicate_posting', 'internal_reason' => 'Review cash receipt.',
+        'customer_explanation' => 'We are reviewing this receipt.', 'evidence_text' => 'Cash count disputed.',
+        'dependency_fingerprint' => str_repeat('b', 64),
+        'dependency_snapshot' => ['summary' => [], 'dependencies' => []],
+        'original_amount_kobo' => 200000, 'currency' => 'NGN',
+    ]);
+    $correction = $createCorrection();
+    $review = ['batch_version' => $batch->fresh()->version, 'reason' => 'Counted cash matches.', 'confirmed' => true];
+    $this->post(route('collection-batches.review', $batch), $review)->assertStatus(409);
+    expect(DB::table('collection_batch_reviews')->count())->toBe(0);
+
+    $correction->update(['state' => 'rejected', 'live_original_posting_group_id' => null]);
+    $this->post(route('collection-batches.review', $batch), $review)->assertRedirect();
+    expect($batch->fresh()->status)->toBe('reconciled');
+    $createCorrection();
+    $period = FinancialPeriod::query()->where('timezone', 'Africa/Lagos')->whereDate('month', '2026-09-01')->sole();
+    $this->withSession(['auth.fresh_until' => now()->addMinutes(10)->timestamp,
+        'auth.password_confirmed_at' => now()->timestamp,
+        'auth.mfa_confirmed_at' => now()->timestamp])->post(route('admin.financial-periods.close', '2026-09'), [
+            'version' => $period->version, 'reason' => 'Close reviewed month.',
+        ])->assertStatus(409);
+    expect($period->fresh()->status)->toBe('open');
+});
+
+test('COL-AC-057: a suspended recording Agent cannot collect while Admin settles historical custody', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $batch = CollectionBatch::query()->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->travelBack();
+
+    $agent->forceFill(['account_state' => AccountState::Suspended])->save();
+    $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertRedirect(route('login'));
+    $manager = User::factory()->admin()->create();
+    $manager->givePermissionTo(AdminPermission::ReconciliationManage->value);
+    $this->actingAs($manager)->get(route('collection-batches.show', $batch))->assertOk();
+    $this->post(route('collection-batches.remittances.store', $batch), [
+        'handoff_reference' => 'SUSPENDED-AGENT-HANDOFF', 'amount_ngn' => '2000.00',
+        'handoff_date' => $today, 'receiving_location' => 'Lagos office',
+        'source_attestation' => 'Counted cash from historical Agent custody.',
+        'batch_version' => $batch->fresh()->version, 'confirmed' => true,
+    ])->assertRedirect();
+    $this->post(route('collection-batches.review', $batch), [
+        'batch_version' => $batch->fresh()->version, 'reason' => 'Historical cash settled.', 'confirmed' => true,
+    ])->assertRedirect();
+
+    expect($batch->fresh()->status)->toBe('reconciled')
+        ->and(app(CollectionReadService::class)->agentOffboardingStatus($agent->agentProfile))->toBe('passed')
+        ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(200000)
+        ->and(CollectionReceipt::count())->toBe(1);
 });
 
 test('COL-AC-037/039: daily workspace separates due coverage from cash received', function (): void {
@@ -851,11 +1315,41 @@ test('COL-AC-032: original attempt lookup is scoped after assignment ends', func
     $payload['preview_fingerprint'] = $preview['preview_fingerprint'];
     $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
 
-    $this->getJson(route('collections.attempts.show', $payload['attempt_reference']))->assertOk()
+    $attemptUrl = route('collections.attempts.show', [$payload['attempt_reference'], 'customer' => $customer->customer_id]);
+    $this->getJson($attemptUrl)->assertOk()
         ->assertJsonPath('status', 'posted');
     $assignment->update(['status' => CustomerAssignmentStatus::Ended]);
-    $this->getJson(route('collections.attempts.show', $payload['attempt_reference']))->assertNotFound();
+    $this->getJson($attemptUrl)->assertNotFound();
+    $this->getJson(route('collections.attempts.show', [Str::uuid(), 'customer' => $customer->customer_id]))
+        ->assertNotFound()->assertJsonMissing(['status' => 'unresolved']);
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertNotFound();
     expect(CollectionReceipt::query()->count())->toBe(1)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1);
+});
+
+test('COL-AC-033: unresolved lookup permits the original receipt attempt without duplicate posting', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '1000.00');
+    $this->actingAs($agent);
+    $payload['preview_fingerprint'] = $this->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+
+    $attemptUrl = route('collections.attempts.show', [$payload['attempt_reference'], 'customer' => $customer->customer_id]);
+    $this->getJson($attemptUrl)
+        ->assertNotFound()->assertJsonPath('status', 'unresolved');
+    expect(CollectionReceipt::query()->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(0);
+
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
+    $receipt = CollectionReceipt::query()->sole();
+    $this->getJson($attemptUrl)
+        ->assertOk()->assertJsonPath('status', 'posted')
+        ->assertJsonPath('receipt_reference', $receipt->receipt_reference);
+    $this->post(route('customers.collections.store', $customer->customer_id), $payload)
+        ->assertRedirect(route('collections.show', $receipt));
+
+    expect(CollectionReceipt::query()->count())->toBe(1)
+        ->and(DB::table('collection_allocations')->count())->toBe(1)
         ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1);
 });
 
@@ -950,6 +1444,9 @@ test('COL-AC-043/045/046: only a reconciliation manager can confirm original Age
     $this->actingAs($manager)->post(route('collection-batches.remittances.store', $batch), $handoff)
         ->assertRedirect()->assertSessionHasNoErrors();
     $this->post(route('collection-batches.remittances.store', $batch), $handoff)->assertRedirect();
+    $this->post(route('collection-batches.remittances.store', $batch), [
+        ...$handoff, 'amount_ngn' => '500.00', 'batch_version' => $batch->fresh()->version,
+    ])->assertStatus(409);
     expect(DB::table('cash_remittances')->count())->toBe(1);
     $agentBalances = DB::table('ledger_entries as entries')
         ->join('ledger_accounts as accounts', 'accounts.id', '=', 'entries.ledger_account_id')

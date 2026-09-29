@@ -14,6 +14,7 @@ use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\CollectionLedgerService;
+use App\Services\CollectionReadService;
 use App\Services\CollectionService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\PlatformGuard;
@@ -144,7 +145,8 @@ class ReconciliationController extends Controller
         return redirect()->route('collection-batches.show', $batch);
     }
 
-    public function review(CollectionBatch $batch, Request $request, AuthorizationService $auth): RedirectResponse
+    public function review(CollectionBatch $batch, Request $request, AuthorizationService $auth,
+        CollectionReadService $collections): RedirectResponse
     {
         if (! $auth->allows($request->user(), AdminPermission::ReconciliationManage)) {
             throw new AuthorizationException;
@@ -154,7 +156,7 @@ class ReconciliationController extends Controller
             'reason' => ['required', 'string', 'min:1', 'max:500'],
             'confirmed' => ['required', 'accepted'],
         ]);
-        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data): void {
+        app(PlatformGuard::class)->transaction('mutation', function () use ($batch, $request, $data, $collections): void {
             $this->lockBatchCustomers($batch, $request->user());
             $current = CollectionBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($current->version !== (int) $data['batch_version'] || in_array($current->status, ['open', 'reconciled'], true)) {
@@ -168,6 +170,9 @@ class ReconciliationController extends Controller
             }
             $openCases = CollectionException::query()->where('collection_batch_id', $current->id)
                 ->where('status', '!=', 'resolved')->exists();
+            if ($collections->hasPendingCorrectionForBatches(DB::table('collection_batches')->where('id', $current->id))) {
+                throw new ConflictHttpException('A pending receipt correction blocks batch closure.');
+            }
             $outcome = $outstanding === 0 && ! $openCases ? 'reconciled' : 'exception';
             DB::table('collection_batch_reviews')->insert([
                 'collection_batch_id' => $current->id, 'reviewed_by_user_id' => $request->user()->id,

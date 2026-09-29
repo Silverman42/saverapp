@@ -12,11 +12,27 @@ use App\Models\LedgerPostingGroup;
 use App\Models\ThriftPlan;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class CollectionReadService
 {
+    public function hasPendingCorrectionForBatches(QueryBuilder $batchIds): bool
+    {
+        $receipts = DB::table('collection_receipts')->whereIn('collection_batch_id', $batchIds->clone()->select('id'));
+        $savingsGroups = (clone $receipts)->select('savings_posting_group_id');
+        $feeGroups = DB::table('collection_fee_components')
+            ->whereIn('collection_receipt_id', (clone $receipts)->select('id'))
+            ->select('ledger_posting_group_id');
+
+        return DB::table('reversal_requests')->where('state', 'pending_review')
+            ->where(static function (QueryBuilder $query) use ($savingsGroups, $feeGroups): void {
+                $query->whereIn('original_posting_group_id', $savingsGroups)
+                    ->orWhereIn('original_posting_group_id', $feeGroups);
+            })->lockForUpdate()->first(['id']) !== null;
+    }
+
     public function agentOffboardingStatus(AgentProfile $agent, bool $forUpdate = false): string
     {
         $mapping = DB::table('ledger_accounts')->where('code', LedgerAccountCode::AgentReceivable->value)
@@ -216,7 +232,7 @@ class CollectionReadService
                 $blocked => 'blocked',
                 $annotation !== null && $annotation->kind === 'skipped' => 'skipped',
                 $annotation !== null && $annotation->kind === 'missed' => 'missed',
-                $slot->due_date < $today && $plan->status->value === 'active' => 'missed',
+                $slot->due_date < $today => 'missed',
                 default => 'pending',
             };
             $rows[] = [

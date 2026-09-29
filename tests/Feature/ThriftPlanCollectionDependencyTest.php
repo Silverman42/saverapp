@@ -2,6 +2,7 @@
 
 use App\Models\ContributionSlot;
 use App\Models\FeeRule;
+use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\PlanOperationAttempt;
 use App\Models\ThriftPlan;
@@ -82,6 +83,7 @@ test('pre-activity revision updates slots while posted cash locks financial term
         ->and($revised->slots()->whereNotNull('active_ordinal')->count())->toBe(3)
         ->and($revised->termsRevisions()->count())->toBe(2);
     LedgerAccount::query()->whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
+    FinancialPeriod::factory()->create(['changed_by_user_id' => $agent->user_id]);
     $payload = $this->lifecycleCollectionPayload($customer, $revised);
     $payload['plan_version'] = $revised->version;
     $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent->user, $customer, $payload)['preview_fingerprint'];

@@ -248,7 +248,8 @@ class RoleSynchronizationService
                 ->get();
 
             if ($seedHistories->count() !== count($allowedPermissions)) {
-                $issues[] = "Bootstrap Administrator #{$bootstrapAdmin->id} has {$seedHistories->count()} system_seed history records; expected 13.";
+                $expectedCount = count($allowedPermissions);
+                $issues[] = "Bootstrap Administrator #{$bootstrapAdmin->id} has {$seedHistories->count()} system_seed history records; expected {$expectedCount}.";
             } else {
                 $batches = $seedHistories->pluck('batch_id')->unique();
                 if ($batches->count() !== 1) {

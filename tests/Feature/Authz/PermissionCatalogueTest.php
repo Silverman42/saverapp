@@ -40,10 +40,10 @@ test('permission tables exist with required custom metadata columns', function (
     ]))->toBeTrue();
 });
 
-test('closed permission catalogue is seeded with exactly 13 active permissions', function () {
+test('closed permission catalogue is seeded with exactly 14 active permissions', function () {
     $permissions = Permission::query()->where('guard_name', 'web')->get();
 
-    expect($permissions)->toHaveCount(13);
+    expect($permissions)->toHaveCount(14);
 
     $expectedEnumValues = AdminPermission::values();
     $dbPermissionNames = $permissions->pluck('name')->all();
@@ -104,6 +104,10 @@ test('admin permission enum matches section 7.2 specification exactly', function
             'displayName' => 'Reconciliation management',
             'description' => 'Review Agent collection submissions, record reconciliation outcomes, and resolve reconciliation exceptions through the approved workflow.',
         ],
+        'financial.periods.manage' => [
+            'displayName' => 'Financial period management',
+            'description' => 'Open, close, and reopen cash receipt booking months with fresh authentication, a reason, and audit history.',
+        ],
         'business.settings.manage' => [
             'displayName' => 'Business configuration',
             'description' => 'Update general and operational business settings. Security-sensitive changes require fresh authentication.',
@@ -122,7 +126,7 @@ test('admin permission enum matches section 7.2 specification exactly', function
         ],
     ];
 
-    expect(AdminPermission::cases())->toHaveCount(13);
+    expect(AdminPermission::cases())->toHaveCount(14);
 
     foreach (AdminPermission::cases() as $case) {
         expect($expected)->toHaveKey($case->value);

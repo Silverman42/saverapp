@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\BusinessSettingsController;
 use App\Http\Controllers\Admin\FeeOverviewController;
+use App\Http\Controllers\Admin\FinancialPeriodController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\RegistrationFeeRuleController;
 use App\Http\Controllers\Admin\SecurityCaseController;
@@ -156,6 +157,7 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('collections.enabled')->group(function (): void {
         Route::get('collections', [CollectionController::class, 'index'])->name('collections.index');
         Route::get('customers/{customer}/collections/create', [CollectionController::class, 'create'])->name('customers.collections.create');
+        Route::get('customers/{customer}/collections/time-options', [CollectionController::class, 'timeOptions'])->name('customers.collections.time-options');
         Route::post('customers/{customer}/collections/preview', [CollectionController::class, 'preview'])->name('customers.collections.preview');
         Route::post('customers/{customer}/collections', [CollectionController::class, 'store'])->name('customers.collections.store');
         Route::get('collections/attempts/{reference}', [CollectionController::class, 'attempt'])->name('collections.attempts.show');
@@ -223,6 +225,14 @@ Route::middleware(['auth'])->group(function () {
 
     // Admin Lockout & Abuse Visibility (AUTH-061, AUTH-063)
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::prefix('financial-periods')->name('financial-periods.')->group(function (): void {
+            Route::get('/', [FinancialPeriodController::class, 'index'])->name('index');
+            Route::post('/', [FinancialPeriodController::class, 'open'])->middleware('fresh')->name('open');
+            Route::post('{month}/close', [FinancialPeriodController::class, 'close'])->middleware('fresh')
+                ->where('month', '[0-9]{4}-[0-9]{2}')->name('close');
+            Route::post('{month}/reopen', [FinancialPeriodController::class, 'reopen'])->middleware('fresh')
+                ->where('month', '[0-9]{4}-[0-9]{2}')->name('reopen');
+        });
         Route::prefix('business-settings')->name('business-settings.')->group(function (): void {
             Route::get('/', [BusinessSettingsController::class, 'index'])->name('index');
             Route::post('drafts', [BusinessSettingsController::class, 'store'])->middleware('throttle:30,1')->name('drafts.store');

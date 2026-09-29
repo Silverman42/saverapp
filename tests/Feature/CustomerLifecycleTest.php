@@ -15,6 +15,7 @@ use App\Models\CustomerNameCorrection;
 use App\Models\CustomerProfile;
 use App\Models\CustomerStatusNotificationIntent;
 use App\Models\FeeObligationEntry;
+use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
 use App\Models\PlanOperationAttempt;
@@ -221,6 +222,7 @@ test('archived Customer fee assessment and operational edits require restoration
 });
 
 test('CAM-AC-029: actual collection posting blocks savings and reconciliation while unrelated Agent batches do not', function () {
+    FinancialPeriod::factory()->create();
     [$admin, $customer, $agent] = $this->createLifecycleFixture();
     config()->set('collections.enabled', true);
     LedgerAccount::query()->whereIn('code', [LedgerAccountCode::AgentReceivable->value, LedgerAccountCode::BusinessCash->value])->update(['mapping_status' => 'mapped']);

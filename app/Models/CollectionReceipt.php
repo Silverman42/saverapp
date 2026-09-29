@@ -21,11 +21,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $fee_amount_kobo
  * @property int $tender_amount_kobo
  * @property CarbonImmutable $recorded_at
+ * @property CarbonImmutable|null $received_at_utc
  */
 #[Fillable([
     'receipt_reference', 'attempt_reference', 'payload_hash', 'customer_profile_id', 'thrift_plan_id',
     'recording_agent_profile_id', 'assignment_id', 'collection_batch_id', 'recorded_by_user_id',
-    'savings_posting_group_id', 'received_date', 'timezone', 'business_version', 'tender_amount_kobo',
+    'savings_posting_group_id', 'received_date', 'received_at_utc', 'timezone', 'business_version', 'tender_amount_kobo',
     'savings_amount_kobo', 'fee_amount_kobo', 'late_reason', 'notes', 'recorded_at',
 ])]
 class CollectionReceipt extends Model
@@ -34,6 +35,7 @@ class CollectionReceipt extends Model
     {
         return [
             'recorded_at' => 'immutable_datetime',
+            'received_at_utc' => 'immutable_datetime',
             'tender_amount_kobo' => 'integer',
             'savings_amount_kobo' => 'integer',
             'fee_amount_kobo' => 'integer',

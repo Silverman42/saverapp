@@ -190,7 +190,7 @@ test('admin with admins.manage can view another admin details, catalogue, and hi
             ->where('isSelf', false)
             ->where('canManage', true)
             ->where('admin.id', $otherAdmin->id)
-            ->has('catalogue', 13)
+            ->has('catalogue', 14)
             ->has('history.data', 1),
         );
 });

@@ -10,6 +10,7 @@ export type AdminPermission =
     | 'fees.manage'
     | 'deductions.manage'
     | 'reconciliation.manage'
+    | 'financial.periods.manage'
     | 'business.settings.manage'
     | 'security.operations.manage'
     | 'audit.view'

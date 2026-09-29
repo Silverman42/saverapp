@@ -27,6 +27,8 @@ class PreviewCollectionRequest extends FormRequest
             'method' => ['sometimes', 'in:cash'],
             'plan_id' => ['nullable', 'string', 'max:32'],
             'received_date' => ['required', 'date_format:Y-m-d'],
+            'received_local_time' => ['nullable', 'date_format:H:i'],
+            'received_utc_offset' => ['nullable', 'regex:/\A[+-](?:0[0-9]|1[0-4]):[0-5][0-9]\z/'],
             'savings_ngn' => ['required', 'string', 'regex:/\A(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,2})?\z/'],
             'fees' => ['sometimes', 'array', 'max:20'],
             'fees.*.obligation_id' => ['required', 'integer', 'min:1'],

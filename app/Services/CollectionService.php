@@ -42,6 +42,8 @@ class CollectionService
         private LedgerPostingService $feeLedger,
         private PublicIdGenerator $references,
         private LedgerTransactionProjectionService $transactions,
+        private FinancialPeriodService $periods,
+        private CollectionReceivedTime $receivedTimes,
     ) {}
 
     public function amountToKobo(string $amount): int
@@ -77,6 +79,7 @@ class CollectionService
         if ($received->lt($today) && blank($data['late_reason'] ?? null)) {
             throw ValidationException::withMessages(['late_reason' => ['Explain why this payment is being recorded late.']]);
         }
+        $this->periods->assertOpen($received->toDateString(), $business->timezone);
 
         $savings = filled($data['savings_ngn'] ?? null) && $data['savings_ngn'] !== '0'
             ? $this->amountToKobo((string) $data['savings_ngn']) : 0;
@@ -93,7 +96,9 @@ class CollectionService
             }
             $feeTotal = $this->checkedAdd($feeTotal, $amount);
             $feeItems[] = ['obligation_id' => $obligation->id, 'amount_kobo' => $amount,
-                'outstanding_kobo' => $obligation->outstandingAmountKobo()];
+                'outstanding_kobo' => $obligation->outstandingAmountKobo(),
+                'fee_snapshot_id' => $obligation->fee_snapshot_id,
+                'latest_entry_id' => $obligation->entries()->max('id')];
         }
         if (count(array_unique(array_column($feeItems, 'obligation_id'))) !== count($feeItems)) {
             throw ValidationException::withMessages(['fees' => ['List each fee obligation once.']]);
@@ -104,6 +109,9 @@ class CollectionService
         }
 
         $plan = null;
+        $receivedAtUtc = null;
+        $planReceivedDate = null;
+        $planTimezone = null;
         $allocations = [];
         $slotOptions = [];
         if ($savings > 0) {
@@ -113,8 +121,22 @@ class CollectionService
             if ($plan->customer_profile_id !== $customer->id || $plan->status !== ThriftPlanStatus::Active) {
                 throw ValidationException::withMessages(['plan_id' => ['Choose an active plan for this Customer.']]);
             }
-            if ($plan->currentTermsRevision()?->timezone !== $business->timezone) {
-                throw ValidationException::withMessages(['plan_id' => ['This plan uses a different timezone. Cash collection needs an exact received time before its slot dates can be classified.']]);
+            $planTimezone = $plan->currentTermsRevision()?->timezone;
+            if ($planTimezone === null) {
+                throw new ConflictHttpException('Plan timezone is unavailable.');
+            }
+            if ($planTimezone !== $business->timezone) {
+                if (blank($data['received_local_time'] ?? null) || blank($data['received_utc_offset'] ?? null)) {
+                    throw ValidationException::withMessages(['received_local_time' => ['Enter the actual received time and choose its UTC offset for this plan.']]);
+                }
+                $receivedAtUtc = $this->receivedTimes->resolve($received->toDateString(),
+                    $data['received_local_time'], $business->timezone, $data['received_utc_offset']);
+                if ($receivedAtUtc->isFuture()) {
+                    throw ValidationException::withMessages(['received_local_time' => ['The received time cannot be in the future.']]);
+                }
+                $planReceivedDate = $receivedAtUtc->setTimezone($planTimezone)->toDateString();
+            } else {
+                $planReceivedDate = $received->toDateString();
             }
             $slots = $plan->slots()->whereNotNull('active_ordinal')->orderBy('active_ordinal')->get();
             $fundedBySlot = DB::table('collection_allocations')
@@ -158,6 +180,9 @@ class CollectionService
         } elseif (filled($data['plan_id'] ?? null) || ! $this->activityGate->allows($customer->operational_status, CustomerActivity::ApplyAgreedFee)) {
             throw ValidationException::withMessages(['plan_id' => ['Fee-only collection cannot include a plan or this Customer status.']]);
         }
+        if ($receivedAtUtc === null && (filled($data['received_local_time'] ?? null) || filled($data['received_utc_offset'] ?? null))) {
+            throw ValidationException::withMessages(['received_local_time' => ['An exact received time is only used for a cross-timezone savings plan.']]);
+        }
 
         $assignment = $customer->currentAssignment;
         if ($assignment === null) {
@@ -167,6 +192,7 @@ class CollectionService
             $actor->id, $customer->id, $customer->version, $assignment->id, $assignment->version,
             $plan?->id, $plan?->version, $plan?->current_terms_revision,
             $business->version, $business->timezone, $received->toDateString(),
+            $receivedAtUtc?->toIso8601String(), $planTimezone, $planReceivedDate,
             $savings, $feeItems, $allocations, trim((string) ($data['late_reason'] ?? '')),
             trim((string) ($data['notes'] ?? '')),
         ], JSON_THROW_ON_ERROR));
@@ -176,6 +202,8 @@ class CollectionService
             'assignment_version' => $assignment->version, 'plan_id' => $plan?->plan_id,
             'plan_version' => $plan?->version, 'received_date' => $received->toDateString(),
             'timezone' => $business->timezone, 'business_version' => $business->version,
+            'received_at_utc' => $receivedAtUtc?->toIso8601String(),
+            'plan_timezone' => $planTimezone, 'plan_received_date' => $planReceivedDate,
             'savings_kobo' => $savings, 'fees_kobo' => $feeTotal, 'tender_kobo' => $total,
             'fee_items' => $feeItems, 'allocations' => $allocations, 'slot_options' => $slotOptions,
             'preview_fingerprint' => $fingerprint,
@@ -204,6 +232,7 @@ class CollectionService
             );
             $lockedCustomer = $context->customerProfile;
             $preview = $this->preview($actor, $lockedCustomer->load('currentAssignment'), $data);
+            $this->periods->assertOpen($preview['received_date'], $preview['timezone'], true);
             if (! hash_equals($preview['preview_fingerprint'], $data['preview_fingerprint'])
                 || $preview['business_version'] !== (int) $data['business_version']
                 || ($preview['plan_version'] ?? null) !== (isset($data['plan_version']) ? (int) $data['plan_version'] : null)) {
@@ -234,6 +263,7 @@ class CollectionService
                 'assignment_id' => $assignment->id, 'collection_batch_id' => $batch->id,
                 'recorded_by_user_id' => $actor->id, 'received_date' => $preview['received_date'],
                 'timezone' => $preview['timezone'], 'business_version' => $preview['business_version'],
+                'received_at_utc' => $preview['received_at_utc'],
                 'tender_amount_kobo' => $preview['tender_kobo'], 'savings_amount_kobo' => $preview['savings_kobo'],
                 'fee_amount_kobo' => $preview['fees_kobo'], 'late_reason' => trim((string) ($data['late_reason'] ?? '')) ?: null,
                 'notes' => trim((string) ($data['notes'] ?? '')) ?: null, 'recorded_at' => now(),
@@ -242,7 +272,7 @@ class CollectionService
                 CollectionAllocation::create([
                     'collection_receipt_id' => $receipt->id, 'contribution_slot_id' => $item['slot_id'],
                     'amount_kobo' => $item['amount_kobo'],
-                    'is_advance' => $item['due_date'] > $preview['received_date'],
+                    'is_advance' => $item['due_date'] > $preview['plan_received_date'],
                 ]);
             }
             if ($preview['savings_kobo'] > 0) {

@@ -16,6 +16,7 @@ use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialPeriod;
 use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
@@ -65,6 +66,9 @@ function reportFixture(): array
         'customer_description' => 'No fee', 'acknowledged_at' => now(),
     ]);
     $today = CarbonImmutable::now('Africa/Lagos')->toDateString();
+    if (! FinancialPeriod::query()->whereDate('month', substr($today, 0, 7).'-01')->exists()) {
+        FinancialPeriod::factory()->create(['month' => substr($today, 0, 7).'-01', 'changed_by_user_id' => $agent->id]);
+    }
     $terms = PlanTermsRevision::create([
         'thrift_plan_id' => $plan->id, 'revision' => 1, 'name' => 'Daily plan',
         'contribution_amount_kobo' => 200000, 'currency' => 'NGN', 'start_date' => $today,
@@ -100,6 +104,12 @@ function reportPostReceipt(array $fixture, string $amount = '2000.00', ?string $
 {
     [$agent, $customer, $assignment, $plan, $today] = $fixture;
     config()->set('collections.enabled', true);
+    $date = $receivedDate ?? $today;
+    if (! FinancialPeriod::query()->where('business_profile_id', BusinessProfile::current()->id)
+        ->where('timezone', BusinessProfile::current()->timezone)
+        ->whereDate('month', substr($date, 0, 7).'-01')->exists()) {
+        FinancialPeriod::factory()->create(['month' => substr($date, 0, 7).'-01', 'changed_by_user_id' => $agent->id]);
+    }
     $payload = reportReceiptPayload($customer->fresh(), $assignment->fresh(), $plan->fresh(), $receivedDate ?? $today, $amount);
     if ($receivedDate !== null && $receivedDate !== $today) {
         $payload['late_reason'] = 'Received on the recorded business date.';

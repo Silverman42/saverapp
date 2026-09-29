@@ -6,6 +6,7 @@ use App\Models\AgentProfile;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerNameCorrection;
 use App\Models\CustomerProfile;
+use App\Models\FinancialPeriod;
 use App\Models\Invitation;
 use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
@@ -123,6 +124,7 @@ test('reassignment screens expose current identity and eligible targets', functi
 });
 
 test('handover preserves pending withdrawal reservation and recording-Agent cash responsibility', function () {
+    FinancialPeriod::factory()->create();
     LedgerAccount::whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
     $plan = $this->createLifecyclePlan($this->customer, $this->agent->user);
     $collection = $this->lifecycleCollectionPayload($this->customer, $plan);
@@ -162,6 +164,7 @@ test('invitation authority follows handover without changing its token expiry or
 });
 
 test('pending reversal keeps its initiator evidence amount and assignment after handover', function () {
+    FinancialPeriod::factory()->create();
     LedgerAccount::whereIn('code', ['agent_receivable', 'business_cash'])->update(['mapping_status' => 'mapped']);
     $plan = $this->createLifecyclePlan($this->customer, $this->agent->user);
     $input = $this->lifecycleCollectionPayload($this->customer, $plan);

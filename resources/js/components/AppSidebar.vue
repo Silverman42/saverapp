@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { index as businessSettings } from '@/routes/admin/business-settings';
+import { index as financialPeriodsIndex } from '@/routes/admin/financial-periods';
 import { index as notificationInbox } from '@/routes/notifications';
 import { index as auditIndex } from '@/routes/admin/audit';
 import { index as recoveryQueue } from '@/routes/customer-recovery';
@@ -163,6 +164,10 @@ const adminNavItems = computed<NavItem[]>(() => {
             href: adminFeesIndex(),
             icon: Coins,
         });
+    }
+
+    if ((page.props.auth?.permissions ?? []).includes('financial.periods.manage')) {
+        items.push({ title: 'Cash receipt months', href: financialPeriodsIndex(), icon: WalletCards });
     }
 
     if ((page.props.auth?.permissions ?? []).includes('audit.view')) {

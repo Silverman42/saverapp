@@ -13,6 +13,7 @@ use App\Models\ContributionSlot;
 use App\Models\CustomerProfile;
 use App\Models\ThriftPlan;
 use App\Services\CollectionReadService;
+use App\Services\CollectionReceivedTime;
 use App\Services\CollectionService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\ResourceScopeService;
@@ -22,6 +23,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -91,10 +93,34 @@ class CollectionController extends Controller
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
             'plans' => $plans->map(fn (ThriftPlan $plan): array => [
                 'id' => $plan->plan_id, 'name' => $plan->currentTermsRevision()?->name,
+                'timezone' => $plan->currentTermsRevision()?->timezone,
             ]),
             'fee_obligations' => $obligations,
             'today' => CarbonImmutable::now(BusinessProfile::current()->timezone)->toDateString(),
+            'business_timezone' => BusinessProfile::current()->timezone,
         ]);
+    }
+
+    public function timeOptions(string $customer, Request $request, ResourceScopeService $scope,
+        CollectionReceivedTime $receivedTimes): JsonResponse
+    {
+        $profile = $this->customer($scope, $request, $customer);
+        Gate::authorize('recordCollection', $profile);
+        $data = $request->validate([
+            'plan_id' => ['required', 'string', 'max:32'],
+            'received_date' => ['required', 'date_format:Y-m-d'],
+            'received_local_time' => ['required', 'date_format:H:i'],
+        ]);
+        $plan = ThriftPlan::query()->where('customer_profile_id', $profile->id)
+            ->where('plan_id', $data['plan_id'])->where('status', 'active')->firstOrFail();
+        $businessTimezone = BusinessProfile::current()->timezone;
+        if ($plan->currentTermsRevision()?->timezone === $businessTimezone) {
+            throw ValidationException::withMessages(['plan_id' => ['This plan does not need a received time.']]);
+        }
+
+        return response()->json(['timezone' => $businessTimezone, 'options' => $receivedTimes->options(
+            $data['received_date'], $data['received_local_time'], $businessTimezone,
+        )]);
     }
 
     public function preview(string $customer, PreviewCollectionRequest $request, ResourceScopeService $scope, CollectionService $service): JsonResponse
@@ -113,12 +139,16 @@ class CollectionController extends Controller
 
     public function attempt(string $reference, Request $request, ResourceScopeService $scope): JsonResponse
     {
+        $customerReference = $request->query('customer');
+        if (! is_string($customerReference)) {
+            abort(404, 'Record unavailable.');
+        }
+        $customer = $this->customer($scope, $request, $customerReference);
         $receipt = CollectionReceipt::query()->where('attempt_reference', $reference)->first();
         if ($receipt === null) {
             return response()->json(['status' => 'unresolved'], 404);
         }
-        if ($receipt->recorded_by_user_id !== $request->user()->id
-            || ! $scope->forCustomers($request->user())->whereKey($receipt->customer_profile_id)->exists()) {
+        if ($receipt->recorded_by_user_id !== $request->user()->id || $receipt->customer_profile_id !== $customer->id) {
             abort(404, 'Record unavailable.');
         }
 
@@ -137,6 +167,7 @@ class CollectionController extends Controller
                 'id' => $receipt->receipt_reference, 'customer_id' => $receipt->customerProfile->customer_id,
                 'customer_name' => $receipt->customerProfile->user?->name,
                 'plan_id' => $receipt->plan?->plan_id, 'received_date' => $receipt->received_date,
+                'received_at_utc' => $receipt->received_at_utc?->toIso8601String(),
                 'recorded_at' => $receipt->recorded_at->toIso8601String(),
                 'timezone' => $receipt->timezone, 'method' => 'Cash',
                 'tender_kobo' => $receipt->tender_amount_kobo, 'savings_kobo' => $receipt->savings_amount_kobo,

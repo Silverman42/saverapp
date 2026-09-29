@@ -15,7 +15,7 @@ test('trusted first admin starts with explicit seed grants and mandatory MFA set
     expect($admin->account_state)->toBe(AccountState::MfaSetupRequired)->and($admin->email_normalized)->toBe('first@example.org');
     expect(Hash::check('private-first-password', $admin->password))->toBeTrue();
     expect($admin->getDirectPermissions()->pluck('name')->sort()->values()->all())->toBe(collect(AdminPermission::values())->sort()->values()->all());
-    expect(PermissionGrantHistory::query()->where('source', 'system_seed')->count())->toBe(13);
+    expect(PermissionGrantHistory::query()->where('source', 'system_seed')->count())->toBe(count(AdminPermission::cases()));
     expect(BusinessProfile::current()->display_name)->toBe('Reviewed Business');
     expect(BusinessProfile::current()->getAttribute('effective_configuration_id'))->not->toBeNull();
     $this->post(route('login'), ['email' => 'first@example.org', 'password' => 'private-first-password'])->assertRedirect(route('two-factor.enrolment'));

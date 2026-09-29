@@ -114,7 +114,7 @@ test('EnsureUserType middleware permits synchronized users and fails closed on m
         ->assertForbidden();
 });
 
-test('bootstrapAdmin selects earliest active admin and grants 13 permissions with shared system_seed batch history', function () {
+test('bootstrapAdmin selects earliest active admin and grants the catalogue with shared system_seed batch history', function () {
     $service = app(RoleSynchronizationService::class);
 
     // Create older inactive admin
@@ -139,8 +139,7 @@ test('bootstrapAdmin selects earliest active admin and grants 13 permissions wit
 
     expect($bootstrapped->id)->toBe($earliestAdmin->id);
 
-    // Verify all 13 catalogue permissions are granted directly to earliest admin
-    expect($earliestAdmin->permissions)->toHaveCount(13);
+    expect($earliestAdmin->permissions)->toHaveCount(count(AdminPermission::cases()));
     $grantedNames = $earliestAdmin->permissions->pluck('name')->all();
     sort($grantedNames);
     $expectedNames = AdminPermission::values();
@@ -153,7 +152,7 @@ test('bootstrapAdmin selects earliest active admin and grants 13 permissions wit
 
     // Verify append-only history records share exactly one batch_id and system_seed source
     $histories = PermissionGrantHistory::where('user_id', $earliestAdmin->id)->get();
-    expect($histories)->toHaveCount(13);
+    expect($histories)->toHaveCount(count(AdminPermission::cases()));
 
     $batchIds = $histories->pluck('batch_id')->unique();
     expect($batchIds)->toHaveCount(1)
@@ -175,14 +174,14 @@ test('bootstrapAdmin is idempotent and rejects non-active or non-admin targets',
     ]);
 
     $service->bootstrapAdmin($admin);
-    expect($admin->permissions)->toHaveCount(13);
+    expect($admin->permissions)->toHaveCount(count(AdminPermission::cases()));
     $initialHistoryCount = PermissionGrantHistory::where('user_id', $admin->id)->count();
-    expect($initialHistoryCount)->toBe(13);
+    expect($initialHistoryCount)->toBe(count(AdminPermission::cases()));
 
     // Call bootstrapAdmin again: must be idempotent, no duplicate grants or history records
     $service->bootstrapAdmin($admin);
-    expect($admin->permissions)->toHaveCount(13)
-        ->and(PermissionGrantHistory::where('user_id', $admin->id)->count())->toBe(13);
+    expect($admin->permissions)->toHaveCount(count(AdminPermission::cases()))
+        ->and(PermissionGrantHistory::where('user_id', $admin->id)->count())->toBe(count(AdminPermission::cases()));
 
     // Rejects non-admin targets
     $customer = User::factory()->customer()->create();

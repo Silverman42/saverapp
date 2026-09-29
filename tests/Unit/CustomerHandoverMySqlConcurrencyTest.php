@@ -4,6 +4,7 @@ use App\Enums\AdminPermission;
 use App\Models\AgentProfile;
 use App\Models\CustomerProfile;
 use App\Models\CustomerRecovery;
+use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\CollectionService;
@@ -30,6 +31,7 @@ beforeEach(function () {
         $this->markTestSkipped('Requires the isolated saverapp_audit_testing MySQL database.');
     }
     $this->artisan('migrate:fresh', ['--no-interaction' => true])->assertSuccessful();
+    FinancialPeriod::factory()->create();
     Queue::fake();
     [$this->admin, $this->customer, $this->agent] = $this->createLifecycleFixture();
     $this->admin->givePermissionTo([AdminPermission::CustomersReassign, AdminPermission::SecurityOperationsManage]);
@@ -140,11 +142,16 @@ test('mysql collection versus reassignment either preserves original cash attrib
     expect($results[1])->toBeIn(['posted', 'blocked']);
     if ($results[1] === 'posted') {
         expect(DB::table('collection_receipts')->value('assignment_id'))->toBe($originalAssignment)
-            ->and(DB::table('collection_receipts')->value('recording_agent_profile_id'))->toBe($this->agent->id);
+            ->and(DB::table('collection_receipts')->value('recording_agent_profile_id'))->toBe($this->agent->id)
+            ->and(DB::table('collection_receipts')->value('recorded_by_user_id'))->toBe($actorId);
     } else {
         $this->assertDatabaseCount('collection_receipts', 0);
         expect($results[0])->toBeArray();
     }
+    $receiptCount = $results[1] === 'posted' ? 1 : 0;
+    expect(DB::table('collection_allocations')->count())->toBe($receiptCount)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe($receiptCount)
+        ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe($receiptCount * 100000);
 });
 
 test('mysql recipient suspension versus reassignment rechecks eligibility before commit', function () {

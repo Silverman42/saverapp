@@ -18,6 +18,7 @@ use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialPeriod;
 use App\Models\PlanTermsRevision;
 use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
@@ -100,6 +101,12 @@ function dashboardPostReceipt(array $fixture, string $amount = '2000.00', ?strin
 {
     [$agent, $customer, $assignment, $plan, $today] = $fixture;
     config()->set('collections.enabled', true);
+    $date = $receivedDate ?? $today;
+    if (! FinancialPeriod::query()->where('business_profile_id', BusinessProfile::current()->id)
+        ->where('timezone', BusinessProfile::current()->timezone)
+        ->whereDate('month', substr($date, 0, 7).'-01')->exists()) {
+        FinancialPeriod::factory()->create(['month' => substr($date, 0, 7).'-01', 'changed_by_user_id' => $agent->id]);
+    }
     $payload = dashboardReceiptPayload($customer, $assignment, $plan, $receivedDate ?? $today, $amount);
     if ($receivedDate !== null && $receivedDate !== $today) {
         $payload['late_reason'] = 'Received on the recorded business date.';
