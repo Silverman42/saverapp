@@ -291,7 +291,7 @@ class ThriftPlanService
             }
 
             $terms = $this->normalizeTerms($data, $business->timezone);
-            $rule = $this->currentPlanRule((int) $data['fee_rule_id'], true);
+            $rule = $this->currentPlanRule((int) $data['fee_rule_id'], true, true);
             if ($rule->version !== (int) $data['fee_rule_version']) {
                 throw new ConflictHttpException('The selected fee option changed. Review the current plan preview.');
             }
@@ -769,7 +769,7 @@ class ThriftPlanService
         ];
     }
 
-    private function currentPlanRule(int $ruleId, bool $forUpdate = false): FeeRule
+    private function currentPlanRule(int $ruleId, bool $forUpdate = false, bool $mustMatchPreview = false): FeeRule
     {
         $query = FeeRule::currentPlanOptions()->whereKey($ruleId);
         if ($forUpdate) {
@@ -778,6 +778,10 @@ class ThriftPlanService
 
         $rule = $query->first();
         if ($rule === null) {
+            if ($mustMatchPreview) {
+                throw new ConflictHttpException('The selected fee option changed. Review the current plan preview.');
+            }
+
             throw ValidationException::withMessages(['fee_rule_id' => ['Choose a currently available plan fee option.']]);
         }
 
