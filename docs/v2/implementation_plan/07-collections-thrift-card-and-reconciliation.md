@@ -4,7 +4,7 @@
 
 Implement [Module 07](../modules/07-collections-thrift-card-and-reconciliation.md) in stages. The first release enables eligible Agents to record cash received for assigned Customers, fund plan slots, and show authoritative thrift cards and savings balances. The next stage adds cash batches, remittance, reconciliation, and exceptions. Bank transfer, POS, withdrawal-dependent actions, and reversal posting remain unavailable until their required owner contracts are verified.
 
-Complete Module 06's pending database and concurrency verification before enabling collections. Its current plan, slot, assignment, fee-snapshot, and lifecycle work is the integration baseline. The local MySQL schema migrations now run successfully; concurrency and acceptance verification remain pending.
+Complete Module 06's acceptance verification before enabling collections. Its plan, slot, assignment, fee-snapshot, and lifecycle work is the integration baseline. Local MySQL migrations and the isolated collection/plan races pass; release acceptance remains pending.
 
 ## Implementation tasks
 
@@ -51,7 +51,7 @@ Cash remains disabled locally. The default-off `COLLECTIONS_LOCAL_CERTIFIED` set
 
 ### COL-T07 acceptance record
 
-A result is **Passed** only when every clause of that scenario has direct evidence. **Blocked** means a required case, owner contract, authenticated review, or release gate remains open; no scenario is recorded as Failed. Test references below are under `tests/Feature/CollectionTest.php`. **Recommendation: do not enable local cash yet.** Applicable cash clauses and authenticated UI/performance review remain unverified, so this record does not certify the release.
+A result is **Passed** only when every clause of that scenario has direct evidence. **Blocked** means a required case, owner contract, authenticated review, or release gate remains open. The matrix has **34 Passed, 29 Blocked, 0 Failed** scenarios. Test references below are under `tests/Feature/CollectionTest.php`. **Recommendation: do not enable local cash yet.** Applicable cash clauses and authenticated UI/performance review remain unverified, so this record does not certify the release.
 
 | Scenario | Result | Evidence or open gate |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 | COL-AC-043 | Passed | `CollectionTest.php`: Agent sees only own masked batch status and cannot confirm remittance or review reconciliation; no Agent evidence submission route is exposed. |
 | COL-AC-044 | Passed | `CollectionTest.php`: a late same-date receipt after confirmed handoff and zero-variance reconciliation creates a linked open supplement while the original reconciled version, receipt and handoff counts stay unchanged. |
 | COL-AC-045 | Passed | `CollectionTest.php`: permitted Admin confirms structured handoff once; Agent and baseline Admin are denied; replay adds no second remittance and Customer liability is unchanged. |
-| COL-AC-046 | Blocked | `CollectionTest.php`: partial handoff after reassignment reduces only the original Agent receivable; a changed-amount replay of its handoff reference conflicts. Cross-Agent, earnings and unposted-payout netting failure cases remain unverified. |
+| COL-AC-046 | Blocked | `CollectionTest.php`: partial handoff after reassignment reduces only the original Agent receivable; changed-amount replay and reuse of its handoff reference for the replacement Agent's batch both conflict. Earnings and unposted-payout netting failure cases await their owning contracts. |
 | COL-AC-047 | Blocked | `CollectionTest.php` confirms shortage blocks resolution until remitted and a pending receipt reversal blocks both cash batch review and month close. `FinancialPeriodTest.php` blocks close for unsettled batches and exceptions. File evidence and future correction-owner cases remain unverified. |
 | COL-AC-048 | Passed | `CollectionTest.php`: after a ₦2,000 receipt and ₦1,500 confirmed handoff, a ₦500 shortage opens an exception, retains ₦2,000 Customer liability and exactly ₦500 original Agent debt. |
 | COL-AC-049 | Blocked | Missing-transfer investigation contract unavailable |
@@ -122,3 +122,17 @@ A result is **Passed** only when every clause of that scenario has direct eviden
 Local server load measurement: isolated MySQL test `CollectionLoadProfileTest.php`, local PHP test client on macOS, in-process network, concurrency 1, 20 samples per operation. Dataset: 10,000 Customers, 30 Agents, 20,000 plans and 2 million slots. Workspace p95 **0.162 s** (target 3 s), search p95 **0.019 s** (target 1 s), durable receipt posting p95 **0.086 s** (target 2 s). All three server targets pass; browser device/network and concurrent-session targets were not measured. Raw result: `/private/tmp/saverapp-collection-load-profile.json`.
 
 Current implementation evidence (29 September 2026): the complete Pest suite passes **896 tests, 44 skipped, 6,434 assertions**. Three isolated MySQL concurrency files pass **19 tests, 113 assertions**; their receipt-versus-month-close race initially exposed a stale batch snapshot and passes after month close switched to a locked current read. Focused cross-zone and pending-correction tests also pass on the isolated MySQL database. Vue type checking, production build, scoped PHPStan (**0 errors**), Pint, cash route and diff checks pass. Repository-wide PHPStan reports 92 diagnostics outside this changed-file scope and remains an open repository gate. The earlier authenticated 390 px receipt recovery review belongs to the previous tranche. The current in-app browser reached login without an authenticated session, so the new Admin page, cross-zone form, live assistive technology and concurrent-session browser profile remain unverified. Runtime main-site `collections.enabled` and `collections.local_certified` both read false. Keep both cash gates off until every applicable local cash gate passes and an authorized Admin publishes the settings.
+
+### Cash acceptance handoff and production operations
+
+The 29 September cash branch reran `CollectionTest.php` on its own autoloader (**63 tests, 809 assertions**), the affected cash/period/notification feature suites together (**106 tests, 1,032 assertions**), and `ThriftPlanAndCollectionMySqlConcurrencyTest.php` against the isolated `saverapp_audit_testing` database (**8 tests, 54 assertions**). The added cross-Agent handoff-reference check passed. These branch runs confirm the relevant recorded behavior; they do not replace the integration suite or certify production.
+
+| Gate | Evidence available | Remaining decision or exercise |
+| --- | --- | --- |
+| Accounting and custody | Balanced cash receipt/remittance tests, original-Agent debt, mapping-failure rollback, and counted structured handoff pass. | Finance owner must approve the deployed chart, Agent receivable and business cash custody mapping, amount cap, handoff authority, and reconciliation procedure. |
+| Database and recovery | Isolated MySQL receipt/plan races and a ledger projection rebuild pass; local server p95 profile is recorded above. | Operations owner must run production-equivalent migrations, competing receipt/period-close checks, backup restore, and an integrity/rebuild exercise on a representative dataset. |
+| Worker and scheduler | Durable notice intent and replay tests pass; midnight batch freeze is replay-safe in tests. | Operations owner must demonstrate queue retry/dead-letter monitoring, scheduler execution and freeze alerts, and recovery after interruption. |
+| Access and retention | Agent/Admin endpoint authorization and current-scope checks pass in feature tests. | Security and records owners must approve production grants, audit/evidence access, retention, and incident response; protected-file and noncash evidence policy remains deferred. |
+| Performance and accessibility | In-process single-session MySQL load targets pass on the recorded dataset; earlier 390 px receipt recovery QA is recorded. | Product/accessibility owners must review authenticated desktop/mobile/keyboard and live assistive-technology flows, the new period page, unavailable-ledger state, and representative device/network plus concurrent-session p95. No authenticated session was available for this handoff. |
+
+Module 06 acceptance must be integrated before Module 07 can be finally accepted. The integrator must rerun the complete suite and review the combined acceptance record. Cash remains disabled until the applicable gates above pass and the authorized owner approves enablement; the 29 Blocked scenarios remain explicit dependencies rather than release passes.
