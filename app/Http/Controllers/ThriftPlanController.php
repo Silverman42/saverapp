@@ -428,7 +428,7 @@ class ThriftPlanController extends Controller
                 'customerProfile.currentAssignment',
                 'termsRevisions.feeSnapshot.feeRule',
                 'termsRevisions.feeSnapshot.obligation',
-                'slots' => fn (Builder $slotQuery) => $slotQuery->whereNotNull('active_ordinal')->orderBy('active_ordinal'),
+                'slots' => fn ($slotQuery) => $slotQuery->whereNotNull('active_ordinal')->orderBy('active_ordinal'),
                 'lifecycleEvents.actor',
                 'predecessor',
             ])
