@@ -13,6 +13,7 @@ use App\Enums\ThriftPlanStatus;
 use App\Models\AgentProfile;
 use App\Models\BusinessProfile;
 use App\Models\CollectionBatch;
+use App\Models\CollectionException;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
@@ -36,7 +37,7 @@ use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-function reportFixture(): array
+function reportFixture(string $planId = 'PLN-TEST-001'): array
 {
     $agent = User::factory()->agent()->create([
         'two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now(),
@@ -47,7 +48,7 @@ function reportFixture(): array
         'customer_profile_id' => $customer->id, 'agent_profile_id' => $agentProfile->id,
         'assigned_by_user_id' => $agent->id, 'status' => CustomerAssignmentStatus::Current,
     ]);
-    $rule = FeeRule::create([
+    $rule = FeeRule::query()->where('rule_key', 'test-plan')->where('version', 1)->first() ?? FeeRule::create([
         'version' => 1, 'name' => 'No plan fee', 'kind' => FeeRuleKind::Plan,
         'rule_key' => 'test-plan', 'model' => FeeRuleModel::NoFee,
         'timing' => FeeRuleTiming::FirstContribution, 'basis' => FeeRuleBasis::None,
@@ -57,12 +58,12 @@ function reportFixture(): array
         'publication_reason' => 'Test plan rule.',
     ]);
     $plan = ThriftPlan::create([
-        'plan_id' => 'PLN-TEST-001', 'customer_profile_id' => $customer->id,
+        'plan_id' => $planId, 'customer_profile_id' => $customer->id,
         'created_by_user_id' => $agent->id, 'open_customer_profile_id' => $customer->id,
         'status' => ThriftPlanStatus::Active, 'current_terms_revision' => 1, 'version' => 1,
     ]);
     $snapshot = FeeSnapshot::create([
-        'customer_profile_id' => $customer->id, 'source_type' => 'plan', 'source_id' => $plan->plan_id,
+        'customer_profile_id' => $customer->id, 'source_type' => 'plan', 'source_id' => $planId,
         'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'No plan fee',
         'kind' => FeeRuleKind::Plan, 'model' => FeeRuleModel::NoFee,
         'timing' => FeeRuleTiming::FirstContribution, 'basis' => FeeRuleBasis::None,
@@ -418,6 +419,129 @@ test('revoking review permissions removes report owner links while retaining bas
     expect($after['sections']['primary']['status'])->toBe('Partial');
 });
 
+test('outstanding fee exceptions follow current Customer scope and disappear after waiver', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer, $assignment] = $fixture;
+    $obligation = reportFeeObligation($agent, $customer);
+    $admin = User::factory()->admin()->create();
+
+    foreach ([$customer->user, $agent, $admin] as $viewer) {
+        $section = reportData($viewer, 'exceptions')['sections']['fee_obligations'];
+        expect($section['status'])->toBe('Partial');
+        expect(reportValue(reportData($viewer, 'exceptions'), 'outstanding_fee_obligations', 'fee_obligations'))->toBe(1);
+        expect(reportValue(reportData($viewer, 'exceptions'), 'outstanding_fees', 'fee_obligations'))->toBe(50000);
+        expect($section['rows'][0]['href'])->toBe(route('customers.show', $customer->customer_id));
+    }
+    expect(reportData(CustomerProfile::factory()->create()->user, 'exceptions')['sections']['fee_obligations']['rows'])->toBe([]);
+    expect(reportData($customer->user, 'exceptions')['sections'])->not->toHaveKey('custody_batches');
+    expect(reportData($admin, 'exceptions')['sections']['refund_payables']['status'])->toBe('Unavailable');
+
+    $newAgent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
+    $newProfile = AgentProfile::factory()->active()->create(['user_id' => $newAgent->id]);
+    $assignment->update(['status' => CustomerAssignmentStatus::Ended, 'is_current' => null, 'ended_at' => now()]);
+    CustomerAssignment::factory()->create(['customer_profile_id' => $customer->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
+    expect(reportData($agent, 'exceptions')['sections']['fee_obligations']['rows'])->toBe([]);
+    expect(reportData($newAgent, 'exceptions')['sections']['fee_obligations']['rows'])->toHaveCount(1);
+
+    FeeObligationEntry::create([
+        'fee_obligation_id' => $obligation->id, 'entry_type' => FeeObligationEntryType::Waiver,
+        'amount_kobo' => 50000, 'currency' => 'NGN', 'source_type' => 'report_test',
+        'source_id' => 'full-waiver', 'idempotency_key' => 'full-waiver', 'actor_user_id' => $admin->id,
+        'customer_description' => 'Fee waived.',
+    ]);
+    $after = reportData($admin, 'exceptions');
+    expect($after['sections']['fee_obligations']['rows'])->toBe([]);
+    expect(reportValue($after, 'outstanding_fee_obligations', 'fee_obligations'))->toBe(0);
+    expect(reportValue($after, 'outstanding_fees', 'fee_obligations'))->toBe(0);
+});
+
+test('incomplete fee assessment makes its exception section unavailable without hiding workflow', function (): void {
+    $fixture = reportFixture();
+    $obligation = reportFeeObligation($fixture[0], $fixture[1]);
+    reportWithdrawal($fixture);
+    DB::table('fee_obligation_entries')->where('fee_obligation_id', $obligation->id)
+        ->where('entry_type', FeeObligationEntryType::Assessment->value)->delete();
+
+    $data = reportData($fixture[1]->user, 'exceptions');
+
+    expect($data['sections']['fee_obligations']['status'])->toBe('Unavailable');
+    expect($data['sections']['fee_obligations']['metrics'])->toBe([]);
+    expect(reportValue($data, 'supported_exceptions'))->toBe(1);
+});
+
+test('fee exception totals span pages and continuation rejects changed obligation entries', function (): void {
+    $fixture = reportFixture();
+    $agent = $fixture[0];
+    $firstObligation = reportFeeObligation($agent, $fixture[1]);
+    $template = $firstObligation->feeSnapshot;
+    foreach (range(1, 25) as $index) {
+        $customer = CustomerProfile::factory()->create();
+        $snapshot = FeeSnapshot::create([
+            'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
+            'fee_rule_id' => $template->fee_rule_id, 'fee_rule_version' => $template->fee_rule_version,
+            'name' => $template->name, 'kind' => $template->kind, 'model' => $template->model,
+            'timing' => $template->timing, 'basis' => $template->basis,
+            'settlement_source' => $template->settlement_source, 'currency' => 'NGN',
+            'amount_kobo' => 50000, 'basis_amount_kobo' => 0,
+            'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
+        ]);
+        app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
+    }
+    $admin = User::factory()->admin()->create();
+
+    $firstPage = reportData($admin, 'exceptions');
+    $cursor = $firstPage['sections']['fee_obligations']['next_cursor'];
+    $secondPage = reportData($admin, 'exceptions', ['cursor' => $cursor]);
+    expect($firstPage['sections']['fee_obligations']['rows'])->toHaveCount(25);
+    expect($secondPage['sections']['fee_obligations']['rows'])->toHaveCount(1);
+    expect(reportValue($firstPage, 'outstanding_fee_obligations', 'fee_obligations'))->toBe(26);
+    expect(reportValue($secondPage, 'outstanding_fees', 'fee_obligations'))->toBe(1300000);
+
+    FeeObligationEntry::create([
+        'fee_obligation_id' => $firstObligation->id, 'entry_type' => FeeObligationEntryType::Waiver,
+        'amount_kobo' => 1, 'currency' => 'NGN', 'source_type' => 'report_test',
+        'source_id' => 'cursor-waiver', 'idempotency_key' => 'cursor-waiver',
+        'actor_user_id' => $admin->id, 'customer_description' => 'One kobo waived.',
+    ]);
+    $this->actingAs($admin)->getJson(route('reports.show', ['report' => 'exceptions', 'cursor' => $cursor]))->assertUnprocessable();
+});
+
+test('custody exceptions use original Agent scope and fail closed on filters and owner gates', function (): void {
+    $fixture = reportFixture();
+    reportPostReceipt($fixture);
+    [$agent, $customer, $assignment] = $fixture;
+    $batch = CollectionBatch::query()->sole();
+    $admin = User::factory()->admin()->create();
+    CollectionException::create(['collection_batch_id' => $batch->id, 'opened_by_user_id' => $admin->id,
+        'kind' => 'cash_shortage', 'status' => 'open', 'amount_kobo' => 1000, 'reason' => 'PRIVATE-SHORTAGE-REASON']);
+
+    $data = reportData($admin, 'exceptions');
+    expect(reportValue($data, 'unreconciled_batches', 'custody_batches'))->toBe(1);
+    expect(reportValue($data, 'unremitted', 'custody_batches'))->toBe(200000);
+    expect(reportValue($data, 'open_exceptions', 'custody_batches'))->toBe(1);
+    expect($data['sections']['custody_batches']['rows'][0]['href'])->toBe(route('collection-batches.show', $batch));
+    expect(json_encode($data['sections']['custody_batches']))->not->toContain('PRIVATE-SHORTAGE-REASON')->not->toContain($customer->customer_id);
+    expect(reportData($agent, 'exceptions')['sections']['custody_batches']['rows'])->toHaveCount(1);
+    expect(reportData($customer->user, 'exceptions')['sections'])->not->toHaveKey('custody_batches');
+    expect(reportData($admin, 'exceptions', ['customer' => $customer->customer_id])['sections']['custody_batches']['status'])->toBe('Unavailable');
+
+    $newAgent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
+    $newProfile = AgentProfile::factory()->active()->create(['user_id' => $newAgent->id]);
+    $assignment->update(['status' => CustomerAssignmentStatus::Ended, 'is_current' => null, 'ended_at' => now()]);
+    CustomerAssignment::factory()->create(['customer_profile_id' => $customer->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
+    expect(reportData($agent, 'exceptions')['sections']['custody_batches']['rows'])->toHaveCount(1);
+    expect(reportData($newAgent, 'exceptions')['sections']['custody_batches']['rows'])->toBe([]);
+
+    config()->set('collections.enabled', false);
+    $disabled = reportData($admin, 'exceptions');
+    expect($disabled['sections']['custody_batches']['status'])->toBe('Unavailable');
+    expect($disabled['sections']['custody_batches']['reason'])->toContain('collection owner is disabled');
+    expect($disabled['sections']['fee_obligations']['status'])->toBe('Partial');
+    config()->set('collections.enabled', true);
+    DB::table('ledger_accounts')->where('code', 'agent_receivable_ngn')->update(['mapping_status' => 'unmapped']);
+    expect(reportData($admin, 'exceptions')['sections']['custody_batches']['status'])->toBe('Unavailable');
+});
+
 test('report scope polling reauthorizes without executing report financial reads', function (): void {
     $customer = CustomerProfile::factory()->create();
 
@@ -476,6 +600,7 @@ test('mixed cash separates savings fees and tender without multiplying receipts'
     expect(reportValue($fees, 'external_fees_received', 'external_receipts'))->toBe(50000);
     expect($fees['sections']['external_receipts']['rows'])->toHaveCount(1);
     expect($fees['sections']['external_receipts']['rows'][0]['external_fees_received'])->toBe('₦500.00');
+    expect(reportValue(reportData($customer->user, 'exceptions'), 'outstanding_fee_obligations', 'fee_obligations'))->toBe(0);
 });
 
 test('fee obligation activity keeps assessment corrections and waivers separate from external cash', function (): void {
@@ -673,6 +798,145 @@ test('plan reports count explicit lifecycle states without inferring closure fro
     expect($data['sections']['primary']['groups'][0]['count'])->toBe(1);
 })->with([['active', 1], ['paused', 1], ['completed', 1], ['closed', 0], ['cancelled', 0]]);
 
+test('plan funding reports verified slot coverage without treating an unfunded target as due', function (): void {
+    $fixture = reportFixture();
+    [$agent, $customer, , $plan] = $fixture;
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+
+    $empty = reportData($customer->user, 'plans')['sections']['funding_progress'];
+    expect($empty['status'])->toBe('Partial');
+    expect(reportValue(reportData($customer->user, 'plans'), 'required_slots', 'funding_progress'))->toBe(2);
+    expect(reportValue(reportData($customer->user, 'plans'), 'unfunded_slots', 'funding_progress'))->toBe(2);
+    expect(reportValue(reportData($customer->user, 'plans'), 'remaining_scheduled_target', 'funding_progress'))->toBe(400000);
+    expect($empty['rows'][0]['href'])->toBe(route('plans.show', $plan->plan_id));
+    $plan->update(['status' => ThriftPlanStatus::Cancelled]);
+    $cancelled = reportData($customer->user, 'plans')['sections']['funding_progress'];
+    expect($cancelled['rows'][0]['state'])->toBe('cancelled');
+    expect($cancelled['reason'])->toContain('not an amount due');
+    $plan->update(['status' => ThriftPlanStatus::Active]);
+
+    reportPostReceipt($fixture, '3000.00');
+    expect(DB::table('collection_allocations')->count())->toBe(2);
+    $funding = reportData($agent, 'plans')['sections']['funding_progress'];
+    expect($funding['status'])->toBe('Partial');
+    expect(reportValue(reportData($agent, 'plans'), 'fully_funded_slots', 'funding_progress'))->toBe(1);
+    expect(reportValue(reportData($agent, 'plans'), 'partially_funded_slots', 'funding_progress'))->toBe(1);
+    expect(reportValue(reportData($agent, 'plans'), 'unfunded_slots', 'funding_progress'))->toBe(0);
+    expect(reportValue(reportData($agent, 'plans'), 'funded_principal', 'funding_progress'))->toBe(300000);
+    expect(reportValue(reportData($agent, 'plans'), 'remaining_scheduled_target', 'funding_progress'))->toBe(100000);
+    expect($funding['rows'][0]['remaining_scheduled_target'])->toBe('₦1,000.00');
+});
+
+test('plan funding accepts retained slots after a name-only terms revision', function (): void {
+    $fixture = reportFixture();
+    $plan = $fixture[3];
+    reportPostReceipt($fixture, '3000.00');
+
+    $revisedTerms = $plan->currentTermsRevision()->replicate();
+    $revisedTerms->revision = 2;
+    $revisedTerms->name = 'Corrected plan name';
+    $revisedTerms->save();
+    $plan->update(['current_terms_revision' => 2, 'version' => 2]);
+
+    $funding = reportData($fixture[1]->user, 'plans')['sections']['funding_progress'];
+
+    expect($funding['status'])->toBe('Partial');
+    expect($funding['rows'])->toHaveCount(1);
+    expect(reportValue(reportData($fixture[1]->user, 'plans'), 'fully_funded_slots', 'funding_progress'))->toBe(1);
+    expect(reportValue(reportData($fixture[1]->user, 'plans'), 'partially_funded_slots', 'funding_progress'))->toBe(1);
+    expect(reportValue(reportData($fixture[1]->user, 'plans'), 'funded_principal', 'funding_progress'))->toBe(300000);
+});
+
+test('plan funding rejects a mismatched slot date or another plans terms ownership', function (): void {
+    $fixture = reportFixture();
+    $other = reportFixture('PLN-TEST-002');
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $slot = ContributionSlot::query()->where('thrift_plan_id', $fixture[3]->id)->where('active_ordinal', 2)->sole();
+    $correctDate = $slot->due_date;
+
+    DB::table('contribution_slots')->where('id', $slot->id)
+        ->update(['due_date' => CarbonImmutable::parse($correctDate)->addDay()->toDateString()]);
+    $wrongDate = reportData($fixture[1]->user, 'plans');
+    expect($wrongDate['sections']['primary']['status'])->toBe('Partial');
+    expect($wrongDate['sections']['funding_progress']['status'])->toBe('Unavailable');
+
+    $foreignTerms = $other[3]->currentTermsRevision()->replicate();
+    $foreignTerms->revision = 2;
+    $foreignTerms->save();
+    DB::table('contribution_slots')->where('id', $slot->id)
+        ->update(['due_date' => $correctDate, 'plan_terms_revision_id' => $foreignTerms->id]);
+    $wrongOwner = reportData($fixture[1]->user, 'plans');
+    expect($wrongOwner['sections']['primary']['status'])->toBe('Partial');
+    expect($wrongOwner['sections']['funding_progress']['status'])->toBe('Unavailable');
+});
+
+test('plan funding totals and continuation follow current scope and source changes', function (): void {
+    $first = reportFixture();
+    $second = reportFixture('PLN-TEST-002');
+    $admin = User::factory()->admin()->create();
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+
+    $page = reportData($admin, 'plans', ['page_size' => 1]);
+    expect($page['sections']['funding_progress']['total'])->toBe(2);
+    expect(reportValue($page, 'required_slots', 'funding_progress'))->toBe(4);
+    $cursor = $page['sections']['funding_progress']['next_cursor'];
+    expect($cursor)->not->toBeNull();
+    expect(reportData($admin, 'plans', ['page_size' => 1, 'cursor' => $cursor])['sections']['funding_progress']['rows'])->toHaveCount(1);
+    expect(reportData($admin, 'plans', ['plan' => $first[3]->plan_id])['sections']['funding_progress']['total'])->toBe(1);
+    expect(reportData($admin, 'plans', ['plan_status' => 'active'])['sections']['funding_progress']['total'])->toBe(2);
+    expect(reportData($first[0], 'plans')['sections']['funding_progress']['total'])->toBe(1);
+    expect(reportData($second[1]->user, 'plans')['sections']['funding_progress']['total'])->toBe(1);
+
+    reportPostReceipt($second);
+    expect(fn () => reportData($admin, 'plans', ['page_size' => 1, 'cursor' => $cursor]))
+        ->toThrow(HttpException::class);
+
+    $newAgent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
+    $newProfile = AgentProfile::factory()->active()->create(['user_id' => $newAgent->id]);
+    $first[2]->update(['status' => CustomerAssignmentStatus::Ended, 'is_current' => null, 'ended_at' => now()]);
+    CustomerAssignment::factory()->create(['customer_profile_id' => $first[1]->id, 'agent_profile_id' => $newProfile->id, 'version' => 2]);
+    expect(reportData($first[0], 'plans')['sections']['funding_progress']['rows'])->toBe([]);
+    expect(reportData($newAgent, 'plans')['sections']['funding_progress']['rows'])->toHaveCount(1);
+});
+
+test('plan funding fails closed independently of plan terms on disabled or inconsistent owners', function (): void {
+    $fixture = reportFixture();
+    $customer = $fixture[1];
+    $disabled = reportData($customer->user, 'plans');
+    expect($disabled['sections']['primary']['status'])->toBe('Partial');
+    expect($disabled['sections']['funding_progress']['status'])->toBe('Unavailable');
+
+    reportPostReceipt($fixture);
+    $otherCustomer = CustomerProfile::factory()->create();
+    DB::table('collection_receipts')->update(['customer_profile_id' => $otherCustomer->id]);
+    expect(reportData($customer->user, 'plans')['sections']['funding_progress']['status'])->toBe('Unavailable');
+    DB::table('collection_receipts')->update(['customer_profile_id' => $customer->id]);
+    DB::table('collection_allocations')->update(['amount_kobo' => 300000]);
+    $corrupt = reportData($customer->user, 'plans');
+    expect($corrupt['sections']['primary']['status'])->toBe('Partial');
+    expect($corrupt['sections']['funding_progress']['status'])->toBe('Unavailable');
+    DB::table('collection_allocations')->update(['amount_kobo' => 200000]);
+    DB::table('ledger_transaction_projections')->delete();
+    expect(reportData($customer->user, 'plans')['sections']['funding_progress']['status'])->toBe('Unavailable');
+    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']);
+    expect(reportData($customer->user, 'plans')['sections']['funding_progress']['status'])->toBe('Unavailable');
+});
+
+test('plan funding rejects incomplete active slots while terms remain readable', function (): void {
+    $fixture = reportFixture();
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    DB::table('contribution_slots')->where('active_ordinal', 2)->update(['active_ordinal' => null]);
+
+    $data = reportData($fixture[1]->user, 'plans');
+    expect($data['sections']['primary']['status'])->toBe('Partial');
+    expect($data['sections']['funding_progress']['status'])->toBe('Unavailable');
+    expect($data['sections']['funding_progress']['metrics'])->toBe([]);
+});
+
 test('corrupt receipt components do not publish financial totals despite a previously ready projection', function (): void {
     $fixture = reportFixture();
     reportPostReceipt($fixture);
@@ -735,6 +999,7 @@ test('cash batch report shows scoped partial remittance and reviewed shortage wi
     DB::table('ledger_entries')->where('ledger_posting_group_id', $postingId)
         ->where('side', 'debit')->update(['amount_kobo' => 149999]);
     expect(reportData($admin, 'reconciliation')['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
+    expect(reportData($admin, 'exceptions')['sections']['custody_batches']['status'])->toBe('Unavailable');
     DB::table('ledger_entries')->where('ledger_posting_group_id', $postingId)
         ->where('side', 'debit')->update(['amount_kobo' => 150000]);
     DB::table('collection_batch_reviews')->update(['outstanding_kobo' => 0]);
@@ -773,6 +1038,42 @@ test('cash batch report retains frozen original and linked late supplement', fun
     expect(reportData($admin, 'reconciliation')['sections']['batch_reconciliation']['status'])->toBe('Unavailable');
     expect(fn () => reportData($admin, 'reconciliation', ['page_size' => 1, 'cursor' => $cursor]))
         ->toThrow(HttpException::class);
+});
+
+test('cash exception continuation rejects reconciliation changes and keeps an open supplement', function (): void {
+    $fixture = reportFixture();
+    reportPostReceipt($fixture);
+    $original = CollectionBatch::query()->sole();
+    $this->travel(1)->days();
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->withSession(['auth.login_at' => now()->timestamp, 'auth.last_active_at' => now()->timestamp]);
+    reportPostReceipt($fixture, '1000.00', $fixture[4]);
+    $admin = User::factory()->admin()->create();
+    $admin->givePermissionTo(AdminPermission::ReconciliationManage->value);
+
+    $before = reportData($admin, 'exceptions', ['page_size' => 1]);
+    $cursor = $before['sections']['custody_batches']['next_cursor'];
+    expect($before['sections']['custody_batches']['total'])->toBe(2);
+    expect($cursor)->not->toBeNull();
+
+    $this->actingAs($admin)->post(route('collection-batches.remittances.store', $original), [
+        'handoff_reference' => 'EXCEPTION-REPORT-HANDOFF', 'amount_ngn' => '2000.00',
+        'handoff_date' => CarbonImmutable::now('Africa/Lagos')->toDateString(),
+        'receiving_location' => 'Lagos office', 'source_attestation' => 'Counted cash.',
+        'batch_version' => $original->fresh()->version, 'confirmed' => true,
+    ])->assertRedirect(route('collection-batches.show', $original))->assertSessionHasNoErrors();
+    $this->post(route('collection-batches.review', $original), [
+        'batch_version' => $original->fresh()->version, 'reason' => 'Exact cash remittance confirmed.',
+        'confirmed' => true,
+    ])->assertRedirect(route('collection-batches.show', $original))->assertSessionHasNoErrors();
+
+    expect(fn () => reportData($admin, 'exceptions', ['page_size' => 1, 'cursor' => $cursor]))
+        ->toThrow(HttpException::class);
+    $after = reportData($admin, 'exceptions');
+    expect($after['sections']['custody_batches']['total'])->toBe(1);
+    expect($after['sections']['custody_batches']['rows'][0]['revision'])->toBe(2);
+    expect($after['sections']['custody_batches']['rows'][0]['predecessor'])->toBe($original->id);
+    expect(reportValue($after, 'unremitted', 'custody_batches'))->toBe(100000);
 });
 
 test('cursor invalidates on new postings permission revocation and reassignment', function (): void {

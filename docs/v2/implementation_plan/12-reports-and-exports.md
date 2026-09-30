@@ -57,6 +57,38 @@ The reconciliation report now has a separate current cash batch section. It show
 
 The focused Report test file passes 47 tests and 471 assertions. The affected Report, FeeOverview, Collection, LedgerTransaction, Dashboard and DashboardAnalytics run passes 146 tests and 1,643 assertions. Scoped PHPStan, Pint, Vue type checking, the production build and `git diff --check` pass. Authenticated visual inspection, production load/concurrency evidence and the user-run complete PHP suite remain unverified. `RPT-AC-020` and `RPT-AC-021` remain Blocked pending their full historical and reconciliation contracts.
 
+## Focused task brief — RPT-T03 exception coverage slice
+
+- Task: Extend the interactive exception report with current fee obligation and cash batch work queues.
+- Result: Positive entry-derived outstanding fees and unreconciled original-Agent batches have independent scoped rows, full totals and source-bound continuation; refund payables remain explicitly unavailable.
+- Source: [Module 12 Sections 5.9 and 16–17](../modules/12-reports-and-exports.md); `RPT-FR-016`; `RPT-AC-024`; Modules 05 and 07 fee, custody and exception owner contracts.
+- Scope: Existing report reader, catalogue, metric definitions, report page labels, focused tests, plan and register. No new routes, schema, dependencies, exports or owner mutations.
+- Reference: Existing fee activity and verified cash batch sections, repeatable-read source-bound cursors, and current Customer/Agent scope rules.
+- Dependencies: Fee entry integrity and current assignment; collection enablement, ready ledger projection and mapped custody accounts. Refund payable mapping and remaining exception owners stay gated.
+- Verification: Report, FeeOverview, Collection and LedgerTransaction feature tests; scoped PHPStan, Pint, Vue type check, production build and diff review.
+
+### RPT-T03 exception coverage checkpoint — 29 September 2026
+
+The exception report now separates its existing withdrawal/reversal queue from scoped outstanding fee obligations and unreconciled cash batch revisions. Fee balances are derived from assessment, correction, settlement and waiver entries; missing or inconsistent assessment history makes that section Unavailable. Customers see only their own obligations, Agents see current assigned Customers, and Admins see the business scope. Cash batches use the verified Module 07 ledger/review source, preserve original-Agent attribution after reassignment, omit Customer identity and private reasons, and link to the currently authorized owner screen. Customer filters cannot safely select original-Agent custody, so that section reports Unavailable until cleared. Disabled collections or inconsistent custody evidence also fail closed. Refund payables report Unavailable while their account mapping and owner contract remain unapproved. Report schema and metric-definition versions are 4.
+
+The focused Report tests pass as part of the affected Report, FeeOverview, Collection and LedgerTransaction run: **118 tests, 1,387 assertions**. Scoped PHPStan, Pint, Vue type checking and the production build pass. Authenticated visual inspection, a MySQL concurrency/load profile and the user-run complete PHP suite remain unverified. `RPT-AC-024` remains Blocked because payout incidents, closure, archival, audit, delivery and other exception owners are not completely integrated; a zero in an available section is never a claim of zero exceptions across all owners.
+
+## Focused task brief — RPT-T03 plan funding slice
+
+- Task: Add current verified slot funding to the interactive plan report.
+- Result: A separate scoped section shows each plan's required, fully funded, partially funded and unfunded slots, funded principal and remaining scheduled target, with full totals and independent continuation.
+- Source: [Module 12 Sections 5.8 and 16–17](../modules/12-reports-and-exports.md); `RPT-FR-015`; `RPT-AC-023`; Modules 06–07 terms, slots, allocations and receipt projection contracts.
+- Scope: Existing report reader, catalogue, metric definitions, page section label, focused tests, plan and register. No new routes, schema, dependencies, exports or owner mutations.
+- Reference: Existing plan lifecycle projection, Module 07 card funding and report section cursor/source gates.
+- Dependencies: Enabled collections, ready ledger projection and consistent current terms, active slots, receipts and allocations. Historical eligibility and settlement remain gated.
+- Verification: Report, Collection and LedgerTransaction feature tests; scoped PHPStan, Pint, Vue type check, production build and diff review.
+
+### RPT-T03 plan funding checkpoint — 30 September 2026
+
+The plan report now includes an independent current funding section. It verifies each active slot's owning plan, ordinal, date and amount against the current terms while accepting slots legitimately retained from an earlier terms revision. Every scoped receipt's allocated savings must agree with its ready ledger projection; allocations must belong to the same plan and Customer. The section separates fully funded, partially funded and unfunded slots and presents remaining scheduled target as the difference from the agreed target, never an amount due, missed-slot classification, liability or available balance. Cancelled cycles retain their target history without implying collectible work. If collection, ledger, terms, slot or receipt evidence is unavailable or inconsistent, only funding becomes Unavailable while plan terms remain readable. Scope, filters, cutoff and source changes invalidate its encrypted continuation. Report schema and metric definitions remain version 5.
+
+The focused Report file passes **58 tests, 589 assertions**; the affected Report, Collection and LedgerTransaction run passes **123 tests, 1,420 assertions**. Six focused plan funding tests pass on isolated MySQL (**53 assertions**), including retained revisions and mismatched owner/date rejection. One guarded MySQL read/post race passes (**12 assertions**): the read remains internally consistent or Unavailable without metrics while projection catches up, and a changed source rejects its prior continuation. Scoped PHPStan, Pint, Vue type checking, the production build and `git diff --check` pass. Authenticated visual inspection and the user-run complete PHP suite remain unverified. The representative MySQL load profile in `RPT-AC-042` is still open. `RPT-AC-023` remains Blocked until historical eligibility, withdrawals, fees and settlement are available.
+
 ## Implementation checkpoint — 26 September 2026
 
 | Task    | Delivered behavior                                                                                                                                                                                                                     | Status                                                           |
@@ -65,7 +97,7 @@ The focused Report test file passes 47 tests and 471 assertions. The affected Re
 | RPT-T02 | Shared dashboard/report metric definitions with version 1; TypeScript payload contracts; manifest with scope, schema, timezone/UTC boundaries, cutoff and ledger state/version/watermark. Dashboard arithmetic is unchanged.           | Implemented                                                      |
 | RPT-T03 | Current Customer savings positions, verified receipt components, withdrawal workflow, plan terms/lifecycle, Agent current portfolios and separate masked original-actor totals, custody positions, pending withdrawal/reversal queues. | Implemented for supported owners                                 |
 | RPT-T04 | Per-report partial/unavailable states and named dependency reasons; fee, payout/compensation, historical eligibility/settlement and export capability gates.                                                                           | Implemented                                                      |
-| RPT-T05 | MySQL repeatable-read transaction; verified financial-source gates; complete filtered totals/groups; authenticated encrypted cursors binding viewer/scope/query/schema/definition/business versions, cutoff and source fingerprint.    | Implemented; production-engine concurrency evidence pending      |
+| RPT-T05 | MySQL repeatable-read transaction; verified financial-source gates; complete filtered totals/groups; authenticated encrypted cursors binding viewer/scope/query/schema/definition/business versions, cutoff and source fingerprint.    | Implemented; focused MySQL read/post race passes; representative load and broader concurrency evidence pending |
 | RPT-T06 | Responsive Inertia report center/detail, Wayfinder navigation, shared date picker/layout, accessible tables and metric definitions; explicit refresh; five-second scope polling and stale-content clearing.                            | Implemented; authenticated visual/accessibility evidence pending |
 | RPT-T07 | Focused tests, owner/dashboard regressions, scoped static/frontend checks and acceptance mapping below.                                                                                                                                | Recorded; full Module 12 acceptance remains blocked              |
 
@@ -122,8 +154,8 @@ A Blocked scenario may have partial automated evidence; it is not promoted to Pa
 | RPT-AC-020 | Blocked | Original-Agent current responsibility, verified batch tender and remittances pass; historical opening/additions/remittances/closing reconciliation remains unavailable. |
 | RPT-AC-021 | Blocked | Current batch revisions, linked late supplements, latest review and unresolved exception state pass; complete versioned reconciliation and variance history remain unavailable. |
 | RPT-AC-022 | Blocked | Current portfolio and recording actor separation pass; historical effective-service reporting unavailable.                                                |
-| RPT-AC-023 | Blocked | Five explicit lifecycle states and agreed targets pass; full funding/withdrawal/fees/settlement report unavailable.                                       |
-| RPT-AC-024 | Blocked | Supported queue counts and safe links pass; complete exception-owner coverage unavailable.                                                                |
+| RPT-AC-023 | Blocked | Five lifecycle states, agreed targets and verified current slot funding pass with independent source gates; retained prior-revision slots remain readable when they match current terms, while mismatched dates/owners fail closed. Historical eligibility, withdrawals, fees and settlement remain unavailable. |
+| RPT-AC-024 | Blocked | Scoped withdrawal/reversal, positive fee obligation and verified cash batch queues pass, with source gates and safe links; refund payables and complete exception-owner coverage remain unavailable. |
 | RPT-AC-025 | Blocked | Allowed filters/ranges, stable pagination, grouping and full totals pass; full specification search/amount/filter matrix deferred.                        |
 | RPT-AC-026 | Blocked | No eligible denominator or fulfillment percentage is enabled; exact ratio matrix deferred.                                                                |
 | RPT-AC-027 | Blocked | Scoped owner links and former-Agent denial pass; exported-ID scenario deferred.                                                                           |
@@ -141,6 +173,6 @@ A Blocked scenario may have partial automated evidence; it is not promoted to Pa
 | RPT-AC-039 | Blocked | Responsive table/label/status implementation and scope clearing present; authenticated device/accessibility evidence pending.                             |
 | RPT-AC-040 | Blocked | Export notifications deferred.                                                                                                                            |
 | RPT-AC-041 | Blocked | Privacy-safe report telemetry present; canonical protected audit/download events pending.                                                                 |
-| RPT-AC-042 | Blocked | Source-change pagination tests pass; MySQL concurrency and declared load profile unverified.                                                              |
+| RPT-AC-042 | Blocked | Source-change pagination and a guarded isolated MySQL read/post race pass; representative load and broader concurrency profiles remain unverified.           |
 | RPT-AC-043 | Blocked | Production restoration/reproduction and worker-authority evidence pending.                                                                                |
 | RPT-AC-044 | Blocked | Selected missing-source gates tested; exhaustive per-owner/export disable matrix pending.                                                                 |

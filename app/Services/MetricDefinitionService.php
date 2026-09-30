@@ -6,7 +6,7 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 3;
+    public const VERSION = 5;
 
     /** @var array<string, array{title: string, source: string, date_basis: string, definition: string}> */
     private const DEFINITIONS = [
@@ -32,6 +32,15 @@ class MetricDefinitionService
         'assessment_reduction' => ['title' => 'Assessment reductions', 'source' => 'fee obligation entries', 'date_basis' => 'entry recorded time', 'definition' => 'Approved reductions to fee assessments recorded in the selected period; not cash.'],
         'waived_fees' => ['title' => 'Fees waived', 'source' => 'fee obligation entries', 'date_basis' => 'entry recorded time', 'definition' => 'Waivers recorded in the selected period; no cash was received.'],
         'external_fees_received' => ['title' => 'External fees received', 'source' => 'verified collection fee components', 'date_basis' => 'receipt received date', 'definition' => 'Posted external fee component only; excludes savings principal and does not count gross tender again.'],
+        'outstanding_fee_obligations' => ['title' => 'Outstanding fee obligations', 'source' => 'fee obligation entries', 'date_basis' => 'current entry-derived balance', 'definition' => 'Distinct scoped obligations with a positive unpaid balance; not cash received or recognized income.'],
+        'outstanding_fees' => ['title' => 'Outstanding fees', 'source' => 'fee obligation entries', 'date_basis' => 'current entry-derived balance', 'definition' => 'Assessed fees plus increases, less reductions, net settlement and waivers. Does not debit Customer savings by itself.'],
+        'unreconciled_batches' => ['title' => 'Cash batches needing reconciliation', 'source' => 'verified collection batches', 'date_basis' => 'current batch state', 'definition' => 'Distinct original-Agent batch revisions that are not reconciled, including unresolved supplements.'],
+        'required_slots' => ['title' => 'Agreed contribution slots', 'source' => 'current plan terms and slots', 'date_basis' => 'current plan revision', 'definition' => 'Agreed slots across the selected plans; a target, not received money.'],
+        'fully_funded_slots' => ['title' => 'Fully funded slots', 'source' => 'verified collection allocations', 'date_basis' => 'current allocation state', 'definition' => 'Active slots whose net allocated principal equals the agreed slot amount.'],
+        'partially_funded_slots' => ['title' => 'Partially funded slots', 'source' => 'verified collection allocations', 'date_basis' => 'current allocation state', 'definition' => 'Active slots with positive funding below their agreed amount.'],
+        'unfunded_slots' => ['title' => 'Unfunded slots', 'source' => 'current plan slots and verified allocations', 'date_basis' => 'current allocation state', 'definition' => 'Active slots with no allocated principal; this does not classify them as due or missed.'],
+        'funded_principal' => ['title' => 'Funded principal', 'source' => 'verified collection allocations', 'date_basis' => 'current allocation state', 'definition' => 'Principal allocated to active plan slots, separate from current savings liability.'],
+        'remaining_scheduled_target' => ['title' => 'Remaining scheduled target', 'source' => 'current plan terms and verified allocations', 'date_basis' => 'current allocation state', 'definition' => 'Agreed target less allocated principal; not an amount due or an available savings balance.'],
     ];
 
     /** @return array<string, mixed> */

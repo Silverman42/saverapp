@@ -42,6 +42,10 @@ const secondaryTitles: Record<string, string> = {
     business_cash: 'Business cash custody',
     batch_reconciliation: 'Cash batch reconciliation',
     external_receipts: 'External fee receipts',
+    fee_obligations: 'Outstanding fee obligations',
+    custody_batches: 'Cash batches needing reconciliation',
+    refund_payables: 'Refund payables',
+    funding_progress: 'Current plan funding progress',
 };
 const statuses = ['active', 'inactive', 'restricted', 'archived'];
 const planStatuses = ['active', 'paused', 'completed', 'closed', 'cancelled'];

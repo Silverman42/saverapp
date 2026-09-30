@@ -25,7 +25,7 @@ use Throwable;
 
 class ReportReadService
 {
-    public const SCHEMA_VERSION = 3;
+    public const SCHEMA_VERSION = 5;
 
     public function __construct(
         private ResourceScopeService $scope,
@@ -88,6 +88,8 @@ class ReportReadService
             $allowedSections = match ($code) {
                 'fees' => ['primary', 'external_receipts'],
                 'reconciliation' => ['primary', 'batch_reconciliation'],
+                'exceptions' => ['primary', 'fee_obligations', 'custody_batches'],
+                'plans' => ['primary', 'funding_progress'],
                 default => ['primary'],
             };
             if ($cursor !== null && ! in_array($cursor['section'] ?? 'primary', $allowedSections, true)) {
@@ -139,6 +141,20 @@ class ReportReadService
             if ($code === 'fees' && $feeSections === null) {
                 $sections['external_receipts'] = $this->unavailable('Verified external fee receipts are unavailable.');
             }
+            if ($code === 'plans') {
+                try {
+                    if (! config('collections.enabled')) {
+                        throw new RuntimeException('Collections are disabled.');
+                    }
+                    $this->requireLedger($state);
+                    $spec = $this->planFundingSpec($customers, $filters, $state, $cutoff);
+                    $sections['funding_progress'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                        'Current verified allocation coverage of agreed slots. Unfunded target is not an amount due, Customer liability or a missed-slot classification.',
+                        $state, 'funding_progress');
+                } catch (RuntimeException|QueryException) {
+                    $sections['funding_progress'] = $this->unavailable('Verified plan funding is unavailable or inconsistent.');
+                }
+            }
             if ($code === 'reconciliation') {
                 try {
                     $this->requireLedger($state);
@@ -152,6 +168,56 @@ class ReportReadService
                 } catch (RuntimeException|QueryException) {
                     $sections['batch_reconciliation'] = $this->unavailable('Verified cash batch reconciliation is unavailable or inconsistent.');
                 }
+            }
+            if ($code === 'exceptions') {
+                try {
+                    $spec = $this->feeExceptionSpec($viewer, $customers, $cutoff);
+                    $sections['fee_obligations'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                        'Current outstanding fee obligations only. An assessment is neither cash received nor fee income.',
+                        $state, 'fee_obligations');
+                } catch (RuntimeException|QueryException) {
+                    $sections['fee_obligations'] = $this->unavailable('Fee obligation history is unavailable or inconsistent.');
+                }
+                if ($viewer->user_type !== UserType::Customer) {
+                    try {
+                        if (filled($filters['customer'] ?? null) || filled($filters['customer_status'] ?? null)) {
+                            throw new RuntimeException('Customer filters do not identify original-Agent custody.');
+                        }
+                        if (! config('collections.enabled')) {
+                            throw new RuntimeException('Collections are disabled.');
+                        }
+                        $this->requireLedger($state);
+                        $spec = $this->batchReconciliationSpec($viewer, null, $state, $cutoff);
+                        $spec['query']->where(function (Builder $query): void {
+                            $query->where('batches.status', '<>', 'reconciled')
+                                ->orWhereExists(function (Builder $exceptions): void {
+                                    $exceptions->selectRaw('1')->from('collection_exceptions as unresolved')
+                                        ->whereColumn('unresolved.collection_batch_id', 'batches.id')
+                                        ->where('unresolved.status', '<>', 'resolved');
+                                });
+                        })->reorder()->orderBy('batches.received_date')->orderBy('batches.id');
+                        $spec['columns'] = ['reference' => 'Batch', 'received_date' => 'Received date',
+                            'original_agent' => 'Original Agent', 'revision' => 'Revision', 'predecessor' => 'Previous batch',
+                            'state' => 'Current state', 'unremitted' => 'Unremitted cash', 'open_exceptions' => 'Open exceptions',
+                            'latest_review' => 'Latest review'];
+                        $spec['money'] = ['unremitted'];
+                        $spec['counts'] = ['unreconciled_batches' => null, 'open_exceptions' => 'open_exceptions'];
+                        $spec['link'] = 'collection-batches.show';
+                        $sections['custody_batches'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                            'Current original-Agent batches needing reconciliation. Amounts are custody responsibility, not Customer liability or fee income.',
+                            $state, 'custody_batches');
+                    } catch (RuntimeException|QueryException $exception) {
+                        $reason = match ($exception->getMessage()) {
+                            'Customer filters do not identify original-Agent custody.' => 'Clear the Customer filter to view original-Agent custody work.',
+                            'Collections are disabled.' => 'The collection owner is disabled; custody exceptions are unavailable.',
+                            default => 'Verified cash batch reconciliation is unavailable or inconsistent.',
+                        };
+                        $sections['custody_batches'] = $this->unavailable($reason);
+                    }
+                }
+                $sections['refund_payables'] = $this->unavailable(
+                    'Refund payable exceptions require an approved mapped ledger account and owner contract. No zero balance is inferred.'
+                );
             }
             if ($code === 'agent-performance') {
                 try {
@@ -366,6 +432,186 @@ class ReportReadService
             'counts' => ['batch_count' => null, 'receipt_count' => 'receipt_count', 'open_exceptions' => 'open_exceptions'],
             'link' => $viewer->user_type === UserType::Admin ? 'collection-batches.show' : null,
             'reference' => 'reference', 'viewer' => $viewer];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function planFundingSpec(EloquentBuilder $customers, array $filters, array $state, CarbonImmutable $cutoff): array
+    {
+        $expectedSlotDate = match (DB::getDriverName()) {
+            'sqlite' => "date(current_slot_terms.start_date, '+' || (slots.active_ordinal - 1) || ' days')",
+            'mysql', 'mariadb' => 'DATE_ADD(current_slot_terms.start_date, INTERVAL (slots.active_ordinal - 1) DAY)',
+            default => throw new RuntimeException('Plan schedule verification is unavailable for this database.'),
+        };
+        $scopedPlans = DB::table('thrift_plans as scoped_plans')
+            ->whereIn('scoped_plans.customer_profile_id', (clone $customers)->select('id'));
+        if (filled($filters['plan'] ?? null)) {
+            $scopedPlans->where('scoped_plans.plan_id', $filters['plan']);
+        }
+        if (filled($filters['plan_status'] ?? null)) {
+            $scopedPlans->where('scoped_plans.status', $filters['plan_status']);
+        }
+        $receiptAllocations = DB::table('collection_allocations')
+            ->selectRaw('collection_receipt_id, SUM(amount_kobo) AS allocated_savings')
+            ->groupBy('collection_receipt_id');
+        $invalidReceipts = DB::table('collection_receipts as receipts')
+            ->joinSub((clone $scopedPlans)->select('scoped_plans.id', 'scoped_plans.customer_profile_id'),
+                'scoped_plans', 'scoped_plans.id', '=', 'receipts.thrift_plan_id')
+            ->leftJoinSub($receiptAllocations, 'receipt_allocations', 'receipt_allocations.collection_receipt_id', '=', 'receipts.id')
+            ->leftJoin('ledger_transaction_references as refs', function (JoinClause $join): void {
+                $join->on('refs.root_id', '=', 'receipts.id')->where('refs.root_type', 'collection_receipt');
+            })->leftJoin('ledger_transaction_projections as projection', function (JoinClause $join) use ($state): void {
+                $join->on('projection.ledger_transaction_reference_id', '=', 'refs.id')
+                    ->where('projection.projection_version', $state['version']);
+            })->where(function (Builder $query) use ($state, $cutoff): void {
+                $query->whereColumn('receipts.customer_profile_id', '<>', 'scoped_plans.customer_profile_id')
+                    ->orWhereRaw('COALESCE(receipt_allocations.allocated_savings, 0) <> receipts.savings_amount_kobo')
+                    ->orWhereRaw('receipts.savings_amount_kobo + receipts.fee_amount_kobo <> receipts.tender_amount_kobo')
+                    ->orWhere('receipts.recorded_at', '>', $cutoff)
+                    ->orWhereNull('projection.id')->orWhere('projection.status', '<>', 'posted')
+                    ->orWhere('projection.type', '<>', 'contribution')->orWhere('projection.currency', '<>', 'NGN')
+                    ->orWhereColumn('projection.customer_profile_id', '<>', 'receipts.customer_profile_id')
+                    ->orWhereColumn('projection.gross_amount_kobo', '<>', 'receipts.tender_amount_kobo')
+                    ->orWhereColumn('projection.fee_amount_kobo', '<', 'receipts.fee_amount_kobo')
+                    ->orWhere('projection.source_max_group_id', '>', $state['watermark'])
+                    ->orWhere('projection.committed_at', '>', $cutoff);
+            })->exists();
+        if ($invalidReceipts || (clone $scopedPlans)->whereNotExists(function (Builder $query): void {
+            $query->selectRaw('1')->from('plan_terms_revisions as current_terms')
+                ->whereColumn('current_terms.thrift_plan_id', 'scoped_plans.id')
+                ->whereColumn('current_terms.revision', 'scoped_plans.current_terms_revision');
+        })->exists()) {
+            throw new RuntimeException('Plan or receipt owner is inconsistent.');
+        }
+
+        $allocations = DB::table('collection_allocations as allocations')
+            ->join('contribution_slots as funded_slots', 'funded_slots.id', '=', 'allocations.contribution_slot_id')
+            ->join('thrift_plans as funded_plans', 'funded_plans.id', '=', 'funded_slots.thrift_plan_id')
+            ->join('collection_receipts as receipts', 'receipts.id', '=', 'allocations.collection_receipt_id')
+            ->selectRaw('allocations.contribution_slot_id, SUM(allocations.amount_kobo) AS funded')
+            ->selectRaw('SUM(CASE WHEN allocations.amount_kobo < 1 OR receipts.thrift_plan_id <> funded_slots.thrift_plan_id
+                OR receipts.customer_profile_id <> funded_plans.customer_profile_id OR receipts.recorded_at > ?
+                THEN 1 ELSE 0 END) AS invalid_allocations', [$cutoff])
+            ->groupBy('allocations.contribution_slot_id');
+        $slots = DB::table('contribution_slots as slots')
+            ->join('thrift_plans as slot_plans', 'slot_plans.id', '=', 'slots.thrift_plan_id')
+            ->join('plan_terms_revisions as current_slot_terms', function (JoinClause $join): void {
+                $join->on('current_slot_terms.thrift_plan_id', '=', 'slot_plans.id')
+                    ->on('current_slot_terms.revision', '=', 'slot_plans.current_terms_revision');
+            })
+            ->leftJoin('plan_terms_revisions as originating_terms', 'originating_terms.id', '=', 'slots.plan_terms_revision_id')
+            ->leftJoinSub($allocations, 'funding', 'funding.contribution_slot_id', '=', 'slots.id')
+            ->whereNotNull('slots.active_ordinal')
+            ->selectRaw('slots.thrift_plan_id, COUNT(*) AS active_slots, MIN(slots.active_ordinal) AS first_ordinal,
+                MAX(slots.active_ordinal) AS last_ordinal, MIN(slots.expected_amount_kobo) AS first_target,
+                MAX(slots.expected_amount_kobo) AS last_target, SUM(slots.expected_amount_kobo) AS slot_target,
+                COALESCE(SUM(funding.funded), 0) AS funded_principal,
+                SUM(CASE WHEN COALESCE(funding.funded, 0) = slots.expected_amount_kobo THEN 1 ELSE 0 END) AS fully_funded_slots,
+                SUM(CASE WHEN COALESCE(funding.funded, 0) > 0 AND COALESCE(funding.funded, 0) < slots.expected_amount_kobo THEN 1 ELSE 0 END) AS partially_funded_slots,
+                SUM(CASE WHEN COALESCE(funding.funded, 0) = 0 THEN 1 ELSE 0 END) AS unfunded_slots,
+                COALESCE(SUM(funding.invalid_allocations), 0) AS invalid_allocations')
+            ->selectRaw("SUM(CASE WHEN originating_terms.id IS NULL OR originating_terms.thrift_plan_id <> slots.thrift_plan_id
+                OR slots.ordinal <> slots.active_ordinal OR slots.expected_amount_kobo <> current_slot_terms.contribution_amount_kobo
+                OR slots.due_date <> {$expectedSlotDate} THEN 1 ELSE 0 END) AS invalid_slots")
+            ->groupBy('slots.thrift_plan_id');
+        $inactiveAllocations = DB::table('contribution_slots as inactive_slots')
+            ->join('collection_allocations as inactive_allocations', 'inactive_allocations.contribution_slot_id', '=', 'inactive_slots.id')
+            ->whereNull('inactive_slots.active_ordinal')->selectRaw('inactive_slots.thrift_plan_id, COUNT(*) AS invalid_count')
+            ->groupBy('inactive_slots.thrift_plan_id');
+        $query = $this->customerQuery($customers)
+            ->join('thrift_plans as plans', 'plans.customer_profile_id', '=', 'customers.id')
+            ->join('plan_terms_revisions as terms', function (JoinClause $join): void {
+                $join->on('terms.thrift_plan_id', '=', 'plans.id')->on('terms.revision', '=', 'plans.current_terms_revision');
+            })->leftJoinSub($slots, 'slot_totals', 'slot_totals.thrift_plan_id', '=', 'plans.id')
+            ->leftJoinSub($inactiveAllocations, 'inactive_funding', 'inactive_funding.thrift_plan_id', '=', 'plans.id')
+            ->select('customers.customer_id as customer', 'customer_users.name as name',
+                'current_agents.agent_id as current_agent', 'plans.plan_id as reference', 'plans.status as state',
+                'terms.contribution_days as required_slots',
+                'terms.contribution_amount_kobo as _daily_target', 'terms.expected_gross_kobo as _agreed_target',
+                'terms.currency as _currency', 'terms.frequency as _frequency', 'plans.version as _version')
+            ->selectRaw('COALESCE(slot_totals.active_slots, 0) AS _active_slots,
+                COALESCE(slot_totals.first_ordinal, 0) AS _first_ordinal,
+                COALESCE(slot_totals.last_ordinal, 0) AS _last_ordinal,
+                COALESCE(slot_totals.first_target, 0) AS _first_target,
+                COALESCE(slot_totals.last_target, 0) AS _last_target,
+                COALESCE(slot_totals.slot_target, 0) AS _slot_target,
+                COALESCE(slot_totals.invalid_slots, 0) AS _invalid_slots,
+                COALESCE(slot_totals.funded_principal, 0) AS funded_principal,
+                COALESCE(slot_totals.fully_funded_slots, 0) AS fully_funded_slots,
+                COALESCE(slot_totals.partially_funded_slots, 0) AS partially_funded_slots,
+                COALESCE(slot_totals.unfunded_slots, 0) AS unfunded_slots,
+                COALESCE(slot_totals.invalid_allocations, 0) AS _invalid_allocations,
+                COALESCE(inactive_funding.invalid_count, 0) AS _inactive_allocations');
+        if (filled($filters['plan'] ?? null)) {
+            $query->where('plans.plan_id', $filters['plan']);
+        }
+        if (filled($filters['plan_status'] ?? null)) {
+            $query->where('plans.status', $filters['plan_status']);
+        }
+
+        return ['code' => 'plan_funding', 'query' => $query->where('plans.created_at', '<=', $cutoff)
+            ->addSelect('plans.created_at as _date', 'plans.id as _key')
+            ->orderByDesc('plans.created_at')->orderByDesc('plans.id'),
+            'columns' => ['reference' => 'Plan', 'customer' => 'Customer ID', 'name' => 'Customer',
+                'current_agent' => 'Current Agent', 'state' => 'Lifecycle', 'required_slots' => 'Required slots',
+                'fully_funded_slots' => 'Fully funded slots', 'partially_funded_slots' => 'Partially funded slots',
+                'unfunded_slots' => 'Unfunded slots', 'funded_principal' => 'Funded principal',
+                'remaining_scheduled_target' => 'Remaining scheduled target'],
+            'money' => ['funded_principal', 'remaining_scheduled_target'],
+            'counts' => ['required_slots' => 'required_slots', 'fully_funded_slots' => 'fully_funded_slots',
+                'partially_funded_slots' => 'partially_funded_slots', 'unfunded_slots' => 'unfunded_slots'],
+            'link' => 'plans.show', 'reference' => 'reference'];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @return array<string, mixed>
+     */
+    private function feeExceptionSpec(User $viewer, EloquentBuilder $customers, CarbonImmutable $cutoff): array
+    {
+        $scope = $this->customerQuery($customers)->select('customers.id', 'customers.customer_id as customer',
+            'customer_users.name as name', 'current_agents.agent_id as current_agent');
+        $entries = DB::table('fee_obligation_entries')->where('created_at', '<=', $cutoff)
+            ->selectRaw("fee_obligation_id,
+                COALESCE(SUM(CASE WHEN entry_type = 'assessment' THEN amount_kobo ELSE 0 END), 0) AS assessed,
+                COALESCE(SUM(CASE WHEN entry_type = 'assessment_correction_increase' THEN amount_kobo ELSE 0 END), 0) AS increased,
+                COALESCE(SUM(CASE WHEN entry_type = 'assessment_correction' THEN amount_kobo ELSE 0 END), 0) AS reduced,
+                COALESCE(SUM(CASE WHEN entry_type = 'settlement' THEN amount_kobo ELSE 0 END), 0) AS settled,
+                COALESCE(SUM(CASE WHEN entry_type = 'settlement_reversal' THEN amount_kobo ELSE 0 END), 0) AS reversed,
+                COALESCE(SUM(CASE WHEN entry_type = 'waiver' THEN amount_kobo ELSE 0 END), 0) AS waived,
+                SUM(CASE WHEN amount_kobo < 1 OR currency <> 'NGN'
+                    OR entry_type NOT IN ('assessment', 'assessment_correction_increase', 'assessment_correction',
+                        'settlement', 'settlement_reversal', 'waiver', 'savings_refund', 'external_refund_entitlement')
+                    THEN 1 ELSE 0 END) AS invalid_entries")
+            ->groupBy('fee_obligation_id');
+        $query = DB::table('fee_obligations as obligations')
+            ->join('fee_snapshots as snapshots', 'snapshots.id', '=', 'obligations.fee_snapshot_id')
+            ->joinSub($scope, 'scope', 'scope.id', '=', 'obligations.customer_profile_id')
+            ->leftJoinSub($entries, 'entry_totals', 'entry_totals.fee_obligation_id', '=', 'obligations.id')
+            ->where('obligations.created_at', '<=', $cutoff)
+            ->select('obligations.id as reference', 'obligations.id as _key', 'scope.customer', 'scope.name',
+                'scope.current_agent', 'snapshots.name as fee_name', 'obligations.kind',
+                'obligations.created_at as assessed_at', 'obligations.amount_kobo as _original_amount',
+                'obligations.currency as _obligation_currency', 'snapshots.currency as _snapshot_currency',
+                'obligations.customer_profile_id as _obligation_customer',
+                'snapshots.customer_profile_id as _snapshot_customer', 'snapshots.kind as _snapshot_kind')
+            ->selectRaw('COALESCE(entry_totals.assessed, 0) AS _assessed,
+                COALESCE(entry_totals.increased, 0) AS _increased,
+                COALESCE(entry_totals.reduced, 0) AS _reduced,
+                COALESCE(entry_totals.settled, 0) AS _settled,
+                COALESCE(entry_totals.reversed, 0) AS _reversed,
+                COALESCE(entry_totals.waived, 0) AS _waived,
+                COALESCE(entry_totals.invalid_entries, 0) AS _invalid_entries')
+            ->orderBy('obligations.created_at')->orderBy('obligations.id');
+
+        return ['code' => 'fee_exceptions', 'query' => $query,
+            'columns' => ['reference' => 'Fee obligation', 'customer' => 'Customer ID', 'name' => 'Customer',
+                'current_agent' => 'Current Agent', 'fee_name' => 'Fee', 'kind' => 'Fee kind',
+                'assessed_at' => 'Assessed (UTC)', 'outstanding_fees' => 'Outstanding fee'],
+            'money' => ['outstanding_fees'], 'counts' => ['outstanding_fee_obligations' => null],
+            'link' => 'customers.show', 'reference' => 'customer', 'viewer' => $viewer];
     }
 
     /** @param EloquentBuilder<CustomerProfile> $customers
@@ -701,7 +947,10 @@ class ReportReadService
             'customer-summary' => ['withdrawal_reservations'],
             'withdrawals' => ['withdrawal_requests', 'withdrawal_reservations'],
             'plans' => ['thrift_plans', 'plan_terms_revisions'],
+            'plan_funding' => ['thrift_plans', 'plan_terms_revisions', 'contribution_slots', 'collection_allocations',
+                'collection_receipts', 'ledger_transaction_references', 'ledger_transaction_projections'],
             'exceptions' => ['withdrawal_requests', 'reversal_requests'],
+            'fee_exceptions' => ['fee_obligations', 'fee_obligation_entries', 'fee_snapshots'],
             'batch_reconciliation' => ['collection_batches', 'collection_receipts', 'collection_fee_components',
                 'cash_remittances', 'collection_batch_reviews', 'collection_exceptions', 'ledger_posting_groups',
                 'ledger_entries', 'ledger_accounts', 'ledger_transaction_references', 'ledger_transaction_projections'],
@@ -723,8 +972,30 @@ class ReportReadService
             if (isset($row['status']) && CustomerStatus::tryFrom($row['status']) === null) {
                 throw new RuntimeException('Customer status unavailable.');
             }
-            if ($spec['code'] === 'plans' && ThriftPlanStatus::tryFrom($row['state']) === null) {
+            if (in_array($spec['code'], ['plans', 'plan_funding'], true) && ThriftPlanStatus::tryFrom($row['state']) === null) {
                 throw new RuntimeException('Plan status unavailable.');
+            }
+            if ($spec['code'] === 'plan_funding') {
+                $required = $this->integer($row['required_slots']);
+                $active = $this->integer($row['_active_slots']);
+                $funded = $this->integer($row['funded_principal']);
+                $target = $this->integer($row['_agreed_target']);
+                $fullyFunded = $this->integer($row['fully_funded_slots']);
+                $partial = $this->integer($row['partially_funded_slots']);
+                $unfunded = $this->integer($row['unfunded_slots']);
+                if ($required < 1 || $active !== $required || $this->integer($row['_first_ordinal']) !== 1
+                    || $this->integer($row['_last_ordinal']) !== $required
+                    || $this->integer($row['_first_target']) !== $this->integer($row['_daily_target'])
+                    || $this->integer($row['_last_target']) !== $this->integer($row['_daily_target'])
+                    || $this->integer($row['_slot_target']) !== $target || $funded > $target
+                    || $this->integer($row['_invalid_slots']) !== 0
+                    || $this->integer($row['_invalid_allocations']) !== 0
+                    || $this->integer($row['_inactive_allocations']) !== 0
+                    || $this->add($fullyFunded, $this->add($partial, $unfunded)) !== $required
+                    || $row['_currency'] !== 'NGN' || $row['_frequency'] !== 'daily') {
+                    throw new RuntimeException('Plan funding disagrees with its owners.');
+                }
+                $row['remaining_scheduled_target'] = $target - $funded;
             }
             if ($spec['code'] === 'fee_obligations') {
                 $amount = $this->integer($row['_amount']);
@@ -734,6 +1005,31 @@ class ReportReadService
                     || ($row['activity'] === FeeObligationEntryType::Assessment->value
                         && $amount !== $this->integer($row['_original_amount']))) {
                     throw new RuntimeException('Fee obligation activity disagrees with its owner.');
+                }
+            }
+            if ($spec['code'] === 'fee_exceptions') {
+                $assessed = $this->integer($row['_assessed']);
+                $original = $this->integer($row['_original_amount']);
+                $increased = $this->integer($row['_increased']);
+                $reduced = $this->integer($row['_reduced']);
+                $settled = $this->integer($row['_settled']);
+                $reversed = $this->integer($row['_reversed']);
+                $waived = $this->integer($row['_waived']);
+                $gross = $this->add($assessed, $increased);
+                if ($original < 1 || $assessed !== $original || $this->integer($row['_invalid_entries']) !== 0
+                    || $row['_obligation_currency'] !== 'NGN' || $row['_snapshot_currency'] !== 'NGN'
+                    || $row['_obligation_customer'] !== $row['_snapshot_customer']
+                    || $row['kind'] !== $row['_snapshot_kind'] || $reduced > $gross || $reversed > $settled) {
+                    throw new RuntimeException('Fee obligation history disagrees with its owner.');
+                }
+                $netAssessed = $gross - $reduced;
+                $netSettled = $settled - $reversed;
+                if ($this->add($netSettled, $waived) > $netAssessed) {
+                    throw new RuntimeException('Fee obligation balance disagrees with its owner.');
+                }
+                $row['outstanding_fees'] = $netAssessed - $netSettled - $waived;
+                if ($row['outstanding_fees'] === 0) {
+                    continue;
                 }
             }
             if ($spec['code'] === 'fee_external_receipts') {
