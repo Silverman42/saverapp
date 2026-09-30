@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage, usePoll } from '@inertiajs/vue3';
+import { Head, Link, router, usePage, usePoll, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
-import { index, show } from '@/routes/reports';
+import { index, show, exportMethod as exportReport } from '@/routes/reports';
 import type {
     ReportDefinition,
     ReportFilters,
@@ -30,6 +30,22 @@ defineOptions({
         ],
     },
 });
+const exportForm = useForm({
+    operation_reference: crypto.randomUUID(),
+    format: 'csv',
+    confirmed: false,
+});
+function createExport(format: 'csv' | 'pdf'): void {
+    if (!exportForm.confirmed) return;
+    exportForm.format = format;
+    exportForm
+        .transform((data) => {
+            const selected = { ...props.filters };
+            delete selected.cursor;
+            return { ...selected, ...data };
+        })
+        .post(exportReport.url(props.definition.code));
+}
 const page = usePage();
 const isAdmin = computed(() => page.props.auth.user.user_type === 'admin');
 const visible = ref<ReportResult | null>(props.report);
@@ -167,13 +183,33 @@ function cell(value: string | number | boolean | null | undefined): string {
                     >Refresh report</Button
                 >
                 <Button
+                    v-if="definition.export_available"
                     variant="outline"
-                    disabled
-                    aria-describedby="export-reason"
-                    >CSV/PDF unavailable</Button
+                    :disabled="exportForm.processing || !exportForm.confirmed"
+                    @click="createExport('csv')"
+                    >Export CSV</Button
+                >
+                <Button
+                    v-if="definition.export_available"
+                    variant="outline"
+                    :disabled="exportForm.processing || !exportForm.confirmed"
+                    @click="createExport('pdf')"
+                    >Export PDF</Button
                 >
             </div>
         </header>
+        <label v-if="definition.export_available" class="flex gap-3 text-sm"
+            ><input v-model="exportForm.confirmed" type="checkbox" />I confirm a
+            private export using the displayed filters and disclosed
+            coverage.</label
+        >
+        <p
+            v-for="(error, key) in exportForm.errors"
+            :key="key"
+            class="text-destructive text-sm"
+        >
+            {{ error }}
+        </p>
         <p id="export-reason" class="text-muted-foreground text-sm">
             {{ definition.export_reason }}
         </p>

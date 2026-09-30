@@ -64,3 +64,15 @@ Implementation checks completed: PHP syntax validation, `php artisan route:list 
 - Approved counter-account names and mapped destinations are supplied by the Module 10/business-settings owners. Until then, affected ledger commands fail closed.
 - Existing non-pending fee obligation states without linked evidence cannot be backfilled faithfully; the migration must stop and require an explicit reconciliation before proceeding.
 - No dependency changes are introduced. The full Pest suite, PHPStan, frontend checks, and build remain final release gates after task implementation.
+
+
+## Coordinated financial implementation checkpoint — 30 September 2026
+
+Task: Complete the approved cash financial owner contracts and private document workflows.
+Result: Balanced immutable accounting with direct delegated execution, authoritative scopes, durable replay and protected artifacts.
+Scope: Modules 05–10 and dependent projections, notices, audit, reports and settings; bank rails and evidence uploads remain deferred.
+Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolated MySQL races and authenticated accessibility checks before activation.
+
+Controlled fixed charge categories have immutable versions, purpose, Customer description, approved mapping versions and replay-safe publication. Manual fees create unpaid obligations; deductions preserve gross reservations and support Agent-request/Admin-review full compensation. Concessions distinguish savings restoration from external refund entitlement and cash payment. Draws require fees.manage plus explicitly delegated cash.execute and the smaller of undrawn earnings and verified free cash. ManualChargeTest passes 7 tests / 46 assertions; FeeRefundAndDrawTest passes 3 / 48. Full plan-trigger correction, recovery ownership and integrated certification remain open; flags stay false.
+
+Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.

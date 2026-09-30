@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
+use App\Models\FinancialArtifact;
 use App\Services\ResourceScopeService;
 use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
@@ -45,6 +46,7 @@ class CustomerStatementController extends Controller
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
             'preview' => $preview,
             'from' => $from, 'to' => $to,
+            'issued_statements' => FinancialArtifact::query()->where('kind', 'statement')->where('customer_profile_id', $profile->id)->latest('id')->limit(25)->get()->map(fn ($artifact): array => $artifact->only(['artifact_reference', 'status', 'issued_at'])),
         ]);
     }
 }

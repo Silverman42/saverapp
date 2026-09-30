@@ -17,7 +17,6 @@ use App\Models\CollectionException;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
-use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
@@ -36,6 +35,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+
+require_once __DIR__.'/../FeeFixtures.php';
 
 function reportFixture(string $planId = 'PLN-TEST-001'): array
 {
@@ -104,30 +105,6 @@ function reportReceiptPayload(CustomerProfile $customer, CustomerAssignment $ass
         'received_date' => $date, 'savings_ngn' => $amount,
         'fees' => [], 'allocations' => [], 'late_reason' => '', 'notes' => '', 'confirmed' => true,
     ];
-}
-
-function reportFeeObligation(User $agent, CustomerProfile $customer, int $amountKobo = 50000): FeeObligation
-{
-    $rule = FeeRule::create([
-        'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
-        'rule_key' => 'test-registration', 'model' => FeeRuleModel::Fixed,
-        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => $amountKobo, 'customer_description' => 'Registration fee',
-        'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
-        'publication_reason' => 'Test registration fee.',
-    ]);
-    $snapshot = FeeSnapshot::create([
-        'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
-        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Registration cash fee',
-        'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
-        'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => $amountKobo, 'basis_amount_kobo' => 0,
-        'customer_description' => 'Registration fee', 'acknowledged_at' => now(),
-    ]);
-
-    return app(FeeObligationService::class)->assessSnapshot($snapshot, $agent);
 }
 
 function reportPostReceipt(array $fixture, string $amount = '2000.00', ?string $receivedDate = null): void
@@ -202,13 +179,13 @@ test('report reads require authentication and usable synchronized accounts', fun
     $this->actingAs($customer->user->fresh())->get(route('reports.index'))->assertRedirect(route('login'));
 });
 
-test('report endpoints reject mutations and export permission cannot create files', function (): void {
+test('report endpoints reject mutations and unavailable sections cannot be exported', function (): void {
     $admin = User::factory()->admin()->create();
     $admin->givePermissionTo(AdminPermission::ReportsExport->value);
 
     $this->actingAs($admin)->post(route('reports.show', 'contributions'), ['amount_kobo' => 100])->assertMethodNotAllowed();
     $this->get(route('reports.show', 'fees'))->assertInertia(fn (Assert $page) => $page
-        ->where('definition.export_available', false)->where('report.sections.primary.status', 'Unavailable')
+        ->where('definition.export_available', true)->where('report.sections.primary.status', 'Unavailable')
         ->where('report.sections.primary.metrics', []));
     $this->assertDatabaseCount('collection_receipts', 0);
     $this->assertDatabaseCount('ledger_posting_groups', 0);

@@ -311,6 +311,9 @@ class NotificationPipeline
             if ($canManageCustomers) {
                 $audiences->orWhereJsonContains('i.audiences', 'customer_manager');
             }
+            if ($this->authorization->allows($user, AdminPermission::CashExecute) && $this->authorization->allows($user, AdminPermission::FeesManage)) {
+                $audiences->orWhereJsonContains('i.audiences', 'cash_executor');
+            }
             if ($canManageAgents) {
                 $audiences->orWhereJsonContains('i.audiences', 'managing_admin');
             }

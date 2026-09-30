@@ -33,7 +33,7 @@ class WithdrawalBalanceService
             ->join('ledger_posting_groups', 'ledger_posting_groups.id', '=', 'ledger_entries.ledger_posting_group_id')
             ->where('ledger_entries.customer_profile_id', $customer->id)
             ->where('ledger_accounts.code', LedgerAccountCode::CustomerSavingsLiability->value)
-            ->select('ledger_entries.side', 'ledger_entries.amount_kobo', 'ledger_entries.fee_obligation_id', 'ledger_posting_groups.source_type', 'ledger_posting_groups.source_id');
+            ->select('ledger_entries.side', 'ledger_entries.amount_kobo', 'ledger_entries.fee_obligation_id', 'ledger_entries.thrift_plan_id', 'ledger_posting_groups.source_type', 'ledger_posting_groups.source_id');
         if ($forUpdate) {
             $entries->lockForUpdate();
         }
@@ -50,8 +50,10 @@ class WithdrawalBalanceService
                 $join->on('thrift_plans.plan_id', '=', 'fee_snapshots.source_id')
                     ->where('fee_snapshots.source_type', 'plan');
             })
+            ->leftJoin('withdrawal_requests as fee_withdrawals', fn ($join) => $join->on('fee_withdrawals.id', '=', 'fee_snapshots.source_id')->where('fee_snapshots.source_type', 'withdrawal'))
+            ->leftJoin('manual_charges as fee_charges', fn ($join) => $join->on('fee_charges.operation_reference', '=', 'fee_snapshots.source_id')->where('fee_snapshots.source_type', 'manual_charge'))
             ->whereIn('fee_obligations.id', $obligationIds)
-            ->select('fee_obligations.id', 'fee_obligations.customer_profile_id', 'thrift_plans.id as thrift_plan_id')
+            ->select('fee_obligations.id', 'fee_obligations.customer_profile_id')->selectRaw('COALESCE(thrift_plans.id, fee_withdrawals.thrift_plan_id, fee_charges.thrift_plan_id) AS thrift_plan_id')
             ->get()->keyBy('id');
 
         $cycleLiability = 0;
@@ -101,6 +103,24 @@ class WithdrawalBalanceService
      */
     private function planForEntry(stdClass $entry, Collection $receipts, Collection $obligations, int $customerId): ?int
     {
+        if ($entry->source_type === 'manual_charge') {
+            $charge = DB::table('manual_charges')->where('operation_reference', $entry->source_id)->where('customer_profile_id', $customerId)->first();
+
+            return $charge !== null && (int) $charge->thrift_plan_id === (int) $entry->thrift_plan_id ? (int) $charge->thrift_plan_id : null;
+        }
+        if ($entry->source_type === 'reversal_request') {
+            $reversal = DB::table('reversal_requests')->where('id', $entry->source_id)->where('customer_profile_id', $customerId)->first();
+            $original = $reversal === null ? null : DB::table('ledger_posting_groups')->where('id', $reversal->original_posting_group_id)->first();
+
+            return $original !== null && (int) $original->thrift_plan_id === (int) $entry->thrift_plan_id ? (int) $original->thrift_plan_id : null;
+        }
+        if ($entry->source_type === 'withdrawal') {
+            $withdrawal = DB::table('withdrawal_requests')->where('id', $entry->source_id)->first();
+
+            return $withdrawal !== null && (int) $withdrawal->customer_profile_id === $customerId
+                && (int) $withdrawal->thrift_plan_id === (int) $entry->thrift_plan_id
+                ? (int) $withdrawal->thrift_plan_id : null;
+        }
         if (in_array($entry->source_type, ['collection_receipt', 'fee_application'], true) && ctype_digit((string) $entry->source_id)) {
             $receipt = $receipts->get((int) $entry->source_id);
             $obligation = $entry->fee_obligation_id === null ? null : $obligations->get((int) $entry->fee_obligation_id);

@@ -16,6 +16,7 @@ use App\Jobs\DeliverWithdrawalNotificationIntent;
 use App\Jobs\ExpirePendingTwoFactorSetup;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Jobs\ProjectAuditEvent;
+use App\Jobs\RenderFinancialArtifact;
 use App\Models\CustomerProfile;
 use App\Support\PlatformBlocked;
 use Illuminate\Http\Request;
@@ -65,8 +66,8 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const SERVICES = [
-        'CollectionService' => 'financial', 'CollectionLedgerService' => 'financial', 'LedgerPostingService' => 'financial',
-        'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
+        'DeductionReversalOwner' => 'financial', 'FeeRefundService' => 'financial', 'CashDisbursementService' => 'financial', 'CashRecoveryService' => 'financial', 'ManualChargeService' => 'financial', 'CollectionService' => 'financial', 'CollectionLedgerService' => 'financial', 'LedgerPostingService' => 'financial',
+        'FinancialArtifactService' => 'derived', 'CashExecutionService' => 'financial', 'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
         'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'CustomerLifecycleService' => 'financial', 'ThriftPlanService' => 'financial',
         'AgentRegistrationService' => 'mutation', 'AgentStatusManagementService' => 'mutation', 'RegistrationFeeService' => 'mutation',
         'EmailReservationService' => 'mutation', 'CustomerHandoverNotifications' => 'mutation', 'AgentLifecycleService' => 'mutation', 'CustomerReassignmentService' => 'mutation', 'CustomerRecoveryService' => 'mutation',
@@ -78,7 +79,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const COMMANDS = [
-        'customers:expire-recovery' => 'mutation',
+        'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
         'platform:replay' => 'mutation',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
@@ -93,6 +94,13 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const HTTP_ACTIONS = [
+        'admin.fees.refunds.store' => 'financial', 'fee-refunds.cash' => 'financial', 'earnings-draws.start' => 'financial', 'cash-disbursements.handoff' => 'financial', 'cash-disbursements.acknowledge' => 'financial',
+        'admin.charges.publish' => 'mutation', 'admin.charges.assess' => 'financial', 'customers.statements.issue' => 'mutation', 'reports.export' => 'mutation', 'financial-artifacts.cancel' => 'mutation', 'financial-artifacts.retry' => 'mutation', 'financial-artifacts.hold' => 'mutation',
+        'withdrawals.cash.start' => 'financial',
+        'cash-executions.return' => 'financial', 'cash-recoveries.acknowledge' => 'financial',
+        'cash-executions.handoff' => 'financial',
+        'cash-executions.not-delivered' => 'financial',
+        'cash-executions.acknowledge' => 'financial',
         'customers.reassignment.preview' => 'read', 'customers.reassignment.store' => 'mutation', 'customers.recovery.store' => 'mutation', 'customers.recovery.update' => 'mutation', 'customer-recovery.activate' => 'mutation',
         'admin.access.permissions.update' => 'mutation',
         'admin.business-settings.drafts.discard' => 'mutation',
@@ -224,6 +232,7 @@ class PlatformCatalogue
     public function jobOperation(string $jobClass): string
     {
         return match ($jobClass) {
+            RenderFinancialArtifact::class => 'derived',
             ProjectAuditEvent::class => 'derived',
             ExpirePendingTwoFactorSetup::class => 'mutation',
             DeliverAgentInvitationJob::class,
@@ -244,6 +253,12 @@ class PlatformCatalogue
 
     public function archivalWorkStatus(CustomerProfile $customer): string
     {
+        if (DB::table('cash_disbursements')->where('customer_profile_id', $customer->id)->whereIn('status', ['processing', 'outcome_unknown'])->exists()
+            || DB::table('cash_recoveries')->join('cash_executions', 'cash_executions.id', '=', 'cash_recoveries.cash_execution_id')
+                ->join('withdrawal_requests', 'withdrawal_requests.id', '=', 'cash_executions.withdrawal_request_id')
+                ->where('withdrawal_requests.customer_profile_id', $customer->id)->whereIn('cash_recoveries.status', ['awaiting_customer', 'confirmed'])->exists()) {
+            return 'blocked';
+        }
         $planWork = app(ThriftPlanService::class)->archivalWorkStatus($customer);
         if ($planWork !== 'passed') {
             return $planWork;

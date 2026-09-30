@@ -23,7 +23,7 @@ class CollectionWorkspaceService
             return ['slots' => null, 'totals' => []];
         }
 
-        $funding = DB::table('collection_allocations as allocations')
+        $funding = DB::table('collection_allocations as allocations')->whereNotIn('allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->join('collection_receipts as receipts', 'receipts.id', '=', 'allocations.collection_receipt_id')
             ->selectRaw('allocations.contribution_slot_id, SUM(allocations.amount_kobo) as funded_kobo')
             ->selectRaw('SUM(CASE WHEN receipts.received_date < ? THEN allocations.amount_kobo ELSE 0 END) as advance_kobo', [$date])

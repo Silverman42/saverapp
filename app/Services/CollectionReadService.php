@@ -201,7 +201,7 @@ class CollectionReadService
             $blockedIntervals[] = [$pauseDate, null];
         }
         $slots = $plan->slots()->whereNotNull('active_ordinal')->orderBy('active_ordinal')->get();
-        $totals = DB::table('collection_allocations')
+        $totals = DB::table('collection_allocations')->whereNotIn('collection_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->whereIn('contribution_slot_id', $slots->pluck('id'))
             ->selectRaw('contribution_slot_id, SUM(amount_kobo) as funded_kobo, MAX(is_advance) as has_advance')
             ->groupBy('contribution_slot_id')->get()->keyBy('contribution_slot_id');
@@ -325,10 +325,22 @@ class CollectionReadService
 
     public function archivalSavingsStatus(CustomerProfile $customer, bool $forUpdate = false): string
     {
+        foreach ([LedgerAccountCode::UnappliedFunds, LedgerAccountCode::RefundPayable] as $code) {
+            $balance = DB::table('ledger_entries')->join('ledger_accounts', 'ledger_accounts.id', '=', 'ledger_entries.ledger_account_id')
+                ->where('ledger_entries.customer_profile_id', $customer->id)->where('ledger_accounts.code', $code->value)
+                ->selectRaw("COALESCE(SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -CAST(amount_kobo AS SIGNED) END), 0) AS balance")->value('balance');
+            $integer = filter_var($balance, FILTER_VALIDATE_INT);
+            if ($integer === false || $integer < 0) {
+                return 'unavailable';
+            }
+            if ($integer > 0) {
+                return 'blocked';
+            }
+        }
         $position = $this->position($customer, $forUpdate);
         $groups = LedgerPostingGroup::query()->where('customer_profile_id', $customer->id)->with('entries.account')->get();
         foreach ($groups as $group) {
-            if (! in_array($group->event_type, ['cash_contribution', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
+            if (! in_array($group->event_type, ['cash_contribution', 'cash_withdrawal', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
                 || $group->currency !== 'NGN' || $group->entries->count() < 2 || $group->getRawOriginal('committed_at') === null) {
                 return 'unavailable';
             }

@@ -34,6 +34,7 @@ const props = defineProps<{
     customer: { id: string; name: string };
     plans: Array<{ id: string; status: string }>;
     method_available: boolean;
+    cash_destination_reference: string;
 }>();
 defineOptions({
     layout: {
@@ -50,7 +51,7 @@ const form = useForm({
     type: 'partial',
     gross_ngn: '',
     method: 'cash',
-    destination_reference: '',
+    destination_reference: props.cash_destination_reference,
     reason: '',
     internal_notes: '',
     preview_fingerprint: '',

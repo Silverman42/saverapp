@@ -211,7 +211,7 @@ class WithdrawalService
             if (($action === 'approve' || $action === 'reject' || $action === 'cancel') && $withdrawal->state !== 'pending_review') {
                 throw new ConflictHttpException('This request is no longer pending review.');
             }
-            if ($action === 'revoke' && $withdrawal->state !== 'approved') {
+            if ($action === 'revoke' && ! in_array($withdrawal->state, ['approved', 'payment_failed'], true)) {
                 throw new ConflictHttpException('Only an unexecuted approval can be revoked.');
             }
             if ($withdrawal->deadline_at->isPast() && $action === 'approve') {
@@ -417,7 +417,7 @@ class WithdrawalService
         return $withdrawal;
     }
 
-    private function assertReservationAndBalance(WithdrawalRequest $withdrawal, CustomerProfile $customer): void
+    public function assertReservationAndBalance(WithdrawalRequest $withdrawal, CustomerProfile $customer): void
     {
         $plan = ThriftPlan::query()->whereKey($withdrawal->thrift_plan_id)->lockForUpdate()->firstOrFail();
         if (! in_array($plan->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused, ThriftPlanStatus::Completed], true)

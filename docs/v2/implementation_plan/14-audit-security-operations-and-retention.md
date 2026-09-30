@@ -119,3 +119,7 @@ Named routes: `admin.audit.index`, `admin.audit.show`, `admin.security.index`, `
 | AUD-AC-028 | AUD-FR-027  | Blocked        | Desktop/mobile audit, security queue, keyboard navigation and logout clearing verified; populated case detail, complete zoom/screen-reader and live grant-revocation device evidence remain Blocked. |
 | AUD-AC-029 | AUD-FR-028  | Blocked        | 20M-event performance and critical/general searchability SLOs not measured.                                                                                                                          |
 | AUD-AC-030 | AUD-FR-029  | Passed locally | Archive/expiry/exact-IP/reveal/export/assisted recovery remain absent or disabled; integrity explicitly Unverified and release blockers recorded.                                                    |
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+New cash, charge, correction and document actions capture canonical transactional audit events. Structured custody, acknowledgement, return and reversal evidence is encrypted; historical evidence migration rejects unprovable input before conversion. Private artifact downloads recheck authority and hashes; report expiry preserves held bytes and immutable manifests, while statements have no automatic purge. CashExecutionTest passes 9 / 104 including failures after a ledger line, audit capture, outbox and projection. Complete retention policy and production key/hold operations remain uncertified.

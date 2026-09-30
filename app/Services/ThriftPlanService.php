@@ -1256,6 +1256,10 @@ class ThriftPlanService
 
     public function archivalStatus(CustomerProfile $customer): string
     {
+        if (DB::table('plan_lifecycle_events')->whereIn('thrift_plan_id', ThriftPlan::query()->where('customer_profile_id', $customer->id)->select('id'))
+            ->where('event_type', 'receipt_compensated')->where('payload->closed_plan_exception', true)->exists()) {
+            return 'blocked';
+        }
         $plans = ThriftPlan::query()->where('customer_profile_id', $customer->id)->get();
         foreach ($plans as $plan) {
             if (! in_array($plan->getRawOriginal('status'), ['active', 'paused', 'completed', 'closed', 'cancelled'], true)) {

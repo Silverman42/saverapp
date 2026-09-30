@@ -52,7 +52,7 @@ class RoleSynchronizationService
     }
 
     /**
-     * Idempotently provision the bootstrap Administrator with the complete permission catalogue.
+     * Provision bootstrap permissions while preserving separately delegated cash authority.
      *
      * Selects the earliest active Admin if no target is provided.
      * Rejects non-active or non-Admin targets.
@@ -89,21 +89,24 @@ class RoleSynchronizationService
             ->map(fn ($code) => $code instanceof AdminPermission ? $code->value : (string) $code)
             ->all();
 
-        $allPermissionCodes = AdminPermission::values();
+        $allPermissionCodes = AdminPermission::bootstrapValues();
         $isFullySeeded = count(array_intersect($allPermissionCodes, $existingSeedCodes)) === count($allPermissionCodes);
 
-        if ($isFullySeeded && $admin->permissions()->count() === count($allPermissionCodes)) {
+        if ($isFullySeeded && array_diff($allPermissionCodes, $admin->getDirectPermissions()->pluck('name')->all()) === []) {
             return $admin;
         }
 
         DB::transaction(function () use ($admin, $existingSeedCodes, $allPermissionCodes): void {
-            $admin->syncPermissions($allPermissionCodes);
+            $admin->givePermissionTo($allPermissionCodes);
 
             $batchId = (string) Str::uuid();
             $now = Carbon::now();
             $newRecords = [];
 
             foreach (AdminPermission::cases() as $permission) {
+                if ($permission === AdminPermission::CashExecute) {
+                    continue;
+                }
                 if (! in_array($permission->value, $existingSeedCodes, true)) {
                     $newRecords[] = [
                         'batch_id' => $batchId,
@@ -112,7 +115,7 @@ class RoleSynchronizationService
                         'action' => 'grant',
                         'source' => 'system_seed',
                         'actor_user_id' => null,
-                        'reason' => 'Initial bootstrap grant of complete permission catalogue to earliest active Administrator',
+                        'reason' => 'Initial bootstrap grant excluding separately delegated cash execution',
                         'permission_version' => 1,
                         'created_at' => $now,
                     ];
@@ -236,7 +239,8 @@ class RoleSynchronizationService
                 ->pluck('permissions.name')
                 ->all();
 
-            $missingGrants = array_diff($allowedPermissions, $bootstrapPermissions);
+            $bootstrapCodes = AdminPermission::bootstrapValues();
+            $missingGrants = array_diff($bootstrapCodes, $bootstrapPermissions);
             if (! empty($missingGrants)) {
                 $missingStr = implode(', ', $missingGrants);
                 $issues[] = "Bootstrap Administrator #{$bootstrapAdmin->id} ({$bootstrapAdmin->email}) is missing direct permissions: [{$missingStr}].";
@@ -247,8 +251,9 @@ class RoleSynchronizationService
                 ->where('source', 'system_seed')
                 ->get();
 
-            if ($seedHistories->count() !== count($allowedPermissions)) {
-                $expectedCount = count($allowedPermissions);
+            if ($seedHistories->count() !== count($bootstrapCodes)
+                || $seedHistories->contains(fn (PermissionGrantHistory $history): bool => $history->permission_code === AdminPermission::CashExecute)) {
+                $expectedCount = count($bootstrapCodes);
                 $issues[] = "Bootstrap Administrator #{$bootstrapAdmin->id} has {$seedHistories->count()} system_seed history records; expected {$expectedCount}.";
             } else {
                 $batches = $seedHistories->pluck('batch_id')->unique();

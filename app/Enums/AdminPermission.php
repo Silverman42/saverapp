@@ -9,6 +9,7 @@ enum AdminPermission: string
     case CustomersManage = 'customers.manage';
     case CustomersReassign = 'customers.reassign';
     case WithdrawalsReview = 'withdrawals.review';
+    case CashExecute = 'cash.execute';
     case ReversalsReview = 'reversals.review';
     case FeesManage = 'fees.manage';
     case DeductionsManage = 'deductions.manage';
@@ -30,6 +31,7 @@ enum AdminPermission: string
             self::CustomersManage => 'Customer management',
             self::CustomersReassign => 'Customer reassignment',
             self::WithdrawalsReview => 'Withdrawal approval',
+            self::CashExecute => 'Cash execution',
             self::ReversalsReview => 'Transaction-reversal approval',
             self::FeesManage => 'Fee management',
             self::DeductionsManage => 'Deduction management',
@@ -48,6 +50,7 @@ enum AdminPermission: string
     public function description(): string
     {
         return match ($this) {
+            self::CashExecute => 'Execute approved cash payments and record custody evidence. This does not grant withdrawal review, fee management, or reversal authority.',
             self::AdminsManage => "Invite Admins; assign initial Admin permissions; change another Admin's permissions; suspend, reactivate, or deactivate another Admin; manage Admin invitations; and perform the Admin-recovery actions assigned to this permission.",
             self::AgentsManage => 'Register, invite, update, suspend, reactivate, deactivate, and manage invitation actions for Agents. Agent assisted recovery remains a security operation.',
             self::CustomersManage => 'Update existing Customer profiles and statuses business-wide and manage existing Customer invitations. It does not allow an Admin to create a Customer.',
@@ -73,5 +76,11 @@ enum AdminPermission: string
     public static function values(): array
     {
         return array_column(self::cases(), 'value');
+    }
+
+    /** @return list<string> */
+    public static function bootstrapValues(): array
+    {
+        return array_values(array_filter(self::values(), static fn (string $code): bool => $code !== self::CashExecute->value));
     }
 }

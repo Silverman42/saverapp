@@ -147,7 +147,19 @@ class DashboardReadService
                     return $this->custody($viewer, $filters);
                 });
             }
-            $sections['gated'] = [...$manifest, 'status' => 'Unavailable', 'metrics' => [], 'reason' => 'Successful payouts, gross withdrawal debits, compensation totals, fee obligation/recognition/drawable earnings, historical eligibility and governed exports await complete owner contracts.'];
+            $sections['financial_movements'] = $this->section('financial_movements', $manifest, function () use ($viewer, $scope, $filters, $state, $manifest): array {
+                $this->requireLedger($state);
+
+                return app(FinancialWorkflowReadService::class)->activity($viewer, $scope, $filters, CarbonImmutable::parse($manifest['cutoff'])->toDateTimeString());
+            });
+            if ($viewer->user_type === UserType::Admin && empty($filters['agent'])) {
+                $sections['financial_cash_position'] = $this->section('financial_cash_position', $manifest, function () use ($viewer, $state): array {
+                    $this->requireLedger($state);
+
+                    return app(FinancialWorkflowReadService::class)->businessPosition($viewer);
+                });
+            }
+            $sections['gated'] = [...$manifest, 'status' => 'Unavailable', 'metrics' => [], 'reason' => 'Historical eligibility and complete financial operational certification remain outstanding.'];
 
             return ['role' => $viewer->user_type->value, 'manifest' => $manifest, 'sections' => $sections];
         });
@@ -287,7 +299,7 @@ class DashboardReadService
         if (filled($filters['plan_status'] ?? null)) {
             $query->where('plans.status', $filters['plan_status']);
         }
-        $allocations = DB::table('collection_allocations')->selectRaw('contribution_slot_id, SUM(amount_kobo) AS funded')->groupBy('contribution_slot_id');
+        $allocations = DB::table('collection_allocations')->whereNotIn('collection_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))->selectRaw('contribution_slot_id, SUM(amount_kobo) AS funded')->groupBy('contribution_slot_id');
         $query->leftJoinSub($allocations, 'funding', 'funding.contribution_slot_id', '=', 'slots.id');
         if ((clone $query)->whereRaw('COALESCE(funding.funded, 0) > slots.expected_amount_kobo')->exists()) {
             throw new RuntimeException('Slot funding integrity unavailable.');
@@ -395,6 +407,9 @@ class DashboardReadService
         $started = hrtime(true);
         try {
             $data = ['status' => 'Current', ...$read()];
+            if ($data['status'] === 'Ready') {
+                $data['status'] = 'Current';
+            }
         } catch (Throwable) {
             $data = ['status' => 'Unavailable', 'metrics' => [], 'rows' => [], 'reason' => 'Authoritative '.$code.' data is unavailable. Retry after its source is verified.'];
         }

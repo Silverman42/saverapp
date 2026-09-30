@@ -48,3 +48,15 @@ The following decisions are required before `WithdrawalMethodRegistry` can resol
 ## Current checkpoint
 
 The migration, staged request/review services, scoped Inertia pages, hold integration, expiry command, audit, and notification intents are written. The production method registry rejects every method. Focused withdrawal and collection tests pass in the isolated test database; Vue type checking, production build, route inspection, and scoped PHPStan pass. The Module 08 migration was applied to the local MySQL database as batch 18. Module 06–07 concurrency proof, Module 08 full acceptance matrix, and every payout-execution contract remain outstanding before any live submission can be enabled.
+
+
+## Coordinated financial implementation checkpoint — 30 September 2026
+
+Task: Complete the approved cash financial owner contracts and private document workflows.
+Result: Balanced immutable accounting with direct delegated execution, authoritative scopes, durable replay and protected artifacts.
+Scope: Modules 05–10 and dependent projections, notices, audit, reports and settings; bank rails and evidence uploads remain deferred.
+Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolated MySQL races and authenticated accessibility checks before activation.
+
+Cash execution is excluded from bootstrap grants and requires explicit delegation. Immutable hash-verified method contracts bind custodian, recipient and amount to Customer acknowledgement. Unknown handoffs preserve reservations and block another payment. CashExecutionTest passes 9 / 104 including posting, audit, outbox and projection failure rollback; CashRecoveryTest passes 2 / 24. Three isolated MySQL races / 24 assertions prove duplicate acknowledgement, competing deductions and payout/deduction serialization. Partial or disputed recovery, generic refund/draw return recovery, complete failure injection and authenticated browser acceptance remain open; payment flags stay false.
+
+Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.

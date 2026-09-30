@@ -108,3 +108,7 @@ Passed applies only where the complete scenario is covered by this in-app releas
 | NTF-AC-053 | Blocked | Backup/PITR and restoration evidence pending.                                                                          |
 | NTF-AC-054 | Blocked | Recipient/token/version boundaries pass; complete CSRF/webhook/provider-secret security evidence pending.              |
 | NTF-AC-055 | Blocked | Unknown schema/template/source and changed snapshot gates pass; exhaustive owner/provider/privacy gate matrix pending. |
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+Financial owners record safe Customer/custodian notice intents transactionally and route them through the shared notification outbox with current audience authority checks. Cash failure tests cover transactional outbox rollback and exactly-once recovery. Artifact-ready/failure notices and complete exception owner families remain open.

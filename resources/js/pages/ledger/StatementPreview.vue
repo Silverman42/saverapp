@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
-import { preview as statementPreview } from '@/routes/customers/statements';
+import {
+    issue as issueStatement,
+    preview as statementPreview,
+} from '@/routes/customers/statements';
+import { show as showArtifact } from '@/routes/financial-artifacts';
 import { show as showTransaction } from '@/routes/transactions';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
@@ -23,6 +27,7 @@ const props = defineProps<{
     customer: { id: string; name: string };
     preview: {
         status: 'ready' | 'unavailable';
+        preview_fingerprint?: string;
         message?: string;
         from?: string;
         to?: string;
@@ -36,6 +41,11 @@ const props = defineProps<{
         current_available_kobo?: number;
         lines?: StatementLine[];
     };
+    issued_statements: Array<{
+        artifact_reference: string;
+        status: string;
+        issued_at: string | null;
+    }>;
     from: string;
     to: string;
 }>();
@@ -46,6 +56,20 @@ defineOptions({
     },
 });
 
+const issuance = useForm({
+    operation_reference: crypto.randomUUID(),
+    preview_fingerprint: props.preview.preview_fingerprint ?? '',
+    supersedes_reference: '',
+    from: props.from,
+    to: props.to,
+    confirmed: false,
+});
+function issue(): void {
+    issuance.from = from.value;
+    issuance.to = to.value;
+    issuance.preview_fingerprint = props.preview.preview_fingerprint ?? '';
+    issuance.post(issueStatement.url(props.customer.id));
+}
 const from = ref(props.from);
 const to = ref(props.to);
 
@@ -88,6 +112,62 @@ function money(kobo: number): string {
             <DatePicker id="statement-to" v-model="to" class="w-fit" />
             <Button type="submit">Preview period</Button>
         </form>
+        <form
+            v-if="preview.status === 'ready'"
+            class="flex flex-wrap items-center gap-4"
+            @submit.prevent="issue"
+        >
+            <label
+                v-if="
+                    issued_statements.some(
+                        (statement) => statement.status === 'ready',
+                    )
+                "
+                class="grid gap-1 text-sm"
+                >Supersede an issued statement for this period
+                <select
+                    v-model="issuance.supersedes_reference"
+                    class="rounded-md border p-2"
+                >
+                    <option value="">Issue a new statement</option>
+                    <option
+                        v-for="statement in issued_statements.filter(
+                            (statement) => statement.status === 'ready',
+                        )"
+                        :key="statement.artifact_reference"
+                        :value="statement.artifact_reference"
+                    >
+                        {{ statement.artifact_reference }}
+                    </option>
+                </select>
+            </label>
+            <label class="flex gap-3 text-sm"
+                ><input v-model="issuance.confirmed" type="checkbox" />I confirm
+                issuance of this period's statement at the verified
+                cutoff.</label
+            >
+            <Button :disabled="issuance.processing || !issuance.confirmed"
+                >Issue PDF statement</Button
+            >
+            <p
+                v-for="(error, key) in issuance.errors"
+                :key="key"
+                class="text-destructive text-sm"
+            >
+                {{ error }}
+            </p>
+        </form>
+        <div v-if="issued_statements.length" class="grid gap-2">
+            <p class="font-medium">Statement history</p>
+            <Link
+                v-for="statement in issued_statements"
+                :key="statement.artifact_reference"
+                :href="showArtifact(statement.artifact_reference)"
+                class="text-primary text-sm underline"
+                >{{ statement.artifact_reference }} ·
+                {{ statement.status }}</Link
+            >
+        </div>
         <Card v-if="preview.status === 'unavailable'">
             <CardContent class="pt-6">
                 <p class="font-medium">Statement preview unavailable</p>

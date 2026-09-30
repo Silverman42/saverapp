@@ -39,3 +39,15 @@ Cover exact kobo arithmetic, balanced and duplicate posting, mixed receipts, res
 ## Approved assumptions
 
 The Module 10 draft product defaults are adopted. No new package or production financial authority is implied by this plan. A scenario cannot be marked Completed while its upstream owner or release gate remains unresolved.
+
+
+## Coordinated financial implementation checkpoint — 30 September 2026
+
+Task: Complete the approved cash financial owner contracts and private document workflows.
+Result: Balanced immutable accounting with direct delegated execution, authoritative scopes, durable replay and protected artifacts.
+Scope: Modules 05–10 and dependent projections, notices, audit, reports and settings; bank rails and evidence uploads remain deferred.
+Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolated MySQL races and authenticated accessibility checks before activation.
+
+Projection owners include cash withdrawals, receipt/withdrawal/deduction compensation, fee concessions, external refund payments and earnings draws. Statement issuance captures current confirmed preview fingerprints, immutable encrypted snapshots and reproducible controls; supersession links preserve original issued bytes. FinancialArtifactTest passes 7 cases, including stale previews, protected access, retry generations, cancellation finality, expiry and holds. A 200-line statement rendered to six A4 pages and was visually checked at the first and final pages. Controlled replacement projections, complete correction dependencies and operational certification remain open.
+
+Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.

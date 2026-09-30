@@ -83,6 +83,16 @@ class FinancialPeriodService
                         throw new ConflictHttpException('The month must end before it can close.');
                     }
                     $nextMonth = $firstDay->addMonth()->toDateString();
+                    foreach (['cash_executions', 'cash_disbursements'] as $table) {
+                        if (DB::table($table)->where('created_at', '>=', $firstDay->utc())->where('created_at', '<', $firstDay->addMonth()->utc())
+                            ->whereIn('status', ['processing', 'outcome_unknown'])->lockForUpdate()->exists()) {
+                            throw new ConflictHttpException('Resolve every cash handoff outcome before closing its month.');
+                        }
+                    }
+                    if (DB::table('cash_recoveries')->where('created_at', '>=', $firstDay->utc())->where('created_at', '<', $firstDay->addMonth()->utc())
+                        ->whereIn('status', ['awaiting_customer', 'confirmed'])->lockForUpdate()->exists()) {
+                        throw new ConflictHttpException('Resolve cash return evidence and compensation before closing its month.');
+                    }
                     $batches = CollectionBatch::query()->where('timezone', $period->timezone)
                         ->where('received_date', '>=', $firstDay->toDateString())
                         ->where('received_date', '<', $nextMonth)

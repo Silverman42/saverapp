@@ -109,3 +109,7 @@ Commands: `business:activate-settings --limit=100` is scheduled every minute; `b
 | CFG-AC-042 | Remove each owner/mapping/time/provider/notification/audit/retention/recovery dependency; affected setting/feature reports Blocked, never guessed/default-enabled.                         | Partial; full specified scenario not yet verified                 |
 
 Protected access/denial audit coverage, comprehensive fuzzing, historical artifact consumer snapshots and exact cross-owner recovery evidence remain partial. Configuration notices and local acknowledgements do not certify external delivery or financial readiness.
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+Cash method version one is an immutable hash-verified stored contract. cash.execute is registered in the permission catalogue without bootstrap grants; bootstrap preserves separately delegated authority. New manual-charge, refund and disbursement feature settings remain unavailable until their owner acceptance passes. No new posting capability is enabled by these migrations; historical/current operational readiness remains explicit.

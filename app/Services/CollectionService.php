@@ -81,7 +81,7 @@ class CollectionService
         }
         $this->periods->assertOpen($received->toDateString(), $business->timezone);
 
-        $savings = filled($data['savings_ngn'] ?? null) && $data['savings_ngn'] !== '0'
+        $savings = filled($data['savings_ngn'] ?? null) && ! in_array($data['savings_ngn'], ['0', '0.0', '0.00'], true)
             ? $this->amountToKobo((string) $data['savings_ngn']) : 0;
         $feeItems = [];
         $feeTotal = 0;
@@ -139,7 +139,7 @@ class CollectionService
                 $planReceivedDate = $received->toDateString();
             }
             $slots = $plan->slots()->whereNotNull('active_ordinal')->orderBy('active_ordinal')->get();
-            $fundedBySlot = DB::table('collection_allocations')
+            $fundedBySlot = DB::table('collection_allocations')->whereNotIn('collection_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
                 ->whereIn('contribution_slot_id', $slots->pluck('id'))
                 ->selectRaw('contribution_slot_id, SUM(amount_kobo) as funded_kobo')
                 ->groupBy('contribution_slot_id')->pluck('funded_kobo', 'contribution_slot_id');
@@ -248,7 +248,7 @@ class CollectionService
             foreach ($preview['allocations'] as $item) {
                 $slot = ContributionSlot::query()->whereKey($item['slot_id'])->lockForUpdate()->firstOrFail();
                 if ($slot->thrift_plan_id !== $plan?->id || $slot->active_ordinal === null
-                    || $slot->expected_amount_kobo - (int) CollectionAllocation::query()->where('contribution_slot_id', $slot->id)->sum('amount_kobo') < $item['amount_kobo']) {
+                    || $slot->expected_amount_kobo - (int) CollectionAllocation::query()->whereNotIn('id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))->where('contribution_slot_id', $slot->id)->sum('amount_kobo') < $item['amount_kobo']) {
                     throw new ConflictHttpException('Slot capacity changed before receipt posting.');
                 }
             }
@@ -362,7 +362,7 @@ class CollectionService
             $this->fees->assessSnapshot($snapshot, $actor);
         }
         $slots = $plan->slots()->whereNotNull('active_ordinal')->get();
-        $fundedBySlot = DB::table('collection_allocations')
+        $fundedBySlot = DB::table('collection_allocations')->whereNotIn('collection_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->whereIn('contribution_slot_id', $slots->pluck('id'))
             ->selectRaw('contribution_slot_id, SUM(amount_kobo) as funded_kobo')
             ->groupBy('contribution_slot_id')->pluck('funded_kobo', 'contribution_slot_id');

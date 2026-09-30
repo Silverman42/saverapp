@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +72,7 @@ class StatementPreviewService
             }
             $closing = $this->checkedAdd($opening, $activity);
 
-            return [
+            $preview = [
                 'status' => 'ready', 'customer_id' => $customer->customer_id,
                 'from' => $from, 'to' => $to, 'timezone' => $timezone, 'currency' => 'NGN',
                 'cutoff_at' => now()->utc()->toIso8601String(),
@@ -81,6 +82,11 @@ class StatementPreviewService
                 'current_available_kobo' => $position['available_kobo'],
                 'lines' => $lines,
             ];
+            $confirmed = $preview;
+            unset($confirmed['cutoff_at']);
+            $preview['preview_fingerprint'] = hash('sha256', json_encode([$confirmed, $customer->version, BusinessProfile::current()->version], JSON_THROW_ON_ERROR));
+
+            return $preview;
         }, attempts: 3);
     }
 

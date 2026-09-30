@@ -260,6 +260,21 @@ class ReportReadService
                     $sections['business_cash'] = $this->unavailable('Verified business cash custody is unavailable.');
                 }
             }
+            if (in_array($code, ['fees', 'withdrawals', 'contributions', 'reconciliation'], true)) {
+                try {
+                    $sections['posted_financial_movements'] = app(FinancialWorkflowReadService::class)->activity($viewer, $customers, $filters, $cutoff->toDateTimeString());
+                } catch (RuntimeException|QueryException) {
+                    $sections['posted_financial_movements'] = $this->unavailable('Verified financial movements for this scope and basis are unavailable.');
+                }
+            }
+            if ($code === 'reconciliation' && $viewer->user_type === UserType::Admin && empty($filters['agent'])) {
+                try {
+                    $this->requireLedger($state);
+                    $sections['financial_cash_position'] = app(FinancialWorkflowReadService::class)->businessPosition($viewer);
+                } catch (RuntimeException|QueryException) {
+                    $sections['financial_cash_position'] = $this->unavailable('Verified business-wide free cash and earnings mappings are unavailable.');
+                }
+            }
             if ($cursor !== null && in_array($sections[$cursor['section'] ?? 'primary']['status'], ['Unavailable', 'Too large'], true)) {
                 abort(422, 'The report source changed or is unavailable. Refresh the report.');
             }
@@ -487,7 +502,7 @@ class ReportReadService
             throw new RuntimeException('Plan or receipt owner is inconsistent.');
         }
 
-        $allocations = DB::table('collection_allocations as allocations')
+        $allocations = DB::table('collection_allocations as allocations')->whereNotIn('allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->join('contribution_slots as funded_slots', 'funded_slots.id', '=', 'allocations.contribution_slot_id')
             ->join('thrift_plans as funded_plans', 'funded_plans.id', '=', 'funded_slots.thrift_plan_id')
             ->join('collection_receipts as receipts', 'receipts.id', '=', 'allocations.collection_receipt_id')
@@ -519,6 +534,7 @@ class ReportReadService
             ->groupBy('slots.thrift_plan_id');
         $inactiveAllocations = DB::table('contribution_slots as inactive_slots')
             ->join('collection_allocations as inactive_allocations', 'inactive_allocations.contribution_slot_id', '=', 'inactive_slots.id')
+            ->whereNotIn('inactive_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->whereNull('inactive_slots.active_ordinal')->selectRaw('inactive_slots.thrift_plan_id, COUNT(*) AS invalid_count')
             ->groupBy('inactive_slots.thrift_plan_id');
         $query = $this->customerQuery($customers)
@@ -947,7 +963,7 @@ class ReportReadService
             'customer-summary' => ['withdrawal_reservations'],
             'withdrawals' => ['withdrawal_requests', 'withdrawal_reservations'],
             'plans' => ['thrift_plans', 'plan_terms_revisions'],
-            'plan_funding' => ['thrift_plans', 'plan_terms_revisions', 'contribution_slots', 'collection_allocations',
+            'plan_funding' => ['thrift_plans', 'plan_terms_revisions', 'contribution_slots', 'collection_allocations', 'collection_allocation_releases',
                 'collection_receipts', 'ledger_transaction_references', 'ledger_transaction_projections'],
             'exceptions' => ['withdrawal_requests', 'reversal_requests'],
             'fee_exceptions' => ['fee_obligations', 'fee_obligation_entries', 'fee_snapshots'],

@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
+import { start as startCash } from '@/routes/withdrawals/cash';
+import { returnMethod as recordReturn } from '@/routes/cash-executions';
+import { acknowledge as acknowledgeReturn } from '@/routes/cash-recoveries';
+import { handoff, notDelivered, acknowledge } from '@/routes/cash-executions';
 import {
     index as withdrawalsIndex,
     approve,
@@ -35,6 +39,18 @@ type Withdrawal = {
 };
 const props = defineProps<{
     withdrawal: Withdrawal;
+    cash_recovery: {
+        recovery_reference: string;
+        status: string;
+        amount_kobo: number;
+    } | null;
+    can_execute: boolean;
+    is_customer: boolean;
+    cash_execution: {
+        execution_reference: string;
+        status: string;
+        amount_kobo: number;
+    } | null;
     can_review: boolean;
     can_cancel: boolean;
     position: {
@@ -62,6 +78,50 @@ const form = useForm({
     internal_reason: '',
     customer_explanation: '',
 });
+const recoveryForm = useForm({
+    recovery_reference: crypto.randomUUID(),
+    evidence: '',
+    confirmed: false,
+});
+const returnAcknowledgement = useForm({ confirmed: false });
+function returnCash(): void {
+    if (!props.cash_execution) return;
+    recoveryForm.post(
+        recordReturn.url(props.cash_execution.execution_reference),
+    );
+}
+function confirmReturn(): void {
+    if (!props.cash_recovery) return;
+    returnAcknowledgement.post(
+        acknowledgeReturn.url(props.cash_recovery.recovery_reference),
+    );
+}
+const cashForm = useForm({
+    execution_reference: crypto.randomUUID(),
+    version: props.withdrawal.version,
+    evidence: '',
+    confirmed: false,
+});
+const handoffForm = useForm({ evidence: '', confirmed: false });
+const acknowledgementForm = useForm({ confirmed: false });
+function startPayment(): void {
+    cashForm.version = props.withdrawal.version;
+    cashForm.post(startCash.url(props.withdrawal.id));
+}
+function recordPayment(delivered: boolean): void {
+    if (!props.cash_execution) return;
+    handoffForm.post(
+        (delivered ? handoff : notDelivered).url(
+            props.cash_execution.execution_reference,
+        ),
+    );
+}
+function confirmReceipt(): void {
+    if (!props.cash_execution) return;
+    acknowledgementForm.post(
+        acknowledge.url(props.cash_execution.execution_reference),
+    );
+}
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 function choose(next: 'approve' | 'reject' | 'cancel' | 'revoke'): void {
@@ -282,6 +342,235 @@ function submit(): void {
                 </div></CardContent
             ></Card
         >
+        <Card
+            v-if="
+                can_execute &&
+                ['approved', 'payment_failed'].includes(withdrawal.state) &&
+                !withdrawal.held
+            "
+        >
+            <CardHeader><CardTitle>Start cash payment</CardTitle></CardHeader>
+            <CardContent>
+                <form class="grid gap-4" @submit.prevent="startPayment">
+                    <Label for="cash-custody"
+                        >Cash source and verified Customer identity</Label
+                    >
+                    <Input
+                        id="cash-custody"
+                        v-model="cashForm.evidence"
+                        maxlength="500"
+                        required
+                    />
+                    <label class="flex gap-3 text-sm"
+                        ><input v-model="cashForm.confirmed" type="checkbox" />I
+                        confirm the exact {{ money(withdrawal.net_kobo) }} cash
+                        payment to this Customer.</label
+                    >
+                    <Button
+                        class="w-fit"
+                        :disabled="cashForm.processing || !cashForm.confirmed"
+                        >Reserve cash and start</Button
+                    >
+                    <p
+                        v-for="(error, key) in cashForm.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+            </CardContent>
+        </Card>
+        <Card
+            v-if="
+                cash_execution &&
+                ['processing', 'outcome_unknown'].includes(
+                    cash_execution.status,
+                )
+            "
+        >
+            <CardHeader
+                ><CardTitle
+                    >Cash handoff
+                    {{ cash_execution.execution_reference }}</CardTitle
+                ></CardHeader
+            >
+            <CardContent class="grid gap-4">
+                <p class="text-sm">
+                    {{ money(cash_execution.amount_kobo) }} is reserved. A
+                    claimed handoff requires the Customer's confirmation before
+                    financial posting.
+                </p>
+                <form
+                    v-if="can_execute && cash_execution.status === 'processing'"
+                    class="grid gap-4"
+                    @submit.prevent="recordPayment(true)"
+                >
+                    <Label for="handoff-evidence"
+                        >Contemporaneous handoff or non-delivery record</Label
+                    >
+                    <Input
+                        id="handoff-evidence"
+                        v-model="handoffForm.evidence"
+                        maxlength="500"
+                        required
+                    />
+                    <label class="flex gap-3 text-sm"
+                        ><input
+                            v-model="handoffForm.confirmed"
+                            type="checkbox"
+                        />I confirm this custody record.</label
+                    >
+                    <div class="flex flex-wrap gap-3">
+                        <Button
+                            :disabled="
+                                handoffForm.processing || !handoffForm.confirmed
+                            "
+                            >Record cash handoff</Button
+                        >
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="
+                                handoffForm.processing || !handoffForm.confirmed
+                            "
+                            @click="recordPayment(false)"
+                            >Confirm no cash was handed over</Button
+                        >
+                    </div>
+                    <p
+                        v-for="(error, key) in handoffForm.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+                <form
+                    v-if="
+                        is_customer &&
+                        cash_execution.status === 'outcome_unknown'
+                    "
+                    class="grid gap-4"
+                    @submit.prevent="confirmReceipt"
+                >
+                    <label class="flex gap-3 text-sm"
+                        ><input
+                            v-model="acknowledgementForm.confirmed"
+                            type="checkbox"
+                        />I personally received exactly
+                        {{ money(cash_execution.amount_kobo) }} for this
+                        withdrawal.</label
+                    >
+                    <Button
+                        class="w-fit"
+                        :disabled="
+                            acknowledgementForm.processing ||
+                            !acknowledgementForm.confirmed
+                        "
+                        >Confirm cash received</Button
+                    >
+                    <p
+                        v-for="(error, key) in acknowledgementForm.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+            </CardContent>
+        </Card>
+        <Card
+            v-if="
+                cash_execution &&
+                ['posted', 'outcome_unknown'].includes(cash_execution.status)
+            "
+        >
+            <CardHeader><CardTitle>Full cash return</CardTitle></CardHeader>
+            <CardContent class="grid gap-4">
+                <p class="text-sm">
+                    Partial or disputed returns remain unresolved. A full return
+                    of {{ money(cash_execution.amount_kobo) }} requires both the
+                    original custodian's evidence and the Customer's
+                    confirmation.
+                </p>
+                <form
+                    v-if="can_execute && !cash_recovery"
+                    class="grid gap-3"
+                    @submit.prevent="returnCash"
+                >
+                    <Label for="cash-return-evidence"
+                        >Verified full cash return to controlled custody</Label
+                    ><Input
+                        id="cash-return-evidence"
+                        v-model="recoveryForm.evidence"
+                        required
+                        maxlength="1000"
+                    />
+                    <label class="flex items-center gap-2 text-sm"
+                        ><input
+                            v-model="recoveryForm.confirmed"
+                            type="checkbox"
+                        />I counted the complete original net amount back into
+                        controlled cash.</label
+                    >
+                    <Button
+                        :disabled="
+                            recoveryForm.processing || !recoveryForm.confirmed
+                        "
+                        >Record full return</Button
+                    >
+                    <p
+                        v-for="(error, key) in recoveryForm.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                        role="alert"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+                <form
+                    v-if="
+                        is_customer &&
+                        cash_recovery?.status === 'awaiting_customer'
+                    "
+                    class="grid gap-3"
+                    @submit.prevent="confirmReturn"
+                >
+                    <label class="flex items-center gap-2 text-sm"
+                        ><input
+                            v-model="returnAcknowledgement.confirmed"
+                            type="checkbox"
+                        />I personally returned exactly
+                        {{ money(cash_recovery.amount_kobo) }} from this cash
+                        attempt.</label
+                    >
+                    <Button
+                        :disabled="
+                            returnAcknowledgement.processing ||
+                            !returnAcknowledgement.confirmed
+                        "
+                        >Confirm full cash return</Button
+                    >
+                    <p
+                        v-for="(error, key) in returnAcknowledgement.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                        role="alert"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+                <p
+                    v-if="cash_recovery?.status === 'confirmed'"
+                    class="text-muted-foreground text-sm"
+                >
+                    Full return evidence is confirmed. The original posted
+                    payout remains effective until an authorized correction is
+                    approved.
+                </p>
+            </CardContent>
+        </Card>
         <Link
             :href="withdrawalsIndex()"
             class="text-primary w-fit text-sm underline"

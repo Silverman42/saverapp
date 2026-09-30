@@ -4,8 +4,10 @@ use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\BusinessSettingsController;
 use App\Http\Controllers\Admin\FeeOverviewController;
+use App\Http\Controllers\Admin\FeeRefundController;
 use App\Http\Controllers\Admin\FinancialPeriodController;
 use App\Http\Controllers\Admin\LockoutController;
+use App\Http\Controllers\Admin\ManualChargeController;
 use App\Http\Controllers\Admin\RegistrationFeeRuleController;
 use App\Http\Controllers\Admin\SecurityCaseController;
 use App\Http\Controllers\AgentDirectoryController;
@@ -23,6 +25,9 @@ use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
+use App\Http\Controllers\CashDisbursementController;
+use App\Http\Controllers\CashExecutionController;
+use App\Http\Controllers\CashRecoveryController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerDirectoryController;
 use App\Http\Controllers\CustomerInvitationController;
@@ -36,6 +41,7 @@ use App\Http\Controllers\CustomerStatementController;
 use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
+use App\Http\Controllers\FinancialArtifactController;
 use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ManagementDeliveryController;
 use App\Http\Controllers\NotificationInboxController;
@@ -129,6 +135,14 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('withdrawals', [WithdrawalController::class, 'index'])->name('withdrawals.index');
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::post('customers/{customer}/statements', [FinancialArtifactController::class, 'statement'])->name('customers.statements.issue');
+    Route::post('reports/{report}/exports', [FinancialArtifactController::class, 'export'])->name('reports.export');
+    Route::get('financial-artifacts/{artifact}', [FinancialArtifactController::class, 'show'])->name('financial-artifacts.show');
+    Route::get('financial-artifacts/{artifact}/download', [FinancialArtifactController::class, 'download'])->name('financial-artifacts.download');
+    Route::post('financial-artifacts/{artifact}/cancel', [FinancialArtifactController::class, 'cancel'])->name('financial-artifacts.cancel');
+    Route::post('financial-artifacts/{artifact}/retry', [FinancialArtifactController::class, 'retry'])->name('financial-artifacts.retry');
+    Route::post('financial-artifacts/{artifact}/hold', [FinancialArtifactController::class, 'hold'])->middleware('fresh')->name('financial-artifacts.hold');
+
     Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show');
     Route::get('transactions', [LedgerTransactionController::class, 'index'])->name('transactions.index');
     Route::get('transactions/{transaction}', [LedgerTransactionController::class, 'show'])->name('transactions.show');
@@ -141,6 +155,17 @@ Route::middleware(['auth'])->group(function () {
     Route::post('withdrawals/{withdrawal}/reject', [WithdrawalController::class, 'reject'])->middleware('fresh')->name('withdrawals.reject');
     Route::post('withdrawals/{withdrawal}/cancel', [WithdrawalController::class, 'cancel'])->name('withdrawals.cancel');
     Route::post('withdrawals/{withdrawal}/revoke', [WithdrawalController::class, 'revoke'])->middleware('fresh')->name('withdrawals.revoke');
+    Route::get('cash-disbursements', [CashDisbursementController::class, 'index'])->name('cash-disbursements.index');
+    Route::post('fee-refunds/{refund}/cash', [CashDisbursementController::class, 'refund'])->middleware('fresh')->name('fee-refunds.cash');
+    Route::post('earnings-draws', [CashDisbursementController::class, 'draw'])->middleware('fresh')->name('earnings-draws.start');
+    Route::post('cash-disbursements/{execution}/handoff', [CashDisbursementController::class, 'handoff'])->middleware('fresh')->name('cash-disbursements.handoff');
+    Route::post('cash-disbursements/{execution}/acknowledge', [CashDisbursementController::class, 'acknowledge'])->name('cash-disbursements.acknowledge');
+    Route::post('withdrawals/{withdrawal}/cash/start', [CashExecutionController::class, 'start'])->middleware('fresh')->name('withdrawals.cash.start');
+    Route::post('cash-executions/{execution}/return', [CashRecoveryController::class, 'record'])->middleware('fresh')->name('cash-executions.return');
+    Route::post('cash-recoveries/{recovery}/acknowledge', [CashRecoveryController::class, 'acknowledge'])->name('cash-recoveries.acknowledge');
+    Route::post('cash-executions/{execution}/handoff', [CashExecutionController::class, 'handoff'])->middleware('fresh')->name('cash-executions.handoff');
+    Route::post('cash-executions/{execution}/not-delivered', [CashExecutionController::class, 'notDelivered'])->middleware('fresh')->name('cash-executions.not-delivered');
+    Route::post('cash-executions/{execution}/acknowledge', [CashExecutionController::class, 'acknowledge'])->name('cash-executions.acknowledge');
 
     // Gated financial corrections (Module 09)
     Route::get('reversals', [ReversalController::class, 'index'])->name('reversals.index');
@@ -258,6 +283,10 @@ Route::middleware(['auth'])->group(function () {
             ->middleware('fresh')
             ->name('access.permissions.update');
 
+        Route::get('charges', [ManualChargeController::class, 'index'])->name('charges.index');
+        Route::post('charges/categories', [ManualChargeController::class, 'publish'])->name('charges.publish');
+        Route::post('charges', [ManualChargeController::class, 'assess'])->name('charges.assess');
+        Route::post('fees/obligations/{obligation}/refund', [FeeRefundController::class, 'store'])->middleware('fresh')->name('fees.refunds.store');
         Route::get('fees', [FeeOverviewController::class, 'index'])->name('fees.index');
         Route::post('fees/obligations/{obligation}/waive', [FeeOverviewController::class, 'waive'])
             ->middleware('fresh')

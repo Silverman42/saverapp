@@ -110,6 +110,8 @@ const titles: Record<string, string> = {
     requests: 'Requests awaiting review',
     activity: 'Recent posted activity',
     custody: 'Cash custody and reconciliation',
+    financial_movements: 'Posted financial movements',
+    financial_cash_position: 'Business cash and encumbrances',
     gated: 'Additional metrics',
 };
 const heading = computed(
@@ -489,7 +491,25 @@ function resetFilters(): void {
                                         }}
                                     </p>
                                 </div>
-                                <div class="flex flex-wrap items-center gap-3"><span class="text-sm font-medium">{{ row.amount ?? row.remaining }}</span><Link v-if="code === 'schedule' && scopeSummary.can_collect && row.can_record_cash && row.customer_id" :href="createCollection(row.customer_id).url" class="text-primary text-sm underline">Record cash</Link></div>
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <span class="text-sm font-medium">{{
+                                        row.amount ?? row.remaining
+                                    }}</span
+                                    ><Link
+                                        v-if="
+                                            code === 'schedule' &&
+                                            scopeSummary.can_collect &&
+                                            row.can_record_cash &&
+                                            row.customer_id
+                                        "
+                                        :href="
+                                            createCollection(row.customer_id)
+                                                .url
+                                        "
+                                        class="text-primary text-sm underline"
+                                        >Record cash</Link
+                                    >
+                                </div>
                             </div>
                         </div>
                         <p

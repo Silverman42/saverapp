@@ -139,10 +139,10 @@ test('bootstrapAdmin selects earliest active admin and grants the catalogue with
 
     expect($bootstrapped->id)->toBe($earliestAdmin->id);
 
-    expect($earliestAdmin->permissions)->toHaveCount(count(AdminPermission::cases()));
+    expect($earliestAdmin->permissions)->toHaveCount(count(AdminPermission::bootstrapValues()));
     $grantedNames = $earliestAdmin->permissions->pluck('name')->all();
     sort($grantedNames);
-    $expectedNames = AdminPermission::values();
+    $expectedNames = AdminPermission::bootstrapValues();
     sort($expectedNames);
     expect($grantedNames)->toBe($expectedNames);
 
@@ -152,7 +152,7 @@ test('bootstrapAdmin selects earliest active admin and grants the catalogue with
 
     // Verify append-only history records share exactly one batch_id and system_seed source
     $histories = PermissionGrantHistory::where('user_id', $earliestAdmin->id)->get();
-    expect($histories)->toHaveCount(count(AdminPermission::cases()));
+    expect($histories)->toHaveCount(count(AdminPermission::bootstrapValues()));
 
     $batchIds = $histories->pluck('batch_id')->unique();
     expect($batchIds)->toHaveCount(1)
@@ -174,14 +174,14 @@ test('bootstrapAdmin is idempotent and rejects non-active or non-admin targets',
     ]);
 
     $service->bootstrapAdmin($admin);
-    expect($admin->permissions)->toHaveCount(count(AdminPermission::cases()));
+    expect($admin->permissions)->toHaveCount(count(AdminPermission::bootstrapValues()));
     $initialHistoryCount = PermissionGrantHistory::where('user_id', $admin->id)->count();
-    expect($initialHistoryCount)->toBe(count(AdminPermission::cases()));
+    expect($initialHistoryCount)->toBe(count(AdminPermission::bootstrapValues()));
 
     // Call bootstrapAdmin again: must be idempotent, no duplicate grants or history records
     $service->bootstrapAdmin($admin);
-    expect($admin->permissions)->toHaveCount(count(AdminPermission::cases()))
-        ->and(PermissionGrantHistory::where('user_id', $admin->id)->count())->toBe(count(AdminPermission::cases()));
+    expect($admin->permissions)->toHaveCount(count(AdminPermission::bootstrapValues()))
+        ->and(PermissionGrantHistory::where('user_id', $admin->id)->count())->toBe(count(AdminPermission::bootstrapValues()));
 
     // Rejects non-admin targets
     $customer = User::factory()->customer()->create();
@@ -202,6 +202,18 @@ test('bootstrapAdmin returns null when no active admin exists', function () {
     User::where('user_type', UserType::Admin->value)->delete();
 
     expect($service->bootstrapAdmin())->toBeNull();
+});
+
+test('bootstrap never grants cash execution and preserves separately delegated cash authority', function (): void {
+    $admin = User::factory()->admin()->create();
+    $service = app(RoleSynchronizationService::class);
+    $service->bootstrapAdmin($admin);
+    expect($admin->hasDirectPermission(AdminPermission::CashExecute))->toBeFalse();
+    $admin->givePermissionTo(AdminPermission::CashExecute);
+    $service->bootstrapAdmin($admin);
+    expect($admin->fresh()->hasDirectPermission(AdminPermission::CashExecute))->toBeTrue()
+        ->and(PermissionGrantHistory::query()->where('user_id', $admin->id)->where('source', 'system_seed')
+            ->where('permission_code', AdminPermission::CashExecute->value)->exists())->toBeFalse();
 });
 
 test('migration aborts and rolls back on unexpected pre-existing roles', function () {

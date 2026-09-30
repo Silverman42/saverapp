@@ -36,6 +36,8 @@ import { index as notificationInbox } from '@/routes/notifications';
 import { index as auditIndex } from '@/routes/admin/audit';
 import { index as recoveryQueue } from '@/routes/customer-recovery';
 import { index as securityCasesIndex } from '@/routes/admin/security';
+import { index as cashPaymentsIndex } from '@/routes/cash-disbursements';
+import { index as chargesIndex } from '@/routes/admin/charges';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { index as plansIndex } from '@/routes/plans';
 import { index as collectionsIndex } from '@/routes/collections';
@@ -125,6 +127,18 @@ const mainNavItems = computed<NavItem[]>(() => {
         });
     }
 
+    if (
+        page.props.auth?.user?.user_type === 'customer' ||
+        (page.props.auth?.permissions ?? []).some((permission) =>
+            ['cash.execute', 'fees.manage'].includes(permission),
+        )
+    ) {
+        items.push({
+            title: 'Cash refunds and draws',
+            href: cashPaymentsIndex(),
+            icon: WalletCards,
+        });
+    }
     if (page.props.features.notifications) {
         items.push({
             title: 'Notifications',
@@ -158,6 +172,16 @@ const adminNavItems = computed<NavItem[]>(() => {
         },
     ];
 
+    if (
+        hasFeesManage.value ||
+        (page.props.auth?.permissions ?? []).includes('deductions.manage')
+    ) {
+        items.push({
+            title: 'Controlled charges',
+            href: chargesIndex(),
+            icon: WalletCards,
+        });
+    }
     if (hasFeesManage.value) {
         items.push({
             title: 'Fees',
@@ -166,8 +190,16 @@ const adminNavItems = computed<NavItem[]>(() => {
         });
     }
 
-    if ((page.props.auth?.permissions ?? []).includes('financial.periods.manage')) {
-        items.push({ title: 'Cash receipt months', href: financialPeriodsIndex(), icon: WalletCards });
+    if (
+        (page.props.auth?.permissions ?? []).includes(
+            'financial.periods.manage',
+        )
+    ) {
+        items.push({
+            title: 'Cash receipt months',
+            href: financialPeriodsIndex(),
+            icon: WalletCards,
+        });
     }
 
     if ((page.props.auth?.permissions ?? []).includes('audit.view')) {

@@ -54,3 +54,15 @@ Full reversal only; a correct replacement is separately confirmed with new ident
 ## Current implementation checkpoint
 
 The additive request, attempt, event, and notification-intent migration is applied to local MySQL. Scoped request views, preview/submission and decision routes, immutable request data, replay protection, one-live/one-posted target constraints, safe notices, and masked audit are present. The production capability registry returns no owner: no live initiation or approval can succeed. Seven focused Pest tests (47 assertions), scoped PHPStan, Vue type checking, production build, Pint, scoped frontend formatting, and route inspection pass. The project-wide frontend check still reports formatting in existing files and the task register. Full compensation contracts, file evidence, approval UI, downstream transaction history, concurrency proof, and the remaining acceptance matrix are outstanding.
+
+
+## Coordinated financial implementation checkpoint — 30 September 2026
+
+Task: Complete the approved cash financial owner contracts and private document workflows.
+Result: Balanced immutable accounting with direct delegated execution, authoritative scopes, durable replay and protected artifacts.
+Scope: Modules 05–10 and dependent projections, notices, audit, reports and settings; bank rails and evidence uploads remain deferred.
+Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolated MySQL races and authenticated accessibility checks before activation.
+
+Receipt owners support no-fee savings receipts, mixed savings/external-fee receipts and fee-only receipts. Compensation restores applicable unpaid fees and reclassifies full tender into controlled unapplied funds, releases original allocations and preserves Agent custody. Completed plans pause; closed-plan exceptions remain explicitly blocked. Full returned withdrawal compensation reverses exact G/P/F; erroneous deductions retain Agent-request/Admin-review authority. CollectionCompensationTest passes 4 / 33. Controlled replacement consumption, plan-trigger/application compensation, non-delivery and partial/uncertain exception resolution remain open. Reversal evidence is encrypted with historical preflight; owner flags remain false.
+
+Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.

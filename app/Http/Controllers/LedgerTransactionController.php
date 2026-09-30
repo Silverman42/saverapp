@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
+use App\Models\LedgerPostingGroup;
 use App\Services\LedgerTransactionReadService;
 use App\Services\ResourceScopeService;
+use App\Services\ReversalCapabilityRegistry;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +27,7 @@ class LedgerTransactionController extends Controller
         $today = CarbonImmutable::now($timezone);
         $filters = $request->validate([
             'customer' => ['nullable', 'string', 'max:32', 'regex:/\A[A-Z0-9-]+\z/'],
-            'type' => ['nullable', Rule::in(['contribution', 'remittance'])],
+            'type' => ['nullable', Rule::in(['contribution', 'remittance', 'withdrawal', 'reversal', 'deduction', 'fee_refund', 'external_refund_payment', 'earnings_draw'])],
             'reference' => ['nullable', 'string', 'max:40', 'regex:/\ATXN-[0-9-]+\z/'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
@@ -63,7 +68,30 @@ class LedgerTransactionController extends Controller
 
         return Inertia::render('ledger/Show', [
             'transaction' => $detail,
+            'reversal_original' => $this->reversalOriginal($transaction, $detail, $request),
         ]);
+    }
+
+    /** @param array<string, mixed> $detail */
+    private function reversalOriginal(string $reference, array $detail, Request $request): ?string
+    {
+        $customer = CustomerProfile::query()->where('customer_id', $detail['customer_id'])->first();
+        if ($customer === null || ! Gate::forUser($request->user())->allows('initiateReversal', $customer)) {
+            return null;
+        }
+        $root = DB::table('ledger_transaction_references')->where('transaction_reference', $reference)->first();
+        if ($root === null || ! in_array($root->root_type, ['withdrawal', 'collection_receipt', 'manual_charge'], true)) {
+            return null;
+        }
+        $id = $root->root_type === 'collection_receipt' ? CollectionReceipt::query()->where('id', $root->root_id)->value('savings_posting_group_id') : null;
+        if ($root->root_type === 'collection_receipt' && $id === null) {
+            $id = DB::table('collection_fee_components')->where('collection_receipt_id', $root->root_id)->orderBy('id')->value('ledger_posting_group_id');
+        }
+        $group = in_array($root->root_type, ['withdrawal', 'manual_charge'], true)
+            ? LedgerPostingGroup::query()->where('source_type', $root->root_type)->where('source_id', $root->root_id)->first()
+            : LedgerPostingGroup::query()->where('id', $id)->first();
+
+        return $group !== null && app(ReversalCapabilityRegistry::class)->resolve($group) !== null ? $group->posting_reference : null;
     }
 
     public function balance(string $customer, Request $request, ResourceScopeService $scope,

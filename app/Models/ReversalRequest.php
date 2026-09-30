@@ -43,6 +43,7 @@ class ReversalRequest extends Model
         return [
             'dependency_snapshot' => 'array', 'original_amount_kobo' => 'integer',
             'version' => 'integer', 'reviewed_at' => 'immutable_datetime',
+            'evidence_text' => 'encrypted',
         ];
     }
 

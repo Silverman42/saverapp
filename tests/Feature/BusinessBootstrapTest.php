@@ -14,8 +14,9 @@ test('trusted first admin starts with explicit seed grants and mandatory MFA set
     $admin = app(BusinessBootstrap::class)->provision('Reviewed Business', 'First Admin', 'FIRST@example.org', 'private-first-password');
     expect($admin->account_state)->toBe(AccountState::MfaSetupRequired)->and($admin->email_normalized)->toBe('first@example.org');
     expect(Hash::check('private-first-password', $admin->password))->toBeTrue();
-    expect($admin->getDirectPermissions()->pluck('name')->sort()->values()->all())->toBe(collect(AdminPermission::values())->sort()->values()->all());
-    expect(PermissionGrantHistory::query()->where('source', 'system_seed')->count())->toBe(count(AdminPermission::cases()));
+    expect($admin->getDirectPermissions()->pluck('name')->sort()->values()->all())->toBe(collect(AdminPermission::bootstrapValues())->sort()->values()->all());
+    expect(PermissionGrantHistory::query()->where('source', 'system_seed')->count())->toBe(count(AdminPermission::bootstrapValues()));
+    expect($admin->hasDirectPermission(AdminPermission::CashExecute))->toBeFalse();
     expect(BusinessProfile::current()->display_name)->toBe('Reviewed Business');
     expect(BusinessProfile::current()->getAttribute('effective_configuration_id'))->not->toBeNull();
     $this->post(route('login'), ['email' => 'first@example.org', 'password' => 'private-first-password'])->assertRedirect(route('two-factor.enrolment'));

@@ -17,6 +17,12 @@ class WithdrawalNoticeService
         $customerUser = $customer->user;
         $agentUser = $customer->currentAssignment?->agentProfile?->user;
         $message = match ($event->event_type) {
+            'cash_return_recorded' => 'Please confirm the full amount of cash personally returned to the original custodian.',
+            'cash_return_confirmed' => 'A full return was confirmed. A posted payout still requires reviewed correction.',
+            'cash_started' => 'Cash is reserved for an approved payment.',
+            'cash_handoff_recorded' => 'Please confirm the exact cash received. Until then the outcome remains unknown.',
+            'cash_posted' => 'Cash receipt was confirmed and the withdrawal was posted.',
+            'cash_not_delivered' => 'No cash was handed over; savings remain reserved.',
             'submitted' => 'A withdrawal request was submitted for review. Savings are reserved; no payout has been made.',
             'approve' => 'A withdrawal request was approved. No payout has been made yet.',
             'reject' => 'A withdrawal request was rejected and its savings reservation released.',

@@ -20,7 +20,10 @@ use App\Models\FeeObligationEntry;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
+use App\Models\ManualCharge;
+use App\Models\ThriftPlan;
 use App\Models\User;
+use App\Models\WithdrawalRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -144,6 +147,7 @@ class LedgerPostingService
                 $occurredAt = $command->occurredAt;
             }
 
+            $planId = $receipt->thrift_plan_id ?? $this->planForObligation($obligation);
             $postingReference = 'FEE-'.Str::uuid();
             $group = LedgerPostingGroup::create([
                 'posting_reference' => $postingReference,
@@ -162,7 +166,7 @@ class LedgerPostingService
                 'correlation_id' => $receipt === null
                     ? $command->sourceType.'-'.$command->sourceId
                     : 'collection-receipt-'.$receipt->id,
-                'thrift_plan_id' => $receipt?->thrift_plan_id,
+                'thrift_plan_id' => $planId,
                 'committed_at' => now(),
                 'metadata' => $command->metadata,
             ]);
@@ -178,7 +182,7 @@ class LedgerPostingService
                     'agent_profile_id' => $line->agentProfileId,
                     'fee_obligation_id' => $line->feeObligationId,
                     'thrift_plan_id' => $line->accountCode === LedgerAccountCode::CustomerSavingsLiability
-                        ? $receipt?->thrift_plan_id : null,
+                        ? $planId : null,
                 ]);
             }
 
@@ -326,18 +330,34 @@ class LedgerPostingService
     {
         return match ($accountCode) {
             LedgerAccountCode::AgentReceivable,
-            LedgerAccountCode::BusinessCash => LedgerEntrySide::Debit,
+            LedgerAccountCode::BusinessCash,
+            LedgerAccountCode::BusinessDistributions => LedgerEntrySide::Debit,
             LedgerAccountCode::CustomerSavingsLiability,
             LedgerAccountCode::FeeIncome,
             LedgerAccountCode::RefundPayable,
-            LedgerAccountCode::OtherDeductionDestination => LedgerEntrySide::Credit,
+            LedgerAccountCode::OtherDeductionDestination,
+            LedgerAccountCode::UnappliedFunds => LedgerEntrySide::Credit,
         };
+    }
+
+    private function planForObligation(FeeObligation $obligation): ?int
+    {
+        $snapshot = $obligation->feeSnapshot;
+        $planId = match ($snapshot->source_type) {
+            'plan' => ThriftPlan::query()->where('plan_id', $snapshot->source_id)->where('customer_profile_id', $obligation->customer_profile_id)->value('id'),
+            'withdrawal' => WithdrawalRequest::query()->where('id', $snapshot->source_id)->where('customer_profile_id', $obligation->customer_profile_id)->value('thrift_plan_id'),
+            'manual_charge' => ManualCharge::query()->where('operation_reference', $snapshot->source_id)->where('customer_profile_id', $obligation->customer_profile_id)->value('thrift_plan_id'),
+            default => null,
+        };
+
+        return $planId;
     }
 
     private function refundableAmountKobo(FeeObligation $obligation): int
     {
         $totals = array_fill_keys([
             FeeObligationEntryType::Settlement->value,
+            FeeObligationEntryType::SettlementReversal->value,
             FeeObligationEntryType::SavingsRefund->value,
             FeeObligationEntryType::ExternalRefundEntitlement->value,
         ], 0);
@@ -356,6 +376,7 @@ class LedgerPostingService
         }
 
         $refundable = $totals[FeeObligationEntryType::Settlement->value]
+            - $totals[FeeObligationEntryType::SettlementReversal->value]
             - $totals[FeeObligationEntryType::SavingsRefund->value]
             - $totals[FeeObligationEntryType::ExternalRefundEntitlement->value];
         if ($refundable < 0) {

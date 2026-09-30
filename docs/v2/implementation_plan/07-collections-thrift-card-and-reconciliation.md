@@ -136,3 +136,7 @@ The 29 September cash branch reran `CollectionTest.php` on its own autoloader (*
 | Performance and accessibility | In-process single-session MySQL load targets pass on the recorded dataset; earlier 390 px receipt recovery QA is recorded. | Product/accessibility owners must review authenticated desktop/mobile/keyboard and live assistive-technology flows, the new period page, unavailable-ledger state, and representative device/network plus concurrent-session p95. No authenticated session was available for this handoff. |
 
 Module 06 verification is integrated, but its remaining Partial/Open/Blocked scenarios still prevent full Module 06 acceptance. The combined integration suite passes 900 tests, skips 44, and records 6,493 assertions; Vue type checking and the production build pass. Cash remains disabled until the applicable gates above pass and the authorized owner approves enablement; the 29 Blocked Module 07 scenarios remain explicit dependencies rather than release passes.
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+Full corrections of supported savings, mixed-fee and fee-only receipts retain physical cash, original recording Agent and immutable remittance decisions. Tender becomes a controlled unapplied liability; original allocation releases and fee settlement reversals append. CollectionCompensationTest passes 4 / 33 and CollectionTest passes in the complete local regression. Controlled replacement consumption and append-only correction reconciliation supplements remain open.

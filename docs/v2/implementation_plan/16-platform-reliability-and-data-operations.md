@@ -207,3 +207,7 @@ All 47 draft scenarios are mapped. “Partial” or “Blocked” is not a produ
 | OPS-AC-045 | OPS-FR-038 | Disconnect mobile/browser, attempt contribution/withdrawal; no local paid/pending-sync mutation exists and reconnect does not auto-post. | 1 | Partial: unavailable guidance preserves the original operation reference and adds no replay/offline queue; full disconnect/reconnect exercise outstanding. |
 | OPS-AC-046 | OPS-FR-039 | Production readiness bundle includes passing load/restore/DR/migration/failure/access controls with versions/cutoffs and unresolved scenarios marked Blocked. | 4 | Blocked: production-equivalent operational evidence and approval outstanding. |
 | OPS-AC-047 | OPS-FR-040 | Remove each critical owner/policy/key/provider/config/integrity/restore dependency; launch/write class remains Blocked without manual override. | 1 | Partial: normal initialization retains owner blockers; diagnostics are not write authorization. Full launch/restore/key/provider gate removal matrix outstanding. |
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+Private document jobs recover durable queued records through the scheduled drain. Authorized retries increment a generation that fences stale jobs and failure callbacks; issuance/cancellation remain terminal. Three isolated MySQL financial races pass 24 assertions after the cash-method migration. Financial artifact registration in shared leased recovery, owner notices, backup/key recovery and production operational acceptance remain open.

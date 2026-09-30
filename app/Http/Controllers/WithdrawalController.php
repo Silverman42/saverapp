@@ -6,6 +6,8 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Http\Requests\PreviewWithdrawalRequest;
 use App\Http\Requests\StoreWithdrawalRequest;
+use App\Models\CashExecution;
+use App\Models\CashRecovery;
 use App\Models\CustomerProfile;
 use App\Models\WithdrawalAttempt;
 use App\Models\WithdrawalRequest;
@@ -59,6 +61,7 @@ class WithdrawalController extends Controller
             'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])
                 ->get()->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value]),
             'method_available' => $methods->available(),
+            'cash_destination_reference' => 'customer:'.$profile->id,
         ]);
     }
 
@@ -105,6 +108,10 @@ class WithdrawalController extends Controller
                 'version' => $withdrawal->version, 'destination_mask' => $withdrawal->destination_mask,
                 'deadline_at' => $withdrawal->deadline_at->toIso8601String(),
             ],
+            'can_execute' => $authorization->allows($request->user(), AdminPermission::CashExecute),
+            'cash_execution' => CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->latest('id')->first()?->only(['execution_reference', 'status', 'amount_kobo']),
+            'cash_recovery' => CashRecovery::query()->whereIn('cash_execution_id', CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->select('id'))->latest('id')->first()?->only(['recovery_reference', 'status', 'amount_kobo']),
+            'is_customer' => $request->user()->user_type === UserType::Customer,
             'can_review' => $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
             'can_cancel' => $request->user()->user_type === UserType::Agent
                 && Gate::forUser($request->user())->allows('managePlan', $customer)

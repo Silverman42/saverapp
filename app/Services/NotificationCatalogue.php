@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BusinessProfile;
+use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,9 @@ class NotificationCatalogue
         'customer_status' => ['customer_status'], 'agent_status' => ['agent_status'],
         'agent_lifecycle' => ['agent.suspend', 'agent.restore', 'agent.start_offboarding', 'agent.transfer_owner', 'agent.cancel_offboarding', 'agent.complete_offboarding', 'agent.return'],
         'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
-        'collection' => ['collection'], 'withdrawal' => ['submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted'],
+        'collection' => ['collection'], 'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted'],
+        'financial_cash' => ['refund_authorized', 'started', 'handoff_recorded', 'not_delivered', 'posted'],
+        'charge' => ['assessed'],
         'reversal' => ['submitted', 'approved_posted', 'rejected', 'cancelled'],
     ];
 
@@ -44,6 +47,8 @@ class NotificationCatalogue
         'plan' => ['table' => 'plan_notification_intents', 'source' => 'plan_lifecycle_events', 'key' => 'plan_lifecycle_event_id'],
         'collection' => ['table' => 'collection_notification_intents', 'source' => 'collection_receipts', 'key' => 'collection_receipt_id'],
         'withdrawal' => ['table' => 'withdrawal_notification_intents', 'source' => 'withdrawal_events', 'key' => 'withdrawal_event_id'],
+        'financial_cash' => ['table' => 'financial_cash_notification_intents', 'source' => 'financial_cash_events', 'key' => 'financial_cash_event_id'],
+        'charge' => ['table' => 'manual_charge_notification_intents', 'source' => 'manual_charges', 'key' => 'manual_charge_id'],
         'reversal' => ['table' => 'reversal_notification_intents', 'source' => 'reversal_events', 'key' => 'reversal_event_id'],
     ];
 
@@ -274,6 +279,39 @@ class NotificationCatalogue
                 $reference = $source->receipt_reference;
                 $destination = ['route' => 'collections.show', 'parameters' => [$reference]];
                 break;
+            case 'financial_cash':
+                $this->audience($audience, $customerId === null ? ['cash_executor'] : ['subject_customer']);
+                if ($customerId !== null && (int) $source->customer_profile_id !== (int) $customerId) {
+                    throw new InvalidArgumentException('Financial cash notice dimensions changed.');
+                }
+                $title = $source->kind === 'earnings_draw' ? 'Business earnings cash draw' : 'Fee refund updated';
+                $summary = match ($eventType) {
+                    'refund_authorized' => 'A cash-backed fee concession was authorized.',
+                    'started' => 'Cash was reserved for an evidenced payment attempt.',
+                    'handoff_recorded' => 'Cash handoff was recorded. Confirm the exact amount personally received.',
+                    'not_delivered' => 'Definitive non-delivery was recorded. The payment attempt failed.',
+                    'posted' => 'Authenticated receipt was confirmed and the payment posted.',
+                    default => throw new InvalidArgumentException('Unknown financial cash notice.'),
+                };
+                $summary .= ' Amount '.MoneyFormatter::formatNaira((int) $source->amount_kobo).'.';
+                $category = 'financial';
+                $reference = $source->operation_reference;
+                $destination = ['route' => 'cash-disbursements.index', 'parameters' => []];
+                break;
+            case 'charge':
+                $this->audience($audience, ['subject_customer']);
+                $chargeCategory = DB::table('charge_category_versions')->where('id', $source->charge_category_version_id)->firstOrFail();
+                $subject = DB::table('customer_profiles')->where('id', $source->customer_profile_id)->firstOrFail();
+                if ((int) $customerId !== (int) $subject->id) {
+                    throw new InvalidArgumentException('Charge notification Customer dimensions changed.');
+                }
+                $eventType = 'assessed';
+                $title = $chargeCategory->kind === 'manual_fee' ? 'Manual fee assessed' : 'Savings deduction posted';
+                $summary = $chargeCategory->customer_description.' Amount '.MoneyFormatter::formatNaira((int) $source->amount_kobo).'.';
+                $category = 'financial';
+                $reference = $source->operation_reference;
+                $destination = ['route' => 'customers.show', 'parameters' => [$subject->customer_id]];
+                break;
             case 'withdrawal':
                 $request = DB::table('withdrawal_requests')->where('id', $source->withdrawal_request_id)->first();
                 if ($request === null) {
@@ -283,6 +321,12 @@ class NotificationCatalogue
                 $this->matchSubject($owner->customer_profile_id, $customerId);
                 $this->audience($audience, ['subject_customer', 'current_agent']);
                 $messages = [
+                    'cash_return_recorded' => 'A full cash return was recorded. Please confirm the exact amount returned.',
+                    'cash_return_confirmed' => 'The Customer confirmed a full cash return. Any posted payout still requires reviewed correction.',
+                    'cash_started' => 'Cash is reserved for an approved payment. Receipt is not yet confirmed.',
+                    'cash_handoff_recorded' => 'The custodian recorded a handoff. The Customer must confirm receipt; the outcome remains unknown.',
+                    'cash_posted' => 'The Customer confirmed cash receipt and the withdrawal was posted.',
+                    'cash_not_delivered' => 'No cash was handed over. Savings remain reserved for review or retry.',
                     'submitted' => 'A withdrawal request was submitted for review. Savings are reserved; no payout has been made.',
                     'approve' => 'A withdrawal request was approved. No payout has been made yet.',
                     'reject' => 'A withdrawal request was rejected and its reservation released.',
@@ -342,7 +386,7 @@ class NotificationCatalogue
             'audience' => $audience, 'category' => $category, 'title' => $title, 'summary' => $summary,
             'reference' => $reference, 'destination' => $destination, 'action_required' => $actionRequired, 'action_correction_id' => $actionCorrectionId,
             'timezone' => $source->timezone ?? ($family === 'security' ? config('app.timezone') : BusinessProfile::current()->timezone),
-            'operation_reference' => isset($source->operation_id) ? $source->operation_id : ($source->attempt_reference ?? null),
+            'operation_reference' => $source->operation_reference ?? (isset($source->operation_id) ? $source->operation_id : ($source->attempt_reference ?? null)),
             'actor_category' => DB::table('users')->where('id', $source->actor_user_id ?? $source->actor_id ?? $source->recorded_by_user_id ?? $source->changed_by_user_id ?? null)->value('user_type') ?? 'system',
         ];
     }
@@ -370,6 +414,7 @@ class NotificationCatalogue
             'profile' => ['subject_customer', 'subject_agent', 'current_agent', 'customer_manager', 'security_operations_admin'],
             'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin', 'service_manager'],
             'collection' => ['subject_customer'],
+            'financial_cash' => ['subject_customer', 'cash_executor'],
             default => ['subject_customer', 'current_agent'],
         };
         if (! is_array($audiences) || $audiences === [] || ! array_is_list($audiences) || array_diff($audiences, $allowedAudiences) !== []) {
@@ -388,7 +433,7 @@ class NotificationCatalogue
         if (isset($facts['status']) && ! in_array($facts['status'], $event->family === 'agent_status' ? ['active', 'inactive'] : ['active', 'inactive', 'restricted', 'archived'], true)) {
             return false;
         }
-        if (isset($facts['state']) && ! in_array($facts['state'], ['pending_review', 'approved', 'rejected', 'cancelled', 'expired'], true)) {
+        if (isset($facts['state']) && ! in_array($facts['state'], ['pending_review', 'approved', 'rejected', 'cancelled', 'expired', 'payout_processing', 'outcome_unknown', 'payment_failed', 'posted'], true)) {
             return false;
         }
         if ($event->family === 'collection') {

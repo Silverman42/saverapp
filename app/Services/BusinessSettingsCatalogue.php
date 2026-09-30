@@ -52,10 +52,19 @@ class BusinessSettingsCatalogue
             'reversal_posting' => ['Reversal posting', 'Features & readiness', false, ['required', 'boolean']],
             'statement_pdf' => ['Issued statements / PDF', 'Features & readiness', false, ['required', 'boolean']],
             'report_exports' => ['Report file exports', 'Features & readiness', false, ['required', 'boolean']],
+            'manual_charges' => ['Controlled manual charges', 'Features & readiness', false, ['required', 'boolean']],
+            'fee_refunds' => ['Fee refund entitlements', 'Features & readiness', false, ['required', 'boolean']],
+            'cash_disbursements' => ['Cash refunds and earnings draws', 'Features & readiness', false, ['required', 'boolean']],
         ];
         $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'logo_reference', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
         if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
             $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
+        }
+        $readOnly = [...$readOnly, 'manual_charges', 'fee_refunds', 'cash_disbursements'];
+        foreach (['withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements'] as $code) {
+            if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
+                $readOnly = array_values(array_diff($readOnly, [$code]));
+            }
         }
         $result = [];
         foreach ($items as $code => [$label, $group, $default, $rules]) {

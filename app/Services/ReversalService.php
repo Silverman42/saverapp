@@ -221,6 +221,9 @@ class ReversalService
                 'actor_user_id' => $actor->id, 'operation' => $action, 'payload_hash' => $payloadHash,
             ]);
             $this->recordEvent($locked, $actor, $locked->state);
+            if ($locked->state === 'approved_posted' && in_array($compensation?->event_type, ['receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation'], true)) {
+                app(LedgerTransactionProjectionService::class)->projectReversal($locked);
+            }
 
             return $locked;
         });

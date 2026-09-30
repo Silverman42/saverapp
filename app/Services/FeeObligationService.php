@@ -103,6 +103,7 @@ class FeeObligationService
                 'currency' => $lockedSnapshot->currency,
                 'due_condition' => match ($lockedSnapshot->timing->value) {
                     'registration' => 'upon_registration',
+                    'manual' => 'confirmed_manual_assessment',
                     'first_contribution' => 'first_contribution',
                     'cycle_completion' => 'cycle_completion',
                     'withdrawal' => 'withdrawal',

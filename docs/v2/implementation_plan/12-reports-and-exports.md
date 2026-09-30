@@ -176,3 +176,15 @@ A Blocked scenario may have partial automated evidence; it is not promoted to Pa
 | RPT-AC-042 | Blocked | Source-change pagination and a guarded isolated MySQL read/post race pass; representative load and broader concurrency profiles remain unverified.           |
 | RPT-AC-043 | Blocked | Production restoration/reproduction and worker-authority evidence pending.                                                                                |
 | RPT-AC-044 | Blocked | Selected missing-source gates tested; exhaustive per-owner/export disable matrix pending.                                                                 |
+
+
+## Coordinated financial implementation checkpoint — 30 September 2026
+
+Task: Complete the approved cash financial owner contracts and private document workflows.
+Result: Balanced immutable accounting with direct delegated execution, authoritative scopes, durable replay and protected artifacts.
+Scope: Modules 05–10 and dependent projections, notices, audit, reports and settings; bank rails and evidence uploads remain deferred.
+Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolated MySQL races and authenticated accessibility checks before activation.
+
+Dompdf 3.1.2 is installed. CSV/PDF jobs retain encrypted snapshots/manifests, source cutoffs, hashes and control totals on private local storage; remote/PHP/JavaScript PDF resources are disabled. CSV formulas are neutralized without mutating source values. Authorized retries increment a render generation so stale jobs cannot render or fail newer attempts. Downloads recheck current access; report expiry honors holds and preserves manifests. Statement supersession and six-page pagination are verified. Complete financial owners, artifact notices/shared recovery leases and operational certification remain open. Complete local PHP suite: 964 passing tests / 7,339 assertions, with 48 environment-dependent skips; three isolated MySQL races / 24 assertions pass. Scoped new-owner PHPStan, TypeScript and production build pass; project-wide PHPStan reports 91 diagnostics and frontend formatting reports existing issues. No production release claim is made.
+
+Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.

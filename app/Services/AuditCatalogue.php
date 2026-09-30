@@ -10,6 +10,9 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FAMILIES = [
+        'cash_disbursement' => ['started', 'handoff_recorded', 'not_delivered', 'posted'],
+        'charge' => ['category_published', 'assessed'],
+        'financial_artifact' => ['requested', 'ready', 'downloaded', 'expired', 'cancelled', 'failed', 'retried', 'hold_applied', 'hold_released'],
         'platform' => ['mode_changed', 'replay_plan', 'replay_approve', 'replay_execute', 'replay_stop', 'replay_resume'],
         'business_settings' => ['imported', 'draft_saved', 'draft_discarded', 'previewed', 'published', 'effective', 'cancelled', 'activation_failed', 'bootstrap', 'denied'],
         'invitation' => ['sent', 'delivery_failed', 'resent', 'email_corrected', 'cancelled', 'opened'],
@@ -18,11 +21,11 @@ class AuditCatalogue
             'start_offboarding', 'transfer_owner', 'cancel_offboarding', 'complete_offboarding', 'return', 'lifecycle_denied'],
         'user' => ['email_changed'],
         'fee_rule' => ['published', 'retired'],
-        'fee' => ['obligation.assessed', 'obligation.waived', 'assessment.corrected'],
+        'fee' => ['refund_authorized', 'obligation.assessed', 'obligation.waived', 'assessment.corrected'],
         'thrift_plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
         'collection' => ['receipt_posted', 'batch_frozen', 'remittance_confirmed', 'batch_reviewed', 'exception_opened', 'exception_resolved', 'exception_reopened', 'slot_annotated'],
         'financial_period' => ['open', 'close', 'reopen'],
-        'withdrawal' => ['submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted', 'hold_revalidation_required'],
+        'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted', 'hold_revalidation_required'],
         'reversal' => ['submitted', 'rejected', 'cancelled', 'approved_posted'],
         'ledger' => ['collection_posted', 'fee_posted', 'integrity_incident', 'projection_promoted', 'transactions_viewed', 'transaction_viewed', 'balance_viewed', 'statement_previewed'],
         'auth' => ['customer_recovery_requested', 'customer_recovery_verified', 'customer_recovery_approved', 'customer_recovery_reissued', 'customer_recovery_handover', 'customer_recovery_rejected', 'customer_recovery_cancelled', 'customer_recovery_completed', 'customer_recovery_expired', 'login_succeeded', 'password_failed', 'lock_created', 'manual_unlock', 'compromise_sessions_revoked', 'password_reset', 'password_changed', 'mfa_changed', 'session_revoked', 'recovery_codes_used', 'recovery_codes_regenerated'],
@@ -33,6 +36,9 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FIELDS = [
+        'cash_disbursement' => ['kind', 'status', 'amount_kobo', 'customer_profile_id'],
+        'charge' => ['kind', 'version', 'amount_kobo', 'customer_profile_id'],
+        'financial_artifact' => ['kind', 'format', 'status', 'snapshot_hash', 'artifact_hash', 'held', 'reason'],
         'platform' => ['from_mode', 'to_mode', 'from_version', 'to_version', 'run_id', 'manifest_digest', 'outcome'],
         'business_settings' => ['version', 'base_version', 'changed_fields', 'outcome'],
         'invitation' => ['agent_id', 'generation', 'attempt'],
@@ -44,7 +50,7 @@ class AuditCatalogue
         'thrift_plan' => ['customer_profile_id', 'terms_revision', 'fee_snapshot_id', 'business_version', 'assignment_version', 'predecessor_plan_id', 'agreement_attested', 'from_version', 'to_version', 'financial_terms_changed', 'from', 'to', 'version'],
         'collection' => ['customer_profile_id', 'plan_id', 'recording_agent_profile_id', 'agent_profile_id', 'received_date', 'revision', 'tender_kobo', 'savings_kobo', 'fee_kobo', 'batch_id', 'amount_kobo', 'outcome', 'outstanding_kobo', 'kind', 'slot_id'],
         'financial_period' => ['from', 'to', 'version'],
-        'withdrawal' => ['state', 'version', 'gross_kobo', 'fee_kobo', 'net_kobo', 'customer_profile_id'],
+        'withdrawal' => ['state', 'version', 'gross_kobo', 'fee_kobo', 'net_kobo', 'customer_profile_id', 'execution_reference'],
         'reversal' => ['customer_profile_id', 'original_posting_group_id', 'state', 'version', 'compensation_posting_group_id'],
         'ledger' => ['event_type', 'source_type', 'source_id', 'customer_profile_id', 'agent_profile_id', 'amount_kobo', 'posting_reference', 'currency', 'fee_obligation_id', 'line_count', 'category', 'projection_version', 'transaction_count', 'posting_group_count', 'status', 'result_count', 'customer_id', 'from', 'to', 'ledger_watermark'],
         'auth' => ['operation_id', 'to_version', 'outcome', 'category', 'lock_id', 'attempt_count', 'verification_method', 'restriction_ids', 'changed_fields', 'device_class'],

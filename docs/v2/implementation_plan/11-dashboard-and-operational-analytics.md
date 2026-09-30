@@ -79,3 +79,7 @@ A Blocked scenario includes partial automated evidence where noted; it is not pr
 | DSH-AC-028 | Blocked | Declared production capacity/network/device load profile has not been measured.                                                         |
 | DSH-AC-029 | Blocked | Owner rebuild/unavailable behavior tested; production restoration/promotion and scope-version evidence pending.                         |
 | DSH-AC-030 | Blocked | Undefined/incomplete owner metrics are gated; exhaustive per-owner disable/contract release matrix pending.                             |
+
+## Coordinated financial dependency checkpoint — 30 September 2026
+
+Verified posted financial movements have a separate dashboard section; authorized Admins receive business cash and encumbrances separately from Customer liability and reservations. Withdrawal gross/net/fee, concessions, refund payments, deductions and compensation have distinct metrics. Dashboard/report focused regression passes 60 / 594. Historical eligibility and complete financial operational certification remain unavailable; authenticated responsive/keyboard acceptance is pending.

@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
-import { index as reversalsIndex, cancel, reject } from '@/routes/reversals';
+import {
+    index as reversalsIndex,
+    cancel,
+    reject,
+    approve,
+    reviewPreview,
+} from '@/routes/reversals';
 
 type Reversal = {
     id: string;
@@ -43,18 +49,51 @@ defineOptions({
     },
 });
 
-const action = ref<'cancel' | 'reject' | null>(null);
+const action = ref<'cancel' | 'reject' | 'approve' | null>(null);
 const form = useForm({
     attempt_reference: crypto.randomUUID(),
     version: props.reversal.version,
     decision_reason: '',
+    preview_fingerprint: '',
     confirmed: false,
 });
 
+const previewHttp = useHttp<
+    Record<string, never>,
+    {
+        preview_fingerprint: string;
+        gross_kobo: number;
+        summary: Record<string, unknown>;
+        dependencies: Record<string, unknown>[];
+        request_version: number;
+    }
+>({});
+const review = ref<{
+    gross_kobo: number;
+    summary: Record<string, unknown>;
+    dependencies: Record<string, unknown>[];
+} | null>(null);
+const previewError = ref('');
+async function reviewCompensation(): Promise<void> {
+    previewError.value = '';
+    try {
+        const result = await previewHttp.post(
+            reviewPreview.url(props.reversal.id),
+        );
+        choose('approve');
+        form.preview_fingerprint = result.preview_fingerprint;
+        form.version = result.request_version;
+        review.value = result;
+    } catch {
+        review.value = null;
+        previewError.value =
+            'The full compensation could not be verified. Resolve its owner dependencies and review again.';
+    }
+}
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function choose(next: 'cancel' | 'reject'): void {
+function choose(next: 'cancel' | 'reject' | 'approve'): void {
     action.value = next;
     form.reset();
     form.attempt_reference = crypto.randomUUID();
@@ -64,7 +103,12 @@ function choose(next: 'cancel' | 'reject'): void {
 function submit(): void {
     if (!action.value || !form.confirmed) return;
     form.post(
-        (action.value === 'cancel' ? cancel : reject).url(props.reversal.id),
+        (action.value === 'cancel'
+            ? cancel
+            : action.value === 'approve'
+              ? approve
+              : reject
+        ).url(props.reversal.id),
         {
             onSuccess: () => {
                 action.value = null;
@@ -130,7 +174,30 @@ function submit(): void {
                     Approval is unavailable until the complete compensation
                     contract is verified.
                 </p>
+                <p
+                    v-if="previewError"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ previewError }}
+                </p>
+                <div
+                    v-if="review && action === 'approve'"
+                    class="grid gap-2 text-sm"
+                >
+                    <p>Full correction amount {{ money(review.gross_kobo) }}</p>
+                    <pre class="overflow-auto text-xs whitespace-pre-wrap">{{
+                        JSON.stringify(review.dependencies, null, 2)
+                    }}</pre>
+                </div>
                 <div class="flex gap-3">
+                    <Button
+                        v-if="can_approve"
+                        type="button"
+                        :disabled="previewHttp.processing"
+                        @click="reviewCompensation"
+                        >Review full compensation</Button
+                    >
                     <Button
                         v-if="can_review"
                         type="button"
@@ -150,7 +217,9 @@ function submit(): void {
                     <Label for="reversal-decision-reason">{{
                         action === 'reject'
                             ? 'Rejection reason'
-                            : 'Cancellation reason'
+                            : action === 'approve'
+                              ? 'Approval reason'
+                              : 'Cancellation reason'
                     }}</Label>
                     <Input
                         id="reversal-decision-reason"

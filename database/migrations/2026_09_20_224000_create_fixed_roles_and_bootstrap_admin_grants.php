@@ -91,7 +91,7 @@ return new class extends Migration
 
             if ($bootstrapAdmin !== null) {
                 // Explicitly grant all 13 AdminPermission catalogue items directly
-                $bootstrapAdmin->syncPermissions(AdminPermission::values());
+                $bootstrapAdmin->syncPermissions(AdminPermission::bootstrapValues());
 
                 // Record append-only bootstrap grant-history records sharing one batch identifier
                 $batchId = (string) Str::uuid();
@@ -99,6 +99,9 @@ return new class extends Migration
                 $historyRecords = [];
 
                 foreach (AdminPermission::cases() as $permission) {
+                    if ($permission === AdminPermission::CashExecute) {
+                        continue;
+                    }
                     $historyRecords[] = [
                         'batch_id' => $batchId,
                         'user_id' => $bootstrapAdmin->id,
