@@ -30,11 +30,16 @@ const emit = defineEmits<{
 </script>
 
 <template>
-    <section class="bg-card rounded-3xl border border-border p-5 sm:p-8">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <section class="bg-card border-border rounded-3xl border p-5 sm:p-8">
+        <div
+            class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+        >
             <div>
                 <h2 class="text-xl font-medium tracking-tight">{{ title }}</h2>
-                <p v-if="description" class="text-muted-foreground mt-1 text-sm">
+                <p
+                    v-if="description"
+                    class="text-muted-foreground mt-1 text-sm"
+                >
                     {{ description }}
                 </p>
             </div>
@@ -48,7 +53,9 @@ const emit = defineEmits<{
                         :model-value="searchValue"
                         :placeholder="searchPlaceholder"
                         class="pl-10"
-                        @update:model-value="emit('update:searchValue', String($event))"
+                        @update:model-value="
+                            emit('update:searchValue', String($event))
+                        "
                         @keyup.enter="emit('submitSearch')"
                     />
                 </div>
@@ -68,7 +75,10 @@ const emit = defineEmits<{
                     >
                         {{ activeFilterCount }}
                     </span>
-                    <X v-if="filtersOpen" class="text-muted-foreground size-4" />
+                    <X
+                        v-if="filtersOpen"
+                        class="text-muted-foreground size-4"
+                    />
                 </Button>
             </div>
         </div>
@@ -76,14 +86,21 @@ const emit = defineEmits<{
         <div
             v-if="filtersOpen"
             id="directory-filters"
-            class="mt-6 border-y border-border py-5"
+            class="border-border mt-6 border-y py-5"
         >
             <div class="flex flex-row flex-wrap gap-4">
                 <slot name="filters" />
             </div>
-            <div class="mt-5 flex items-center justify-between border-t border-border pt-4">
+            <div
+                class="border-border mt-5 flex items-center justify-between border-t pt-4"
+            >
                 <slot name="filter-summary" />
-                <Button type="button" variant="ghost" size="sm" @click="emit('resetFilters')">
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    @click="emit('resetFilters')"
+                >
                     Reset
                 </Button>
             </div>
@@ -93,7 +110,7 @@ const emit = defineEmits<{
             <slot />
         </div>
 
-        <footer v-if="$slots.footer" class="mt-5 border-t border-border pt-4">
+        <footer v-if="$slots.footer" class="border-border mt-5 border-t pt-4">
             <slot name="footer" />
         </footer>
     </section>

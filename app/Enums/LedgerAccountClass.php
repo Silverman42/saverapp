@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum LedgerAccountClass: string
 {
+    case CashRecoveryClearing = 'cash_recovery_clearing';
     case Asset = 'asset';
     case AgentReceivable = 'agent_receivable';
     case CustomerSavingsLiability = 'customer_savings_liability';

@@ -33,6 +33,9 @@ class BusinessSettingsReadiness
         foreach ($blocked as $code => [$owner, $blocker]) {
             $checks[$code] = ['state' => 'Unavailable', 'owner' => $owner, 'blocker' => $blocker, 'version' => 1];
         }
+        foreach (app(FinancialReleaseEvidenceService::class)->checks() as $capability => $check) {
+            $checks[$capability] = $check;
+        }
         if (app()->environment(['local', 'testing']) && config('collections.local_certified') === true) {
             foreach (['collection_cash', 'collections'] as $code) {
                 $checks[$code] = ['state' => 'Ready to enable', 'owner' => 'Module 07 local cash release',

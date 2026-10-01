@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'financial_release_revision' => env('FINANCIAL_RELEASE_REVISION'),
 
     /*
     |--------------------------------------------------------------------------

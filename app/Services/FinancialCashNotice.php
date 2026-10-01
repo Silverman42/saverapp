@@ -11,10 +11,10 @@ use Illuminate\Support\Str;
 
 class FinancialCashNotice
 {
-    public function queue(User $actor, CashDisbursement|FeeRefund $source, string $eventType): void
+    public function queue(User $actor, CashDisbursement|FeeRefund $source, string $eventType, ?string $eventReference = null, ?int $amountKobo = null): void
     {
         $disbursement = $source instanceof CashDisbursement;
-        $reference = $disbursement ? $source->execution_reference : $source->refund_reference;
+        $reference = $eventReference ?? ($disbursement ? $source->execution_reference : $source->refund_reference);
         $customerId = $source->customer_profile_id;
         if ($customerId === null) {
             if (! $source instanceof CashDisbursement || $source->kind !== 'earnings_draw') {
@@ -28,7 +28,7 @@ class FinancialCashNotice
             'event_type' => $eventType, 'operation_reference' => $reference, 'customer_profile_id' => $customerId,
             'actor_user_id' => $actor->id, 'cash_disbursement_id' => $disbursement ? $source->id : null,
             'fee_refund_id' => $disbursement ? $source->fee_refund_id : $source->id, 'kind' => $disbursement ? $source->kind : 'fee_refund',
-            'amount_kobo' => $source->amount_kobo, 'created_at' => now(), 'updated_at' => now(),
+            'amount_kobo' => $amountKobo ?? $source->amount_kobo, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $intentId = DB::table('financial_cash_notification_intents')->insertGetId([
             'notification_id' => (string) Str::uuid(), 'financial_cash_event_id' => $eventId, 'customer_profile_id' => $customerId,

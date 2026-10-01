@@ -25,7 +25,7 @@ class FreshAuthenticationService
         $session = $request->session();
         $freshUntil = (int) $session->get('auth.fresh_until', 0);
         $passwordConfirmedAt = (int) $session->get('auth.password_confirmed_at', 0);
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
 
         // Fallback to password_confirmed_at if fresh_until is not explicitly set
         if ($freshUntil === 0 && $passwordConfirmedAt > 0) {
@@ -66,7 +66,7 @@ class FreshAuthenticationService
      */
     public function confirm(User $user, Request $request, string $password, ?string $code = null): bool
     {
-        $now = Carbon::now()->timestamp;
+        $now = Carbon::now()->getTimestamp();
 
         // 1. Password abuse check
         if ($this->abuseService->isPasswordRestricted($user->email, $user, $request)) {

@@ -40,7 +40,7 @@ class RegistrationFeeRuleController extends Controller
             ->latest('version')
             ->get()
             ->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule) + [
-                'published_by' => $rule->publishedBy?->name ?? 'Unknown',
+                'published_by' => $rule->publishedBy->name ?? 'Unknown',
             ]);
 
         $planRules = FeeRule::query()
@@ -50,12 +50,12 @@ class RegistrationFeeRuleController extends Controller
             ->orderByDesc('version')
             ->get()
             ->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule) + [
-                'published_by' => $rule->publishedBy?->name ?? 'Unknown',
+                'published_by' => $rule->publishedBy->name ?? 'Unknown',
             ]);
 
         return Inertia::render('admin/fees/RegistrationFee', [
             'current_rule' => $currentRule ? $feeService->serializeRule($currentRule) + [
-                'published_by' => $currentRule->publishedBy?->name ?? 'Unknown',
+                'published_by' => $currentRule->publishedBy->name ?? 'Unknown',
             ] : null,
             'rules' => $rules,
             'plan_options' => $feeService->getCurrentPlanOptions()->map(fn (FeeRule $rule): array => $feeService->serializeRule($rule)),

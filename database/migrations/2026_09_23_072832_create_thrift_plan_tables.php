@@ -16,8 +16,8 @@ return new class extends Migration
             $table->string('plan_id', 32)->unique();
             $table->foreignId('customer_profile_id')->constrained()->restrictOnDelete();
             $table->foreignId('created_by_user_id')->constrained('users')->restrictOnDelete();
-            $table->foreignId('predecessor_plan_id')->nullable()->constrained('thrift_plans')->restrictOnDelete()->unique();
-            $table->foreignId('open_customer_profile_id')->nullable()->constrained('customer_profiles')->restrictOnDelete()->unique();
+            $table->foreignId('predecessor_plan_id')->nullable()->unique()->constrained('thrift_plans')->restrictOnDelete();
+            $table->foreignId('open_customer_profile_id')->nullable()->unique()->constrained('customer_profiles')->restrictOnDelete();
             $table->string('status', 24)->index();
             $table->unsignedSmallInteger('current_terms_revision');
             $table->unsignedInteger('version')->default(1);

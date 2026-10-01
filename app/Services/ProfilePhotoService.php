@@ -47,7 +47,7 @@ class ProfilePhotoService
             ]);
         }
 
-        $mimeType = $imageInfo['mime'] ?? null;
+        $mimeType = $imageInfo['mime'];
         if (! in_array($mimeType, self::ALLOWED_MIME_TYPES, true)) {
             throw ValidationException::withMessages([
                 'photo' => 'The profile photo must be a JPEG, PNG, or WebP image.',
@@ -78,6 +78,11 @@ class ProfilePhotoService
 
         $filename = hash('sha256', uniqid('', true).$file->getClientOriginalName()).'.'.$file->guessExtension();
 
-        return Storage::disk($disk)->putFileAs($directory, $file, $filename);
+        $path = Storage::disk($disk)->putFileAs($directory, $file, $filename);
+        if ($path === false) {
+            throw ValidationException::withMessages(['photo' => 'The profile photo could not be stored. Please retry.']);
+        }
+
+        return $path;
     }
 }

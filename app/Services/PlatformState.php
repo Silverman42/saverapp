@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use stdClass;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -81,7 +82,7 @@ class PlatformState
                     throw new ConflictHttpException('This platform operation belongs to different input.');
                 }
 
-                return json_decode($existing->result, true, flags: JSON_THROW_ON_ERROR);
+                return $this->decodeTransitionResult($existing->result);
             }
             if ($input['expires_at'] !== null && CarbonImmutable::parse($input['expires_at'])->isPast()) {
                 throw ValidationException::withMessages(['expires_at' => 'Use a future restriction expiry.']);
@@ -108,5 +109,19 @@ class PlatformState
 
             return $result;
         }, attempts: 3);
+    }
+
+    /** @return array{mode: string, version: int, operation_id: string, expires_at: string|null} */
+    private function decodeTransitionResult(string $encoded): array
+    {
+        $result = json_decode($encoded, true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($result) || ! is_string($result['mode'] ?? null) || PlatformMode::tryFrom($result['mode']) === null
+            || ! is_int($result['version'] ?? null) || $result['version'] < 1
+            || ! is_string($result['operation_id'] ?? null) || ! Str::isUuid($result['operation_id'])
+            || ! array_key_exists('expires_at', $result) || ($result['expires_at'] !== null && ! is_string($result['expires_at']))) {
+            throw new PlatformBlocked('platform_operation_result_unavailable');
+        }
+
+        return ['mode' => $result['mode'], 'version' => $result['version'], 'operation_id' => $result['operation_id'], 'expires_at' => $result['expires_at']];
     }
 }

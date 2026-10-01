@@ -157,7 +157,7 @@ class CustomerInvitationManagementService
                 ],
                 actor: $freshActor,
 
-                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $freshActor->user_type === UserType::Admin ? 'customers.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -254,7 +254,7 @@ class CustomerInvitationManagementService
                 ],
                 actor: $freshActor,
 
-                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $freshActor->user_type === UserType::Admin ? 'customers.manage' : null]
             );
 
             DB::afterCommit(function () use ($newInvitation, $plainToken, $generation): void {
@@ -324,7 +324,7 @@ class CustomerInvitationManagementService
                 ],
                 actor: $freshActor,
 
-                context: ['executor' => self::class, 'required_permission' => $freshActor?->user_type === UserType::Admin ? 'customers.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $freshActor->user_type === UserType::Admin ? 'customers.manage' : null]
             );
         });
     }

@@ -1,8 +1,10 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Enums\LedgerAccountCode;
 use App\Models\CashExecution;
 use App\Models\FinancialPeriod;
+use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\CollectionLedgerService;
 use App\Services\LedgerTransactionProjectionService;
@@ -15,6 +17,7 @@ function cashPaymentFixture(bool $funded = true): array
 {
     [$agent, $customer, $assignment, $plan] = withdrawalFixture();
     enableFixtureMethod();
+    LedgerAccount::query()->where('code', LedgerAccountCode::CashRecoveryClearing)->update(['mapping_status' => 'mapped']);
     $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);
     $admin = User::factory()->admin()->withTwoFactor()->create();
     $admin->givePermissionTo([AdminPermission::CashExecute, AdminPermission::WithdrawalsReview]);

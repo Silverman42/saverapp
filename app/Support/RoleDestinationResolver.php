@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Enums\UserType;
 use App\Models\User;
-use InvalidArgumentException;
 
 class RoleDestinationResolver
 {
@@ -19,7 +18,6 @@ class RoleDestinationResolver
             UserType::Customer => 'customer.dashboard',
             UserType::Agent => 'agent.dashboard',
             UserType::Admin => 'admin.dashboard',
-            default => throw new InvalidArgumentException("Unknown user type: {$type->value}"),
         };
     }
 

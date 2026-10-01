@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PlatformBanner from "@/components/PlatformBanner.vue";
+import PlatformBanner from '@/components/PlatformBanner.vue';
 import AuthLayout from '@/layouts/auth/AuthSimpleLayout.vue';
 
 const { title = '', description = '' } = defineProps<{

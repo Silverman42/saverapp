@@ -62,15 +62,23 @@ const submit = (): void => {
     <div>
         <Head title="Activate Customer Account" />
 
-        <div class="flex min-h-screen items-center justify-center bg-muted/40 p-4 sm:p-6 lg:p-8">
+        <div
+            class="bg-muted/40 flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8"
+        >
             <div class="w-full max-w-lg space-y-6">
                 <!-- Branding Header -->
                 <div class="text-center">
-                    <div class="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+                    <div
+                        class="bg-primary text-primary-foreground mx-auto flex size-12 items-center justify-center rounded-2xl shadow-sm"
+                    >
                         <UserCheck class="size-6" />
                     </div>
-                    <h1 class="mt-4 text-2xl font-bold tracking-tight">{{ business_name }}</h1>
-                    <p class="text-muted-foreground mt-1 text-sm">Customer Account Activation</p>
+                    <h1 class="mt-4 text-2xl font-bold tracking-tight">
+                        {{ business_name }}
+                    </h1>
+                    <p class="text-muted-foreground mt-1 text-sm">
+                        Customer Account Activation
+                    </p>
                 </div>
 
                 <!-- Ready State: Fee Terms & Password Form -->
@@ -78,48 +86,92 @@ const submit = (): void => {
                     <CardHeader>
                         <CardTitle>Activate Your Account</CardTitle>
                         <CardDescription>
-                            Hello <span class="font-medium text-foreground">{{ name }}</span>, please review your registration terms and set your account password for <span class="font-medium text-foreground">{{ email }}</span>.
+                            Hello
+                            <span class="text-foreground font-medium">{{
+                                name
+                            }}</span
+                            >, please review your registration terms and set
+                            your account password for
+                            <span class="text-foreground font-medium">{{
+                                email
+                            }}</span
+                            >.
                         </CardDescription>
                     </CardHeader>
                     <form @submit.prevent="submit">
                         <CardContent class="space-y-5">
                             <!-- Registration Fee Terms Disclosure Card -->
-                            <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
+                            <div
+                                class="bg-muted/30 space-y-3 rounded-lg border p-4"
+                            >
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
-                                        <Coins class="size-4 text-primary" />
-                                        <span class="text-sm font-semibold text-foreground">
+                                        <Coins class="text-primary size-4" />
+                                        <span
+                                            class="text-foreground text-sm font-semibold"
+                                        >
                                             Registration Fee Terms
                                         </span>
                                     </div>
-                                    <span class="font-mono text-sm font-bold text-foreground">
-                                        {{ fee_snapshot ? fee_snapshot.formatted_amount : 'Free' }}
+                                    <span
+                                        class="text-foreground font-mono text-sm font-bold"
+                                    >
+                                        {{
+                                            fee_snapshot
+                                                ? fee_snapshot.formatted_amount
+                                                : 'Free'
+                                        }}
                                     </span>
                                 </div>
 
-                                <p v-if="fee_snapshot?.description" class="text-xs text-muted-foreground">
+                                <p
+                                    v-if="fee_snapshot?.description"
+                                    class="text-muted-foreground text-xs"
+                                >
                                     {{ fee_snapshot.description }}
                                 </p>
-                                <p v-else class="text-xs text-muted-foreground">
-                                    {{ fee_snapshot?.is_zero ? 'No registration charge is required for this account.' : 'Standard onboarding registration charge.' }}
+                                <p v-else class="text-muted-foreground text-xs">
+                                    {{
+                                        fee_snapshot?.is_zero
+                                            ? 'No registration charge is required for this account.'
+                                            : 'Standard onboarding registration charge.'
+                                    }}
                                 </p>
 
-                                <div class="flex items-start gap-3 pt-2 border-t border-border/60">
+                                <div
+                                    class="border-border/60 flex items-start gap-3 border-t pt-2"
+                                >
                                     <Checkbox
                                         id="fee-ack"
                                         :checked="form.fee_acknowledged"
-                                        @update:checked="form.fee_acknowledged = Boolean($event)"
+                                        @update:checked="
+                                            form.fee_acknowledged =
+                                                Boolean($event)
+                                        "
                                         class="mt-0.5"
                                     />
-                                    <Label for="fee-ack" class="text-xs leading-normal cursor-pointer font-normal">
-                                        I acknowledge and accept the registration terms and fee of
-                                        <span class="font-semibold text-foreground">
-                                            {{ fee_snapshot ? fee_snapshot.formatted_amount : 'NGN 0.00' }}
+                                    <Label
+                                        for="fee-ack"
+                                        class="cursor-pointer text-xs leading-normal font-normal"
+                                    >
+                                        I acknowledge and accept the
+                                        registration terms and fee of
+                                        <span
+                                            class="text-foreground font-semibold"
+                                        >
+                                            {{
+                                                fee_snapshot
+                                                    ? fee_snapshot.formatted_amount
+                                                    : 'NGN 0.00'
+                                            }}
                                         </span>
                                         associated with opening this account.
                                     </Label>
                                 </div>
-                                <p v-if="form.errors.fee_acknowledged" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.fee_acknowledged"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.fee_acknowledged }}
                                 </p>
                             </div>
@@ -127,7 +179,9 @@ const submit = (): void => {
                             <!-- Password Fields -->
                             <div class="space-y-4">
                                 <div class="space-y-1.5">
-                                    <Label for="password">Create Password</Label>
+                                    <Label for="password"
+                                        >Create Password</Label
+                                    >
                                     <Input
                                         id="password"
                                         v-model="form.password"
@@ -135,18 +189,29 @@ const submit = (): void => {
                                         required
                                         autocomplete="new-password"
                                         placeholder="•••••••••••••••"
-                                        :class="{ 'border-destructive': form.errors.password }"
+                                        :class="{
+                                            'border-destructive':
+                                                form.errors.password,
+                                        }"
                                     />
-                                    <p v-if="form.errors.password" class="text-destructive text-xs">
+                                    <p
+                                        v-if="form.errors.password"
+                                        class="text-destructive text-xs"
+                                    >
                                         {{ form.errors.password }}
                                     </p>
-                                    <p class="text-muted-foreground text-[11px]">
-                                        Must be at least 15 characters long and not compromised in public data breaches.
+                                    <p
+                                        class="text-muted-foreground text-[11px]"
+                                    >
+                                        Must be at least 15 characters long and
+                                        not compromised in public data breaches.
                                     </p>
                                 </div>
 
                                 <div class="space-y-1.5">
-                                    <Label for="password-confirmation">Confirm Password</Label>
+                                    <Label for="password-confirmation"
+                                        >Confirm Password</Label
+                                    >
                                     <Input
                                         id="password-confirmation"
                                         v-model="form.password_confirmation"
@@ -154,9 +219,16 @@ const submit = (): void => {
                                         required
                                         autocomplete="new-password"
                                         placeholder="•••••••••••••••"
-                                        :class="{ 'border-destructive': form.errors.password_confirmation }"
+                                        :class="{
+                                            'border-destructive':
+                                                form.errors
+                                                    .password_confirmation,
+                                        }"
                                     />
-                                    <p v-if="form.errors.password_confirmation" class="text-destructive text-xs">
+                                    <p
+                                        v-if="form.errors.password_confirmation"
+                                        class="text-destructive text-xs"
+                                    >
                                         {{ form.errors.password_confirmation }}
                                     </p>
                                 </div>
@@ -166,9 +238,14 @@ const submit = (): void => {
                             <Button
                                 type="submit"
                                 class="w-full"
-                                :disabled="form.processing || !form.fee_acknowledged"
+                                :disabled="
+                                    form.processing || !form.fee_acknowledged
+                                "
                             >
-                                <Loader2 v-if="form.processing" class="mr-2 size-4 animate-spin" />
+                                <Loader2
+                                    v-if="form.processing"
+                                    class="mr-2 size-4 animate-spin"
+                                />
                                 <KeyRound v-else class="mr-2 size-4" />
                                 Activate Account & Log In
                             </Button>
@@ -179,49 +256,71 @@ const submit = (): void => {
                 <!-- Expired State -->
                 <Card v-else-if="status === 'expired'">
                     <CardHeader class="text-center">
-                        <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                        <div
+                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
+                        >
                             <AlertCircle class="size-6" />
                         </div>
-                        <CardTitle class="mt-2">Invitation Link Expired</CardTitle>
+                        <CardTitle class="mt-2"
+                            >Invitation Link Expired</CardTitle
+                        >
                         <CardDescription>
-                            This activation link has expired. Invitation links remain valid for 7 days from dispatch for your security.
+                            This activation link has expired. Invitation links
+                            remain valid for 7 days from dispatch for your
+                            security.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent class="text-center text-sm text-muted-foreground">
-                        Please contact your assigned agent or account administrator to receive a fresh invitation link.
+                    <CardContent
+                        class="text-muted-foreground text-center text-sm"
+                    >
+                        Please contact your assigned agent or account
+                        administrator to receive a fresh invitation link.
                     </CardContent>
                 </Card>
 
                 <!-- Cancelled State -->
                 <Card v-else-if="status === 'cancelled'">
                     <CardHeader class="text-center">
-                        <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                        <div
+                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
+                        >
                             <AlertCircle class="size-6" />
                         </div>
                         <CardTitle class="mt-2">Invitation Cancelled</CardTitle>
                         <CardDescription>
-                            This customer activation invitation was cancelled by an authorized agent or administrator.
+                            This customer activation invitation was cancelled by
+                            an authorized agent or administrator.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent class="text-center text-sm text-muted-foreground">
-                        If you believe this was done in error, please contact your account manager.
+                    <CardContent
+                        class="text-muted-foreground text-center text-sm"
+                    >
+                        If you believe this was done in error, please contact
+                        your account manager.
                     </CardContent>
                 </Card>
 
                 <!-- Already Activated State -->
                 <Card v-else-if="status === 'already_activated'">
                     <CardHeader class="text-center">
-                        <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <div
+                            class="bg-primary/10 text-primary mx-auto flex size-12 items-center justify-center rounded-full"
+                        >
                             <CheckCircle2 class="size-6" />
                         </div>
-                        <CardTitle class="mt-2">Account Already Activated</CardTitle>
+                        <CardTitle class="mt-2"
+                            >Account Already Activated</CardTitle
+                        >
                         <CardDescription>
-                            This customer account has already been successfully activated.
+                            This customer account has already been successfully
+                            activated.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="text-center">
                         <Link href="/login">
-                            <Button class="w-full">Sign In to Your Account</Button>
+                            <Button class="w-full"
+                                >Sign In to Your Account</Button
+                            >
                         </Link>
                     </CardContent>
                 </Card>
@@ -229,16 +328,24 @@ const submit = (): void => {
                 <!-- Invalid / Fallback State -->
                 <Card v-else>
                     <CardHeader class="text-center">
-                        <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                        <div
+                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
+                        >
                             <ShieldAlert class="size-6" />
                         </div>
-                        <CardTitle class="mt-2">Invalid Invitation Link</CardTitle>
+                        <CardTitle class="mt-2"
+                            >Invalid Invitation Link</CardTitle
+                        >
                         <CardDescription>
-                            This invitation link is unrecognized, malformed, or has been revoked.
+                            This invitation link is unrecognized, malformed, or
+                            has been revoked.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent class="text-center text-sm text-muted-foreground">
-                        Please check the link received in your email or contact support.
+                    <CardContent
+                        class="text-muted-foreground text-center text-sm"
+                    >
+                        Please check the link received in your email or contact
+                        support.
                     </CardContent>
                 </Card>
             </div>

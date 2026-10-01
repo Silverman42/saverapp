@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ExternalOutcome;
 use App\Jobs\MaterializeNotificationIntent;
+use App\Models\FinancialArtifact;
 use App\Support\ExternalOutcomeLookup;
 use App\Support\PlatformBlocked;
 use App\Support\RecoveryConflict;
@@ -20,7 +21,7 @@ use Throwable;
 
 class BackgroundRecovery
 {
-    public const OWNERS = ['audit_projection', 'notification_inbox'];
+    public const OWNERS = ['audit_projection', 'notification_inbox', 'financial_artifact'];
 
     public function __construct(private PlatformGuard $guard, private AuditRecoveryOwner $audit, private NotificationRecoveryOwner $notifications, private ExternalOutcomeLookup $external) {}
 
@@ -29,6 +30,7 @@ class BackgroundRecovery
         return match ($owner) {
             'audit_projection' => $this->audit,
             'notification_inbox' => $this->notifications,
+            'financial_artifact' => app(FinancialArtifactRecoveryOwner::class),
             default => throw new RecoveryConflict('unsupported_owner'),
         };
     }
@@ -51,6 +53,7 @@ class BackgroundRecovery
     {
         return ['owner' => $owner, 'source_id' => $sourceId, 'source_version' => $source->version,
             'payload_hash' => $source->hash, 'operation_key' => $source->operationKey,
+            ...($owner === 'financial_artifact' ? ['timeout_seconds' => 120, 'lease_seconds' => 150] : []),
             'correlation_reference' => (string) Str::uuid(), 'state' => $source->state,
             'attempts' => $source->attempts, 'cycle_attempts' => $source->attempts,
             'available_at' => $source->availableAt ?? now(), 'deadline_at' => $source->deadline,
@@ -169,6 +172,34 @@ class BackgroundRecovery
         $this->executionBoundary();
         $initial = DB::table('platform_recovery_work')->where('id', $lease->workId)->firstOrFail();
         try {
+            if ($initial->owner === 'financial_artifact') {
+                $started = hrtime(true);
+                $this->guard->transaction('derived', function () use ($lease): void {
+                    $work = $this->leased($lease);
+                    $this->validate($work, $this->owner($work->owner)->snapshot((int) $work->source_id));
+                });
+                app(FinancialArtifactService::class)->render((int) $initial->source_id, publicationFence: function () use ($lease, $started): void {
+                    $work = $this->leased($lease);
+                    if ((hrtime(true) - $started) / 1e9 >= (int) $work->timeout_seconds
+                        || CarbonImmutable::parse($work->lease_expires_at)->subSeconds((int) $work->lease_seconds)->addSeconds((int) $work->timeout_seconds)->isPast()) {
+                        throw new RecoveryConflict('execution_timeout');
+                    }
+                });
+
+                return $this->guard->transaction('derived', function () use ($lease): string {
+                    $work = $this->leased($lease);
+                    $source = $this->owner($work->owner)->snapshot((int) $work->source_id);
+                    $this->validate($work, $source);
+                    if (! in_array($source->state, ['succeeded', 'cancelled'], true)) {
+                        throw new RecoveryConflict('owner_result_unverified');
+                    }
+                    $this->finish($work, $source->state, $source->result);
+                    $this->attempt($work, 'finished', $source->state, result: $source->result);
+
+                    return $source->state;
+                });
+            }
+
             return $this->guard->transaction($this->owner($initial->owner)->operation(), function () use ($lease): string {
                 $work = $this->leased($lease);
                 $owner = $this->owner($work->owner);
@@ -312,6 +343,19 @@ class BackgroundRecovery
             'replay_run_id' => $work->replay_run_id, 'created_at' => now()]);
     }
 
+    public function restartArtifact(FinancialArtifact $artifact): void
+    {
+        $work = DB::table('platform_recovery_work')->where('owner', 'financial_artifact')->where('source_id', $artifact->id)->lockForUpdate()->first();
+        if ($work === null) {
+            $this->register('financial_artifact', $artifact->id);
+
+            return;
+        }
+        DB::table('platform_recovery_work')->where('id', $work->id)->update(['state' => 'queued', 'cycle_attempts' => 0,
+            'lease_token' => (int) $work->lease_token + 1, 'lease_owner' => null, 'lease_expires_at' => null,
+            'result_reference' => null, 'failure_code' => null, 'available_at' => now(), 'updated_at' => now()]);
+    }
+
     public function adopt(string $owner, int $limit = 100): int
     {
         $this->limit($limit);
@@ -319,7 +363,9 @@ class BackgroundRecovery
 
         return $this->guard->transaction($adapter->operation(), function () use ($owner, $limit): int {
             $cursor = DB::table('platform_recovery_adoption')->where('owner', $owner)->lockForUpdate()->firstOrFail();
-            [$table, $column] = $owner === 'audit_projection' ? ['audit_projection_work', 'canonical_event_id'] : ['notification_inbox_intents', 'id'];
+            [$table, $column] = match ($owner) {
+                'audit_projection' => ['audit_projection_work', 'canonical_event_id'], 'financial_artifact' => ['financial_artifacts', 'id'], default => ['notification_inbox_intents', 'id']
+            };
             $ids = DB::table($table)->where($column, '>', $cursor->cursor)->orderBy($column)->limit($limit)->pluck($column);
             foreach ($ids as $id) {
                 $this->adoptSource($owner, (int) $id);
@@ -347,9 +393,11 @@ class BackgroundRecovery
                 DB::table('platform_recovery_work')->where('id', $id)->update(['state' => 'dead_letter', 'failure_code' => 'historical_outcome_unverified']);
             }
         } catch (RecoveryConflict) {
-            $table = $owner === 'audit_projection' ? 'audit_projection_work' : 'notification_inbox_intents';
+            $table = match ($owner) {
+                'audit_projection' => 'audit_projection_work', 'financial_artifact' => 'financial_artifacts', default => 'notification_inbox_intents'
+            };
             $column = $owner === 'audit_projection' ? 'canonical_event_id' : 'id';
-            $attempts = DB::table($table)->where($column, $sourceId)->value($owner === 'audit_projection' ? 'attempts' : 'attempt_count') ?? 0;
+            $attempts = $owner === 'financial_artifact' ? 0 : (DB::table($table)->where($column, $sourceId)->value($owner === 'audit_projection' ? 'attempts' : 'attempt_count') ?? 0);
             $source = new RecoverySource(1, hash('sha256', 'unverified:'.$owner.':'.$sourceId), 'unverified:'.$owner.':'.$sourceId, 'dead_letter', (int) $attempts);
             DB::table('platform_recovery_work')->insertOrIgnore([...$this->registration($owner, $sourceId, $source), 'failure_code' => 'historical_outcome_unverified']);
         }

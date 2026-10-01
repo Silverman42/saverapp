@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable|null $received_at_utc
  */
 #[Fillable([
-    'receipt_reference', 'attempt_reference', 'payload_hash', 'customer_profile_id', 'thrift_plan_id',
+    'replacement_reversal_id', 'receipt_reference', 'attempt_reference', 'payload_hash', 'customer_profile_id', 'thrift_plan_id',
     'recording_agent_profile_id', 'assignment_id', 'collection_batch_id', 'recorded_by_user_id',
     'savings_posting_group_id', 'received_date', 'received_at_utc', 'timezone', 'business_version', 'tender_amount_kobo',
     'savings_amount_kobo', 'fee_amount_kobo', 'late_reason', 'notes', 'recorded_at',

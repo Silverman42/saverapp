@@ -40,7 +40,6 @@ Cover exact kobo arithmetic, balanced and duplicate posting, mixed receipts, res
 
 The Module 10 draft product defaults are adopted. No new package or production financial authority is implied by this plan. A scenario cannot be marked Completed while its upstream owner or release gate remains unresolved.
 
-
 ## Coordinated financial implementation checkpoint — 30 September 2026
 
 Task: Complete the approved cash financial owner contracts and private document workflows.
@@ -51,3 +50,9 @@ Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolate
 Projection owners include cash withdrawals, receipt/withdrawal/deduction compensation, fee concessions, external refund payments and earnings draws. Statement issuance captures current confirmed preview fingerprints, immutable encrypted snapshots and reproducible controls; supersession links preserve original issued bytes. FinancialArtifactTest passes 7 cases, including stale previews, protected access, retry generations, cancellation finality, expiry and holds. A 200-line statement rendered to six A4 pages and was visually checked at the first and final pages. Controlled replacement projections, complete correction dependencies and operational certification remain open.
 
 Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.
+
+## Financial workflow release-readiness checkpoint — 1 October 2026
+
+Replacement/recovery projections and clearing balances are implemented; shared artifact recovery fences publication and deduplicates notices. Complete effective totals and full artifact retention acceptance remain outstanding.
+
+Status remains **In Progress** for integrated release acceptance. Actual tests, partial authenticated Admin browser evidence, isolated operational exercises and accountable sign-off blockers are recorded in the [financial release package](./financial-workflow-release-readiness.md). Live financial flags remain off; no approval or unavailable acceptance scenario is marked Passed.

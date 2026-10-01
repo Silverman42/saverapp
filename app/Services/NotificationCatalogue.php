@@ -27,9 +27,10 @@ class NotificationCatalogue
             'customer.name_correction_invalidated', 'customer.name_correction_replaced', 'user.email_changed'],
         'customer_status' => ['customer_status'], 'agent_status' => ['agent_status'],
         'agent_lifecycle' => ['agent.suspend', 'agent.restore', 'agent.start_offboarding', 'agent.transfer_owner', 'agent.cancel_offboarding', 'agent.complete_offboarding', 'agent.return'],
-        'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
+        'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected', 'closed', 'early_termination_prepared', 'closed_exception_resolved'],
         'collection' => ['collection'], 'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted'],
-        'financial_cash' => ['refund_authorized', 'started', 'handoff_recorded', 'not_delivered', 'posted'],
+        'financial_cash' => ['recovery_recorded', 'recovery_confirmed', 'refund_authorized', 'started', 'handoff_recorded', 'not_delivered', 'posted'],
+        'financial_artifact' => ['ready', 'failed'],
         'charge' => ['assessed'],
         'reversal' => ['submitted', 'approved_posted', 'rejected', 'cancelled'],
     ];
@@ -48,6 +49,7 @@ class NotificationCatalogue
         'collection' => ['table' => 'collection_notification_intents', 'source' => 'collection_receipts', 'key' => 'collection_receipt_id'],
         'withdrawal' => ['table' => 'withdrawal_notification_intents', 'source' => 'withdrawal_events', 'key' => 'withdrawal_event_id'],
         'financial_cash' => ['table' => 'financial_cash_notification_intents', 'source' => 'financial_cash_events', 'key' => 'financial_cash_event_id'],
+        'financial_artifact' => ['table' => 'financial_artifact_notification_intents', 'source' => 'financial_artifact_events', 'key' => 'financial_artifact_event_id'],
         'charge' => ['table' => 'manual_charge_notification_intents', 'source' => 'manual_charges', 'key' => 'manual_charge_id'],
         'reversal' => ['table' => 'reversal_notification_intents', 'source' => 'reversal_events', 'key' => 'reversal_event_id'],
     ];
@@ -249,11 +251,11 @@ class NotificationCatalogue
                 $this->matchSubject($owner->customer_profile_id, $customerId);
                 $this->audience($audience, ['subject_customer', 'current_agent']);
                 $messages = [
-                    'created' => 'A daily thrift plan was created.', 'renewed' => 'A new daily thrift plan was created from a cancelled plan.',
+                    'created' => 'A daily thrift plan was created.', 'renewed' => 'A new daily thrift plan was created from a settled predecessor.',
                     'terms_amended' => 'Your daily thrift plan terms were amended.', 'details_corrected' => 'Customer-visible plan details were corrected.',
                     'pause' => 'Your daily thrift plan was paused.', 'resume' => 'Your daily thrift plan was resumed.',
                     'cancel' => 'Your daily thrift plan was cancelled.', 'complete' => 'Your daily thrift plan was completed.',
-                    'close' => 'Your daily thrift plan was closed.', 'completion_corrected' => 'Your plan completion was corrected after an authorized correction.',
+                    'early_termination_prepared' => 'Early termination was prepared. Financial settlement and closure remain separate.', 'closed_exception_resolved' => 'A settled closed-cycle correction exception was resolved.', 'closed' => 'Your settled daily thrift plan was closed.', 'close' => 'Your daily thrift plan was closed.', 'completion_corrected' => 'Your plan completion was corrected after an authorized correction.',
                 ];
                 $summary = $messages[$eventType] ?? throw new InvalidArgumentException('Unknown plan event.');
                 $title = 'Thrift plan updated';
@@ -279,6 +281,17 @@ class NotificationCatalogue
                 $reference = $source->receipt_reference;
                 $destination = ['route' => 'collections.show', 'parameters' => [$reference]];
                 break;
+            case 'financial_artifact':
+                $this->audience($audience, ['artifact_requester']);
+                $artifact = DB::table('financial_artifacts')->where('id', $source->financial_artifact_id)->firstOrFail();
+                $this->matchSubject($owner->recipient_user_id, $artifact->requester_user_id);
+                $title = $eventType === 'ready' ? 'Financial document ready' : 'Financial document needs attention';
+                $summary = $eventType === 'ready' ? 'Your requested document is ready. Access is checked when you open it.' : 'Your requested document could not be rendered. Review its status before retrying.';
+                $reference = $artifact->artifact_reference;
+                $source->operation_reference = $reference;
+                $category = 'financial';
+                $destination = ['route' => 'financial-artifacts.show', 'parameters' => [$reference]];
+                break;
             case 'financial_cash':
                 $this->audience($audience, $customerId === null ? ['cash_executor'] : ['subject_customer']);
                 if ($customerId !== null && (int) $source->customer_profile_id !== (int) $customerId) {
@@ -286,6 +299,8 @@ class NotificationCatalogue
                 }
                 $title = $source->kind === 'earnings_draw' ? 'Business earnings cash draw' : 'Fee refund updated';
                 $summary = match ($eventType) {
+                    'recovery_recorded' => 'Cash recovery evidence was recorded. Confirm only the exact returned amount.',
+                    'recovery_confirmed' => 'Returned cash was confirmed. Unresolved amounts remain owned by the original attempt.',
                     'refund_authorized' => 'A cash-backed fee concession was authorized.',
                     'started' => 'Cash was reserved for an evidenced payment attempt.',
                     'handoff_recorded' => 'Cash handoff was recorded. Confirm the exact amount personally received.',
@@ -321,8 +336,8 @@ class NotificationCatalogue
                 $this->matchSubject($owner->customer_profile_id, $customerId);
                 $this->audience($audience, ['subject_customer', 'current_agent']);
                 $messages = [
-                    'cash_return_recorded' => 'A full cash return was recorded. Please confirm the exact amount returned.',
-                    'cash_return_confirmed' => 'The Customer confirmed a full cash return. Any posted payout still requires reviewed correction.',
+                    'cash_return_recorded' => 'A cash return amount was recorded. Please confirm the exact amount returned.',
+                    'cash_return_confirmed' => 'The Customer confirmed the recorded cash return amount. Any posted payout still requires reviewed correction.',
                     'cash_started' => 'Cash is reserved for an approved payment. Receipt is not yet confirmed.',
                     'cash_handoff_recorded' => 'The custodian recorded a handoff. The Customer must confirm receipt; the outcome remains unknown.',
                     'cash_posted' => 'The Customer confirmed cash receipt and the withdrawal was posted.',
@@ -415,6 +430,7 @@ class NotificationCatalogue
             'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin', 'service_manager'],
             'collection' => ['subject_customer'],
             'financial_cash' => ['subject_customer', 'cash_executor'],
+            'financial_artifact' => ['artifact_requester'],
             default => ['subject_customer', 'current_agent'],
         };
         if (! is_array($audiences) || $audiences === [] || ! array_is_list($audiences) || array_diff($audiences, $allowedAudiences) !== []) {

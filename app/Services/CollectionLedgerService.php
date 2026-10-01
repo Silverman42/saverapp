@@ -22,9 +22,12 @@ class CollectionLedgerService
 {
     public function postCashSavings(int $receiptId, int $customerId, int $agentId, int $amountKobo, User $actor): LedgerPostingGroup
     {
-        return $this->post('cash_contribution', 'collection_receipt', (string) $receiptId,
+        $replacement = DB::table('collection_receipts')->where('id', $receiptId)->value('replacement_reversal_id') !== null;
+
+        return $this->post($replacement ? 'unapplied_replacement' : 'cash_contribution', 'collection_receipt', (string) $receiptId,
             'collection-savings-'.$receiptId, $customerId, $agentId, $amountKobo,
-            LedgerAccountCode::AgentReceivable, LedgerAccountClass::AgentReceivable,
+            $replacement ? LedgerAccountCode::UnappliedFunds : LedgerAccountCode::AgentReceivable,
+            $replacement ? LedgerAccountClass::UnappliedFunds : LedgerAccountClass::AgentReceivable,
             LedgerAccountCode::CustomerSavingsLiability, LedgerAccountClass::CustomerSavingsLiability, $actor);
     }
 

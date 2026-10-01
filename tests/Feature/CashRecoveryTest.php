@@ -3,6 +3,7 @@
 use App\Enums\AdminPermission;
 use App\Models\CashRecovery;
 use App\Models\LedgerPostingGroup;
+use App\Services\CashRecoveryService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\ReversalService;
 use App\Services\WithdrawalBalanceService;
@@ -14,7 +15,7 @@ require_once __DIR__.'/../CashExecutionFixtures.php';
 function recoverCashFixture(object $test, object $admin, object $customer, object $execution): CashRecovery
 {
     $test->actingAs($admin)->withSession(cashSession())->post(route('cash-executions.return', $execution), [
-        'recovery_reference' => (string) Str::uuid(), 'evidence' => 'Full original cash counted back into the controlled till.', 'confirmed' => true,
+        'preview_fingerprint' => app(CashRecoveryService::class)->preview($admin, $execution->fresh())['preview_fingerprint'], 'recovery_reference' => (string) Str::uuid(), 'evidence' => 'Full original cash counted back into the controlled till.', 'confirmed' => true,
     ])->assertRedirect();
     $recovery = CashRecovery::query()->sole();
     $test->actingAs($customer->user)->post(route('cash-recoveries.acknowledge', $recovery), ['confirmed' => true])->assertRedirect();

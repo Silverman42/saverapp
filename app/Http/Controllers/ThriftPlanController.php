@@ -74,10 +74,10 @@ class ThriftPlanController extends Controller
 
             return [
                 'id' => $plan->plan_id,
-                'name' => $revision?->name ?? 'Daily thrift plan',
+                'name' => $revision === null ? 'Daily thrift plan' : $revision->name,
                 'customer' => [
                     'id' => $plan->customerProfile->customer_id,
-                    'name' => $plan->customerProfile->user?->name ?? 'Customer',
+                    'name' => $plan->customerProfile->user->name ?? 'Customer',
                 ],
                 'status' => $plan->status->value,
                 'status_label' => $plan->status->displayName(),
@@ -140,7 +140,7 @@ class ThriftPlanController extends Controller
             'start_date' => (string) $request->query('start_date', $today),
             'contribution_days' => (string) $request->query('contribution_days', '30'),
             'customer_visible_notes' => (string) $request->query('customer_visible_notes', ''),
-            'fee_rule_id' => (string) $request->query('fee_rule_id', $feeOptions->first()?->id ?? ''),
+            'fee_rule_id' => (string) $request->query('fee_rule_id', $feeOptions->first()->id ?? ''),
         ];
 
         $preview = null;
@@ -169,7 +169,7 @@ class ThriftPlanController extends Controller
         return Inertia::render('plans/Create', [
             'customer' => [
                 'id' => $customerProfile->customer_id,
-                'name' => $customerProfile->user?->name ?? 'Customer',
+                'name' => $customerProfile->user->name ?? 'Customer',
                 'status' => $customerProfile->operational_status->value,
                 'version' => $customerProfile->version,
                 'assignment_version' => $customerProfile->currentAssignment?->version,
@@ -234,19 +234,20 @@ class ThriftPlanController extends Controller
             'plan' => $this->serializePlan($record, $viewer),
             'customer' => [
                 'id' => $record->customerProfile->customer_id,
-                'name' => $record->customerProfile->user?->name ?? 'Customer',
+                'name' => $record->customerProfile->user->name ?? 'Customer',
                 'status' => $record->customerProfile->operational_status->value,
                 'version' => $record->customerProfile->version,
                 'assignment_version' => $record->customerProfile->currentAssignment?->version,
             ],
             'actions' => [
                 'can_manage' => $canManage,
+                'can_settle' => $canManage && config('collections.settlement_enabled', false),
                 'can_edit' => $canManage && in_array($record->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused], true),
                 'can_pause' => $canManage && $record->status === ThriftPlanStatus::Active,
                 'can_resume' => $canManage && $record->status === ThriftPlanStatus::Paused
                     && $record->customerProfile->operational_status->value === 'active',
                 'can_cancel' => $canCancel,
-                'can_renew' => $canManage && $record->status === ThriftPlanStatus::Cancelled && ! $hasSuccessor
+                'can_renew' => $canManage && in_array($record->status, [ThriftPlanStatus::Cancelled, ThriftPlanStatus::Closed], true) && ! $hasSuccessor
                     && $record->customerProfile->operational_status->value === 'active',
             ],
             'attempt_reference' => (string) Str::uuid(),
@@ -331,7 +332,7 @@ class ThriftPlanController extends Controller
             'plan' => $this->serializePlan($record, $actor),
             'customer' => [
                 'id' => $record->customerProfile->customer_id,
-                'name' => $record->customerProfile->user?->name ?? 'Customer',
+                'name' => $record->customerProfile->user->name ?? 'Customer',
                 'version' => $record->customerProfile->version,
                 'assignment_version' => $record->customerProfile->currentAssignment?->version,
             ],
@@ -504,7 +505,7 @@ class ThriftPlanController extends Controller
             'activity_started_at' => $plan->activity_started_at?->toIso8601String(),
             'customer' => [
                 'id' => $plan->customerProfile->customer_id,
-                'name' => $plan->customerProfile->user?->name ?? 'Customer',
+                'name' => $plan->customerProfile->user->name ?? 'Customer',
             ],
             'predecessor' => $plan->predecessor === null ? null : [
                 'id' => $plan->predecessor->plan_id,
@@ -560,13 +561,13 @@ class ThriftPlanController extends Controller
                 'explanation' => $event->customer_explanation,
                 'reason' => $isCustomer ? null : $event->reason,
                 'actor' => $isCustomer ? null : $event->actor?->name,
-                'effective_at' => $event->effective_at?->timezone($currentRevision?->timezone ?? 'Africa/Lagos')->format('Y-m-d H:i'),
+                'effective_at' => $event->effective_at->timezone($currentRevision === null ? 'Africa/Lagos' : $currentRevision->timezone)->format('Y-m-d H:i'),
             ])->values(),
             'financial_summary' => [
                 'status' => 'unavailable',
                 'message' => 'Actual collections, savings balance, and progress are unavailable until the financial modules are connected.',
             ],
-            'created_at' => $plan->created_at?->timezone($currentRevision?->timezone ?? 'Africa/Lagos')->format('Y-m-d H:i'),
+            'created_at' => $plan->created_at?->timezone($currentRevision === null ? 'Africa/Lagos' : $currentRevision->timezone)->format('Y-m-d H:i'),
         ];
     }
 }

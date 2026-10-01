@@ -78,6 +78,10 @@ class CustomerRegistrationService
         });
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{customer: CustomerProfile, replayed: bool}
+     */
     private function registerAllowed(User $agent, string $attemptReference, array $data, ?UploadedFile $photo = null): array
     {
         $business = BusinessProfile::current();

@@ -11,11 +11,16 @@ defineProps<{
 </script>
 
 <template>
-    <section class="bg-card rounded-3xl border border-border p-5 sm:p-8">
-        <div class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section class="bg-card border-border rounded-3xl border p-5 sm:p-8">
+        <div
+            class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        >
             <div>
                 <h1 class="text-xl font-medium tracking-tight">{{ title }}</h1>
-                <p v-if="description" class="text-muted-foreground mt-1 text-sm">
+                <p
+                    v-if="description"
+                    class="text-muted-foreground mt-1 text-sm"
+                >
                     {{ description }}
                 </p>
             </div>
@@ -29,13 +34,17 @@ defineProps<{
                 :key="metric.label"
                 class="border-border flex min-h-40 flex-col justify-between rounded-2xl border p-5"
             >
-                <p class="text-muted-foreground text-xs font-semibold tracking-[0.16em] uppercase">
+                <p
+                    class="text-muted-foreground text-xs font-semibold tracking-[0.16em] uppercase"
+                >
                     {{ metric.label }}
                 </p>
                 <p class="mt-4 text-4xl font-semibold tracking-tight">
                     {{ metric.value }}
                 </p>
-                <p class="text-muted-foreground mt-2 text-sm">{{ metric.description }}</p>
+                <p class="text-muted-foreground mt-2 text-sm">
+                    {{ metric.description }}
+                </p>
             </div>
         </div>
     </section>

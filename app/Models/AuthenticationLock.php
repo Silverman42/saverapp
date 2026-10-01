@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\UnlockVerificationMethod;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,6 +34,7 @@ use Illuminate\Support\Carbon;
  */
 class AuthenticationLock extends Model
 {
+    /** @use HasFactory<Factory<self>> */
     use HasFactory;
 
     /**
@@ -99,6 +101,10 @@ class AuthenticationLock extends Model
     /**
      * Scope a query to only active, unexpired, and not manually unlocked locks.
      */
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('unlocked_at')
@@ -108,6 +114,10 @@ class AuthenticationLock extends Model
     /**
      * Scope a query to locks requiring security review.
      */
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
     public function scopeRequiresReview(Builder $query): Builder
     {
         return $query->where('requires_review', true);
@@ -115,6 +125,10 @@ class AuthenticationLock extends Model
 
     /**
      * Scope a query by lock category.
+     */
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
      */
     public function scopeByCategory(Builder $query, string $category): Builder
     {
@@ -149,7 +163,7 @@ class AuthenticationLock extends Model
         if (str_contains($this->ip_address, ':')) {
             $parts = explode(':', $this->ip_address);
 
-            return ($parts[0] ?? '2001').':'.($parts[1] ?? 'db8').':****:****';
+            return $parts[0].':'.($parts[1] ?? 'db8').':****:****';
         }
 
         $parts = explode('.', $this->ip_address);
@@ -191,7 +205,7 @@ class AuthenticationLock extends Model
             $browser = 'Chrome';
         } elseif (str_contains($ua, 'Firefox')) {
             $browser = 'Firefox';
-        } elseif (str_contains($ua, 'Safari') && ! str_contains($ua, 'Chrome')) {
+        } elseif (str_contains($ua, 'Safari')) {
             $browser = 'Safari';
         }
 

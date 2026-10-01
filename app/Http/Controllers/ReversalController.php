@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\CollectionReceipt;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalAttempt;
 use App\Models\ReversalRequest;
@@ -62,6 +63,10 @@ class ReversalController extends Controller
                 'dependency_snapshot' => $isCustomer || ($request->user()->user_type === UserType::Admin && ! $canReview)
                     ? null : $reversal->dependency_snapshot,
             ],
+            'can_replace' => $reversal->state === 'approved_posted'
+                && LedgerPostingGroup::query()->find($reversal->compensation_posting_group_id)?->event_type === 'receipt_reclassification'
+                && ! CollectionReceipt::query()->where('replacement_reversal_id', $reversal->id)->exists()
+                && Gate::forUser($request->user())->allows('recordCollection', $reversal->customerProfile),
             'can_review' => $canReview && $reversal->state === 'pending_review',
             'can_approve' => $canReview && $reversal->state === 'pending_review'
                 && $capabilities->resolve($reversal->originalPostingGroup) !== null,

@@ -109,7 +109,7 @@ class LedgerPostingService
 
             $postingAmountKobo = $command->lines[0]->amountKobo;
             $outstandingKobo = $obligation->outstandingAmountKobo();
-            if (in_array($command->eventType, [FeeLedgerPostingType::ExternalFeeReceipt, FeeLedgerPostingType::SavingsFeeApplication], true)
+            if (in_array($command->eventType, [FeeLedgerPostingType::ExternalFeeReceipt, FeeLedgerPostingType::UnappliedFeeApplication, FeeLedgerPostingType::SavingsFeeApplication], true)
                 && ($postingAmountKobo > $outstandingKobo
                     || ($command->eventType === FeeLedgerPostingType::SavingsFeeApplication && $postingAmountKobo !== $outstandingKobo))) {
                 throw new ConflictHttpException('Fee settlement exceeds the outstanding balance or is not a full savings application.');
@@ -188,6 +188,7 @@ class LedgerPostingService
 
             $entryType = match ($command->eventType) {
                 FeeLedgerPostingType::ExternalFeeReceipt,
+                FeeLedgerPostingType::UnappliedFeeApplication,
                 FeeLedgerPostingType::SavingsFeeApplication => FeeObligationEntryType::Settlement,
                 FeeLedgerPostingType::SavingsFeeRefund => FeeObligationEntryType::SavingsRefund,
                 FeeLedgerPostingType::ExternalRefundEntitlement => FeeObligationEntryType::ExternalRefundEntitlement,
@@ -241,6 +242,10 @@ class LedgerPostingService
     private function expectedPattern(FeeLedgerPostingType $eventType): array
     {
         return match ($eventType) {
+            FeeLedgerPostingType::UnappliedFeeApplication => [
+                [LedgerAccountCode::UnappliedFunds, LedgerEntrySide::Debit, LedgerAccountClass::UnappliedFunds],
+                [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
+            ],
             FeeLedgerPostingType::ExternalFeeReceipt => [
                 [LedgerAccountCode::AgentReceivable, LedgerEntrySide::Debit, LedgerAccountClass::AgentReceivable],
                 [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
@@ -318,7 +323,7 @@ class LedgerPostingService
     private function expectedSourceType(FeeLedgerPostingType $eventType): string
     {
         return match ($eventType) {
-            FeeLedgerPostingType::ExternalFeeReceipt => 'collection_receipt',
+            FeeLedgerPostingType::ExternalFeeReceipt, FeeLedgerPostingType::UnappliedFeeApplication => 'collection_receipt',
             FeeLedgerPostingType::SavingsFeeApplication => 'fee_application',
             FeeLedgerPostingType::SavingsFeeRefund => 'fee_refund',
             FeeLedgerPostingType::ExternalRefundEntitlement => 'external_refund_entitlement',
@@ -336,11 +341,11 @@ class LedgerPostingService
             LedgerAccountCode::FeeIncome,
             LedgerAccountCode::RefundPayable,
             LedgerAccountCode::OtherDeductionDestination,
-            LedgerAccountCode::UnappliedFunds => LedgerEntrySide::Credit,
+            LedgerAccountCode::UnappliedFunds, LedgerAccountCode::CashRecoveryClearing => LedgerEntrySide::Credit,
         };
     }
 
-    private function planForObligation(FeeObligation $obligation): ?int
+    public function planForObligation(FeeObligation $obligation): ?int
     {
         $snapshot = $obligation->feeSnapshot;
         $planId = match ($snapshot->source_type) {

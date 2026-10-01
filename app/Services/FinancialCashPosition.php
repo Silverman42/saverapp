@@ -22,6 +22,7 @@ class FinancialCashPosition
             LedgerAccountCode::BusinessDistributions => [LedgerAccountClass::BusinessDistributions, LedgerEntrySide::Debit],
             LedgerAccountCode::CustomerSavingsLiability => [LedgerAccountClass::CustomerSavingsLiability, LedgerEntrySide::Credit],
             LedgerAccountCode::RefundPayable => [LedgerAccountClass::RefundPayable, LedgerEntrySide::Credit],
+            LedgerAccountCode::CashRecoveryClearing => [LedgerAccountClass::CashRecoveryClearing, LedgerEntrySide::Credit],
             LedgerAccountCode::UnappliedFunds => [LedgerAccountClass::UnappliedFunds, LedgerEntrySide::Credit],
             default => throw new RuntimeException('Unsupported financial liquidity account.'),
         };
@@ -48,7 +49,7 @@ class FinancialCashPosition
         $draws = $this->integerSum(CashDisbursement::query()->when($excludingDisbursementId !== null, fn ($query) => $query->where('id', '!=', $excludingDisbursementId))->where('kind', 'earnings_draw')->whereIn('status', ['processing', 'outcome_unknown'])->sum('amount_kobo'));
         $undrawn = max(0, max(0, $this->balance(LedgerAccountCode::FeeIncome) - $this->balance(LedgerAccountCode::BusinessDistributions)) - $draws);
         $free = $cash;
-        foreach ([LedgerAccountCode::CustomerSavingsLiability, LedgerAccountCode::RefundPayable, LedgerAccountCode::UnappliedFunds] as $code) {
+        foreach ([LedgerAccountCode::CustomerSavingsLiability, LedgerAccountCode::RefundPayable, LedgerAccountCode::UnappliedFunds, LedgerAccountCode::CashRecoveryClearing] as $code) {
             $free = max(0, $free - $this->balance($code));
         }
         $free = max(0, $free - $pending);

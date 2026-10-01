@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('withdrawal_id', 32)->unique();
             $table->foreignId('customer_profile_id')->constrained()->restrictOnDelete();
             $table->foreignId('thrift_plan_id')->constrained('thrift_plans')->restrictOnDelete();
-            $table->foreignId('live_thrift_plan_id')->nullable()->constrained('thrift_plans')->restrictOnDelete()->unique();
+            $table->foreignId('live_thrift_plan_id')->nullable()->unique()->constrained('thrift_plans')->restrictOnDelete();
             $table->foreignId('initiating_agent_profile_id')->constrained('agent_profiles')->restrictOnDelete();
             $table->foreignId('assignment_id')->constrained('customer_assignments')->restrictOnDelete();
             $table->foreignId('submitted_by_user_id')->constrained('users')->restrictOnDelete();

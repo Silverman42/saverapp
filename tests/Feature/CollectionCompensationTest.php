@@ -25,7 +25,7 @@ test('receipt correction fails closed when the complete allocation and fee graph
     $mapping->update(['mapping_status' => 'mapped', 'account_class' => LedgerAccountClass::UnappliedFunds, 'normal_balance' => LedgerEntrySide::Credit]);
 
     expect(fn () => app(CollectionReversalOwner::class)->preview(LedgerPostingGroup::findOrFail($receipt->savings_posting_group_id), $customer, false))
-        ->toThrow(ConflictHttpException::class, 'dependent fee compensation');
+        ->toThrow(ConflictHttpException::class, 'allocation graph');
     $this->assertDatabaseCount('collection_allocation_releases', 0);
     $this->assertDatabaseCount('ledger_posting_groups', 1);
 });

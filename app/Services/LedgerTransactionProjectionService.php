@@ -7,9 +7,11 @@ use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
 use App\Models\CashDisbursement;
 use App\Models\CashExecution;
+use App\Models\CashRecovery;
 use App\Models\CashRemittance;
 use App\Models\ChargeCategoryVersion;
 use App\Models\CollectionReceipt;
+use App\Models\FeeObligation;
 use App\Models\FeeRefund;
 use App\Models\LedgerPostingGroup;
 use App\Models\ManualCharge;
@@ -130,6 +132,17 @@ class LedgerTransactionProjectionService
                 $transactions++;
             }
 
+            foreach (LedgerPostingGroup::query()->whereIn('source_type', ['cash_recovery', 'disbursement_recovery'])->lazyById(100) as $group) {
+                $this->assertBalanced($group);
+                $recovery = $group->source_type === 'cash_recovery' ? CashRecovery::query()->findOrFail($group->source_id) : null;
+                if ($recovery !== null && $recovery->return_posting_group_id !== $group->id) {
+                    throw new RuntimeException('Cash recovery source does not reconcile.');
+                }
+                $this->writeOwnedMovement($group->event_type, $group->source_id, $group, $version, (int) $group->entries()->where('side', 'debit')->sum('amount_kobo'), 0, 0, $group->source_type);
+                $covered[$group->id] = true;
+                $transactions++;
+            }
+
             $groups = LedgerPostingGroup::query()->count();
             if (count($covered) !== $groups) {
                 throw new RuntimeException('An unsupported or unlinked posting group prevents projection promotion.');
@@ -220,11 +233,16 @@ class LedgerTransactionProjectionService
         $committedAt = null;
         foreach ($groups as $group) {
             $this->assertBalanced($group);
+            $expectedPlanId = $receipt->thrift_plan_id;
+            if ($expectedPlanId === null && $group->thrift_plan_id !== null) {
+                $fee = FeeObligation::query()->whereIn('id', DB::table('collection_fee_components')->where('collection_receipt_id', $receipt->id)->where('ledger_posting_group_id', $group->id)->select('fee_obligation_id'))->first();
+                $expectedPlanId = $fee === null ? null : app(LedgerPostingService::class)->planForObligation($fee);
+            }
             if ($group->customer_profile_id !== $receipt->customer_profile_id
                 || ! in_array($group->source_type, ['collection_receipt', 'fee_application'], true)
                 || $group->occurred_on?->toDateString() !== $receipt->received_date
                 || $group->business_timezone !== $receipt->timezone
-                || $group->thrift_plan_id !== $receipt->thrift_plan_id) {
+                || $group->thrift_plan_id !== $expectedPlanId) {
                 throw new RuntimeException('Receipt and ledger dimensions do not reconcile.');
             }
             $committedAt = $committedAt === null || $group->committed_at->greaterThan($committedAt)
@@ -249,7 +267,7 @@ class LedgerTransactionProjectionService
         }
         $this->upsertProjection($this->reference('collection_receipt', (string) $receipt->id, $receipt->received_date, $receipt->receipt_reference), $version, [
             'customer_profile_id' => $receipt->customer_profile_id,
-            'type' => 'contribution', 'status' => 'posted', 'occurred_on' => $receipt->received_date,
+            'type' => $receipt->replacement_reversal_id === null ? 'contribution' : 'replacement', 'status' => 'posted', 'occurred_on' => $receipt->received_date,
             'committed_at' => $committedAt, 'timezone' => $receipt->timezone, 'currency' => 'NGN',
             'gross_amount_kobo' => $receipt->tender_amount_kobo,
             'savings_effect_kobo' => $savingsCredit - $savingsDebit,

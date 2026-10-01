@@ -186,7 +186,7 @@ class RegistrationFeeService
                 ],
                 actor: $freshAdmin,
 
-                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'fees.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $rule;
@@ -229,7 +229,7 @@ class RegistrationFeeService
                 ],
                 actor: $freshAdmin,
 
-                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'fees.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => $freshAdmin->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
             return $rule;
@@ -295,7 +295,10 @@ class RegistrationFeeService
     }
 
     /**
-     * @param  class-string<\BackedEnum>  $enumClass
+     * @template TEnum of \BackedEnum
+     *
+     * @param  class-string<TEnum>  $enumClass
+     * @return TEnum
      */
     private function enumValue(string $enumClass, mixed $value): \BackedEnum
     {
@@ -436,7 +439,7 @@ class RegistrationFeeService
 
         $predecessor = $predecessors->last();
         if ($predecessor !== null) {
-            $predecessor->retired_at = $effectiveAt;
+            $predecessor->retired_at = $effectiveAt->toImmutable();
             $predecessor->save();
         }
     }

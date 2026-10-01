@@ -130,45 +130,85 @@ class FinancialArtifactService
         }
     }
 
-    public function render(int $id, ?int $generation = null): void
+    public function render(int $id, ?int $generation = null, ?\Closure $publicationFence = null): void
     {
-        app(PlatformGuard::class)->transaction('derived', function () use ($id, $generation): void {
+        $artifact = app(PlatformGuard::class)->transaction('derived', function () use ($id, $generation): ?FinancialArtifact {
             $artifact = FinancialArtifact::query()->whereKey($id)->lockForUpdate()->firstOrFail();
             if ($artifact->status !== 'queued' || ($generation !== null && $artifact->render_generation !== $generation)) {
-                return;
+                return null;
             }
-            $actor = User::query()->whereKey($artifact->requester_user_id)->firstOrFail();
-            $this->authorize($actor, $artifact);
+            $this->authorize(User::query()->findOrFail($artifact->requester_user_id), $artifact);
             if ($artifact->expires_at?->isPast()) {
                 $artifact->update(['status' => 'expired']);
 
-                return;
+                return null;
             }
-            $snapshot = $artifact->snapshot;
-            if (! hash_equals($artifact->snapshot_hash, $this->digest($snapshot))) {
+            if (! hash_equals($artifact->snapshot_hash, $this->digest($artifact->snapshot))) {
                 throw new RuntimeException('Financial snapshot integrity mismatch.');
             }
-            if ($artifact->format === 'csv') {
-                $bytes = $this->csv($snapshot, $artifact->manifest);
-            } else {
-                $pdf = Pdf::loadView('financial-document', ['artifact' => $artifact, 'snapshot' => $snapshot, 'manifest' => $artifact->manifest])
-                    ->setOptions(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'isJavascriptEnabled' => false, 'defaultFont' => 'DejaVu Sans'])
-                    ->setPaper('a4', $artifact->kind === 'statement' ? 'portrait' : 'landscape');
-                $bytes = $pdf->output();
-                if ($pdf->getDomPDF()->getCanvas()->get_page_count() > 500) {
-                    throw new RuntimeException('Financial PDF exceeds the local 500-page profile.');
+
+            return $artifact;
+        });
+        if ($artifact === null) {
+            return;
+        }
+        $snapshot = $artifact->snapshot;
+        if ($artifact->format === 'csv') {
+            $bytes = $this->csv($snapshot, $artifact->manifest);
+        } else {
+            $pdf = Pdf::loadView('financial-document', ['artifact' => $artifact, 'snapshot' => $snapshot, 'manifest' => $artifact->manifest])
+                ->setOptions(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'isJavascriptEnabled' => false, 'defaultFont' => 'DejaVu Sans'])
+                ->setPaper('a4', $artifact->kind === 'statement' ? 'portrait' : 'landscape');
+            $bytes = $pdf->output();
+            if ($pdf->getDomPDF()->getCanvas()->get_page_count() > 500) {
+                throw new RuntimeException('Financial PDF exceeds the local 500-page profile.');
+            }
+        }
+        if (strlen($bytes) > 20 * 1024 * 1024) {
+            throw new RuntimeException('Financial artifact exceeds the local 20 MB profile.');
+        }
+        $path = 'financial-artifacts/'.$artifact->artifact_reference.'/'.$artifact->render_generation.'-'.Str::uuid().'.encrypted';
+        if (! Storage::disk('local')->put($path, Crypt::encryptString($bytes))) {
+            throw new RuntimeException('Private artifact storage failed.');
+        }
+        $published = false;
+        try {
+            $published = app(PlatformGuard::class)->transaction('derived', function () use ($artifact, $bytes, $path, $publicationFence): bool {
+                if ($publicationFence !== null) {
+                    $publicationFence();
                 }
+                $current = FinancialArtifact::query()->whereKey($artifact->id)->lockForUpdate()->firstOrFail();
+                if ($current->status !== 'queued' || $current->render_generation !== $artifact->render_generation || $current->expires_at?->isPast()) {
+                    return false;
+                }
+                $actor = User::query()->whereKey($current->requester_user_id)->lockForUpdate()->firstOrFail();
+                $this->authorize($actor, $current);
+                if (! hash_equals($current->snapshot_hash, $this->digest($current->snapshot))) {
+                    throw new RuntimeException('Financial snapshot changed before publication.');
+                }
+                $current->update(['status' => 'ready', 'storage_path' => $path, 'artifact_hash' => hash('sha256', $bytes), 'issued_at' => now(), 'failure_code' => null]);
+                $this->audit('ready', $current, $actor);
+                $this->notice($current, 'ready');
+
+                return true;
+            });
+        } finally {
+            if (! $published) {
+                Storage::disk('local')->delete($path);
             }
-            if (strlen($bytes) > 20 * 1024 * 1024) {
-                throw new RuntimeException('Financial artifact exceeds the local 20 MB profile.');
-            }
-            $path = 'financial-artifacts/'.$artifact->artifact_reference.'.encrypted';
-            if (! Storage::disk('local')->put($path, Crypt::encryptString($bytes))) {
-                throw new RuntimeException('Private artifact storage failed.');
-            }
-            $artifact->update(['status' => 'ready', 'storage_path' => $path, 'artifact_hash' => hash('sha256', $bytes), 'issued_at' => now(), 'failure_code' => null]);
-            $this->audit('ready', $artifact, $actor);
-        }, attempts: 3);
+        }
+    }
+
+    private function notice(FinancialArtifact $artifact, string $event): void
+    {
+        DB::table('financial_artifact_events')->insertOrIgnore(['financial_artifact_id' => $artifact->id, 'source_version' => $artifact->render_generation, 'event_type' => $event, 'created_at' => now()]);
+        $source = DB::table('financial_artifact_events')->where('financial_artifact_id', $artifact->id)->where('source_version', $artifact->render_generation)->where('event_type', $event)->sole();
+        DB::table('financial_artifact_notification_intents')->insertOrIgnore(['notification_id' => (string) Str::uuid(),
+            'financial_artifact_event_id' => $source->id, 'recipient_user_id' => $artifact->requester_user_id,
+            'customer_profile_id' => $artifact->customer_profile_id, 'audience_type' => 'artifact_requester', 'channel' => 'database', 'status' => 'pending',
+            'created_at' => now(), 'updated_at' => now()]);
+        $intent = DB::table('financial_artifact_notification_intents')->where('financial_artifact_event_id', $source->id)->sole();
+        app(NotificationPipeline::class)->capture('financial_artifact', (int) $intent->id);
     }
 
     public function download(User $actor, FinancialArtifact $artifact): string
@@ -213,6 +253,7 @@ class FinancialArtifactService
             }
             $artifact->update(['status' => 'failed', 'failure_code' => 'render_or_authorization_failed']);
             $this->audit('failed', $artifact, null);
+            $this->notice($artifact, 'failed');
         });
     }
 
@@ -231,6 +272,7 @@ class FinancialArtifactService
             }
             $artifact->update(['status' => 'queued', 'render_generation' => $artifact->render_generation + 1, 'failure_code' => null]);
             $this->audit('retried', $artifact, $actor);
+            app(BackgroundRecovery::class)->restartArtifact($artifact);
             DB::afterCommit(static function () use ($artifact): void {
                 try {
                     RenderFinancialArtifact::dispatch($artifact->id, $artifact->render_generation)->afterCommit();
@@ -276,6 +318,36 @@ class FinancialArtifactService
                 }
                 $artifact->update(['status' => 'expired', 'storage_path' => null]);
                 $this->audit('expired', $artifact, null);
+
+                return true;
+            });
+        }
+
+        return $count;
+    }
+
+    public function discardOrphanGenerations(int $limit = 100): int
+    {
+        $count = 0;
+        $disk = Storage::disk('local');
+        foreach ($disk->allFiles('financial-artifacts') as $path) {
+            if ($count >= min(1000, max(1, $limit))) {
+                break;
+            }
+            $parts = explode('/', $path);
+            if (count($parts) !== 3 || ! str_ends_with($path, '.encrypted') || $disk->lastModified($path) > now()->subDay()->timestamp) {
+                continue;
+            }
+            $count += (int) app(PlatformGuard::class)->transaction('mutation', function () use ($parts, $path, $disk): bool {
+                $artifact = FinancialArtifact::query()->where('artifact_reference', $parts[1])->lockForUpdate()->first();
+                if ($artifact === null || $artifact->held || $artifact->storage_path === $path
+                    || DB::table('platform_recovery_work')->where('owner', 'financial_artifact')->where('source_id', $artifact->id)
+                        ->where('state', 'running')->where('lease_expires_at', '>', now())->exists()) {
+                    return false;
+                }
+                if (! $disk->delete($path)) {
+                    throw new RuntimeException('Unpublished artifact generation cleanup failed.');
+                }
 
                 return true;
             });
@@ -356,6 +428,7 @@ class FinancialArtifactService
                 'requester_user_id' => $actor->id, 'captured_at' => now()->toIso8601String(), 'currency' => 'NGN'],
             'expires_at' => $kind === 'report' ? now()->addDays(7) : null]);
         $this->audit('requested', $artifact, $actor);
+        app(BackgroundRecovery::class)->register('financial_artifact', $artifact->id);
         DB::afterCommit(static function () use ($artifact): void {
             try {
                 RenderFinancialArtifact::dispatch($artifact->id, $artifact->render_generation)->afterCommit();

@@ -20,7 +20,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 
-function collectionFixture(int $days = 2, int $startOffsetDays = 0, int $slotAmountKobo = 200000): array
+function collectionFixture(int $days = 2, int $startOffsetDays = 0, int $slotAmountKobo = 200000, int $feeAmountKobo = 0, FeeRuleTiming $feeTiming = FeeRuleTiming::FirstContribution, ?FeeSettlementSource $feeSource = null): array
 {
     $agent = User::factory()->agent()->create([
         'two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now(),
@@ -33,10 +33,10 @@ function collectionFixture(int $days = 2, int $startOffsetDays = 0, int $slotAmo
     ]);
     $rule = FeeRule::create([
         'version' => 1, 'name' => 'No plan fee', 'kind' => FeeRuleKind::Plan,
-        'rule_key' => 'test-plan', 'model' => FeeRuleModel::NoFee,
-        'timing' => FeeRuleTiming::FirstContribution, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => 0, 'customer_description' => 'No fee',
+        'rule_key' => 'test-plan', 'model' => $feeAmountKobo > 0 ? FeeRuleModel::Fixed : FeeRuleModel::NoFee,
+        'timing' => $feeTiming, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => $feeSource ?? ($feeAmountKobo > 0 ? FeeSettlementSource::SavingsApplication : FeeSettlementSource::ExternalReceipt),
+        'currency' => 'NGN', 'amount_kobo' => $feeAmountKobo, 'customer_description' => 'No fee',
         'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
         'publication_reason' => 'Test plan rule.',
     ]);
@@ -48,10 +48,10 @@ function collectionFixture(int $days = 2, int $startOffsetDays = 0, int $slotAmo
     $snapshot = FeeSnapshot::create([
         'customer_profile_id' => $customer->id, 'source_type' => 'plan', 'source_id' => $plan->plan_id,
         'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'No plan fee',
-        'kind' => FeeRuleKind::Plan, 'model' => FeeRuleModel::NoFee,
-        'timing' => FeeRuleTiming::FirstContribution, 'basis' => FeeRuleBasis::None,
-        'settlement_source' => FeeSettlementSource::ExternalReceipt,
-        'currency' => 'NGN', 'amount_kobo' => 0, 'basis_amount_kobo' => 0,
+        'kind' => FeeRuleKind::Plan, 'model' => $feeAmountKobo > 0 ? FeeRuleModel::Fixed : FeeRuleModel::NoFee,
+        'timing' => $feeTiming, 'basis' => FeeRuleBasis::None,
+        'settlement_source' => $feeSource ?? ($feeAmountKobo > 0 ? FeeSettlementSource::SavingsApplication : FeeSettlementSource::ExternalReceipt),
+        'currency' => 'NGN', 'amount_kobo' => $feeAmountKobo, 'basis_amount_kobo' => 0,
         'customer_description' => 'No fee', 'acknowledged_at' => now(),
     ]);
     $today = CarbonImmutable::now('Africa/Lagos')->toDateString();

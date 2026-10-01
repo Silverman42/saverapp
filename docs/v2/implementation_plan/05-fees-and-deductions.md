@@ -15,16 +15,16 @@ Adopt the proposed NGN/kobo calculation, recognition, status, waiver, and refund
 
 ## Implementation tasks
 
-| ID | Task | Requirements | Current status |
-| --- | --- | --- | --- |
-| FEE-T01 | Confirm Module 05 policy defaults, Module 10 account classes and posting patterns, and explicit gates for manual charges and unavailable owner workflows. | Section 17 | Completed — confirmed by user before implementation. |
-| FEE-T02 | Extend fee rules, snapshots, and obligations for immutable terms, fee-model inputs, source identity, and entry-derived obligation balances; migrate existing rows safely. | `FEE-FR-002`–`008`, `029` | Implemented. Migration halts on unsupported or inconsistent historical fee data; migration has not been applied. |
-| FEE-T03 | Add the controlled ledger account catalogue and internal balanced-posting boundary with immutable groups/entries, source-key uniqueness, integer amounts, and transactional audit evidence. | `FEE-FR-002`, `011`, `024`, `029`, `030` | Implemented. Seeded account mappings remain unconfigured, so postings fail closed. |
-| FEE-T04 | Expand versioned rule publication and preview to registration and plan fee options, validate effective intervals and supported model/timing combinations, and preserve immutable snapshots. | `FEE-FR-003`–`007`, `009`, `010`, `036` | Implemented for registration and plan rules/quotes. Plan snapshot consumption and trigger use remain gated on Module 06. |
-| FEE-T05 | Provide obligation assessment, outstanding-state queries, partial external settlement interface, Admin waiver, and correction of unsettled assessments with authorization and idempotency. | `FEE-FR-008`, `011`, `012`, `019`, `020`, `027`–`030` | Implemented for registration assessment, partial settlement commands, Admin waiver, and unsettled corrections. Receipt posting remains gated on Module 07 and approved mappings. |
-| FEE-T06 | Provide scoped Admin, assigned-Agent, and Customer fee histories and a business earnings/obligation overview with safe filters, stable pagination, and unavailable states. | `FEE-FR-024`, `031`, `032` | Implemented for scoped profile histories and the Admin obligation/earnings view. Earnings and refund payable remain unavailable until accounts are mapped. |
-| FEE-T07 | Define and expose typed internal contracts for plan triggers, collection allocations, withdrawal fee quotes, reversal corrections, lifecycle gates, audit, and post-commit notifications. | `FEE-FR-013`–`018`, `021`–`023`, `025`–`030`, `033`–`035` | Implemented for typed quote confirmation, idempotent snapshot assessment, fee position/cycle queries, transactional audit, and queued notices. Owner workflows remain gated. |
-| FEE-T08 | Record acceptance evidence for all Module 05 requirements and scenarios; complete only after owning modules and financial gates are available. | `FEE-FR-001`–`036`; `FEE-AC-001`–`048` | Blocked on cross-module owner contracts, approved mappings, and scenario acceptance. |
+| ID      | Task                                                                                                                                                                                        | Requirements                                              | Current status                                                                                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FEE-T01 | Confirm Module 05 policy defaults, Module 10 account classes and posting patterns, and explicit gates for manual charges and unavailable owner workflows.                                   | Section 17                                                | Completed — confirmed by user before implementation.                                                                                                                             |
+| FEE-T02 | Extend fee rules, snapshots, and obligations for immutable terms, fee-model inputs, source identity, and entry-derived obligation balances; migrate existing rows safely.                   | `FEE-FR-002`–`008`, `029`                                 | Implemented. Migration halts on unsupported or inconsistent historical fee data; migration has not been applied.                                                                 |
+| FEE-T03 | Add the controlled ledger account catalogue and internal balanced-posting boundary with immutable groups/entries, source-key uniqueness, integer amounts, and transactional audit evidence. | `FEE-FR-002`, `011`, `024`, `029`, `030`                  | Implemented. Seeded account mappings remain unconfigured, so postings fail closed.                                                                                               |
+| FEE-T04 | Expand versioned rule publication and preview to registration and plan fee options, validate effective intervals and supported model/timing combinations, and preserve immutable snapshots. | `FEE-FR-003`–`007`, `009`, `010`, `036`                   | Implemented for registration and plan rules/quotes. Plan snapshot consumption and trigger use remain gated on Module 06.                                                         |
+| FEE-T05 | Provide obligation assessment, outstanding-state queries, partial external settlement interface, Admin waiver, and correction of unsettled assessments with authorization and idempotency.  | `FEE-FR-008`, `011`, `012`, `019`, `020`, `027`–`030`     | Implemented for registration assessment, partial settlement commands, Admin waiver, and unsettled corrections. Receipt posting remains gated on Module 07 and approved mappings. |
+| FEE-T06 | Provide scoped Admin, assigned-Agent, and Customer fee histories and a business earnings/obligation overview with safe filters, stable pagination, and unavailable states.                  | `FEE-FR-024`, `031`, `032`                                | Implemented for scoped profile histories and the Admin obligation/earnings view. Earnings and refund payable remain unavailable until accounts are mapped.                       |
+| FEE-T07 | Define and expose typed internal contracts for plan triggers, collection allocations, withdrawal fee quotes, reversal corrections, lifecycle gates, audit, and post-commit notifications.   | `FEE-FR-013`–`018`, `021`–`023`, `025`–`030`, `033`–`035` | Implemented for typed quote confirmation, idempotent snapshot assessment, fee position/cycle queries, transactional audit, and queued notices. Owner workflows remain gated.     |
+| FEE-T08 | Record acceptance evidence for all Module 05 requirements and scenarios; complete only after owning modules and financial gates are available.                                              | `FEE-FR-001`–`036`; `FEE-AC-001`–`048`                    | Blocked on cross-module owner contracts, approved mappings, and scenario acceptance.                                                                                             |
 
 ## Interfaces and ownership boundaries
 
@@ -36,16 +36,16 @@ Adopt the proposed NGN/kobo calculation, recognition, status, waiver, and refund
 
 ## Acceptance mapping
 
-| Acceptance scenarios | Primary owning tasks |
-| --- | --- |
-| `FEE-AC-001`–`006` | FEE-T03–T05, FEE-T07 |
-| `FEE-AC-007`–`011` | FEE-T02, FEE-T04, with Module 04/Authentication integration |
-| `FEE-AC-012`–`017` | FEE-T03, FEE-T05, with Modules 07–09 integration |
-| `FEE-AC-018`–`023` | FEE-T03, FEE-T07, with Modules 07–08 integration |
-| `FEE-AC-024`–`028` | FEE-T05; manual fee/deduction cases remain Blocked pending approved mappings |
-| `FEE-AC-029`–`035` | FEE-T05–T07, with Modules 04, 07–10 integration |
-| `FEE-AC-036`–`040` | FEE-T03–T05, FEE-T07, with Modules 04, 06–10 integration |
-| `FEE-AC-041`–`048` | FEE-T03–T08, with Modules 04, 06–14 integration |
+| Acceptance scenarios | Primary owning tasks                                                         |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `FEE-AC-001`–`006`   | FEE-T03–T05, FEE-T07                                                         |
+| `FEE-AC-007`–`011`   | FEE-T02, FEE-T04, with Module 04/Authentication integration                  |
+| `FEE-AC-012`–`017`   | FEE-T03, FEE-T05, with Modules 07–09 integration                             |
+| `FEE-AC-018`–`023`   | FEE-T03, FEE-T07, with Modules 07–08 integration                             |
+| `FEE-AC-024`–`028`   | FEE-T05; manual fee/deduction cases remain Blocked pending approved mappings |
+| `FEE-AC-029`–`035`   | FEE-T05–T07, with Modules 04, 07–10 integration                              |
+| `FEE-AC-036`–`040`   | FEE-T03–T05, FEE-T07, with Modules 04, 06–10 integration                     |
+| `FEE-AC-041`–`048`   | FEE-T03–T08, with Modules 04, 06–14 integration                              |
 
 ## Verification scenarios
 
@@ -65,7 +65,6 @@ Implementation checks completed: PHP syntax validation, `php artisan route:list 
 - Existing non-pending fee obligation states without linked evidence cannot be backfilled faithfully; the migration must stop and require an explicit reconciliation before proceeding.
 - No dependency changes are introduced. The full Pest suite, PHPStan, frontend checks, and build remain final release gates after task implementation.
 
-
 ## Coordinated financial implementation checkpoint — 30 September 2026
 
 Task: Complete the approved cash financial owner contracts and private document workflows.
@@ -76,3 +75,9 @@ Verification: Focused Pest, Pint, scoped PHPStan, frontend checks/build, isolate
 Controlled fixed charge categories have immutable versions, purpose, Customer description, approved mapping versions and replay-safe publication. Manual fees create unpaid obligations; deductions preserve gross reservations and support Agent-request/Admin-review full compensation. Concessions distinguish savings restoration from external refund entitlement and cash payment. Draws require fees.manage plus explicitly delegated cash.execute and the smaller of undrawn earnings and verified free cash. ManualChargeTest passes 7 tests / 46 assertions; FeeRefundAndDrawTest passes 3 / 48. Full plan-trigger correction, recovery ownership and integrated certification remain open; flags stay false.
 
 Final local verification: complete PHP suite 964 passed / 7,339 assertions, 48 environment-dependent skips; isolated MySQL financial races 3 passed / 24 assertions; changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics; repository-wide frontend formatting remains unsuccessful. Authenticated financial browser acceptance and the explicitly named residual owner requirements remain open.
+
+## Financial workflow release-readiness checkpoint — 1 October 2026
+
+Net-principal trigger correction, preserved waivers, linked external refund entitlement and clearing-based refund/draw recovery are implemented; independently conceded-fee correction remains gated.
+
+Status remains **In Progress** for integrated release acceptance. Actual tests, partial authenticated Admin browser evidence, isolated operational exercises and accountable sign-off blockers are recorded in the [financial release package](./financial-workflow-release-readiness.md). Live financial flags remain off; no approval or unavailable acceptance scenario is marked Passed.

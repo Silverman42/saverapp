@@ -101,9 +101,9 @@ return new class extends Migration
         if ($driver === 'mysql') {
             DB::unprepared('ALTER TABLE business_profiles ADD CONSTRAINT business_singleton_check CHECK (singleton_key = 1)');
         }
-        foreach (['business_configuration_versions', 'business_configuration_events', 'business_configuration_operations', 'business_configuration_acknowledgements'] as $table) {
-            foreach (['UPDATE', 'DELETE'] as $operation) {
-                $name = 'cfg_'.str_replace('business_configuration_', '', $table).'_'.strtolower($operation);
+        foreach (['business_configuration_versions' => 'cfg_versions', 'business_configuration_events' => 'cfg_events', 'business_configuration_operations' => 'cfg_operations', 'business_configuration_acknowledgements' => 'cfg_acknowledgements'] as $table => $prefix) {
+            foreach (['UPDATE' => 'update', 'DELETE' => 'delete'] as $operation => $suffix) {
+                $name = $prefix.'_'.$suffix;
                 if ($driver === 'sqlite') {
                     DB::unprepared("CREATE TRIGGER {$name} BEFORE {$operation} ON {$table} BEGIN SELECT RAISE(ABORT, 'Configuration evidence is immutable'); END");
                 } elseif ($driver === 'mysql') {

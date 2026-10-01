@@ -6,7 +6,7 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 5;
+    public const VERSION = 6;
 
     /** @var array<string, array{title: string, source: string, date_basis: string, definition: string}> */
     private const DEFINITIONS = [

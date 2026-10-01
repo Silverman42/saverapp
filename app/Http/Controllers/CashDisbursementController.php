@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AdminPermission;
 use App\Models\CashDisbursement;
+use App\Models\CashRecovery;
 use App\Models\FeeObligation;
 use App\Models\FeeRefund;
 use App\Services\AuthorizationService;
@@ -31,13 +32,14 @@ class CashDisbursementController extends Controller
         });
 
         return Inertia::render('withdrawals/CashDisbursements', ['executions' => $query->latest('id')->limit(100)->get()->map(fn ($execution): array => [
-            ...$execution->only(['execution_reference', 'kind', 'amount_kobo', 'status']), 'can_attest' => $canExecute && $execution->executor_user_id === $actor->id,
+            ...$execution->only(['execution_reference', 'kind', 'amount_kobo', 'status']),
+            'recoveries' => CashRecovery::query()->where('cash_disbursement_id', $execution->id)->get(['recovery_reference', 'event_type', 'status', 'amount_kobo']), 'can_attest' => $canExecute && $execution->executor_user_id === $actor->id,
             'can_acknowledge' => $execution->recipient_user_id === $actor->id && ($execution->kind !== 'earnings_draw' || ($canExecute && $canFees)),
         ]), 'refunds' => ($canExecute || $canFees) ? FeeRefund::query()->where('kind', 'external')
             ->whereIn('customer_profile_id', $scope->forCustomers($actor)->select('id'))
-            ->whereNotIn('id', CashDisbursement::query()->whereIn('status', ['processing', 'outcome_unknown', 'posted'])->whereNotNull('fee_refund_id')->select('fee_refund_id'))
+            ->whereNotIn('id', CashDisbursement::query()->whereIn('status', ['processing', 'outcome_unknown', 'posted'])->whereNotNull('fee_refund_id')->whereNotExists(fn ($query) => $query->selectRaw('1')->from('ledger_posting_groups as recovered')->where('recovered.source_type', 'disbursement_recovery')->whereColumn('recovered.source_id', 'cash_disbursements.id'))->select('fee_refund_id'))
             ->latest('id')->limit(100)->get(['refund_reference', 'amount_kobo']) : [],
-            'can_refund' => $canFees, 'refundable_obligations' => $canFees ? FeeObligation::query()->whereIn('customer_profile_id', $scope->forCustomers($actor)->select('id'))->with('entries')->latest('id')->limit(100)->get()->filter(fn ($obligation): bool => $obligation->settledAmountKobo() > 0)->map(fn ($obligation): array => ['id' => $obligation->id, 'description' => $obligation->customer_description, 'settled_kobo' => $obligation->settledAmountKobo()])->values() : [],
+            'refund_enabled' => config('fees.refunds_enabled', false), 'can_refund' => $canFees, 'refundable_obligations' => $canFees ? FeeObligation::query()->whereIn('customer_profile_id', $scope->forCustomers($actor)->select('id'))->with('entries')->latest('id')->limit(100)->get()->filter(fn ($obligation): bool => $obligation->settledAmountKobo() > 0)->map(fn ($obligation): array => ['id' => $obligation->id, 'description' => $obligation->customer_description, 'settled_kobo' => $obligation->settledAmountKobo()])->values() : [],
             'can_execute' => $canExecute, 'can_draw' => $canExecute && $canFees, 'enabled' => config('fees.cash_disbursements_enabled', false)]);
     }
 

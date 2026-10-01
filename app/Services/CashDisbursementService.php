@@ -10,6 +10,7 @@ use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CashDisbursement;
+use App\Models\CashRecovery;
 use App\Models\CustomerProfile;
 use App\Models\FeeRefund;
 use App\Models\LedgerAccount;
@@ -51,7 +52,8 @@ class CashDisbursementService
             if ($customer !== null) {
                 app(CustomerActivityGate::class)->assertAllowed($customer, CustomerActivity::PostPayout);
                 if ($refund->kind !== 'external' || CashDisbursement::query()->where('fee_refund_id', $refund->id)
-                    ->whereIn('status', ['processing', 'outcome_unknown', 'posted'])->exists()) {
+                    ->whereIn('status', ['processing', 'outcome_unknown', 'posted'])
+                    ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('ledger_posting_groups as recovered')->where('recovered.source_type', 'disbursement_recovery')->whereColumn('recovered.source_id', 'cash_disbursements.id'))->exists()) {
                     throw new ConflictHttpException('This refund has no unpaid entitlement or is already owned by an attempt.');
                 }
                 $this->assertPayable($refund);
@@ -117,6 +119,9 @@ class CashDisbursementService
             }
             if ($execution->status !== 'outcome_unknown' || $execution->handoff_at === null) {
                 throw new ConflictHttpException('A recorded handoff is required before receipt acknowledgement.');
+            }
+            if (CashRecovery::query()->where('cash_disbursement_id', $execution->id)->exists()) {
+                throw new ConflictHttpException('Recovery evidence owns this attempt; resolve its full disposition before posting a payment.');
             }
             app(CashMethodCatalogue::class)->version($execution->kind, $execution->method_version);
             if ($execution->kind === 'earnings_draw' && $execution->amount_kobo > app(FinancialCashPosition::class)->read($execution->id)['draw_limit_kobo']) {

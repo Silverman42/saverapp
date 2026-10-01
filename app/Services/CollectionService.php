@@ -21,6 +21,7 @@ use App\Models\ContributionSlot;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\PlanLifecycleEvent;
+use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -211,11 +212,11 @@ class CollectionService
     }
 
     /** @param array<string, mixed> $data */
-    public function record(User $actor, CustomerProfile $customer, array $data): CollectionReceipt
+    public function record(User $actor, CustomerProfile $customer, array $data, ?ReversalRequest $replacement = null): CollectionReceipt
     {
         $submittedHash = hash('sha256', json_encode([$actor->id, $customer->id, $data], JSON_THROW_ON_ERROR));
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $submittedHash): CollectionReceipt {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $submittedHash, $replacement): CollectionReceipt {
             $existing = CollectionReceipt::query()->where('attempt_reference', $data['attempt_reference'])->lockForUpdate()->first();
             if ($existing !== null) {
                 if ($existing->recorded_by_user_id !== $actor->id || ! hash_equals($existing->payload_hash, $submittedHash)) {
@@ -254,12 +255,14 @@ class CollectionService
             }
 
             $assignment = $lockedCustomer->currentAssignment;
-            $batch = $this->currentBatch($assignment->agent_profile_id, $preview['received_date'], $preview['timezone']);
+            $originalReceipt = $replacement === null ? null : app(CollectionReplacementService::class)->lockSource($replacement, $lockedCustomer, $preview['tender_kobo']);
+            $custodianId = $originalReceipt === null ? $assignment->agent_profile_id : $originalReceipt->recording_agent_profile_id;
+            $batch = $originalReceipt === null ? $this->currentBatch($assignment->agent_profile_id, $preview['received_date'], $preview['timezone']) : $originalReceipt->batch;
             $reference = 'TXN-'.str_replace('-', '', $preview['received_date']).'-'.$this->references->generate('ledger_transaction');
             $receipt = CollectionReceipt::create([
-                'receipt_reference' => $reference, 'attempt_reference' => $data['attempt_reference'],
+                'replacement_reversal_id' => $replacement?->id, 'receipt_reference' => $reference, 'attempt_reference' => $data['attempt_reference'],
                 'payload_hash' => $submittedHash, 'customer_profile_id' => $lockedCustomer->id,
-                'thrift_plan_id' => $plan?->id, 'recording_agent_profile_id' => $assignment->agent_profile_id,
+                'thrift_plan_id' => $plan?->id, 'recording_agent_profile_id' => $custodianId,
                 'assignment_id' => $assignment->id, 'collection_batch_id' => $batch->id,
                 'recorded_by_user_id' => $actor->id, 'received_date' => $preview['received_date'],
                 'timezone' => $preview['timezone'], 'business_version' => $preview['business_version'],
@@ -277,7 +280,7 @@ class CollectionService
             }
             if ($preview['savings_kobo'] > 0) {
                 $group = $this->ledger->postCashSavings($receipt->id, $lockedCustomer->id,
-                    $assignment->agent_profile_id, $preview['savings_kobo'], $actor);
+                    $custodianId, $preview['savings_kobo'], $actor);
                 $receipt->update(['savings_posting_group_id' => $group->id]);
                 $plan->activity_started_at ??= now();
                 $plan->version++;
@@ -290,11 +293,11 @@ class CollectionService
                     throw new ConflictHttpException('Fee obligation changed before receipt posting.');
                 }
                 $group = $this->feeLedger->postFee(new LedgerPostingCommand(
-                    FeeLedgerPostingType::ExternalFeeReceipt, 'collection-fee-'.$receipt->id.'-'.$index,
+                    $replacement === null ? FeeLedgerPostingType::ExternalFeeReceipt : FeeLedgerPostingType::UnappliedFeeApplication, 'collection-fee-'.$receipt->id.'-'.$index,
                     'collection_receipt', $receipt->id.'-'.$obligation->id, 'NGN', $actor, $lockedCustomer->id,
                     CarbonImmutable::now(), [
-                        new LedgerPostingLine(LedgerAccountCode::AgentReceivable, LedgerEntrySide::Debit,
-                            $item['amount_kobo'], $lockedCustomer->id, $assignment->agent_profile_id, $obligation->id),
+                        new LedgerPostingLine($replacement === null ? LedgerAccountCode::AgentReceivable : LedgerAccountCode::UnappliedFunds, LedgerEntrySide::Debit,
+                            $item['amount_kobo'], $lockedCustomer->id, $replacement === null ? $assignment->agent_profile_id : null, $obligation->id),
                         new LedgerPostingLine(LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit,
                             $item['amount_kobo'], $lockedCustomer->id, null, $obligation->id),
                     ], $obligation->customer_description,
@@ -313,7 +316,7 @@ class CollectionService
             $this->transactions->projectReceipt($receipt->refresh());
             AuditEvent::record('collection.receipt_posted', CollectionReceipt::class, $receipt->id, $receipt->receipt_reference, [
                 'customer_profile_id' => $lockedCustomer->id, 'plan_id' => $plan?->plan_id,
-                'recording_agent_profile_id' => $assignment->agent_profile_id,
+                'recording_agent_profile_id' => $custodianId,
                 'received_date' => $preview['received_date'], 'tender_kobo' => $preview['tender_kobo'],
                 'savings_kobo' => $preview['savings_kobo'], 'fee_kobo' => $preview['fees_kobo'],
             ], $actor,
@@ -351,7 +354,7 @@ class CollectionService
         ]);
     }
 
-    private function updatePlanCompletionAndFee(ThriftPlan $plan, User $actor, CustomerProfile $customer, CollectionReceipt $receipt): void
+    public function updatePlanCompletionAndFee(ThriftPlan $plan, User $actor, CustomerProfile $customer, CollectionReceipt $receipt): void
     {
         $revision = $plan->currentTermsRevision();
         if ($revision === null) {
@@ -391,7 +394,8 @@ class CollectionService
                 'payload' => ['receipt_reference' => $receipt->receipt_reference], 'effective_at' => now(),
             ]);
         }
-        $obligation = $snapshot->obligation;
+        app(PlanFeeCorrectionService::class)->synchronize($plan, $actor, $receipt->attempt_reference);
+        $obligation = $snapshot->obligation()->first();
         if ($obligation !== null && $snapshot->settlement_source === FeeSettlementSource::SavingsApplication) {
             $outstanding = $obligation->outstandingAmountKobo();
             if ($outstanding > 0 && $this->balances->position($customer, true)['available_kobo'] >= $outstanding) {

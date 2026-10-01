@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\FinancialArtifact;
+use App\Services\BackgroundRecovery;
 use App\Services\FinancialArtifactService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -25,7 +27,11 @@ class RenderFinancialArtifact implements ShouldQueue
 
     public function handle(FinancialArtifactService $artifacts): void
     {
-        $artifacts->render($this->artifactId, $this->generation);
+        $artifact = FinancialArtifact::query()->findOrFail($this->artifactId);
+        if ($artifact->render_generation !== $this->generation) {
+            return;
+        }
+        app(BackgroundRecovery::class)->runSource('financial_artifact', $this->artifactId);
     }
 
     public function failed(?Throwable $exception): void

@@ -139,7 +139,7 @@ function saveDraft(): void {
     save.operation_id = begin();
     save.base_version = props.settings.version;
     save.proposed_values = {
-        ...(draft.value?.patch ?? {}),
+        ...draft.value?.patch,
         [selectedCode.value]: raw,
     };
     save.revision = draft.value?.revision ?? 1;

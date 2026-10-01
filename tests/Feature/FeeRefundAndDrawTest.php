@@ -4,10 +4,13 @@ use App\Enums\AdminPermission;
 use App\Enums\LedgerAccountCode;
 use App\Models\AgentProfile;
 use App\Models\CashDisbursement;
+use App\Models\CashRecovery;
 use App\Models\CustomerAssignment;
 use App\Models\FeeObligation;
 use App\Models\FeeRefund;
 use App\Models\LedgerAccount;
+use App\Models\LedgerPostingGroup;
+use App\Services\CashRecoveryService;
 use App\Services\FinancialCashPosition;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\ReportReadService;
@@ -61,6 +64,17 @@ test('business earnings draw requires both direct permissions and excludes custo
     $this->post(route('cash-disbursements.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
     $this->post(route('cash-disbursements.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
     expect($execution->fresh()->status)->toBe('posted')->and(app(FinancialCashPosition::class)->read()['draw_limit_kobo'])->toBe(300);
+    $this->withSession(cashSession())->post(route('cash-disbursements.return', $execution), ['preview_fingerprint' => app(CashRecoveryService::class)->preview($admin, $execution->fresh())['preview_fingerprint'], 'recovery_reference' => (string) Str::uuid(), 'amount_ngn' => '1.00', 'evidence' => 'First distribution cash returned.', 'confirmed' => true])->assertRedirect();
+    $partial = CashRecovery::query()->sole();
+    $this->post(route('cash-recoveries.acknowledge', $partial), ['confirmed' => true])->assertRedirect();
+    expect(app(FinancialCashPosition::class)->balance(LedgerAccountCode::CashRecoveryClearing))->toBe(100);
+    $this->post(route('cash-disbursements.return', $execution), ['preview_fingerprint' => app(CashRecoveryService::class)->preview($admin, $execution->fresh())['preview_fingerprint'], 'recovery_reference' => (string) Str::uuid(), 'amount_ngn' => '2.00', 'evidence' => 'Remaining distribution cash returned.', 'confirmed' => true])->assertRedirect();
+    $remaining = CashRecovery::query()->latest('id')->firstOrFail();
+    $this->post(route('cash-recoveries.acknowledge', $remaining), ['confirmed' => true])->assertRedirect();
+    $this->post(route('cash-recoveries.acknowledge', $remaining), ['confirmed' => true])->assertRedirect();
+    expect(app(FinancialCashPosition::class)->balance(LedgerAccountCode::CashRecoveryClearing))->toBe(0)
+        ->and(app(FinancialCashPosition::class)->read()['draw_limit_kobo'])->toBe(600);
+    $this->assertDatabaseCount('cash_recoveries', 2);
     $this->assertDatabaseCount('cash_disbursements', 1);
     app(LedgerTransactionProjectionService::class)->rebuild();
     $report = app(ReportReadService::class)->read($admin, 'withdrawals', ['page_size' => 25, 'group' => '', 'from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString()]);
@@ -108,4 +122,14 @@ test('external fee refund clears only its payable after authenticated exact Cust
     expect($metrics['external_refund_entitlements']['value'])->toBe(200)->and($metrics['external_refund_payments']['value'])->toBe(200);
     $statement = app(StatementPreviewService::class)->preview($customer->user, $customer, now()->startOfMonth()->toDateString(), now()->toDateString(), 'Africa/Lagos');
     expect($statement['closing_kobo'])->toBe(70000)->and(collect($statement['lines'])->where('type', 'external_refund_payment')->count())->toBe(1);
+    $this->actingAs($admin)->withSession(cashSession())->post(route('cash-disbursements.return', $execution), ['preview_fingerprint' => app(CashRecoveryService::class)->preview($admin, $execution->fresh())['preview_fingerprint'], 'recovery_reference' => (string) Str::uuid(), 'amount_ngn' => '2.00', 'evidence' => 'Exact previously paid refund returned.', 'confirmed' => true])->assertRedirect();
+    $returned = CashRecovery::query()->sole();
+    $this->actingAs($customer->user)->post(route('cash-recoveries.acknowledge', $returned), ['confirmed' => true])->assertRedirect();
+    $this->post(route('cash-recoveries.acknowledge', $returned), ['confirmed' => true])->assertRedirect();
+    expect(app(FinancialCashPosition::class)->balance(LedgerAccountCode::RefundPayable))->toBe(200)
+        ->and(app(FinancialCashPosition::class)->balance(LedgerAccountCode::CashRecoveryClearing))->toBe(0)
+        ->and(app(WithdrawalBalanceService::class)->position($customer, $plan)['liability_kobo'])->toBe(70000);
+    $this->assertDatabaseCount('cash_disbursements', 1);
+    expect(LedgerPostingGroup::query()->where('source_type', 'disbursement_recovery')->count())->toBe(1);
+
 });

@@ -61,6 +61,7 @@ class CustomerProfileFactory extends Factory
         ]);
     }
 
+    /** @param array<string, mixed> $overrides */
     public function withNextOfKin(array $overrides = []): static
     {
         return $this->state(fn (array $attributes) => [

@@ -111,6 +111,7 @@ class WithdrawalController extends Controller
             'can_execute' => $authorization->allows($request->user(), AdminPermission::CashExecute),
             'cash_execution' => CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->latest('id')->first()?->only(['execution_reference', 'status', 'amount_kobo']),
             'cash_recovery' => CashRecovery::query()->whereIn('cash_execution_id', CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->select('id'))->latest('id')->first()?->only(['recovery_reference', 'status', 'amount_kobo']),
+            'cash_recoveries' => CashRecovery::query()->whereIn('cash_execution_id', CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->select('id'))->get(['recovery_reference', 'event_type', 'status', 'amount_kobo']),
             'is_customer' => $request->user()->user_type === UserType::Customer,
             'can_review' => $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
             'can_cancel' => $request->user()->user_type === UserType::Agent

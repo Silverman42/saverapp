@@ -17,7 +17,7 @@ class CollectionBatch extends Model
     /** @return HasMany<CollectionReceipt, $this> */
     public function receipts(): HasMany
     {
-        return $this->hasMany(CollectionReceipt::class);
+        return $this->hasMany(CollectionReceipt::class)->whereNull('replacement_reversal_id');
     }
 
     /** @return HasMany<CashRemittance, $this> */

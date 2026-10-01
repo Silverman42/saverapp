@@ -13,6 +13,7 @@ use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CashExecution;
+use App\Models\CashRecovery;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
@@ -128,6 +129,9 @@ class CashExecutionService
             }
             if ($execution->status !== 'outcome_unknown' || $execution->handoff_at === null || $withdrawal->state !== 'outcome_unknown') {
                 throw new ConflictHttpException('The custodian has not recorded this handoff.');
+            }
+            if (CashRecovery::query()->where('cash_execution_id', $execution->id)->exists()) {
+                throw new ConflictHttpException('Recovery evidence owns this attempt; resolve its full disposition before posting a payment.');
             }
             app(CashMethodCatalogue::class)->version('withdrawal', $execution->method_version);
             app(WithdrawalService::class)->assertReservationAndBalance($withdrawal, $withdrawal->customerProfile);

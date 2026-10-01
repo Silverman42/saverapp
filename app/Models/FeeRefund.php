@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
-#[Fillable(['refund_reference', 'payload_hash', 'customer_profile_id', 'fee_obligation_id', 'actor_user_id', 'amount_kobo', 'kind', 'reason', 'ledger_posting_group_id'])]
+#[Fillable(['compensation_posting_group_id', 'refund_reference', 'payload_hash', 'customer_profile_id', 'fee_obligation_id', 'actor_user_id', 'amount_kobo', 'kind', 'reason', 'ledger_posting_group_id'])]
 class FeeRefund extends Model
 {
     protected $hidden = ['payload_hash', 'reason'];

@@ -85,7 +85,7 @@ class CollectionWorkspaceService
     /** @return array{receipt_count: int, tender_kobo: int, savings_kobo: int, fees_kobo: int} */
     public function received(User $viewer, string $date): array
     {
-        $summary = DB::table('collection_receipts')
+        $summary = DB::table('collection_receipts')->whereNull('replacement_reversal_id')
             ->where('received_date', $date)
             ->whereIn('customer_profile_id', $this->scope->forCustomers($viewer)->select('customer_profiles.id'))
             ->selectRaw('COUNT(*) as receipt_count, COALESCE(SUM(tender_amount_kobo), 0) as tender_kobo')

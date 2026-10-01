@@ -8,9 +8,11 @@ use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Services\ProfilePhotoService;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function (): void {
@@ -826,4 +828,14 @@ test('Agent photo endpoint enforces resource scoping', function (): void {
     $this->actingAs($otherAgentUser)
         ->get(route('agents.photo', $agentProfile->agent_id))
         ->assertNotFound();
+});
+
+test('profile photo storage failure returns a recoverable validation error instead of a false path', function (): void {
+    $file = UploadedFile::fake()->image('photo.jpg', 200, 200);
+    $disk = Mockery::mock(FilesystemAdapter::class);
+    $disk->shouldReceive('putFileAs')->once()->andReturnFalse();
+    Storage::shouldReceive('disk')->once()->with('local')->andReturn($disk);
+
+    expect(fn () => app(ProfilePhotoService::class)->storePhoto($file))
+        ->toThrow(ValidationException::class, 'The profile photo could not be stored. Please retry.');
 });

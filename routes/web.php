@@ -42,6 +42,7 @@ use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\FinancialArtifactController;
+use App\Http\Controllers\FinancialWorkflowController;
 use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ManagementDeliveryController;
 use App\Http\Controllers\NotificationInboxController;
@@ -131,6 +132,12 @@ Route::middleware(['auth'])->group(function () {
     Route::post('plans/{plan}/pause', [ThriftPlanController::class, 'pause'])->name('plans.pause');
     Route::post('plans/{plan}/resume', [ThriftPlanController::class, 'resume'])->name('plans.resume');
     Route::post('plans/{plan}/cancel', [ThriftPlanController::class, 'cancel'])->name('plans.cancel');
+    Route::get('plans/{plan}/settlement', [FinancialWorkflowController::class, 'settlement'])->name('plans.settlement');
+    Route::post('plans/{plan}/settlement/{action}', [FinancialWorkflowController::class, 'settlementConfirm'])->whereIn('action', ['close', 'prepare_termination', 'resolve_exception'])->name('plans.settlement.confirm');
+    Route::get('reversals/{reversal}/replacement', [FinancialWorkflowController::class, 'replacement'])->name('reversals.replacement');
+    Route::post('reversals/{reversal}/replacement/preview', [FinancialWorkflowController::class, 'replacementPreview'])->name('reversals.replacement.preview');
+    Route::post('reversals/{reversal}/replacement', [FinancialWorkflowController::class, 'replacementStore'])->name('reversals.replacement.store');
+    Route::post('cash-disbursements/{execution}/return', [CashRecoveryController::class, 'disbursement'])->middleware('fresh')->name('cash-disbursements.return');
     Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
 
     Route::get('withdrawals', [WithdrawalController::class, 'index'])->name('withdrawals.index');
@@ -162,6 +169,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('cash-disbursements/{execution}/acknowledge', [CashDisbursementController::class, 'acknowledge'])->name('cash-disbursements.acknowledge');
     Route::post('withdrawals/{withdrawal}/cash/start', [CashExecutionController::class, 'start'])->middleware('fresh')->name('withdrawals.cash.start');
     Route::post('cash-executions/{execution}/return', [CashRecoveryController::class, 'record'])->middleware('fresh')->name('cash-executions.return');
+    Route::get('cash-recovery-preview/{kind}/{execution}', [CashRecoveryController::class, 'preview'])->whereIn('kind', ['withdrawal', 'disbursement'])->name('cash-recoveries.preview');
     Route::post('cash-recoveries/{recovery}/acknowledge', [CashRecoveryController::class, 'acknowledge'])->name('cash-recoveries.acknowledge');
     Route::post('cash-executions/{execution}/handoff', [CashExecutionController::class, 'handoff'])->middleware('fresh')->name('cash-executions.handoff');
     Route::post('cash-executions/{execution}/not-delivered', [CashExecutionController::class, 'notDelivered'])->middleware('fresh')->name('cash-executions.not-delivered');

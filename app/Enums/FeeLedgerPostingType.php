@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum FeeLedgerPostingType: string
 {
+    case UnappliedFeeApplication = 'unapplied_fee_application';
     case ExternalFeeReceipt = 'external_fee_receipt';
     case SavingsFeeApplication = 'savings_fee_application';
     case SavingsFeeRefund = 'savings_fee_refund';

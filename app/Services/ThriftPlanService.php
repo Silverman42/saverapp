@@ -17,6 +17,7 @@ use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialWorkflowSupplement;
 use App\Models\PlanLifecycleEvent;
 use App\Models\PlanNotificationIntent;
 use App\Models\PlanOperationAttempt;
@@ -56,7 +57,7 @@ class ThriftPlanService
         $this->assertBusinessTimezone($business->timezone);
         $this->assertCustomerCanCreate($customer);
         $this->assertNoOpenCycle($customer);
-        $this->assertPreviewPredecessor($customer, $data['predecessor_plan_id'] ?? null);
+        $this->assertPreviewPredecessor($actor, $customer, $data['predecessor_plan_id'] ?? null);
 
         $assignment = $customer->currentAssignment;
         if ($assignment === null) {
@@ -297,7 +298,7 @@ class ThriftPlanService
             }
 
             $this->assertCustomerCanCreate($lockedCustomer);
-            $predecessor = $this->lockCancelledPredecessor($lockedCustomer, $data['predecessor_plan_id'] ?? null);
+            $predecessor = $this->lockRenewalPredecessor($context->actor, $lockedCustomer, $data['predecessor_plan_id'] ?? null);
 
             $expectedGrossKobo = $this->checkedMultiply($terms['contribution_amount_kobo'], $terms['contribution_days']);
             $previewBasisKobo = $this->feeBasisForPreview($rule, $terms['contribution_amount_kobo'], $expectedGrossKobo);
@@ -841,7 +842,7 @@ class ThriftPlanService
         }
     }
 
-    private function lockCancelledPredecessor(CustomerProfile $customer, mixed $predecessorPlanId): ?ThriftPlan
+    private function lockRenewalPredecessor(User $actor, CustomerProfile $customer, mixed $predecessorPlanId): ?ThriftPlan
     {
         if ($predecessorPlanId === null || $predecessorPlanId === '') {
             return null;
@@ -850,15 +851,19 @@ class ThriftPlanService
         $predecessor = ThriftPlan::query()->where('plan_id', (string) $predecessorPlanId)->lockForUpdate()->first();
         if ($predecessor === null
             || $predecessor->customer_profile_id !== $customer->id
-            || $predecessor->status !== ThriftPlanStatus::Cancelled
+            || ! in_array($predecessor->status, [ThriftPlanStatus::Cancelled, ThriftPlanStatus::Closed], true)
             || ThriftPlan::query()->where('predecessor_plan_id', $predecessor->id)->exists()) {
-            throw ValidationException::withMessages(['predecessor_plan_id' => ['Only a cancelled predecessor without an existing successor can be renewed.']]);
+            throw ValidationException::withMessages(['predecessor_plan_id' => ['Only a settled closed or cancelled predecessor without an existing successor can be renewed.']]);
+        }
+
+        if ($predecessor->status === ThriftPlanStatus::Closed && ! app(PlanSettlementService::class)->preview($actor, $predecessor)['can_close']) {
+            throw new ConflictHttpException('The closed predecessor has unresolved settlement effects.');
         }
 
         return $predecessor;
     }
 
-    private function assertPreviewPredecessor(CustomerProfile $customer, mixed $predecessorPlanId): void
+    private function assertPreviewPredecessor(User $actor, CustomerProfile $customer, mixed $predecessorPlanId): void
     {
         if ($predecessorPlanId === null || $predecessorPlanId === '') {
             return;
@@ -867,10 +872,13 @@ class ThriftPlanService
         $predecessor = ThriftPlan::query()
             ->where('plan_id', (string) $predecessorPlanId)
             ->where('customer_profile_id', $customer->id)
-            ->where('status', ThriftPlanStatus::Cancelled->value)
+            ->whereIn('status', [ThriftPlanStatus::Cancelled->value, ThriftPlanStatus::Closed->value])
             ->first();
         if ($predecessor === null || ThriftPlan::query()->where('predecessor_plan_id', $predecessor->id)->exists()) {
-            throw ValidationException::withMessages(['predecessor_plan_id' => ['Only a cancelled predecessor without an existing successor can be renewed.']]);
+            throw ValidationException::withMessages(['predecessor_plan_id' => ['Only a settled closed or cancelled predecessor without an existing successor can be renewed.']]);
+        }
+        if ($predecessor->status === ThriftPlanStatus::Closed && ! app(PlanSettlementService::class)->preview($actor, $predecessor)['can_close']) {
+            throw new ConflictHttpException('The closed predecessor has unresolved settlement effects.');
         }
     }
 
@@ -1132,7 +1140,7 @@ class ThriftPlanService
         ]);
     }
 
-    private function createNotificationIntents(
+    public function createNotificationIntents(
         CustomerProfile $customer,
         ThriftPlan $plan,
         PlanLifecycleEvent $event,
@@ -1257,7 +1265,8 @@ class ThriftPlanService
     public function archivalStatus(CustomerProfile $customer): string
     {
         if (DB::table('plan_lifecycle_events')->whereIn('thrift_plan_id', ThriftPlan::query()->where('customer_profile_id', $customer->id)->select('id'))
-            ->where('event_type', 'receipt_compensated')->where('payload->closed_plan_exception', true)->exists()) {
+            ->where('event_type', 'receipt_compensated')->where('payload->closed_plan_exception', true)
+            ->whereNotIn('id', FinancialWorkflowSupplement::query()->where('kind', 'closed_exception_resolved')->get()->pluck('facts.event_id')->all())->exists()) {
             return 'blocked';
         }
         $plans = ThriftPlan::query()->where('customer_profile_id', $customer->id)->get();

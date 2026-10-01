@@ -21,6 +21,7 @@ class DrainFinancialArtifacts extends Command
             RenderFinancialArtifact::dispatch($artifact->id, $artifact->render_generation);
         }
         $artifacts->expire();
+        $artifacts->discardOrphanGenerations();
 
         return self::SUCCESS;
     }

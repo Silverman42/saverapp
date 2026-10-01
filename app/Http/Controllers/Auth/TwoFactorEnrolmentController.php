@@ -51,10 +51,12 @@ class TwoFactorEnrolmentController extends Controller
             'hasConfirmed' => ! empty($user->two_factor_secret) && ! empty($user->two_factor_confirmed_at),
         ]);
 
-        return $response->toResponse($request)
-            ->header('Cache-Control', 'no-store, private')
-            ->header('Pragma', 'no-cache')
-            ->header('Referrer-Policy', 'no-referrer');
+        $httpResponse = $response->toResponse($request);
+        $httpResponse->headers->set('Cache-Control', 'no-store, private');
+        $httpResponse->headers->set('Pragma', 'no-cache');
+        $httpResponse->headers->set('Referrer-Policy', 'no-referrer');
+
+        return $httpResponse;
     }
 
     /**

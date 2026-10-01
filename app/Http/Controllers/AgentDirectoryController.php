@@ -13,6 +13,7 @@ use App\Services\AgentEligibilityService;
 use App\Services\ResourceScopeService;
 use App\Support\IdentityNormalizer;
 use App\Support\PhoneNormalizer;
+use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -248,7 +249,7 @@ class AgentDirectoryController extends Controller
 
             return [
                 'id' => $agent->agent_id,
-                'name' => $user?->name ?? 'Unknown',
+                'name' => $user->name ?? 'Unknown',
                 'photo_url' => $agent->profile_photo_path ? route('agents.photo', $agent->agent_id) : null,
                 'email' => $user?->email,
                 'phone' => $agent->phone,
@@ -292,7 +293,7 @@ class AgentDirectoryController extends Controller
     /**
      * Resolve a Lagos-local registration period to its inclusive UTC bounds.
      *
-     * @return array{0: Carbon|null, 1: Carbon|null}
+     * @return array{0: CarbonImmutable|null, 1: CarbonImmutable|null}
      */
     private function overviewPeriodBounds(string $period): array
     {

@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { preview as recoveryPreview } from '@/routes/cash-recoveries';
+import CashRecoveryPanel from '@/components/CashRecoveryPanel.vue';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
-import { index, handoff, acknowledge } from '@/routes/cash-disbursements';
+import {
+    index,
+    handoff,
+    acknowledge,
+    returnMethod as recordReturn,
+} from '@/routes/cash-disbursements';
 import { cash as startRefund } from '@/routes/fee-refunds';
 import { start as startDraw } from '@/routes/earnings-draws';
 import { store as authorizeRefund } from '@/routes/admin/fees/refunds';
@@ -16,6 +23,12 @@ type Execution = {
     kind: string;
     amount_kobo: number;
     status: string;
+    recoveries: {
+        recovery_reference: string;
+        status: string;
+        amount_kobo: number;
+        event_type: string;
+    }[];
     can_attest: boolean;
     can_acknowledge: boolean;
 };
@@ -27,6 +40,7 @@ const props = defineProps<{
         description: string;
         settled_kobo: number;
     }[];
+    refund_enabled: boolean;
     can_refund: boolean;
     can_execute: boolean;
     can_draw: boolean;
@@ -105,8 +119,8 @@ function entitlement(): void {
 const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
 </script>
 <template>
-    <Head title="Cash refunds and earnings draws" />
     <div class="flex flex-col gap-6">
+        <Head title="Cash refunds and earnings draws" />
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">
                 Cash refunds and earnings draws
@@ -182,7 +196,12 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                             type="checkbox"
                         />Confirm a concession of retained earnings, backed by
                         free cash</label
-                    ><Button :disabled="refund.processing || !refund.confirmed"
+                    ><Button
+                        :disabled="
+                            !refund_enabled ||
+                            refund.processing ||
+                            !refund.confirmed
+                        "
                         >Authorize entitlement</Button
                     >
                 </form>
@@ -300,9 +319,11 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                     </div>
                     <Button
                         v-if="
-                            ['processing', 'outcome_unknown'].includes(
-                                execution.status,
-                            )
+                            [
+                                'processing',
+                                'outcome_unknown',
+                                'posted',
+                            ].includes(execution.status)
                         "
                         variant="outline"
                         @click="choose(execution)"
@@ -385,6 +406,26 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                             {{ error }}
                         </p>
                     </form>
+                    <CashRecoveryPanel
+                        v-if="
+                            ['posted', 'outcome_unknown'].includes(
+                                selected.status,
+                            )
+                        "
+                        :key="selected.execution_reference"
+                        :preview-url="
+                            recoveryPreview.url({
+                                kind: 'disbursement',
+                                execution: selected.execution_reference,
+                            })
+                        "
+                        :record-url="
+                            recordReturn.url(selected.execution_reference)
+                        "
+                        :recoveries="selected.recoveries"
+                        :can-record="selected.can_attest"
+                        :can-confirm="selected.can_acknowledge"
+                    />
                     <p class="text-muted-foreground text-sm">
                         Missing or disputed handoff proof preserves this cash
                         reservation and blocks another payment.

@@ -132,7 +132,7 @@ class FortifyServiceProvider extends ServiceProvider
         ]));
 
         Fortify::twoFactorChallengeView(function (Request $request) {
-            $user = User::find($request->session()->get('login.id'));
+            $user = User::query()->whereKey($request->session()->get('login.id'))->first();
 
             return Inertia::render('auth/TwoFactorChallenge', [
                 'isAgent' => $user?->user_type === UserType::Agent,

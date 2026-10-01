@@ -143,7 +143,9 @@ const submit = (): void => {
                         Register Customer
                     </h1>
                     <p class="text-muted-foreground mt-1.5 text-sm">
-                        Register a new customer into your portfolio. An activation invitation will be dispatched to the customer's email.
+                        Register a new customer into your portfolio. An
+                        activation invitation will be dispatched to the
+                        customer's email.
                     </p>
                 </div>
                 <Link :href="customersIndex().url">
@@ -157,9 +159,14 @@ const submit = (): void => {
             <div v-if="!fee_preview.available">
                 <Alert variant="destructive">
                     <ShieldAlert class="size-4" />
-                    <AlertTitle>Registration Temporarily Unavailable</AlertTitle>
+                    <AlertTitle
+                        >Registration Temporarily Unavailable</AlertTitle
+                    >
                     <AlertDescription>
-                        {{ fee_preview.message ?? 'No active registration fee rule is published. An administrator must publish fee terms before customers can be onboarded.' }}
+                        {{
+                            fee_preview.message ??
+                            'No active registration fee rule is published. An administrator must publish fee terms before customers can be onboarded.'
+                        }}
                     </AlertDescription>
                 </Alert>
             </div>
@@ -169,28 +176,49 @@ const submit = (): void => {
                 <CardHeader class="pb-3">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
-                            <Coins class="size-4 text-primary" />
-                            <CardTitle class="text-base">Applicable Registration Fee Terms</CardTitle>
+                            <Coins class="text-primary size-4" />
+                            <CardTitle class="text-base"
+                                >Applicable Registration Fee Terms</CardTitle
+                            >
                         </div>
-                        <Badge variant="outline">Rule v{{ fee_preview.version }}</Badge>
+                        <Badge variant="outline"
+                            >Rule v{{ fee_preview.version }}</Badge
+                        >
                     </div>
                     <CardDescription>
-                        These terms will be permanently snapshotted to this customer's account at commit.
+                        These terms will be permanently snapshotted to this
+                        customer's account at commit.
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <p class="text-xs font-medium text-muted-foreground uppercase">Snapshotted Charge</p>
-                        <p class="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Snapshotted Charge
+                        </p>
+                        <p
+                            class="text-foreground mt-1 text-2xl font-bold tracking-tight"
+                        >
                             {{ fee_preview.formatted_amount }}
                         </p>
-                        <p class="text-[11px] text-muted-foreground">
-                            {{ fee_preview.is_zero ? 'No payable obligation will be generated.' : 'Creates a pending fee obligation upon registration.' }}
+                        <p class="text-muted-foreground text-[11px]">
+                            {{
+                                fee_preview.is_zero
+                                    ? 'No payable obligation will be generated.'
+                                    : 'Creates a pending fee obligation upon registration.'
+                            }}
                         </p>
                     </div>
                     <div>
-                        <p class="text-xs font-medium text-muted-foreground uppercase">Disclosure to Customer</p>
-                        <p class="mt-1 text-xs text-foreground">{{ fee_preview.customer_description }}</p>
+                        <p
+                            class="text-muted-foreground text-xs font-medium uppercase"
+                        >
+                            Disclosure to Customer
+                        </p>
+                        <p class="text-foreground mt-1 text-xs">
+                            {{ fee_preview.customer_description }}
+                        </p>
                     </div>
                 </CardContent>
             </Card>
@@ -201,30 +229,38 @@ const submit = (): void => {
                     <CardHeader>
                         <CardTitle>Personal & Contact Information</CardTitle>
                         <CardDescription>
-                            Enter the customer's core identity details. Full name, email, and phone number are required.
+                            Enter the customer's core identity details. Full
+                            name, email, and phone number are required.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="customer-name">
-                                    Full name <span class="text-destructive">*</span>
+                                    Full name
+                                    <span class="text-destructive">*</span>
                                 </Label>
                                 <Input
                                     id="customer-name"
                                     v-model="form.name"
                                     placeholder="e.g. Ngozi Amadi"
                                     required
-                                    :class="{ 'border-destructive': form.errors.name }"
+                                    :class="{
+                                        'border-destructive': form.errors.name,
+                                    }"
                                 />
-                                <p v-if="form.errors.name" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.name"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.name }}
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
                                 <Label for="customer-email">
-                                    Email address <span class="text-destructive">*</span>
+                                    Email address
+                                    <span class="text-destructive">*</span>
                                 </Label>
                                 <Input
                                     id="customer-email"
@@ -232,9 +268,14 @@ const submit = (): void => {
                                     type="email"
                                     placeholder="e.g. ngozi@example.ng"
                                     required
-                                    :class="{ 'border-destructive': form.errors.email }"
+                                    :class="{
+                                        'border-destructive': form.errors.email,
+                                    }"
                                 />
-                                <p v-if="form.errors.email" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.email"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.email }}
                                 </p>
                             </div>
@@ -243,37 +284,59 @@ const submit = (): void => {
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="customer-phone">
-                                    Phone number <span class="text-destructive">*</span>
+                                    Phone number
+                                    <span class="text-destructive">*</span>
                                 </Label>
                                 <Input
                                     id="customer-phone"
                                     v-model="form.phone"
                                     placeholder="e.g. +2348012345678"
                                     required
-                                    :class="{ 'border-destructive': form.errors.phone }"
+                                    :class="{
+                                        'border-destructive': form.errors.phone,
+                                    }"
                                 />
-                                <p v-if="form.errors.phone" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.phone"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.phone }}
                                 </p>
                                 <p class="text-muted-foreground text-[11px]">
-                                    Must be in international E.164 format (e.g. +2348012345678).
+                                    Must be in international E.164 format (e.g.
+                                    +2348012345678).
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label for="customer-gender">Gender (optional)</Label>
+                                <Label for="customer-gender"
+                                    >Gender (optional)</Label
+                                >
                                 <Select v-model="form.gender">
                                     <SelectTrigger id="customer-gender">
-                                        <SelectValue placeholder="Select gender" />
+                                        <SelectValue
+                                            placeholder="Select gender"
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="female">Female</SelectItem>
-                                        <SelectItem value="male">Male</SelectItem>
-                                        <SelectItem value="other">Other</SelectItem>
-                                        <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                                        <SelectItem value="female"
+                                            >Female</SelectItem
+                                        >
+                                        <SelectItem value="male"
+                                            >Male</SelectItem
+                                        >
+                                        <SelectItem value="other"
+                                            >Other</SelectItem
+                                        >
+                                        <SelectItem value="prefer_not_to_say"
+                                            >Prefer not to say</SelectItem
+                                        >
                                     </SelectContent>
                                 </Select>
-                                <p v-if="form.errors.gender" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.gender"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.gender }}
                                 </p>
                             </div>
@@ -281,41 +344,65 @@ const submit = (): void => {
 
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-1.5">
-                                <Label for="customer-occupation">Occupation (optional)</Label>
+                                <Label for="customer-occupation"
+                                    >Occupation (optional)</Label
+                                >
                                 <Input
                                     id="customer-occupation"
                                     v-model="form.occupation"
                                     placeholder="e.g. Trader, Teacher, Engineer"
-                                    :class="{ 'border-destructive': form.errors.occupation }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors.occupation,
+                                    }"
                                 />
-                                <p v-if="form.errors.occupation" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.occupation"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.occupation }}
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label for="customer-internal-ref">Internal Reference (optional)</Label>
+                                <Label for="customer-internal-ref"
+                                    >Internal Reference (optional)</Label
+                                >
                                 <Input
                                     id="customer-internal-ref"
                                     v-model="form.internal_reference"
                                     placeholder="e.g. BR-1092"
-                                    :class="{ 'border-destructive': form.errors.internal_reference }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors.internal_reference,
+                                    }"
                                 />
-                                <p v-if="form.errors.internal_reference" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors.internal_reference"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors.internal_reference }}
                                 </p>
                             </div>
                         </div>
 
                         <div class="space-y-1.5">
-                            <Label for="customer-address">Residential / Business address (optional)</Label>
+                            <Label for="customer-address"
+                                >Residential / Business address
+                                (optional)</Label
+                            >
                             <Input
                                 id="customer-address"
                                 v-model="form.address"
                                 placeholder="e.g. 12 Broad Street, Lagos Island, Lagos"
-                                :class="{ 'border-destructive': form.errors.address }"
+                                :class="{
+                                    'border-destructive': form.errors.address,
+                                }"
                             />
-                            <p v-if="form.errors.address" class="text-destructive text-xs">
+                            <p
+                                v-if="form.errors.address"
+                                class="text-destructive text-xs"
+                            >
                                 {{ form.errors.address }}
                             </p>
                         </div>
@@ -326,7 +413,9 @@ const submit = (): void => {
                 <Card>
                     <CardHeader>
                         <div class="flex items-center gap-2">
-                            <HeartHandshake class="size-4 text-muted-foreground" />
+                            <HeartHandshake
+                                class="text-muted-foreground size-4"
+                            />
                             <CardTitle>Next of Kin (Optional)</CardTitle>
                         </div>
                         <CardDescription>
@@ -341,23 +430,45 @@ const submit = (): void => {
                                     id="nok-name"
                                     v-model="form.next_of_kin.full_name"
                                     placeholder="e.g. Emeka Amadi"
-                                    :class="{ 'border-destructive': form.errors['next_of_kin.full_name'] }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors[
+                                                'next_of_kin.full_name'
+                                            ],
+                                    }"
                                 />
-                                <p v-if="form.errors['next_of_kin.full_name']" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors['next_of_kin.full_name']"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors['next_of_kin.full_name'] }}
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label for="nok-relationship">Relationship</Label>
+                                <Label for="nok-relationship"
+                                    >Relationship</Label
+                                >
                                 <Input
                                     id="nok-relationship"
                                     v-model="form.next_of_kin.relationship"
                                     placeholder="e.g. Spouse, Sibling, Child"
-                                    :class="{ 'border-destructive': form.errors['next_of_kin.relationship'] }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors[
+                                                'next_of_kin.relationship'
+                                            ],
+                                    }"
                                 />
-                                <p v-if="form.errors['next_of_kin.relationship']" class="text-destructive text-xs">
-                                    {{ form.errors['next_of_kin.relationship'] }}
+                                <p
+                                    v-if="
+                                        form.errors['next_of_kin.relationship']
+                                    "
+                                    class="text-destructive text-xs"
+                                >
+                                    {{
+                                        form.errors['next_of_kin.relationship']
+                                    }}
                                 </p>
                             </div>
                         </div>
@@ -369,22 +480,36 @@ const submit = (): void => {
                                     id="nok-phone"
                                     v-model="form.next_of_kin.phone"
                                     placeholder="e.g. +2348098765432"
-                                    :class="{ 'border-destructive': form.errors['next_of_kin.phone'] }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors['next_of_kin.phone'],
+                                    }"
                                 />
-                                <p v-if="form.errors['next_of_kin.phone']" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors['next_of_kin.phone']"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors['next_of_kin.phone'] }}
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label for="nok-address">Physical address</Label>
+                                <Label for="nok-address"
+                                    >Physical address</Label
+                                >
                                 <Input
                                     id="nok-address"
                                     v-model="form.next_of_kin.address"
                                     placeholder="e.g. Same as customer"
-                                    :class="{ 'border-destructive': form.errors['next_of_kin.address'] }"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors['next_of_kin.address'],
+                                    }"
                                 />
-                                <p v-if="form.errors['next_of_kin.address']" class="text-destructive text-xs">
+                                <p
+                                    v-if="form.errors['next_of_kin.address']"
+                                    class="text-destructive text-xs"
+                                >
                                     {{ form.errors['next_of_kin.address'] }}
                                 </p>
                             </div>
@@ -397,7 +522,8 @@ const submit = (): void => {
                     <CardHeader>
                         <CardTitle>Profile Photo & Internal Notes</CardTitle>
                         <CardDescription>
-                            Upload an identity photo and record initial onboarding notes.
+                            Upload an identity photo and record initial
+                            onboarding notes.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">
@@ -405,7 +531,7 @@ const submit = (): void => {
                             <Label>Customer Photo (optional)</Label>
                             <div class="flex items-center gap-4">
                                 <div
-                                    class="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border bg-muted/40"
+                                    class="border-border bg-muted/40 relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed"
                                 >
                                     <img
                                         v-if="photoPreview"
@@ -413,7 +539,10 @@ const submit = (): void => {
                                         alt="Photo preview"
                                         class="size-full object-cover"
                                     />
-                                    <Camera v-else class="size-6 text-muted-foreground" />
+                                    <Camera
+                                        v-else
+                                        class="text-muted-foreground size-6"
+                                    />
                                 </div>
                                 <div class="space-y-1">
                                     <input
@@ -427,14 +556,26 @@ const submit = (): void => {
                                         type="button"
                                         variant="outline"
                                         size="sm"
-                                        @click="() => $el.querySelector('#customer-photo')?.click()"
+                                        @click="
+                                            () =>
+                                                $el
+                                                    .querySelector(
+                                                        '#customer-photo',
+                                                    )
+                                                    ?.click()
+                                        "
                                     >
                                         Choose Image
                                     </Button>
-                                    <p class="text-muted-foreground text-[11px]">
+                                    <p
+                                        class="text-muted-foreground text-[11px]"
+                                    >
                                         JPEG, PNG, or WebP. Max 2MB.
                                     </p>
-                                    <p v-if="form.errors.photo" class="text-destructive text-xs">
+                                    <p
+                                        v-if="form.errors.photo"
+                                        class="text-destructive text-xs"
+                                    >
                                         {{ form.errors.photo }}
                                     </p>
                                 </div>
@@ -442,29 +583,43 @@ const submit = (): void => {
                         </div>
 
                         <div class="space-y-1.5">
-                            <Label for="customer-notes">Internal Operational Notes (optional)</Label>
+                            <Label for="customer-notes"
+                                >Internal Operational Notes (optional)</Label
+                            >
                             <textarea
                                 id="customer-notes"
                                 v-model="form.notes"
                                 rows="3"
                                 placeholder="Internal portfolio notes. Only visible to staff and assigned agents."
-                                class="border-input placeholder:text-muted-foreground focus-visible:border-ring flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                                :class="{ 'border-destructive': form.errors.notes }"
+                                class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                :class="{
+                                    'border-destructive': form.errors.notes,
+                                }"
                             />
-                            <p v-if="form.errors.notes" class="text-destructive text-xs">
+                            <p
+                                v-if="form.errors.notes"
+                                class="text-destructive text-xs"
+                            >
                                 {{ form.errors.notes }}
                             </p>
                         </div>
                     </CardContent>
                     <CardFooter class="flex justify-between border-t pt-4">
                         <Link :href="customersIndex().url">
-                            <Button type="button" variant="outline">Cancel</Button>
+                            <Button type="button" variant="outline"
+                                >Cancel</Button
+                            >
                         </Link>
                         <Button
                             type="submit"
-                            :disabled="form.processing || !fee_preview.available"
+                            :disabled="
+                                form.processing || !fee_preview.available
+                            "
                         >
-                            <Loader2 v-if="form.processing" class="mr-2 size-4 animate-spin" />
+                            <Loader2
+                                v-if="form.processing"
+                                class="mr-2 size-4 animate-spin"
+                            />
                             <UserCheck v-else class="mr-2 size-4" />
                             Register Customer & Send Invitation
                         </Button>

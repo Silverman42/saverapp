@@ -308,6 +308,20 @@ class NotificationPipeline
                     });
                 }
             }
+            $audiences->orWhere(function (Builder $artifacts) use ($user): void {
+                $artifacts->whereJsonContains('i.audiences', 'artifact_requester')->whereExists(function (Builder $query) use ($user): void {
+                    $query->selectRaw('1')->from('financial_artifacts as fa')->join('notification_events as ne', 'ne.operation_reference', '=', 'fa.artifact_reference')
+                        ->whereColumn('ne.id', 'i.event_id')->where('fa.requester_user_id', $user->id)
+                        ->where(function (Builder $scope) use ($user): void {
+                            $scope->where(function (Builder $statement) use ($user): void {
+                                $statement->where('fa.kind', 'statement')->whereIn('fa.customer_profile_id', app(ResourceScopeService::class)->forCustomers($user)->select('customer_profiles.id'));
+                            });
+                            if ($this->authorization->allows($user, AdminPermission::ReportsExport)) {
+                                $scope->orWhere('fa.kind', 'report');
+                            }
+                        });
+                });
+            });
             if ($canManageCustomers) {
                 $audiences->orWhereJsonContains('i.audiences', 'customer_manager');
             }

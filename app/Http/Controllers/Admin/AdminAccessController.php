@@ -129,7 +129,7 @@ class AdminAccessController extends Controller
             'restriction_type' => $r->restriction_type->value,
             'permission_code' => $r->permission_code,
             'source' => $r->source,
-            'started_at' => $r->started_at?->toIso8601String(),
+            'started_at' => $r->started_at->toIso8601String(),
             'expires_at' => $r->expires_at?->toIso8601String(),
         ])->all();
 
@@ -172,7 +172,7 @@ class AdminAccessController extends Controller
                 'permission_code' => $h->permission_code instanceof AdminPermission ? $h->permission_code->value : (string) $h->permission_code,
                 'action' => $h->action,
                 'source' => $h->source,
-                'actor_name' => $h->actor?->name ?? 'System',
+                'actor_name' => $h->actor->name ?? 'System',
                 'reason' => $h->reason,
                 'permission_version' => $h->permission_version,
                 'created_at' => $h->created_at?->toIso8601String(),

@@ -305,7 +305,7 @@ class ReportReadService
     /** @param array<string, mixed> $state */
     private function verifiedReceipts(array $state, CarbonImmutable $cutoff): Builder
     {
-        return DB::table('collection_receipts as receipts')
+        return DB::table('collection_receipts as receipts')->whereNull('receipts.replacement_reversal_id')
             ->join('ledger_transaction_references as refs', function (JoinClause $join): void {
                 $join->on('refs.root_id', '=', 'receipts.id')->where('refs.root_type', 'collection_receipt');
             })->join('ledger_transaction_projections as projection', 'projection.ledger_transaction_reference_id', '=', 'refs.id')
@@ -327,7 +327,7 @@ class ReportReadService
 
         $components = DB::table('collection_fee_components')->selectRaw('collection_receipt_id, SUM(amount_kobo) AS total')
             ->groupBy('collection_receipt_id');
-        $receipts = DB::table('collection_receipts as receipts')
+        $receipts = DB::table('collection_receipts as receipts')->whereNull('receipts.replacement_reversal_id')
             ->join('collection_batches as receipt_batches', 'receipt_batches.id', '=', 'receipts.collection_batch_id')
             ->leftJoinSub($components, 'components', 'components.collection_receipt_id', '=', 'receipts.id')
             ->leftJoin('ledger_transaction_references as receipt_refs', function (JoinClause $join): void {

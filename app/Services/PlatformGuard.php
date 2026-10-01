@@ -32,6 +32,9 @@ class PlatformGuard
      */
     public function transaction(string $operation, callable $callback, int $attempts = 1): mixed
     {
+        if ($attempts < 1) {
+            throw new LogicException('A transaction requires a positive attempt budget.');
+        }
         $this->assertAllowed($operation);
 
         return DB::transaction(function () use ($operation, $callback): mixed {

@@ -48,7 +48,10 @@ const props = defineProps<{
 }>();
 
 const filters = reactive({ ...props.filters });
-watch(() => props.filters, (value) => Object.assign(filters, value));
+watch(
+    () => props.filters,
+    (value) => Object.assign(filters, value),
+);
 
 defineOptions({
     layout: {
@@ -60,13 +63,21 @@ defineOptions({
 });
 
 const applyFilters = (): void => {
-    const query: Record<string, string | number> = { per_page: filters.per_page };
+    const query: Record<string, string | number> = {
+        per_page: filters.per_page,
+    };
     if (filters.search.trim() !== '') query.search = filters.search.trim();
     if (filters.status !== '') query.status = filters.status;
-    router.get(plansIndex.url({ query }), {}, { preserveState: true, preserveScroll: true, replace: true });
+    router.get(
+        plansIndex.url({ query }),
+        {},
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
 };
 
-const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+const statusVariant = (
+    status: string,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
     if (status === 'active') return 'default';
     if (status === 'paused') return 'secondary';
     if (status === 'cancelled') return 'destructive';
@@ -81,27 +92,44 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Thrift plans</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                View agreed daily schedules and plan history. Collection totals and savings progress are not available yet.
+                View agreed daily schedules and plan history. Collection totals
+                and savings progress are not available yet.
             </p>
         </div>
 
         <Card>
             <CardHeader>
                 <CardTitle>Find a plan</CardTitle>
-                <CardDescription>Search by plan, Customer name, or Customer ID.</CardDescription>
+                <CardDescription
+                    >Search by plan, Customer name, or Customer
+                    ID.</CardDescription
+                >
             </CardHeader>
             <CardContent>
                 <div class="flex flex-row flex-wrap items-end gap-4">
                     <div class="grid w-fit gap-2">
                         <Label for="plan-search">Search</Label>
                         <div class="relative">
-                            <Search class="text-muted-foreground absolute top-3 left-3 size-4" />
-                            <Input id="plan-search" v-model="filters.search" class="w-64 pl-9" placeholder="Plan or Customer" @keyup.enter="applyFilters" />
+                            <Search
+                                class="text-muted-foreground absolute top-3 left-3 size-4"
+                            />
+                            <Input
+                                id="plan-search"
+                                v-model="filters.search"
+                                class="w-64 pl-9"
+                                placeholder="Plan or Customer"
+                                @keyup.enter="applyFilters"
+                            />
                         </div>
                     </div>
                     <div class="grid w-fit gap-2">
                         <Label for="plan-status">Status</Label>
-                        <select id="plan-status" v-model="filters.status" class="h-11 w-fit min-w-40 rounded-xl border border-input bg-card px-3 text-sm" @change="applyFilters">
+                        <select
+                            id="plan-status"
+                            v-model="filters.status"
+                            class="border-input bg-card h-11 w-fit min-w-40 rounded-xl border px-3 text-sm"
+                            @change="applyFilters"
+                        >
                             <option value="">Recent plans</option>
                             <option value="all">All statuses</option>
                             <option value="active">Active</option>
@@ -113,13 +141,20 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
                     </div>
                     <div class="grid w-fit gap-2">
                         <Label for="plan-page-size">Rows</Label>
-                        <select id="plan-page-size" v-model.number="filters.per_page" class="h-11 w-fit min-w-24 rounded-xl border border-input bg-card px-3 text-sm" @change="applyFilters">
+                        <select
+                            id="plan-page-size"
+                            v-model.number="filters.per_page"
+                            class="border-input bg-card h-11 w-fit min-w-24 rounded-xl border px-3 text-sm"
+                            @change="applyFilters"
+                        >
                             <option :value="25">25</option>
                             <option :value="50">50</option>
                             <option :value="100">100</option>
                         </select>
                     </div>
-                    <Button variant="outline" @click="applyFilters">Apply filters</Button>
+                    <Button variant="outline" @click="applyFilters"
+                        >Apply filters</Button
+                    >
                 </div>
             </CardContent>
         </Card>
@@ -128,7 +163,11 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
             <CardHeader class="flex-row items-start justify-between">
                 <div>
                     <CardTitle>Plans</CardTitle>
-                    <CardDescription>{{ plans.total }} plan{{ plans.total === 1 ? '' : 's' }}</CardDescription>
+                    <CardDescription
+                        >{{ plans.total }} plan{{
+                            plans.total === 1 ? '' : 's'
+                        }}</CardDescription
+                    >
                 </div>
                 <WalletCards class="text-muted-foreground size-5" />
             </CardHeader>
@@ -140,44 +179,129 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
                                 <th class="px-3 py-3 font-medium">Plan</th>
                                 <th class="px-3 py-3 font-medium">Customer</th>
                                 <th class="px-3 py-3 font-medium">Status</th>
-                                <th class="px-3 py-3 font-medium">Agreed schedule</th>
-                                <th class="px-3 py-3 font-medium">Financial data</th>
-                                <th class="px-3 py-3"><span class="sr-only">Open</span></th>
+                                <th class="px-3 py-3 font-medium">
+                                    Agreed schedule
+                                </th>
+                                <th class="px-3 py-3 font-medium">
+                                    Financial data
+                                </th>
+                                <th class="px-3 py-3">
+                                    <span class="sr-only">Open</span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody class="divide-y">
-                            <tr v-for="plan in plans.data" :key="plan.id" class="align-top">
+                            <tr
+                                v-for="plan in plans.data"
+                                :key="plan.id"
+                                class="align-top"
+                            >
                                 <td class="px-3 py-4">
-                                    <Link :href="showPlan(plan.id).url" class="font-medium hover:underline">{{ plan.name }}</Link>
-                                    <div class="text-muted-foreground mt-1 text-xs">{{ plan.id }} · revision {{ plan.terms_revision }}</div>
+                                    <Link
+                                        :href="showPlan(plan.id).url"
+                                        class="font-medium hover:underline"
+                                        >{{ plan.name }}</Link
+                                    >
+                                    <div
+                                        class="text-muted-foreground mt-1 text-xs"
+                                    >
+                                        {{ plan.id }} · revision
+                                        {{ plan.terms_revision }}
+                                    </div>
                                 </td>
                                 <td class="px-3 py-4">
-                                    <Link :href="showCustomer(plan.customer.id).url" class="font-medium hover:underline">{{ plan.customer.name }}</Link>
-                                    <div class="text-muted-foreground mt-1 text-xs">{{ plan.customer.id }}</div>
+                                    <Link
+                                        :href="
+                                            showCustomer(plan.customer.id).url
+                                        "
+                                        class="font-medium hover:underline"
+                                        >{{ plan.customer.name }}</Link
+                                    >
+                                    <div
+                                        class="text-muted-foreground mt-1 text-xs"
+                                    >
+                                        {{ plan.customer.id }}
+                                    </div>
                                 </td>
-                                <td class="px-3 py-4"><Badge :variant="statusVariant(plan.status)">{{ plan.status_label }}</Badge></td>
                                 <td class="px-3 py-4">
-                                    <div>{{ plan.contribution_amount ?? 'Terms unavailable' }} daily</div>
-                                    <div class="text-muted-foreground mt-1 text-xs">{{ plan.start_date }} – {{ plan.scheduled_end_date }}</div>
+                                    <Badge
+                                        :variant="statusVariant(plan.status)"
+                                        >{{ plan.status_label }}</Badge
+                                    >
                                 </td>
-                                <td class="text-muted-foreground px-3 py-4 text-xs">Unavailable</td>
-                                <td class="px-3 py-4 text-right"><Button as-child variant="outline" size="sm"><Link :href="showPlan(plan.id).url">View</Link></Button></td>
+                                <td class="px-3 py-4">
+                                    <div>
+                                        {{
+                                            plan.contribution_amount ??
+                                            'Terms unavailable'
+                                        }}
+                                        daily
+                                    </div>
+                                    <div
+                                        class="text-muted-foreground mt-1 text-xs"
+                                    >
+                                        {{ plan.start_date }} –
+                                        {{ plan.scheduled_end_date }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="text-muted-foreground px-3 py-4 text-xs"
+                                >
+                                    Unavailable
+                                </td>
+                                <td class="px-3 py-4 text-right">
+                                    <Button as-child variant="outline" size="sm"
+                                        ><Link :href="showPlan(plan.id).url"
+                                            >View</Link
+                                        ></Button
+                                    >
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div v-else class="rounded-xl border border-dashed p-8 text-center">
+                <div
+                    v-else
+                    class="rounded-xl border border-dashed p-8 text-center"
+                >
                     <p class="font-medium">No plans found</p>
-                    <p class="text-muted-foreground mt-1 text-sm">Change the search or status filter to see other plans.</p>
+                    <p class="text-muted-foreground mt-1 text-sm">
+                        Change the search or status filter to see other plans.
+                    </p>
                 </div>
 
-                <div v-if="plans.last_page > 1" class="mt-5 flex items-center justify-between border-t pt-4">
-                    <p class="text-muted-foreground text-sm">Page {{ plans.current_page }} of {{ plans.last_page }}</p>
+                <div
+                    v-if="plans.last_page > 1"
+                    class="mt-5 flex items-center justify-between border-t pt-4"
+                >
+                    <p class="text-muted-foreground text-sm">
+                        Page {{ plans.current_page }} of {{ plans.last_page }}
+                    </p>
                     <div class="flex gap-2">
-                        <Button v-if="plans.prev_page_url" as-child variant="outline" size="sm"><Link :href="plans.prev_page_url">Previous</Link></Button>
-                        <Button v-else variant="outline" size="sm" disabled>Previous</Button>
-                        <Button v-if="plans.next_page_url" as-child variant="outline" size="sm"><Link :href="plans.next_page_url">Next</Link></Button>
-                        <Button v-else variant="outline" size="sm" disabled>Next</Button>
+                        <Button
+                            v-if="plans.prev_page_url"
+                            as-child
+                            variant="outline"
+                            size="sm"
+                            ><Link :href="plans.prev_page_url"
+                                >Previous</Link
+                            ></Button
+                        >
+                        <Button v-else variant="outline" size="sm" disabled
+                            >Previous</Button
+                        >
+                        <Button
+                            v-if="plans.next_page_url"
+                            as-child
+                            variant="outline"
+                            size="sm"
+                            ><Link :href="plans.next_page_url"
+                                >Next</Link
+                            ></Button
+                        >
+                        <Button v-else variant="outline" size="sm" disabled
+                            >Next</Button
+                        >
                     </div>
                 </div>
             </CardContent>

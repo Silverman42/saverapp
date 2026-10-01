@@ -12,6 +12,7 @@ use App\Models\PlanOperationAttempt;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\CollectionService;
+use App\Services\PlanSettlementService;
 use App\Services\ThriftPlanService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
@@ -293,4 +294,49 @@ test('pre-activity revision updates slots while posted cash locks financial term
         ->and($revised->fresh()->status->value)->toBe('active')
         ->and($revised->fresh()->activity_started_at)->not->toBeNull()
         ->and($revised->slots()->whereNull('active_ordinal')->count())->toBe(2);
+});
+
+test('a verified closed cycle renews with fresh identity and no financial carryover', function (): void {
+    [, $customer, $agent] = $this->createLifecycleFixture();
+    $rule = FeeRule::create([
+        'version' => 1, 'name' => 'No plan fee', 'kind' => 'plan', 'rule_key' => 'daily',
+        'model' => 'no_fee', 'timing' => 'first_contribution', 'basis' => 'none',
+        'settlement_source' => 'external_receipt', 'currency' => 'NGN', 'amount_kobo' => 0,
+        'customer_description' => 'No fee', 'effective_at' => now()->subDay(),
+        'published_by_user_id' => $agent->user_id, 'publication_reason' => 'Fixture',
+    ]);
+    $data = [
+        'name' => 'Daily plan', 'amount_ngn' => '2000.00',
+        'start_date' => now('Africa/Lagos')->toDateString(), 'contribution_days' => 2,
+        'customer_visible_notes' => '', 'fee_rule_id' => $rule->id,
+        'fee_rule_version' => $rule->version, 'customer_version' => $customer->version,
+        'assignment_version' => $customer->currentAssignment->version,
+        'business_version' => 1, 'customer_agreement_attested' => true,
+    ];
+    $service = app(ThriftPlanService::class);
+    $data['preview_fingerprint'] = $service->preview($agent->user, $customer, $data)['preview_fingerprint'];
+    $predecessor = $service->create($agent->user, $customer, (string) Str::uuid(), $data)['plan'];
+
+    config()->set('collections.settlement_enabled', true);
+    $settlement = app(PlanSettlementService::class);
+    $quote = $settlement->preview($agent->user, $predecessor, 'prepare_termination');
+    $prepare = ['attempt_reference' => (string) Str::uuid(), 'preview_fingerprint' => $quote['preview_fingerprint'],
+        'reason' => 'Customer requested early termination.', 'customer_explanation' => 'Separate settled closure follows.'];
+    $settlement->confirm($agent->user, $predecessor, 'prepare_termination', $prepare);
+    $quote = $settlement->preview($agent->user, $predecessor->fresh());
+    $settlement->confirm($agent->user, $predecessor, 'close', [...$prepare, 'attempt_reference' => (string) Str::uuid(), 'preview_fingerprint' => $quote['preview_fingerprint']]);
+    expect($predecessor->fresh()->status->value)->toBe('closed');
+
+    $renewalData = [...$data, 'predecessor_plan_id' => $predecessor->plan_id];
+    $renewalData['preview_fingerprint'] = $service->preview($agent->user, $customer, $renewalData)['preview_fingerprint'];
+    $successor = $service->create($agent->user, $customer, (string) Str::uuid(), $renewalData)['plan'];
+
+    expect($successor->id)->not->toBe($predecessor->id)
+        ->and($successor->predecessor_plan_id)->toBe($predecessor->id)
+        ->and($successor->slots()->count())->toBe(2)
+        ->and($predecessor->fresh()->slots()->count())->toBe(2)
+        ->and(ThriftPlan::whereNotNull('open_customer_profile_id')->count())->toBe(1)
+        ->and(PlanOperationAttempt::where('operation_type', 'plan_renew')->count())->toBe(1)
+        ->and(DB::table('collection_receipts')->count())->toBe(0)
+        ->and(DB::table('ledger_posting_groups')->count())->toBe(0);
 });

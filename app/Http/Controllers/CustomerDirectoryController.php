@@ -13,6 +13,7 @@ use App\Services\ResourceScopeService;
 use App\Support\IdentityNormalizer;
 use App\Support\InternalReferenceNormalizer;
 use App\Support\PhoneNormalizer;
+use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -233,14 +234,14 @@ class CustomerDirectoryController extends Controller
                 $isEligible = $agentEligibilityService->canReceiveAssignment($assignedAgent);
                 $assignedAgentData = [
                     'id' => $assignedAgent->agent_id,
-                    'name' => $assignedAgentUser?->name ?? 'Unknown',
+                    'name' => $assignedAgentUser->name ?? 'Unknown',
                     'is_eligible' => $isEligible,
                 ];
             }
 
             return [
                 'id' => $profile->customer_id,
-                'name' => $user?->name ?? 'Unknown',
+                'name' => $user->name ?? 'Unknown',
                 'photo_url' => $profile->photo_path ? route('customers.photo', $profile->customer_id) : null,
                 'phone' => $profile->phone,
                 'email' => $user?->email,
@@ -266,7 +267,7 @@ class CustomerDirectoryController extends Controller
                 ->get()
                 ->map(fn (AgentProfile $agent) => [
                     'id' => $agent->agent_id,
-                    'name' => $agent->user?->name ?? $agent->agent_id,
+                    'name' => $agent->user->name ?? $agent->agent_id,
                 ])
                 ->all();
         }
@@ -296,7 +297,7 @@ class CustomerDirectoryController extends Controller
     /**
      * Resolve a Lagos-local registration period to its inclusive UTC bounds.
      *
-     * @return array{0: Carbon|null, 1: Carbon|null}
+     * @return array{0: CarbonImmutable|null, 1: CarbonImmutable|null}
      */
     private function overviewPeriodBounds(string $period): array
     {

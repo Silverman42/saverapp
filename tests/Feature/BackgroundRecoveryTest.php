@@ -341,7 +341,7 @@ test('changed source identity conflicts with duplicate registration without over
 });
 
 test('unsafe queue timing is rejected before reservation or any durable attempt', function () {
-    config(['queue.default' => 'database']);
+    config(['queue.default' => 'database', 'queue.connections.database.retry_after' => 90]);
     ProjectAuditEvent::dispatch(999);
 
     expect(fn () => app('queue.worker')->runNextJob('database', 'default', new WorkerOptions(timeout: 85, sleep: 0)))->toThrow(LogicException::class);
@@ -355,7 +355,7 @@ test('a real database queue worker commits the lease separately and acknowledges
     $work = recoveryAuditWork();
     Queue::assertPushed(ProjectAuditEvent::class, 1);
     Queue::swap($queueManager);
-    config(['queue.default' => 'database']);
+    config(['queue.default' => 'database', 'queue.connections.database.retry_after' => 90]);
     ProjectAuditEvent::dispatch((int) $work->source_id);
 
     $this->artisan('queue:work', ['connection' => 'database', '--once' => true, '--sleep' => 0])->assertSuccessful();

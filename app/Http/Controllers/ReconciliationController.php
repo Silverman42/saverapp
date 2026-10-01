@@ -50,7 +50,7 @@ class ReconciliationController extends Controller
     public function show(CollectionBatch $batch, Request $request, AuthorizationService $auth): Response
     {
         $this->mayView($request, $batch);
-        $receiptTotals = DB::table('collection_receipts')->where('collection_batch_id', $batch->id)
+        $receiptTotals = DB::table('collection_receipts')->whereNull('replacement_reversal_id')->where('collection_batch_id', $batch->id)
             ->selectRaw('COUNT(*) as receipt_count, COALESCE(SUM(tender_amount_kobo), 0) as tender_kobo')
             ->selectRaw('COALESCE(SUM(savings_amount_kobo), 0) as savings_kobo, COALESCE(SUM(fee_amount_kobo), 0) as fees_kobo')
             ->first();

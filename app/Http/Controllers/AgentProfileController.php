@@ -116,19 +116,19 @@ class AgentProfileController extends Controller
                 $customer = $assignment->customerProfile;
 
                 return [
-                    'id' => $customer?->customer_id ?? 'Unknown',
-                    'name' => $customer?->user?->name ?? 'Unknown',
+                    'id' => $customer->customer_id ?? 'Unknown',
+                    'name' => $customer->user->name ?? 'Unknown',
                     'operational_status' => $customer?->operational_status?->value,
                     'operational_status_label' => $customer?->operational_status?->displayName() ?? 'Unknown',
                     'account_state' => $customer?->user?->account_state?->value,
-                    'assigned_since' => $assignment->effective_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'assigned_since' => $assignment->effective_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                 ];
             });
 
         // 4. Build viewer-specific profile data
         $profileData = [
             'id' => $agentProfile->agent_id,
-            'name' => $user?->name ?? 'Unknown',
+            'name' => $user->name ?? 'Unknown',
             'email' => $user?->email,
             'phone' => $agentProfile->phone,
             'address' => $agentProfile->address,
@@ -136,8 +136,8 @@ class AgentProfileController extends Controller
             'photo_url' => $agentProfile->profile_photo_path ? route('agents.photo', $agentProfile->agent_id) : null,
             'operational_status' => $agentProfile->operational_status->value,
             'operational_status_label' => ucfirst($agentProfile->operational_status->value),
-            'account_state' => $user?->account_state?->value,
-            'account_state_label' => $user?->account_state ? ucfirst(str_replace('_', ' ', $user->account_state->value)) : 'Unknown',
+            'account_state' => $user->account_state->value,
+            'account_state_label' => ucfirst(str_replace('_', ' ', $user->account_state->value)),
             'registered_at' => $agentProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             'registered_at_iso' => $agentProfile->created_at?->timezone('Africa/Lagos')->toIso8601String(),
             'version' => $agentProfile->version,
@@ -166,7 +166,7 @@ class AgentProfileController extends Controller
                 'total_active_workload' => $activeCount + $inactiveCount + $restrictedCount,
             ],
             'invitation_and_access' => [
-                'account_state' => $user?->account_state?->value,
+                'account_state' => $user->account_state->value,
                 'mfa_confirmed' => $user?->hasConfirmedTwoFactor() ?? false,
             ],
             // Explicit unavailable sections
@@ -188,7 +188,7 @@ class AgentProfileController extends Controller
                     : 'Agent lifecycle management requires agents.manage.',
                 'can_manage_invitation' => $viewer->user_type === UserType::Admin
                     && $authorizationService->allows($viewer, AdminPermission::AgentsManage)
-                    && $user?->account_state === AccountState::Invited,
+                    && $user->account_state === AccountState::Invited,
             ],
         ];
 
@@ -205,10 +205,10 @@ class AgentProfileController extends Controller
                     'delivery_status' => $latestInvitation->delivery_status->value,
                     'delivery_status_label' => $latestInvitation->delivery_status->displayName(),
                     'generation' => $latestInvitation->generation,
-                    'can_resend' => $latestInvitation->canResend() && $user?->account_state === AccountState::Invited,
+                    'can_resend' => $latestInvitation->canResend() && $user->account_state === AccountState::Invited,
                     'sent_at' => $latestInvitation->sent_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                     'opened_at' => $latestInvitation->opened_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
-                    'expires_at' => $latestInvitation->expires_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
+                    'expires_at' => $latestInvitation->expires_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                     'delivery_error' => $latestInvitation->delivery_error,
                 ];
             }

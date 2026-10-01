@@ -79,7 +79,7 @@ class EnforceSessionLimits
         // 4. Update Admin/Agent resume destination cookie on eligible GET requests
         $resumeCookie = $this->resumeCookieService->recordResumeDestination($user, $request);
         if ($resumeCookie) {
-            $response->withCookie($resumeCookie);
+            $response->headers->setCookie($resumeCookie);
         }
 
         return $response;

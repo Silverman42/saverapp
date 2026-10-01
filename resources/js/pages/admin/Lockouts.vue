@@ -352,9 +352,7 @@ const restrictionState = (lock: LockItem): string => {
             </template>
             <template #filter-summary
                 ><p class="text-muted-foreground text-xs">
-                    {{ locks.total }} record{{
-                        locks.total === 1 ? '' : 's'
-                    }}
+                    {{ locks.total }} record{{ locks.total === 1 ? '' : 's' }}
                     match the current filters.
                 </p></template
             >

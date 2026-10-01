@@ -10,7 +10,7 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FAMILIES = [
-        'cash_disbursement' => ['started', 'handoff_recorded', 'not_delivered', 'posted'],
+        'cash_disbursement' => ['started', 'handoff_recorded', 'not_delivered', 'posted', 'recovery_recorded', 'recovery_confirmed'],
         'charge' => ['category_published', 'assessed'],
         'financial_artifact' => ['requested', 'ready', 'downloaded', 'expired', 'cancelled', 'failed', 'retried', 'hold_applied', 'hold_released'],
         'platform' => ['mode_changed', 'replay_plan', 'replay_approve', 'replay_execute', 'replay_stop', 'replay_resume'],
@@ -22,7 +22,7 @@ class AuditCatalogue
         'user' => ['email_changed'],
         'fee_rule' => ['published', 'retired'],
         'fee' => ['refund_authorized', 'obligation.assessed', 'obligation.waived', 'assessment.corrected'],
-        'thrift_plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected'],
+        'thrift_plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected', 'early_termination_prepared', 'closed_exception_resolved', 'closed'],
         'collection' => ['receipt_posted', 'batch_frozen', 'remittance_confirmed', 'batch_reviewed', 'exception_opened', 'exception_resolved', 'exception_reopened', 'slot_annotated'],
         'financial_period' => ['open', 'close', 'reopen'],
         'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted', 'hold_revalidation_required'],
@@ -36,7 +36,7 @@ class AuditCatalogue
 
     /** @var array<string, list<string>> */
     private const FIELDS = [
-        'cash_disbursement' => ['kind', 'status', 'amount_kobo', 'customer_profile_id'],
+        'cash_disbursement' => ['kind', 'status', 'amount_kobo', 'customer_profile_id', 'execution_reference', 'returned_kobo', 'state'],
         'charge' => ['kind', 'version', 'amount_kobo', 'customer_profile_id'],
         'financial_artifact' => ['kind', 'format', 'status', 'snapshot_hash', 'artifact_hash', 'held', 'reason'],
         'platform' => ['from_mode', 'to_mode', 'from_version', 'to_version', 'run_id', 'manifest_digest', 'outcome'],
@@ -47,7 +47,7 @@ class AuditCatalogue
         'user' => ['operation_id', 'changed_fields', 'from_version', 'to_version', 'outcome'],
         'fee_rule' => ['kind', 'rule_key', 'version', 'model', 'timing', 'basis', 'basis_points', 'amount_kobo', 'currency', 'effective_at', 'retired_at'],
         'fee' => ['customer_profile_id', 'fee_snapshot_id', 'fee_rule_id', 'fee_rule_version', 'amount_kobo', 'currency', 'source_type', 'source_id', 'attempt_reference', 'entry_type', 'outstanding_before_kobo', 'outstanding_after_kobo'],
-        'thrift_plan' => ['customer_profile_id', 'terms_revision', 'fee_snapshot_id', 'business_version', 'assignment_version', 'predecessor_plan_id', 'agreement_attested', 'from_version', 'to_version', 'financial_terms_changed', 'from', 'to', 'version'],
+        'thrift_plan' => ['customer_profile_id', 'terms_revision', 'fee_snapshot_id', 'business_version', 'assignment_version', 'predecessor_plan_id', 'agreement_attested', 'from_version', 'to_version', 'financial_terms_changed', 'from', 'to', 'version', 'gate_fingerprint'],
         'collection' => ['customer_profile_id', 'plan_id', 'recording_agent_profile_id', 'agent_profile_id', 'received_date', 'revision', 'tender_kobo', 'savings_kobo', 'fee_kobo', 'batch_id', 'amount_kobo', 'outcome', 'outstanding_kobo', 'kind', 'slot_id'],
         'financial_period' => ['from', 'to', 'version'],
         'withdrawal' => ['state', 'version', 'gross_kobo', 'fee_kobo', 'net_kobo', 'customer_profile_id', 'execution_reference'],

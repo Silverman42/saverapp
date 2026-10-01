@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Enums\FeeObligationEntryType;
-use App\Enums\FeeRuleModel;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
@@ -14,6 +13,7 @@ use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
 use App\Models\FeeRefund;
+use App\Models\FinancialWorkflowSupplement;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
@@ -50,11 +50,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
         }
         $plan = $receipt->thrift_plan_id === null ? null : ThriftPlan::query()->whereKey($receipt->thrift_plan_id)
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->firstOrFail();
-        $snapshot = $plan?->currentTermsRevision()?->feeSnapshot;
-        if (($receipt->savings_amount_kobo > 0 && ($snapshot === null || $snapshot->model !== FeeRuleModel::NoFee))
-            || LedgerPostingGroup::query()->where('source_type', 'fee_application')->where('source_id', (string) $receipt->id)->exists()) {
-            throw new ConflictHttpException('This receipt requires a dependent fee compensation contract before approval.');
-        }
+        $feeEffect = $plan === null ? null : app(PlanFeeCorrectionService::class)->preview($plan, $receipt);
         $allocations = $receipt->allocations()->orderBy('id')->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
         if ($allocations->sum('amount_kobo') !== $receipt->savings_amount_kobo
             || DB::table('collection_allocation_releases')->whereIn('collection_allocation_id', $allocations->pluck('id'))->exists()) {
@@ -66,7 +62,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
             ->join('fee_snapshots as snapshots', 'snapshots.id', '=', 'terms.fee_snapshot_id')
             ->whereIn('slots.id', $slotIds)->where('slots.thrift_plan_id', $plan?->id)
             ->whereColumn('terms.thrift_plan_id', 'slots.thrift_plan_id')
-            ->where('snapshots.customer_profile_id', $customer->id)->where('snapshots.model', FeeRuleModel::NoFee->value)->count();
+            ->where('snapshots.customer_profile_id', $customer->id)->count();
         if ($verifiedOriginalTerms !== $slotIds->count()) {
             throw new ConflictHttpException('Historical allocation fee terms require their own dependent compensation contract.');
         }
@@ -80,7 +76,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
         }
         $balance = $plan === null ? app(CollectionReadService::class)->position($customer, $forUpdate)
             : app(WithdrawalBalanceService::class)->position($customer, $plan, $forUpdate);
-        if ($receipt->savings_amount_kobo > 0 && ($balance['cycle_available_kobo'] ?? 0) < $receipt->savings_amount_kobo) {
+        if ($receipt->savings_amount_kobo > 0 && ($balance['cycle_available_kobo'] ?? 0) < max(0, $receipt->savings_amount_kobo - ($feeEffect['savings_refund_kobo'] ?? 0))) {
             throw new ConflictHttpException('Resolve dependent reservations or payouts before removing this receipt.');
         }
         $feeComponents = DB::table('collection_fee_components')->where('collection_receipt_id', $receipt->id)->orderBy('id')->get();
@@ -131,6 +127,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
         }
         $dependencies = [
             ...$fees,
+            ...($feeEffect === null ? [] : [$feeEffect]),
             ['kind' => 'allocations', 'classification' => 'compensable', 'ids' => $allocations->pluck('id')->all()],
             ['kind' => 'custody', 'classification' => 'retained', 'agent_profile_id' => $receipt->recording_agent_profile_id,
                 'batch_id' => $receipt->collection_batch_id, 'batch_version' => $batch->version, 'batch_status' => $batch->status, 'amount_kobo' => $receipt->tender_amount_kobo],
@@ -183,6 +180,15 @@ class CollectionReversalOwner implements ReversalOwnerContract
             DB::table('collection_allocation_releases')->insert(['collection_allocation_id' => $allocation->id,
                 'reversal_request_id' => $request->id, 'created_at' => now(), 'updated_at' => now()]);
         }
+        foreach ($preview['dependencies'] as $effect) {
+            if ($effect['kind'] === 'plan_fee') {
+                app(PlanFeeCorrectionService::class)->compensate($effect, $group, $reviewer);
+            }
+        }
+        FinancialWorkflowSupplement::create(['operation_reference' => (string) Str::uuid(), 'payload_hash' => $preview['fingerprint'],
+            'kind' => 'receipt_compensated', 'customer_profile_id' => $receipt->customer_profile_id, 'thrift_plan_id' => $receipt->thrift_plan_id,
+            'collection_batch_id' => $receipt->collection_batch_id, 'reversal_request_id' => $request->id, 'actor_user_id' => $reviewer->id,
+            'facts' => ['original_receipt_id' => $receipt->id, 'controlled_kobo' => $receipt->tender_amount_kobo], 'evidence' => $request->internal_reason, 'created_at' => now()]);
         if ($receipt->thrift_plan_id === null) {
             return $group;
         }

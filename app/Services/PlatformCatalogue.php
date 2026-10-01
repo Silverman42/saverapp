@@ -79,7 +79,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const COMMANDS = [
-        'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
+        'financial:release-evidence' => 'mutation', 'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
         'platform:replay' => 'mutation',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
@@ -97,6 +97,7 @@ class PlatformCatalogue
         'admin.fees.refunds.store' => 'financial', 'fee-refunds.cash' => 'financial', 'earnings-draws.start' => 'financial', 'cash-disbursements.handoff' => 'financial', 'cash-disbursements.acknowledge' => 'financial',
         'admin.charges.publish' => 'mutation', 'admin.charges.assess' => 'financial', 'customers.statements.issue' => 'mutation', 'reports.export' => 'mutation', 'financial-artifacts.cancel' => 'mutation', 'financial-artifacts.retry' => 'mutation', 'financial-artifacts.hold' => 'mutation',
         'withdrawals.cash.start' => 'financial',
+        'plans.settlement.confirm' => 'financial', 'reversals.replacement.preview' => 'read', 'reversals.replacement.store' => 'financial', 'cash-disbursements.return' => 'financial',
         'cash-executions.return' => 'financial', 'cash-recoveries.acknowledge' => 'financial',
         'cash-executions.handoff' => 'financial',
         'cash-executions.not-delivered' => 'financial',

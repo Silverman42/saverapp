@@ -30,12 +30,15 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->firstOrFail();
         $execution = CashExecution::query()->where('ledger_posting_group_id', $original->id)->where('status', 'posted')
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
-        $return = CashRecovery::query()->where('cash_execution_id', $execution->id)->where('status', 'confirmed')
-            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
-        if ($return === null || $return->confirmed_at === null || $return->amount_kobo !== $withdrawal->net_amount_kobo
+        $return = CashRecovery::query()->where('cash_execution_id', $execution->id)->where('event_type', 'return')->where('status', 'confirmed')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        $returns = $return;
+        $return = $returns->first();
+        if ($return === null || $return->confirmed_at === null || $returns->sum('amount_kobo') !== $withdrawal->net_amount_kobo || $returns->contains(fn ($item): bool => $item->confirmed_at === null || $item->customer_acknowledgement === null)
             || $return->recipient_user_id !== $execution->recipient_user_id || $return->customer_acknowledgement === null) {
             throw new ConflictHttpException('A proven full return is required; partial or uncertain recovery cannot restore savings.');
         }
+        app(CashRecoveryLedger::class)->assertConfirmedReturns($execution, $returns);
         $original->load('entries.account');
         $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
         if ($cash->mapping_status !== 'mapped' || $cash->currency !== 'NGN' || $cash->normal_balance !== LedgerEntrySide::Debit || $cash->account_class !== LedgerAccountClass::Asset) {
@@ -65,7 +68,7 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
                 throw new ConflictHttpException('The original payout does not reconcile to gross, net and fee.');
             }
         }
-        $summary = ['withdrawal_request_id' => $withdrawal->id, 'cash_recovery_id' => $return->id, 'cash_account_id' => $cash->id,
+        $summary = ['withdrawal_request_id' => $withdrawal->id, 'cash_recovery_id' => $return->id, 'cash_recovery_ids' => $returns->pluck('id')->all(), 'cash_account_id' => $cash->id,
             'cash_mapping_version' => $cash->version, 'fee_obligation_id' => $obligation?->id, 'fee_kobo' => $withdrawal->fee_amount_kobo];
         $dependencies = [['kind' => 'cash_return', 'classification' => 'compensable', 'reference' => $return->recovery_reference,
             'amount_kobo' => $return->amount_kobo, 'custodian_user_id' => $return->custodian_user_id]];
@@ -88,9 +91,13 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
             'customer_profile_id' => $original->customer_profile_id, 'thrift_plan_id' => $original->thrift_plan_id,
             'occurred_at' => now(), 'occurred_on' => $date, 'business_timezone' => $business->timezone, 'schema_version' => 1,
             'committed_at' => now(), 'metadata' => ['original_posting_group_id' => $original->id, 'cash_recovery_id' => $recovery->id]]);
+        $clearing = LedgerAccount::query()->where('code', LedgerAccountCode::CashRecoveryClearing)->lockForUpdate()->sole();
+        if ($clearing->mapping_status !== 'mapped') {
+            throw new ConflictHttpException('Recovery clearing is unavailable.');
+        }
         foreach ($original->entries as $index => $line) {
             LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $index + 1,
-                'ledger_account_id' => $line->account->code === LedgerAccountCode::BusinessCash ? $preview['summary']['cash_account_id'] : $line->ledger_account_id,
+                'ledger_account_id' => $line->account->code === LedgerAccountCode::BusinessCash ? $clearing->id : $line->ledger_account_id,
                 'side' => $line->side === LedgerEntrySide::Debit ? LedgerEntrySide::Credit : LedgerEntrySide::Debit,
                 'amount_kobo' => $line->amount_kobo, 'customer_profile_id' => $line->customer_profile_id,
                 'thrift_plan_id' => $line->thrift_plan_id, 'fee_obligation_id' => $line->fee_obligation_id]);
@@ -108,7 +115,10 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
                     'ledger_posting_reference' => $group->posting_reference]);
             }
         }
-        $recovery->update(['status' => 'consumed', 'consumed_at' => now(), 'ledger_posting_group_id' => $group->id]);
+        $recovery->update(['ledger_posting_group_id' => $group->id]);
+        foreach (CashRecovery::query()->whereIn('id', $preview['summary']['cash_recovery_ids'])->get() as $returned) {
+            $returned->update(['status' => 'consumed', 'consumed_at' => now()]);
+        }
 
         return $group;
     }

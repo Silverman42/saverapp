@@ -69,6 +69,10 @@ class AgentRegistrationService
         });
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{agent: AgentProfile, replayed: bool}
+     */
     private function registerAllowed(User $admin, string $attemptReference, array $data, ?UploadedFile $photo = null): array
     {
         $business = BusinessProfile::current();
@@ -267,7 +271,7 @@ class AgentRegistrationService
                 ],
                 actor: $freshAdmin,
 
-                context: ['executor' => self::class, 'required_permission' => $freshAdmin?->user_type === UserType::Admin ? 'agents.manage' : null]
+                context: ['executor' => self::class, 'required_permission' => 'agents.manage']
             );
 
             // Safe post-commit queued delivery

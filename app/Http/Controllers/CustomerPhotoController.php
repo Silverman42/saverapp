@@ -37,7 +37,7 @@ class CustomerPhotoController extends Controller
             abort(404, 'Record unavailable.');
         }
 
-        $mimeType = Storage::disk($disk)->mimeType($customerProfile->photo_path) ?? 'application/octet-stream';
+        $mimeType = Storage::disk($disk)->mimeType($customerProfile->photo_path) ?: 'application/octet-stream';
         $content = Storage::disk($disk)->get($customerProfile->photo_path);
 
         return response($content, 200, [
