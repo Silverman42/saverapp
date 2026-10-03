@@ -11,6 +11,7 @@ use App\Jobs\DeliverCustomerStatusNotificationIntent;
 use App\Jobs\ProjectAuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CollectionException;
+use App\Models\CustomerAssignment;
 use App\Models\CustomerNameCorrection;
 use App\Models\CustomerProfile;
 use App\Models\CustomerStatusNotificationIntent;
@@ -344,3 +345,67 @@ test('unfinished owning plan operations block archival and unclassified operatio
     expect(collect($preview['checks'])->firstWhere('key', 'financial_work')['status'])->toBe('unavailable');
     $this->actingAs($admin)->postJson(route('customers.lifecycle.archive', $customer->customer_id), $this->lifecyclePayload($customer))->assertUnprocessable();
 });
+
+test('COL-AC-058: linked pending receipt correction or exception blocks archival without blocking a clear Customer of the same Agent', function (string $issue): void {
+    Queue::fake();
+    config()->set(['collections.enabled' => true, 'collections.receipt_corrections_enabled' => true]);
+    FinancialPeriod::factory()->create();
+    [$admin, $customer, $agent] = $this->createLifecycleFixture();
+    $admin->givePermissionTo(AdminPermission::ReconciliationManage);
+    LedgerAccount::query()->whereIn('code', [LedgerAccountCode::AgentReceivable, LedgerAccountCode::BusinessCash,
+        LedgerAccountCode::UnappliedFunds])->update(['mapping_status' => 'mapped']);
+    $plan = $this->createLifecyclePlan($customer, $agent->user);
+    $data = $this->lifecycleCollectionPayload($customer, $plan);
+    $collections = app(CollectionService::class);
+    $data['preview_fingerprint'] = $collections->preview($agent->user, $customer, $data)['preview_fingerprint'];
+    $receipt = $collections->record($agent->user, $customer, $data);
+    if ($issue === 'correction') {
+        $original = LedgerPostingGroup::findOrFail($receipt->savings_posting_group_id);
+        $reversals = app(ReversalService::class);
+        $quote = $reversals->preview($agent->user, $original);
+        $reversals->submit($agent->user, $original, ['attempt_reference' => (string) Str::uuid(),
+            'preview_fingerprint' => $quote['preview_fingerprint'], 'customer_version' => $customer->version,
+            'assignment_version' => $customer->currentAssignment->version, 'reason_category' => 'wrong_amount_allocation',
+            'internal_reason' => 'Actual tender remains controlled by the original Agent.',
+            'customer_explanation' => 'The original receipt allocation requires review.',
+            'evidence_text' => 'Original amount and controlled cash verified.', 'confirmed' => true]);
+    } else {
+        $this->travel(1)->days();
+        $this->artisan('collections:freeze-batches')->assertSuccessful();
+        $this->travelBack();
+        $batch = $receipt->batch->fresh();
+        $this->actingAs($admin)->post(route('collection-batches.review', $batch), [
+            'batch_version' => $batch->version, 'reason' => 'Original counted cash awaits handoff.', 'confirmed' => true,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        expect(CollectionException::query()->sole()->status)->toBe('open');
+    }
+    $clear = CustomerProfile::factory()->create();
+    CustomerAssignment::factory()->create(['customer_profile_id' => $clear->id, 'agent_profile_id' => $agent->id,
+        'assigned_by_user_id' => $admin->id]);
+    $this->createLifecycleSnapshot($admin, $clear, 0);
+    $baseline = [];
+    foreach (['collection_receipts', 'collection_batches', 'collection_allocations', 'ledger_posting_groups', 'ledger_entries',
+        'reversal_requests', 'reversal_events', 'collection_exceptions', 'collection_exception_events'] as $table) {
+        $baseline[$table] = DB::table($table)->orderBy('id')->get()->all();
+    }
+    $originalCustomer = $customer->fresh()->getAttributes();
+    $checks = collect(app(CustomerLifecycleEligibility::class)->preview($admin, $customer)['checks']);
+    expect($checks->firstWhere('key', $issue === 'correction' ? 'reversals' : 'collections')['status'])
+        ->toBe($issue === 'correction' ? 'blocked' : 'unavailable');
+    $this->actingAs($admin)->postJson(route('customers.lifecycle.archive', $customer->customer_id), $this->lifecyclePayload($customer))
+        ->assertUnprocessable();
+    expect($customer->fresh()->getAttributes())->toBe($originalCustomer);
+    $this->assertDatabaseCount('customer_lifecycle_operations', 0);
+    $this->assertDatabaseCount('customer_status_histories', 0);
+    expect(app(CustomerLifecycleEligibility::class)->preview($admin, $clear)['eligible'])->toBeTrue();
+    $payload = $this->lifecyclePayload($clear);
+    $result = $this->postJson(route('customers.lifecycle.archive', $clear->customer_id), $payload)
+        ->assertOk()->assertJsonPath('status', 'archived')->json();
+    $this->postJson(route('customers.lifecycle.archive', $clear->customer_id), $payload)->assertOk()->assertExactJson($result);
+    foreach ($baseline as $table => $rows) {
+        expect(DB::table($table)->orderBy('id')->get()->all())->toEqual($rows);
+    }
+    expect($customer->fresh()->getAttributes())->toBe($originalCustomer)
+        ->and($clear->fresh()->operational_status)->toBe(CustomerStatus::Archived);
+    $this->assertDatabaseCount('customer_lifecycle_operations', 1);
+})->with(['correction', 'exception']);

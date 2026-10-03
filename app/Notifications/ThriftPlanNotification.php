@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Support\MailTransportEvidence;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,10 +12,15 @@ class ThriftPlanNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    public const TEMPLATE_VERSION = 1;
+
+    public MailTransportEvidence $deliveryEvidence;
+
     /** @param array{title: string, message: string, plan_id: string, status: string, url: string} $payload */
     public function __construct(string $notificationId, public array $payload, public string $channel)
     {
         $this->id = $notificationId;
+        $this->deliveryEvidence = new MailTransportEvidence;
     }
 
     /**
@@ -36,7 +42,7 @@ class ThriftPlanNotification extends Notification implements ShouldQueue
             ->subject($this->payload['title'])
             ->greeting('Hello,')
             ->line($this->payload['message'])
-            ->line('Current plan status: '.$this->payload['status'])
+            ->line('Status at this update: '.$this->payload['status'])
             ->action('View thrift plan', $this->payload['url']);
     }
 

@@ -218,18 +218,38 @@ class FeeObligation extends Model
      */
     private function entryTotals(): array
     {
+        $originalAmount = filter_var($this->getRawOriginal('amount_kobo'), FILTER_VALIDATE_INT);
+        if ($this->currency !== 'NGN' || $originalAmount === false || $originalAmount < 1) {
+            throw new RuntimeException('Original fee obligation amount or currency is unavailable.');
+        }
         $totals = array_fill_keys(array_column(FeeObligationEntryType::cases(), 'value'), 0);
         $entries = $this->relationLoaded('entries') ? $this->getRelation('entries') : $this->entries()->get();
+        $assessmentCount = 0;
 
         foreach ($entries as $entry) {
-            $entryType = $entry->entry_type->value;
-            $amountKobo = $entry->amount_kobo;
+            $rawType = $entry->getRawOriginal('entry_type');
+            $type = is_string($rawType) ? FeeObligationEntryType::tryFrom($rawType) : null;
+            if ($type === null) {
+                throw new RuntimeException('Fee obligation entry type is unavailable.');
+            }
+            $entryType = $type->value;
+            $amountKobo = filter_var($entry->getRawOriginal('amount_kobo'), FILTER_VALIDATE_INT);
+            if ($entry->fee_obligation_id !== $this->id || $entry->currency !== 'NGN'
+                || $amountKobo === false || $amountKobo < 1) {
+                throw new RuntimeException('Fee obligation entry amount, currency or attribution is unavailable.');
+            }
+            if ($entryType === FeeObligationEntryType::Assessment->value) {
+                $assessmentCount++;
+            }
 
             if ($amountKobo > PHP_INT_MAX - $totals[$entryType]) {
                 throw new \OverflowException('Fee obligation entry totals exceed the supported integer range.');
             }
 
             $totals[$entryType] += $amountKobo;
+        }
+        if ($assessmentCount !== 1 || $totals[FeeObligationEntryType::Assessment->value] !== $originalAmount) {
+            throw new RuntimeException('Original fee assessment evidence is missing or inconsistent.');
         }
 
         return $totals;

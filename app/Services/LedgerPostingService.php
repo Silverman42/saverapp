@@ -21,15 +21,85 @@ use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
 use App\Models\ManualCharge;
+use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class LedgerPostingService
 {
+    public function assertCollectionFeeAccounts(LedgerAccountCode $custody, bool $forUpdate = false): void
+    {
+        $expected = $this->collectionReceiptPattern($custody);
+        $this->assertMappedAccounts($expected, $forUpdate);
+    }
+
+    public function assertSavingsFeeApplicationAccounts(bool $forUpdate = false): void
+    {
+        $this->assertMappedAccounts($this->savingsApplicationPattern(), $forUpdate);
+    }
+
+    /** @param list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}> $expected */
+    private function assertMappedAccounts(array $expected, bool $forUpdate): void
+    {
+        $accounts = $this->accountsForPattern($expected, $forUpdate);
+        foreach ($expected as [$code, $side, $class]) {
+            if (! $this->hasRequiredMapping($accounts->get($code->value), $code, $class, 'NGN')) {
+                throw new ServiceUnavailableHttpException(null, 'Required fee ledger mapping is unavailable.');
+            }
+        }
+    }
+
+    /** @return list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}> */
+    private function savingsApplicationPattern(): array
+    {
+        return [
+            [LedgerAccountCode::CustomerSavingsLiability, LedgerEntrySide::Debit, LedgerAccountClass::CustomerSavingsLiability],
+            [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
+        ];
+    }
+
+    /** @return list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}> */
+    private function collectionReceiptPattern(LedgerAccountCode $custody): array
+    {
+        $custodyClass = match ($custody) {
+            LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
+            LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
+            LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing => LedgerAccountClass::Asset,
+            default => throw new ConflictHttpException('The receipt custody account is unsupported.'),
+        };
+
+        return [
+            [$custody, LedgerEntrySide::Debit, $custodyClass],
+            [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
+        ];
+    }
+
+    /**
+     * @param  list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}>  $expected
+     * @return Collection<string, LedgerAccount>
+     */
+    private function accountsForPattern(array $expected, bool $forUpdate): Collection
+    {
+        return LedgerAccount::query()->whereIn('code', array_map(static fn (array $line): string => $line[0]->value, $expected))
+            ->orderBy('id')->when($forUpdate, fn ($query) => $query->lockForUpdate())
+            ->get()->keyBy(static fn (LedgerAccount $account): string => $account->code->value);
+    }
+
+    private function hasRequiredMapping(?LedgerAccount $account, LedgerAccountCode $code, LedgerAccountClass $class, string $currency): bool
+    {
+        return $account !== null && $account->mapping_status === 'mapped'
+            && $account->account_class === $class && $account->normal_balance === $this->normalBalance($code)
+            && $account->currency === $currency;
+    }
+
     /**
      * Post an approved fee event as a balanced, immutable group.
      *
@@ -38,11 +108,9 @@ class LedgerPostingService
      */
     public function postFee(LedgerPostingCommand $command): LedgerPostingGroup
     {
-        $expected = $this->expectedPattern($command->eventType);
-        $this->validateCommand($command, $expected);
         $payloadHash = $this->payloadHash($command);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($command, $expected, $payloadHash): LedgerPostingGroup {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($command, $payloadHash): LedgerPostingGroup {
             $actor = $command->actor === null
                 ? null
                 : User::query()->whereKey($command->actor->id)->lockForUpdate()->firstOrFail();
@@ -75,6 +143,8 @@ class LedgerPostingService
             if ($customer->operational_status === CustomerStatus::Archived) {
                 throw new ConflictHttpException('Restore the Archived Customer before posting a fee.');
             }
+            $expected = $this->expectedPattern($command);
+            $this->validateCommand($command, $expected);
 
             $obligation = FeeObligation::query()
                 ->whereKey($command->lines[0]->feeObligationId)
@@ -84,25 +154,17 @@ class LedgerPostingService
                 throw new ConflictHttpException('Fee obligation and Customer dimensions do not match.');
             }
 
+            $obligation->setRelation('entries', $obligation->entries()->lockForUpdate()->get());
+
             $accountCodes = array_map(static fn (array $line): string => $line[0]->value, $expected);
-            $accounts = LedgerAccount::query()
-                ->whereIn('code', $accountCodes)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get()
-                ->keyBy(static fn (LedgerAccount $account): string => $account->code->value);
+            $accounts = $this->accountsForPattern($expected, true);
 
             if ($accounts->count() !== count(array_unique($accountCodes))) {
                 throw new ConflictHttpException('Required fee ledger accounts are unavailable.');
             }
 
-            foreach ($accounts as $account) {
-                $definition = collect($expected)->first(fn (array $line): bool => $line[0] === $account->code);
-                $expectedNormalBalance = $this->normalBalance($account->code);
-                if ($account->mapping_status !== 'mapped'
-                    || $account->account_class !== $definition[2]
-                    || $account->normal_balance !== $expectedNormalBalance
-                    || $account->currency !== $command->currency) {
+            foreach ($expected as [$code, $side, $class]) {
+                if (! $this->hasRequiredMapping($accounts->get($code->value), $code, $class, $command->currency)) {
                     throw new ConflictHttpException('Fee ledger posting is disabled until every required accounting destination is mapped.');
                 }
             }
@@ -120,6 +182,17 @@ class LedgerPostingService
                 throw new ConflictHttpException('Fee refund exceeds a retained paid or applied amount.');
             }
 
+            $application = null;
+            if ($command->sourceType === 'fee_savings_application') {
+                $application = DB::table('fee_savings_applications')->where('operation_reference', $command->sourceId)->lockForUpdate()->first();
+                if ($application === null || (int) $application->customer_profile_id !== $command->customerProfileId
+                    || (int) $application->fee_obligation_id !== $obligation->id || (int) $application->actor_user_id !== $actor?->id
+                    || (int) $application->amount_kobo !== $postingAmountKobo || $application->currency !== 'NGN'
+                    || $application->customer_description !== trim($command->customerDescription)
+                    || ! ThriftPlan::query()->whereKey($application->thrift_plan_id)->where('customer_profile_id', $customer->id)->exists()) {
+                    throw new ConflictHttpException('The savings application has no matching reviewed owner.');
+                }
+            }
             $receipt = null;
             if (in_array($command->sourceType, ['collection_receipt', 'fee_application'], true)) {
                 $parts = explode('-', $command->sourceId, 2);
@@ -131,6 +204,16 @@ class LedgerPostingService
                 $receipt = CollectionReceipt::query()->whereKey((int) $parts[0])->first();
                 if ($receipt === null || (int) $receipt->customer_profile_id !== $command->customerProfileId) {
                     throw new ConflictHttpException('The fee posting has no authoritative Customer receipt.');
+                }
+                if ($command->sourceType === 'collection_receipt') {
+                    app(CollectionReceiptMethod::class)->assertReceipt($receipt);
+                    $isReplacement = $receipt->replacement_reversal_id !== null;
+                    if (($command->eventType === FeeLedgerPostingType::UnappliedFeeApplication) !== $isReplacement
+                        || ($command->lines[0]->accountCode === LedgerAccountCode::AgentReceivable
+                            && $command->lines[0]->agentProfileId !== $receipt->recording_agent_profile_id)
+                        || $expected !== $this->expectedPattern($command)) {
+                        throw new ConflictHttpException('The fee receipt custody or replacement source does not match.');
+                    }
                 }
             }
             if ($receipt === null && $command->occurredAt === null) {
@@ -147,7 +230,10 @@ class LedgerPostingService
                 $occurredAt = $command->occurredAt;
             }
 
-            $planId = $receipt->thrift_plan_id ?? $this->planForObligation($obligation);
+            $planId = $application === null ? ($receipt->thrift_plan_id ?? $this->planForObligation($obligation)) : (int) $application->thrift_plan_id;
+            if ($command->eventType === FeeLedgerPostingType::SavingsFeeRefund) {
+                $planId = $this->savingsRefundCycle($obligation, true);
+            }
             $postingReference = 'FEE-'.Str::uuid();
             $group = LedgerPostingGroup::create([
                 'posting_reference' => $postingReference,
@@ -239,21 +325,12 @@ class LedgerPostingService
     /**
      * @return list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}>
      */
-    private function expectedPattern(FeeLedgerPostingType $eventType): array
+    private function expectedPattern(LedgerPostingCommand $command): array
     {
-        return match ($eventType) {
-            FeeLedgerPostingType::UnappliedFeeApplication => [
-                [LedgerAccountCode::UnappliedFunds, LedgerEntrySide::Debit, LedgerAccountClass::UnappliedFunds],
-                [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
-            ],
-            FeeLedgerPostingType::ExternalFeeReceipt => [
-                [LedgerAccountCode::AgentReceivable, LedgerEntrySide::Debit, LedgerAccountClass::AgentReceivable],
-                [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
-            ],
-            FeeLedgerPostingType::SavingsFeeApplication => [
-                [LedgerAccountCode::CustomerSavingsLiability, LedgerEntrySide::Debit, LedgerAccountClass::CustomerSavingsLiability],
-                [LedgerAccountCode::FeeIncome, LedgerEntrySide::Credit, LedgerAccountClass::FeeIncome],
-            ],
+        return match ($command->eventType) {
+            FeeLedgerPostingType::UnappliedFeeApplication => $this->collectionReceiptPattern(LedgerAccountCode::UnappliedFunds),
+            FeeLedgerPostingType::ExternalFeeReceipt => $this->externalReceiptPattern($command),
+            FeeLedgerPostingType::SavingsFeeApplication => $this->savingsApplicationPattern(),
             FeeLedgerPostingType::SavingsFeeRefund => [
                 [LedgerAccountCode::FeeIncome, LedgerEntrySide::Debit, LedgerAccountClass::FeeIncome],
                 [LedgerAccountCode::CustomerSavingsLiability, LedgerEntrySide::Credit, LedgerAccountClass::CustomerSavingsLiability],
@@ -266,6 +343,22 @@ class LedgerPostingService
         };
     }
 
+    /** @return list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}> */
+    private function externalReceiptPattern(LedgerPostingCommand $command): array
+    {
+        $parts = explode('-', $command->sourceId, 2);
+        if ($command->sourceType !== 'collection_receipt' || ! ctype_digit($parts[0])) {
+            throw new ConflictHttpException('An external fee must identify its authoritative receipt.');
+        }
+        $receipt = CollectionReceipt::query()->whereKey((int) $parts[0])->first();
+        if ($receipt === null || $receipt->replacement_reversal_id !== null) {
+            throw new ConflictHttpException('An external fee requires a physical receipt.');
+        }
+        $code = app(CollectionReceiptMethod::class)->assertReceipt($receipt);
+
+        return $this->collectionReceiptPattern($code);
+    }
+
     /**
      * @param  list<array{0: LedgerAccountCode, 1: LedgerEntrySide, 2: LedgerAccountClass}>  $expected
      */
@@ -274,7 +367,8 @@ class LedgerPostingService
         if ($command->currency !== 'NGN'
             || $command->idempotencyKey === ''
             || mb_strlen($command->idempotencyKey) > 120
-            || $command->sourceType !== $this->expectedSourceType($command->eventType)
+            || ($command->sourceType !== $this->expectedSourceType($command->eventType)
+                && ! ($command->eventType === FeeLedgerPostingType::SavingsFeeApplication && $command->sourceType === 'fee_savings_application'))
             || ! preg_match('/\A[a-zA-Z0-9:_-]{1,100}\z/', $command->sourceId)
             || $command->customerProfileId === null
             || trim($command->customerDescription) === ''
@@ -336,6 +430,8 @@ class LedgerPostingService
         return match ($accountCode) {
             LedgerAccountCode::AgentReceivable,
             LedgerAccountCode::BusinessCash,
+            LedgerAccountCode::BusinessBank,
+            LedgerAccountCode::PaymentClearing,
             LedgerAccountCode::BusinessDistributions => LedgerEntrySide::Debit,
             LedgerAccountCode::CustomerSavingsLiability,
             LedgerAccountCode::FeeIncome,
@@ -348,6 +444,21 @@ class LedgerPostingService
     public function planForObligation(FeeObligation $obligation): ?int
     {
         $snapshot = $obligation->feeSnapshot;
+        if ($snapshot->source_type === 'plan_terms_revision') {
+            $origins = PlanTermsRevision::query()->with('plan')->where('fee_snapshot_id', $snapshot->id)
+                ->orderBy('revision')->orderBy('id')->get();
+            $origin = $origins->first();
+            if ($origin === null || $origin->plan === null || $origins->pluck('thrift_plan_id')->unique()->count() !== 1
+                || $origin->plan->customer_profile_id !== $obligation->customer_profile_id
+                || $snapshot->customer_profile_id !== $obligation->customer_profile_id
+                || $snapshot->getRawOriginal('kind') !== 'plan' || $obligation->kind !== 'plan'
+                || $obligation->source_type !== $snapshot->source_type || $obligation->source_id !== $snapshot->source_id
+                || ! app(PlanFeeSnapshotBinding::class)->isValid($origin->plan, $origin, $snapshot)) {
+                throw new ConflictHttpException('The fee has no verified original cycle revision.');
+            }
+
+            return $origin->thrift_plan_id;
+        }
         $planId = match ($snapshot->source_type) {
             'plan' => ThriftPlan::query()->where('plan_id', $snapshot->source_id)->where('customer_profile_id', $obligation->customer_profile_id)->value('id'),
             'withdrawal' => WithdrawalRequest::query()->where('id', $snapshot->source_id)->where('customer_profile_id', $obligation->customer_profile_id)->value('thrift_plan_id'),
@@ -358,32 +469,39 @@ class LedgerPostingService
         return $planId;
     }
 
-    private function refundableAmountKobo(FeeObligation $obligation): int
+    public function savingsRefundCycle(FeeObligation $obligation, bool $current = false): ?int
     {
-        $totals = array_fill_keys([
-            FeeObligationEntryType::Settlement->value,
-            FeeObligationEntryType::SettlementReversal->value,
-            FeeObligationEntryType::SavingsRefund->value,
-            FeeObligationEntryType::ExternalRefundEntitlement->value,
-        ], 0);
+        if ($obligation->kind !== 'registration') {
+            return $this->planForObligation($obligation);
+        }
+        $snapshot = $obligation->feeSnapshot;
+        if ($snapshot->getRawOriginal('kind') !== 'registration' || $snapshot->source_type !== 'registration'
+            || $snapshot->customer_profile_id !== $obligation->customer_profile_id
+            || ! Schema::hasTable('fee_savings_applications')) {
+            throw new ConflictHttpException('The registration refund has no verified savings source cycle.');
+        }
+        $references = $obligation->entries()->where('entry_type', FeeObligationEntryType::Settlement->value)
+            ->where('source_type', 'fee_savings_application')->when($current, fn ($query) => $query->sharedLock())
+            ->pluck('source_id')->unique()->map(function (mixed $reference): string {
+                if (! is_string($reference)) {
+                    throw new ConflictHttpException('The retained savings application identity is invalid.');
+                }
 
-        foreach ($obligation->entries()
-            ->whereIn('entry_type', array_keys($totals))
-            ->get(['entry_type', 'amount_kobo']) as $entry) {
-            $entryType = $entry->entry_type->value;
-            if (! array_key_exists($entryType, $totals)) {
-                throw new ConflictHttpException('Fee refund history contains an unsupported entry.');
-            }
-            if ($entry->amount_kobo > PHP_INT_MAX - $totals[$entryType]) {
-                throw new \OverflowException('Fee refund history exceeds the supported integer range.');
-            }
-            $totals[$entryType] += $entry->amount_kobo;
+                return $reference;
+            })->values()->all();
+        $groups = app(FeeSavingsApplicationService::class)->verifiedPostedSources(array_values($references), $current);
+        $cycles = $groups->pluck('thrift_plan_id')->unique();
+        if ($references === [] || $groups->count() !== count($references) || $cycles->count() !== 1 || $cycles->first() === null) {
+            throw new ConflictHttpException('The registration refund has no single verified savings source cycle.');
         }
 
-        $refundable = $totals[FeeObligationEntryType::Settlement->value]
-            - $totals[FeeObligationEntryType::SettlementReversal->value]
-            - $totals[FeeObligationEntryType::SavingsRefund->value]
-            - $totals[FeeObligationEntryType::ExternalRefundEntitlement->value];
+        return $cycles->first();
+    }
+
+    private function refundableAmountKobo(FeeObligation $obligation): int
+    {
+        $concessions = app(FeeConcessionPosition::class)->read($obligation);
+        $refundable = $obligation->settledAmountKobo() - $concessions['savings_kobo'] - $concessions['external_kobo'];
         if ($refundable < 0) {
             throw new ConflictHttpException('Fee refund history exceeds the amount retained from the Customer.');
         }

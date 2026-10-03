@@ -6,6 +6,7 @@ use App\Enums\AdminPermission;
 use App\Enums\CustomerActivity;
 use App\Enums\CustomerStatus;
 use App\Enums\FeeRuleBasis;
+use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
@@ -16,6 +17,7 @@ use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialWorkflowSupplement;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Models\WithdrawalAttempt;
@@ -23,6 +25,7 @@ use App\Models\WithdrawalEvent;
 use App\Models\WithdrawalRequest;
 use App\Support\FeePercentageCalculator;
 use App\Support\MoneyAmount;
+use App\Support\MoneyFormatter;
 use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -43,6 +46,8 @@ class WithdrawalService
         private FreshAuthenticationService $freshAuthentication,
         private PublicIdGenerator $references,
         private WithdrawalNoticeService $notices,
+        private PlanFeeSnapshotBinding $snapshotBinding,
+        private PlanWithdrawalFeePosition $cycleFees,
     ) {}
 
     /** @param array<string, mixed> $data
@@ -68,13 +73,23 @@ class WithdrawalService
             throw ValidationException::withMessages(['type' => ['End-of-cycle payout requires a Completed cycle.']]);
         }
 
+        $revision = $plan->currentTermsRevision();
+        $snapshot = $revision?->feeSnapshot;
+        if ($revision === null || $snapshot === null || $snapshot->customer_profile_id !== $customer->id
+            || $snapshot->kind !== FeeRuleKind::Plan || $snapshot->currency !== 'NGN'
+            || ! $this->snapshotBinding->isValid($plan, $revision, $snapshot)) {
+            throw new ConflictHttpException('The cycle fee snapshot is unavailable.');
+        }
+
         $method = $this->methods->resolve($customer->id, $data['method'], $data['destination_reference']);
-        $position = $this->balances->position($customer, $plan, $forUpdate);
         try {
             $gross = MoneyAmount::parseNairaToKobo($data['gross_ngn']);
         } catch (\InvalidArgumentException $exception) {
             throw ValidationException::withMessages(['gross_ngn' => [$exception->getMessage()]]);
         }
+        $feeQuote = $this->feeQuote($snapshot, $gross, $data['type'], $plan);
+        $fee = $feeQuote['amount_kobo'];
+        $position = $this->balances->position($customer, $plan, $forUpdate);
         if ($gross < 1 || $gross > min($position['available_kobo'], $position['cycle_available_kobo'])) {
             throw ValidationException::withMessages(['gross_ngn' => ['The gross debit exceeds available savings.']]);
         }
@@ -85,13 +100,6 @@ class WithdrawalService
             throw ValidationException::withMessages(['gross_ngn' => ['This type requires the exact current source-cycle amount.']]);
         }
 
-        $revision = $plan->currentTermsRevision();
-        $snapshot = $revision?->feeSnapshot;
-        if ($snapshot === null || $snapshot->source_type !== 'plan' || $snapshot->source_id !== $plan->plan_id
-            || $snapshot->currency !== 'NGN') {
-            throw new ConflictHttpException('The cycle fee snapshot is unavailable.');
-        }
-        $fee = $this->feeAmount($snapshot, $gross, $data['type']);
         if ($fee >= $gross) {
             throw ValidationException::withMessages(['gross_ngn' => ['The fee leaves no positive Customer payout.']]);
         }
@@ -115,7 +123,7 @@ class WithdrawalService
             'assignment_version' => $assignment->version, 'plan_id' => $plan->plan_id,
             'plan_version' => $plan->version, 'business_version' => $business->version,
             'fee_snapshot_id' => $snapshot->id, 'type' => $data['type'],
-            'gross_kobo' => $gross, 'fee_kobo' => $fee, 'deduction_kobo' => 0,
+            'gross_kobo' => $gross, 'fee_kobo' => $fee, 'deduction_kobo' => 0, 'fee_disclosure' => $feeQuote['disclosure'],
             'net_kobo' => $gross - $fee, 'currency' => 'NGN',
             'method' => $data['method'], 'method_version' => $method['version'],
             'destination_reference' => $method['destination_reference'],
@@ -353,36 +361,111 @@ class WithdrawalService
         }
     }
 
-    private function feeAmount(FeeSnapshot $snapshot, int $gross, string $type): int
+    /** @return array{amount_kobo: int, disclosure: array<string, string>} */
+    private function feeQuote(FeeSnapshot $snapshot, int $gross, string $type, ThriftPlan $plan): array
     {
-        if ($snapshot->timing === FeeRuleTiming::CycleCompletion) {
-            $obligation = $snapshot->obligation;
-            if ($obligation === null && $snapshot->model !== FeeRuleModel::NoFee) {
-                throw new ConflictHttpException('The cycle-completion fee assessment is unavailable.');
+        try {
+            app(FeeObligationService::class)->assertSnapshotMatchesRuleQuote($snapshot);
+            if ($snapshot->model === FeeRuleModel::OneDay) {
+                $unit = filter_var($plan->currentTermsRevision()?->getRawOriginal('contribution_amount_kobo'), FILTER_VALIDATE_INT);
+                if ($unit === false || $unit < 1 || $snapshot->amount_kobo !== $unit || $snapshot->basis_amount_kobo !== $unit) {
+                    throw new ConflictHttpException('The contractual daily fee basis is unavailable.');
+                }
             }
-            $outstanding = $obligation?->outstandingAmountKobo() ?? 0;
-            if ($outstanding > 0 && ($type !== 'end_of_cycle'
-                || $snapshot->settlement_source !== FeeSettlementSource::WithdrawalPayout)) {
-                throw new ConflictHttpException('The cycle-completion fee requires its approved settlement path.');
+            $position = ['assessed_kobo' => 0, 'settled_kobo' => 0, 'waived_kobo' => 0, 'outstanding_kobo' => 0];
+            $newFee = 0;
+            $existingFee = 0;
+            $message = 'The captured agreement has no fee. Quoting and submitting do not post a payment.';
+            if ($snapshot->model !== FeeRuleModel::NoFee && $snapshot->amount_kobo > 0 && $snapshot->timing !== FeeRuleTiming::Withdrawal) {
+                $obligation = $snapshot->obligation;
+                if ($obligation === null || $obligation->customer_profile_id !== $plan->customer_profile_id
+                    || $obligation->fee_snapshot_id !== $snapshot->id || $obligation->source_type !== $snapshot->source_type
+                    || $obligation->source_id !== $snapshot->source_id || $obligation->currency !== 'NGN'
+                    || $obligation->kind !== $snapshot->kind->value || $obligation->amount_kobo !== $snapshot->amount_kobo) {
+                    throw new ConflictHttpException('The existing cycle fee assessment is unavailable.');
+                }
+                $position = ['assessed_kobo' => $obligation->assessedAmountKobo(), 'settled_kobo' => $obligation->settledAmountKobo(),
+                    'waived_kobo' => $obligation->waivedAmountKobo(), 'outstanding_kobo' => $obligation->outstandingAmountKobo()];
+                if ($snapshot->timing === FeeRuleTiming::CycleCompletion) {
+                    $existingFee = $position['outstanding_kobo'];
+                    $approvedPayout = $type === 'end_of_cycle' && $plan->status === ThriftPlanStatus::Completed
+                        || ($type === 'full' && $this->hasPreparedEarlyPayoutAgreement($plan, $snapshot));
+                    if ($existingFee > 0 && (! $approvedPayout || $snapshot->settlement_source !== FeeSettlementSource::WithdrawalPayout)) {
+                        throw new ConflictHttpException('The cycle-completion fee requires its approved settlement path.');
+                    }
+                }
+                $message = $existingFee > 0
+                    ? 'This payout collects an existing assessed fee. It does not create another assessment.'
+                    : 'The cycle fee was assessed separately. It is not charged again by this payout. Any remaining unpaid fee requires its approved settlement path.';
+            } elseif ($snapshot->model !== FeeRuleModel::NoFee && $snapshot->timing === FeeRuleTiming::Withdrawal) {
+                if ($snapshot->settlement_source !== FeeSettlementSource::WithdrawalPayout
+                    || ($snapshot->model === FeeRuleModel::Percentage && $snapshot->basis !== FeeRuleBasis::GrossWithdrawalDebit)
+                    || ($snapshot->model === FeeRuleModel::OneDay && $snapshot->basis !== FeeRuleBasis::ContractualDailyContribution)) {
+                    throw new ConflictHttpException('Withdrawal fee terms are not configured for payout settlement.');
+                }
+                $position = $this->cycleFees->read($plan, $snapshot);
+                $newFee = $position['consumed'] ? 0 : match ($snapshot->model) {
+                    FeeRuleModel::Fixed => $snapshot->amount_kobo,
+                    FeeRuleModel::OneDay => $snapshot->basis_amount_kobo,
+                    FeeRuleModel::Percentage => FeePercentageCalculator::calculate($gross, $snapshot->basis_points ?? 0),
+                };
+                $message = $snapshot->model === FeeRuleModel::Percentage
+                    ? 'The new fee applies to this successful withdrawal. Earlier payout fees remain separate.'
+                    : ($position['consumed']
+                        ? 'The once-per-cycle fee was already charged. This payout does not charge it again.'
+                        : ($position['restored']
+                            ? 'The earlier erroneous payout fee was fully corrected. The once-per-cycle fee becomes due on the next successful payout.'
+                            : 'The once-per-cycle fee becomes due only if this payout is successfully posted.'));
             }
 
-            return $outstanding;
+            return ['amount_kobo' => $newFee + $existingFee, 'disclosure' => [
+                'new_fee' => MoneyFormatter::formatNaira($newFee), 'existing_fee_included' => MoneyFormatter::formatNaira($existingFee),
+                'already_assessed' => MoneyFormatter::formatNaira($position['assessed_kobo']),
+                'already_settled' => MoneyFormatter::formatNaira($position['settled_kobo']),
+                'already_waived' => MoneyFormatter::formatNaira($position['waived_kobo']),
+                'existing_unpaid' => MoneyFormatter::formatNaira($position['outstanding_kobo']), 'message' => $message,
+            ]];
+        } catch (ConflictHttpException $exception) {
+            throw $exception;
+        } catch (\RuntimeException|\InvalidArgumentException $exception) {
+            throw new ConflictHttpException('The cycle fee quote history is unavailable.', $exception);
         }
-        if ($snapshot->timing !== FeeRuleTiming::Withdrawal) {
-            return 0;
-        }
-        if ($snapshot->settlement_source !== FeeSettlementSource::WithdrawalPayout
-            || ($snapshot->model === FeeRuleModel::Percentage && $snapshot->basis !== FeeRuleBasis::GrossWithdrawalDebit)
-            || ($snapshot->model === FeeRuleModel::OneDay && $snapshot->basis !== FeeRuleBasis::ContractualDailyContribution)) {
-            throw new ConflictHttpException('Withdrawal fee terms are not configured for payout settlement.');
-        }
+    }
 
-        return match ($snapshot->model) {
-            FeeRuleModel::NoFee => 0,
-            FeeRuleModel::Fixed => $snapshot->amount_kobo,
-            FeeRuleModel::OneDay => $snapshot->basis_amount_kobo,
-            FeeRuleModel::Percentage => FeePercentageCalculator::calculate($gross, $snapshot->basis_points ?? 0),
-        };
+    private function hasPreparedEarlyPayoutAgreement(ThriftPlan $plan, FeeSnapshot $snapshot): bool
+    {
+        if ($plan->status !== ThriftPlanStatus::Paused || ! app(EarlyTerminationPolicy::class)->supports($snapshot)) {
+            return false;
+        }
+        $forUpdate = DB::transactionLevel() > 0;
+        $event = $plan->lifecycleEvents()->where('event_type', 'early_termination_prepared')
+            ->where('plan_version', $plan->version)->where('to_status', ThriftPlanStatus::Paused->value)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->latest('id')->first();
+        if ($event === null) {
+            return false;
+        }
+        $payload = $event->getAttribute('payload');
+        if (! is_array($payload)) {
+            return false;
+        }
+        $fee = $payload['termination_fee'] ?? null;
+        $fingerprint = $payload['preview_fingerprint'] ?? null;
+        if (! is_array($fee) || ($payload['action'] ?? null) !== 'prepare_termination'
+            || ($payload['can_prepare'] ?? null) !== true || ($payload['plan_version'] ?? null) !== $plan->version - 1
+            || ($fee['snapshot_id'] ?? null) !== $snapshot->id
+            || ($fee['policy_version'] ?? null) !== EarlyTerminationPolicy::VERSION
+            || ($fee['description'] ?? null) !== $snapshot->early_termination_description
+            || ! is_string($fingerprint) || strlen($fingerprint) !== 64) {
+            return false;
+        }
+        $proofs = FinancialWorkflowSupplement::query()->where('thrift_plan_id', $plan->id)
+            ->where('customer_profile_id', $plan->customer_profile_id)->where('kind', 'early_termination_prepared')
+            ->where('actor_user_id', $event->actor_user_id)->where('facts->event_id', $event->id)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        $proof = $proofs->first();
+
+        return $proofs->count() === 1 && $proof !== null
+            && ($proof->facts['gate_fingerprint'] ?? null) === $fingerprint;
     }
 
     /** @param array<string, mixed> $quote */
@@ -424,9 +507,11 @@ class WithdrawalService
             || ($withdrawal->type === 'end_of_cycle' && $plan->status !== ThriftPlanStatus::Completed)) {
             throw new ConflictHttpException('The source cycle is no longer eligible.');
         }
-        $snapshot = $plan->currentTermsRevision()?->feeSnapshot;
-        if ($snapshot === null || $snapshot->id !== $withdrawal->fee_snapshot_id
-            || $this->feeAmount($snapshot, $withdrawal->gross_amount_kobo, $withdrawal->type) !== $withdrawal->fee_amount_kobo) {
+        $revision = $plan->currentTermsRevision();
+        $snapshot = $revision?->feeSnapshot;
+        if ($revision === null || $snapshot === null || ! $this->snapshotBinding->isValid($plan, $revision, $snapshot)
+            || $snapshot->id !== $withdrawal->fee_snapshot_id
+            || $this->feeQuote($snapshot, $withdrawal->gross_amount_kobo, $withdrawal->type, $plan)['amount_kobo'] !== $withdrawal->fee_amount_kobo) {
             throw new ConflictHttpException('The agreed fee quote no longer matches the source cycle.');
         }
         $reservation = DB::table('withdrawal_reservations')->where('id', $withdrawal->withdrawal_reservation_id)->lockForUpdate()->first();

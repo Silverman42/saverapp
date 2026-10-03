@@ -6,7 +6,6 @@ use App\Data\LedgerPostingCommand;
 use App\Data\LedgerPostingLine;
 use App\Enums\AdminPermission;
 use App\Enums\FeeLedgerPostingType;
-use App\Enums\FeeObligationEntryType;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
@@ -14,7 +13,6 @@ use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
 use App\Models\FeeRefund;
-use App\Models\LedgerPostingGroup;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -45,25 +43,8 @@ class FeeRefundService
                 || trim($reason) === '' || $customer->operational_status->value === 'archived') {
                 throw new ConflictHttpException('A positive retained fee and reviewed refund purpose are required.');
             }
-            if ($obligation->entries()->where('entry_type', FeeObligationEntryType::SettlementReversal)->exists()) {
-                throw new ConflictHttpException('Resolve the erroneous-fee compensation before considering a concession.');
-            }
-            $retained = 0;
-            foreach ($obligation->entries()->where('entry_type', FeeObligationEntryType::Settlement)->get() as $settlement) {
-                $group = LedgerPostingGroup::query()->where('posting_reference', $settlement->ledger_posting_reference)->with('entries.account')->firstOrFail();
-                $source = $group->entries->first(fn ($entry): bool => $entry->side === LedgerEntrySide::Debit);
-                if ($source === null || ! $group->entries->contains(fn ($entry): bool => $entry->account->code === LedgerAccountCode::FeeIncome && $entry->side === LedgerEntrySide::Credit && $entry->fee_obligation_id === $obligation->id && $entry->amount_kobo === $settlement->amount_kobo)
-                    || ($group->source_type !== 'withdrawal' && ($source->fee_obligation_id !== $obligation->id || $source->amount_kobo !== $settlement->amount_kobo))) {
-                    throw new ConflictHttpException('The original paid-fee source is unavailable.');
-                }
-                if (($kind === 'external' && $source->account->code === LedgerAccountCode::AgentReceivable)
-                    || ($kind === 'savings' && $source->account->code === LedgerAccountCode::CustomerSavingsLiability)) {
-                    $retained += $settlement->amount_kobo;
-                }
-            }
-            $refundType = $kind === 'external' ? FeeObligationEntryType::ExternalRefundEntitlement : FeeObligationEntryType::SavingsRefund;
-            $retained -= (int) $obligation->entries()->where('entry_type', $refundType)->sum('amount_kobo');
-            $position = app(FinancialCashPosition::class)->read();
+            $retained = app(FeeConcessionPosition::class)->retainedSources($obligation, forUpdate: true)[$kind.'_kobo'];
+            $position = app(FinancialCashPosition::class)->read(forUpdate: true);
             if ($amountKobo > $retained || $amountKobo > $position['undrawn_earnings_kobo'] || $amountKobo > $position['free_cash_kobo']) {
                 throw new ConflictHttpException('The refund exceeds retained earnings or verified free cash.');
             }
@@ -80,8 +61,8 @@ class FeeRefundService
                 'fee_obligation_id' => $obligation->id, 'actor_user_id' => $actor->id, 'amount_kobo' => $amountKobo, 'kind' => $kind,
                 'reason' => trim($reason), 'ledger_posting_group_id' => $group->id]);
             AuditEvent::record('fee.refund_authorized', FeeRefund::class, $refund->id, $reference,
-                ['customer_profile_id' => $customer->id, 'amount_kobo' => $amountKobo, 'source_type' => $kind, 'source_id' => $reference], $actor,
-                context: ['executor' => self::class, 'required_permission' => 'fees.manage']);
+                ['customer_profile_id' => $customer->id, 'amount_kobo' => $amountKobo, 'source_type' => $kind, 'source_id' => $reference, 'reason' => trim($reason)], $actor,
+                context: ['executor' => self::class, 'correlation_reference' => $reference, 'required_permission' => 'fees.manage']);
 
             app(FinancialCashNotice::class)->queue($actor, $refund, 'refund_authorized');
             app(LedgerTransactionProjectionService::class)->projectRefund($refund);

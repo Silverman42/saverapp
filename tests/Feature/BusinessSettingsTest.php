@@ -4,10 +4,12 @@ use App\Enums\AdminPermission;
 use App\Models\BusinessConfigurationDraft;
 use App\Models\BusinessConfigurationVersion;
 use App\Models\BusinessProfile;
+use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\AuditCapture;
 use App\Services\BusinessSettings;
 use App\Services\BusinessSettingsReadiness;
+use App\Services\FinancialReleaseEvidenceService;
 use App\Services\NotificationPipeline;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -49,6 +51,30 @@ function publishConfiguration(User $actor, array $draft, ?string $operation = nu
     return app(BusinessSettings::class)->publish($actor, $draft['draft_id'], $draft['revision'], $draft['preview']['reference'],
         'Reviewed prospective change', $operation ?? (string) Str::uuid(), configurationRequest());
 }
+
+test('plan creation remains disabled until complete current owner evidence permits explicit publication', function (): void {
+    $this->freezeTime();
+    $actor = configurationManager();
+    $settings = app(BusinessSettings::class);
+    $settings->import();
+    expect(fn () => configurationDraft($actor, ['plan_creation' => true]))->toThrow(ValidationException::class);
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    config()->set('app.financial_release_revision', 'plan-creation-test-release');
+    $evidence = app(FinancialReleaseEvidenceService::class);
+    foreach ($evidence::ROLES as $role) {
+        $evidence->record($actor, ['capability' => 'plan_creation', 'owner_role' => $role,
+            'version' => 1, 'state' => 'accepted', 'dependency_hash' => $evidence->dependencyHash(),
+            'valid_until' => now()->addDay()->toIso8601String(), 'evidence' => 'TEST FIXTURE current plan-owner release evidence.']);
+    }
+    expect($evidence->check('plan_creation')['state'])->toBe('Ready to enable');
+    expect(fn () => $settings->ensureFeature('plan_creation'))->toThrow(HttpException::class);
+    $draft = configurationDraft($actor, ['plan_creation' => true]);
+    publishConfiguration($actor, $draft);
+    $settings->ensureFeature('plan_creation');
+    expect($settings->resolve()['values']['plan_creation'])->toBeTrue();
+    LedgerAccount::query()->where('code', 'customer_savings_liability_ngn')->increment('version');
+    expect(fn () => $settings->ensureFeature('plan_creation'))->toThrow(HttpException::class);
+});
 
 test('trusted import preserves identity and values without inventing prior history or enabling financial methods', function () {
     BusinessProfile::current()->update(['display_name' => 'Trusted thrift', 'version' => 7]);

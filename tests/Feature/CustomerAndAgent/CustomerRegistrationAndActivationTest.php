@@ -81,13 +81,18 @@ function publishFeeRule(
     $request->setLaravelSession(app('session')->driver());
     $request->session()->put(freshAdminSession());
 
-    return app(RegistrationFeeService::class)->publishRule($admin, [
+    $publicationOwner = app(RegistrationFeeService::class);
+    $publicationData = [
         'name' => $name,
         'model' => $model,
         'amount_kobo' => $amountKobo,
         'customer_description' => $customerDesc,
         'publication_reason' => $reason,
-    ], $request);
+    ];
+    $publicationData['confirmed'] = true;
+    $publicationData['preview_fingerprint'] = $publicationOwner->previewPublication($admin, $publicationData)['preview_fingerprint'];
+
+    return $publicationOwner->publishRule($admin, $publicationData, $request);
 }
 
 /**
@@ -184,15 +189,16 @@ test('Admin with fresh session and fees.manage can view and publish fixed regist
             ->has('rules')
         );
 
-    $response = $this->actingAs($admin)
-        ->withSession(freshAdminSession())
-        ->post(route('admin.fees.registration.store'), [
-            'name' => 'Standard Customer Fee 2026',
-            'model' => 'fixed',
-            'amount_ngn' => $amountNgn,
-            'customer_description' => 'Mandatory onboarding charge for new accounts.',
-            'publication_reason' => 'Annual governance tariff schedule approval.',
-        ]);
+    $publicationPayload = [
+        'name' => 'Standard Customer Fee 2026',
+        'model' => 'fixed',
+        'amount_ngn' => $amountNgn,
+        'customer_description' => 'Mandatory onboarding charge for new accounts.',
+        'publication_reason' => 'Annual governance tariff schedule approval.',
+    ];
+    $review = $this->actingAs($admin)->postJson(route('admin.fees.registration.preview'), $publicationPayload)->assertOk()->json('preview_fingerprint');
+    $response = $this->withSession(freshAdminSession())
+        ->post(route('admin.fees.registration.store'), [...$publicationPayload, 'confirmed' => true, 'preview_fingerprint' => $review]);
 
     $response->assertSessionHasNoErrors()->assertRedirect(route('admin.fees.registration.index'));
 
@@ -221,6 +227,7 @@ test('Admin cannot publish a fixed registration fee with an invalid amount', fun
     $this->actingAs($admin)
         ->withSession(freshAdminSession())
         ->post(route('admin.fees.registration.store'), [
+            'confirmed' => true, 'preview_fingerprint' => str_repeat('0', 64),
             'name' => 'Standard Customer Fee 2026',
             'model' => 'fixed',
             'amount_ngn' => $amountNgn,
@@ -243,14 +250,15 @@ test('Admin can publish explicit zero fee rule', function (): void {
     $admin->assignRole(UserType::Admin->value);
     $admin->givePermissionTo(AdminPermission::FeesManage->value);
 
-    $this->actingAs($admin)
-        ->withSession(freshAdminSession())
-        ->post(route('admin.fees.registration.store'), [
-            'name' => 'Zero Fee Promotion',
-            'model' => 'no_fee',
-            'customer_description' => 'Complimentary account registration.',
-            'publication_reason' => 'Q4 growth initiative approved by board.',
-        ])
+    $publicationPayload = [
+        'name' => 'Zero Fee Promotion',
+        'model' => 'no_fee',
+        'customer_description' => 'Complimentary account registration.',
+        'publication_reason' => 'Q4 growth initiative approved by board.',
+    ];
+    $review = $this->actingAs($admin)->postJson(route('admin.fees.registration.preview'), $publicationPayload)->assertOk()->json('preview_fingerprint');
+    $this->withSession(freshAdminSession())
+        ->post(route('admin.fees.registration.store'), [...$publicationPayload, 'confirmed' => true, 'preview_fingerprint' => $review])
         ->assertRedirect(route('admin.fees.registration.index'));
 
     $currentRule = FeeRule::currentRegistration()->first();
@@ -269,6 +277,7 @@ test('Admin cannot publish a registration fee rule with an explicitly past effec
     $this->actingAs($admin)
         ->withSession(freshAdminSession())
         ->post(route('admin.fees.registration.store'), [
+            'confirmed' => true, 'preview_fingerprint' => str_repeat('0', 64),
             'name' => 'Backdated Registration Fee',
             'model' => 'fixed',
             'amount_ngn' => '500.00',

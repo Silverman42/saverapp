@@ -27,7 +27,7 @@ class LedgerTransactionController extends Controller
         $today = CarbonImmutable::now($timezone);
         $filters = $request->validate([
             'customer' => ['nullable', 'string', 'max:32', 'regex:/\A[A-Z0-9-]+\z/'],
-            'type' => ['nullable', Rule::in(['contribution', 'remittance', 'withdrawal', 'reversal', 'deduction', 'fee_refund', 'external_refund_payment', 'earnings_draw'])],
+            'type' => ['nullable', Rule::in(['contribution', 'remittance', 'withdrawal', 'reversal', 'deduction', 'fee_application', 'fee_refund', 'external_refund_payment', 'earnings_draw'])],
             'reference' => ['nullable', 'string', 'max:40', 'regex:/\ATXN-[0-9-]+\z/'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],

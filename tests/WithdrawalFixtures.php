@@ -24,7 +24,7 @@ use App\Services\WithdrawalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-function withdrawalFixture(): array
+function withdrawalFixture(bool $fixedWithdrawalFee = false): array
 {
     $agent = User::factory()->agent()->create(['two_factor_secret' => 'CONFIRMED-SECRET', 'two_factor_confirmed_at' => now()]);
     $agentProfile = AgentProfile::factory()->active()->create(['user_id' => $agent->id]);
@@ -35,11 +35,11 @@ function withdrawalFixture(): array
     ]);
     $rule = FeeRule::create([
         'version' => 1, 'name' => 'Withdrawal fee', 'kind' => FeeRuleKind::Plan,
-        'rule_key' => 'withdrawal-test', 'model' => FeeRuleModel::Percentage,
-        'timing' => FeeRuleTiming::Withdrawal, 'basis' => FeeRuleBasis::GrossWithdrawalDebit,
+        'rule_key' => 'withdrawal-test', 'model' => $fixedWithdrawalFee ? FeeRuleModel::Fixed : FeeRuleModel::Percentage,
+        'timing' => FeeRuleTiming::Withdrawal, 'basis' => $fixedWithdrawalFee ? FeeRuleBasis::None : FeeRuleBasis::GrossWithdrawalDebit,
         'settlement_source' => FeeSettlementSource::WithdrawalPayout,
-        'currency' => 'NGN', 'amount_kobo' => 0, 'basis_points' => 200,
-        'customer_description' => 'Two percent withdrawal fee',
+        'currency' => 'NGN', 'amount_kobo' => $fixedWithdrawalFee ? 600 : 0, 'basis_points' => $fixedWithdrawalFee ? null : 200,
+        'customer_description' => $fixedWithdrawalFee ? 'Six naira once per cycle' : 'Two percent withdrawal fee',
         'effective_at' => now()->subDay(), 'published_by_user_id' => $agent->id,
         'publication_reason' => 'Test withdrawal terms.',
     ]);
@@ -51,21 +51,21 @@ function withdrawalFixture(): array
     $snapshot = FeeSnapshot::create([
         'customer_profile_id' => $customer->id, 'source_type' => 'plan', 'source_id' => $plan->plan_id,
         'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Withdrawal fee',
-        'kind' => FeeRuleKind::Plan, 'model' => FeeRuleModel::Percentage,
-        'timing' => FeeRuleTiming::Withdrawal, 'basis' => FeeRuleBasis::GrossWithdrawalDebit,
+        'kind' => FeeRuleKind::Plan, 'model' => $fixedWithdrawalFee ? FeeRuleModel::Fixed : FeeRuleModel::Percentage,
+        'timing' => FeeRuleTiming::Withdrawal, 'basis' => $fixedWithdrawalFee ? FeeRuleBasis::None : FeeRuleBasis::GrossWithdrawalDebit,
         'settlement_source' => FeeSettlementSource::WithdrawalPayout, 'currency' => 'NGN',
-        'amount_kobo' => 0, 'basis_points' => 200, 'basis_amount_kobo' => 0,
-        'customer_description' => 'Two percent withdrawal fee', 'acknowledged_at' => now(),
+        'amount_kobo' => $fixedWithdrawalFee ? 600 : 0, 'basis_points' => $fixedWithdrawalFee ? null : 200, 'basis_amount_kobo' => 0,
+        'customer_description' => $fixedWithdrawalFee ? 'Six naira once per cycle' : 'Two percent withdrawal fee', 'acknowledged_at' => now(),
     ]);
     PlanTermsRevision::create([
         'thrift_plan_id' => $plan->id, 'revision' => 1, 'name' => 'Daily cycle',
-        'contribution_amount_kobo' => 100000, 'currency' => 'NGN', 'start_date' => now()->toDateString(),
+        'contribution_amount_kobo' => 100000, 'currency' => 'NGN', 'start_date' => now('Africa/Lagos')->toDateString(),
         'contribution_days' => 1, 'frequency' => 'daily', 'timezone' => 'Africa/Lagos',
         'business_version' => 1, 'expected_gross_kobo' => 100000,
         'fee_snapshot_id' => $snapshot->id, 'attested_by_user_id' => $agent->id, 'attested_at' => now(),
     ]);
     $batch = CollectionBatch::create([
-        'agent_profile_id' => $agentProfile->id, 'received_date' => now()->toDateString(),
+        'agent_profile_id' => $agentProfile->id, 'received_date' => now('Africa/Lagos')->toDateString(),
         'timezone' => 'Africa/Lagos', 'revision' => 1, 'status' => 'open', 'version' => 1,
     ]);
     $receipt = CollectionReceipt::create([
@@ -73,7 +73,7 @@ function withdrawalFixture(): array
         'payload_hash' => str_repeat('a', 64), 'customer_profile_id' => $customer->id,
         'thrift_plan_id' => $plan->id, 'recording_agent_profile_id' => $agentProfile->id,
         'assignment_id' => $assignment->id, 'collection_batch_id' => $batch->id,
-        'recorded_by_user_id' => $agent->id, 'received_date' => now()->toDateString(),
+        'recorded_by_user_id' => $agent->id, 'received_date' => now('Africa/Lagos')->toDateString(),
         'timezone' => 'Africa/Lagos', 'business_version' => 1,
         'tender_amount_kobo' => 100000, 'savings_amount_kobo' => 100000,
         'fee_amount_kobo' => 0, 'recorded_at' => now(),

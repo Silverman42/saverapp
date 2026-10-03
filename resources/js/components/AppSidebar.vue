@@ -41,6 +41,7 @@ import { index as chargesIndex } from '@/routes/admin/charges';
 import { index as adminFeesIndex } from '@/routes/admin/fees';
 import { index as plansIndex } from '@/routes/plans';
 import { index as collectionsIndex } from '@/routes/collections';
+import { manage as collectionMethods } from '@/routes/collection-methods';
 import { index as withdrawalsIndex } from '@/routes/withdrawals';
 import { index as reversalsIndex } from '@/routes/reversals';
 import { index as transactionsIndex } from '@/routes/transactions';
@@ -171,6 +172,18 @@ const adminNavItems = computed<NavItem[]>(() => {
             icon: Users,
         },
     ];
+
+    if (
+        (page.props.auth?.permissions ?? []).includes(
+            'business.settings.manage',
+        )
+    ) {
+        items.push({
+            title: 'Collection methods',
+            href: collectionMethods(),
+            icon: Settings,
+        });
+    }
 
     if (
         hasFeesManage.value ||

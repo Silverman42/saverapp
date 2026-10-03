@@ -390,7 +390,7 @@ class DashboardReadService
             $metrics[] = $this->metric('business_cash', 'Business cash custody', $cash, 'NGN', 'ledger', 'at cutoff', 'Posted business cash asset; not available profit or Customer savings.');
         }
         $exceptions = DB::table('collection_exceptions')->join('collection_batches', 'collection_batches.id', '=', 'collection_exceptions.collection_batch_id')
-            ->where('collection_exceptions.status', 'open');
+            ->where('collection_exceptions.status', '!=', 'resolved');
         if ($agentId !== null) {
             $exceptions->where('collection_batches.agent_profile_id', $agentId);
         }
@@ -406,7 +406,7 @@ class DashboardReadService
     {
         $started = hrtime(true);
         try {
-            $data = ['status' => 'Current', ...$read()];
+            $data = ['status' => 'Current', 'metrics' => [], ...$read()];
             if ($data['status'] === 'Ready') {
                 $data['status'] = 'Current';
             }

@@ -12,10 +12,10 @@ use App\Models\FeeSnapshot;
 use App\Models\User;
 use App\Services\FeeObligationService;
 
-function reportFeeObligation(User $agent, CustomerProfile $customer, int $amountKobo = 50000): FeeObligation
+function reportFeeObligation(User $agent, CustomerProfile $customer, int $amountKobo = 50000, int $version = 1): FeeObligation
 {
     $rule = FeeRule::create([
-        'version' => 1, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
+        'version' => $version, 'name' => 'Registration cash fee', 'kind' => FeeRuleKind::Registration,
         'rule_key' => 'test-registration', 'model' => FeeRuleModel::Fixed,
         'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
         'settlement_source' => FeeSettlementSource::ExternalReceipt,
@@ -25,7 +25,7 @@ function reportFeeObligation(User $agent, CustomerProfile $customer, int $amount
     ]);
     $snapshot = FeeSnapshot::create([
         'customer_profile_id' => $customer->id, 'source_type' => 'registration', 'source_id' => $customer->customer_id,
-        'fee_rule_id' => $rule->id, 'fee_rule_version' => 1, 'name' => 'Registration cash fee',
+        'fee_rule_id' => $rule->id, 'fee_rule_version' => $version, 'name' => 'Registration cash fee',
         'kind' => FeeRuleKind::Registration, 'model' => FeeRuleModel::Fixed,
         'timing' => FeeRuleTiming::Registration, 'basis' => FeeRuleBasis::None,
         'settlement_source' => FeeSettlementSource::ExternalReceipt,

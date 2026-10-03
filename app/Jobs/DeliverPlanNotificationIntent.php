@@ -3,13 +3,17 @@
 namespace App\Jobs;
 
 use App\Enums\AccountState;
+use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\PlanNotificationIntent;
+use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Notifications\ThriftPlanNotification;
 use App\Services\AgentEligibilityService;
+use App\Services\NotificationCatalogue;
 use App\Services\NotificationPipeline;
 use App\Services\PlatformCatalogue;
 use App\Services\PlatformGuard;
@@ -19,8 +23,14 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use InvalidArgumentException;
+use JsonException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
+use ValueError;
 
 class DeliverPlanNotificationIntent implements ShouldQueue
 {
@@ -47,6 +57,23 @@ class DeliverPlanNotificationIntent implements ShouldQueue
     public function handle(AgentEligibilityService $eligibilityService): void
     {
         if (app(NotificationPipeline::class)->recoverLocalOwner('plan', $this->intentId)) {
+            return;
+        }
+
+        $intent = PlanNotificationIntent::query()->find($this->intentId);
+        if ($intent !== null && $intent->channel === 'mail') {
+            app(PlatformGuard::class)->assertAllowed('external');
+            if ($intent->status === 'sending') {
+                if (! PlanNotificationIntent::query()->whereKey($this->intentId)->where('status', 'sending')
+                    ->where('attempted_at', '<=', now()->subMinutes(5))->exists()) {
+                    return;
+                }
+                $this->mailOutcome('uncertain', 'delivery_uncertain');
+
+                return;
+            }
+            $this->deliverMail($eligibilityService);
+
             return;
         }
 
@@ -89,17 +116,98 @@ class DeliverPlanNotificationIntent implements ShouldQueue
         $intent->forceFill(['status' => 'delivered', 'delivered_at' => now(), 'failure_reason' => null])->save();
     }
 
+    private function deliverMail(AgentEligibilityService $eligibilityService): void
+    {
+        $delivery = app(PlatformGuard::class)->transaction('external', function () use ($eligibilityService): ?array {
+            $intent = PlanNotificationIntent::query()->whereKey($this->intentId)->lockForUpdate()->first();
+            if ($intent === null || $intent->channel !== 'mail' || $intent->status !== 'pending') {
+                return null;
+            }
+            $recipient = User::query()->whereKey($intent->recipient_user_id)->first();
+            if ($recipient === null || $recipient->user_type !== UserType::Customer
+                || $recipient->getRoleNames()->all() !== [UserType::Customer->value]
+                || filter_var($recipient->email, FILTER_VALIDATE_EMAIL) === false
+                || ! $this->recipientIsStillAuthorized($intent, $recipient, $eligibilityService)) {
+                $this->mailOutcome('suppressed', 'recipient_source_unavailable');
+
+                return null;
+            }
+            try {
+                $descriptor = app(NotificationCatalogue::class)->describe('plan', (object) $intent->getAttributes());
+            } catch (InvalidArgumentException|JsonException|ValueError|ConflictHttpException) {
+                $this->mailOutcome('blocked', 'plan_source_unavailable');
+
+                return null;
+            }
+            $event = $intent->lifecycleEvent;
+            $status = $event === null ? null : ThriftPlanStatus::tryFrom($event->getRawOriginal('to_status') ?? '');
+            if ($status === null) {
+                $this->mailOutcome('blocked', 'plan_source_unavailable');
+
+                return null;
+            }
+            $notification = new ThriftPlanNotification($intent->notification_id, [
+                'title' => $descriptor['title'], 'message' => $descriptor['summary'], 'plan_id' => $descriptor['reference'],
+                'status' => $status->displayName(),
+                'url' => route($descriptor['destination']['route'], $descriptor['destination']['parameters']),
+            ], 'mail');
+            $rendered = $notification->toMail($recipient)->render()->toHtml();
+            $intent->forceFill(['status' => 'sending', 'attempt_count' => $intent->attempt_count + 1, 'attempted_at' => now(),
+                'template_version' => ThriftPlanNotification::TEMPLATE_VERSION,
+                'rendered_snapshot' => Crypt::encryptString($rendered), 'rendered_hash' => hash('sha256', $rendered),
+                'destination_hash' => hash_hmac('sha256', strtolower($recipient->email), Crypt::getKey())])->save();
+
+            return [$recipient, $notification];
+        }, attempts: 3);
+        if ($delivery === null) {
+            return;
+        }
+        try {
+            Notification::sendNow($delivery[0], $delivery[1], ['mail']);
+            $this->mailOutcome($delivery[1]->deliveryEvidence->accepted ? 'delivered' : 'uncertain',
+                $delivery[1]->deliveryEvidence->accepted ? 'sent' : 'acceptance_unconfirmed');
+        } catch (Throwable $exception) {
+            $this->mailOutcome('uncertain', 'delivery_uncertain');
+            throw $exception;
+        }
+    }
+
+    private function mailOutcome(string $status, string $category): void
+    {
+        DB::transaction(function () use ($status, $category): void {
+            $intent = PlanNotificationIntent::query()->whereKey($this->intentId)->lockForUpdate()->first();
+            if ($intent === null || $intent->channel !== 'mail' || ! in_array($intent->status, ['pending', 'sending'], true)) {
+                return;
+            }
+            $plan = ThriftPlan::query()->whereKey($intent->thrift_plan_id)
+                ->where('customer_profile_id', $intent->customer_profile_id)
+                ->whereHas('lifecycleEvents', fn ($events) => $events->whereKey($intent->plan_lifecycle_event_id))->first();
+            AuditEvent::record('thrift_plan.delivery_attempt', ThriftPlan::class, $plan?->id, $plan?->plan_id,
+                ['notification_reference' => $intent->notification_id, 'channel' => 'mail',
+                    'category' => $category, 'customer_profile_id' => $plan?->customer_profile_id,
+                    'lifecycle_event_id' => $plan === null ? null : $intent->plan_lifecycle_event_id,
+                    'attempt' => $intent->attempt_count, 'template_version' => $intent->template_version,
+                    'rendered_hash' => $intent->rendered_hash], null,
+                ['executor' => self::class, 'outcome' => match ($status) {
+                    'delivered' => 'Succeeded', 'suppressed' => 'Denied', default => 'Failed',
+                }, 'operation_id' => 'plan-mail:'.$intent->id.':'.$category]);
+            $intent->forceFill(['status' => $status, 'delivered_at' => $status === 'delivered' ? now() : null,
+                'suppressed_at' => $status === 'suppressed' ? now() : null,
+                'failure_reason' => match ($status) {
+                    'delivered', 'suppressed' => null,
+                    'failed' => 'Delivery failed after retrying.',
+                    default => 'Plan email requires delivery review.',
+                }])->save();
+        }, attempts: 3);
+    }
+
     public function failed(?Throwable $exception): void
     {
         if (app(PlatformCatalogue::class)->isLocalRecoveryJob($this)) {
             return;
         }
-
-        PlanNotificationIntent::query()->whereKey($this->intentId)->where('status', 'pending')->update([
-            'status' => 'failed',
-            'failure_reason' => 'Delivery failed after retrying.',
-            'updated_at' => now(),
-        ]);
+        $intent = PlanNotificationIntent::query()->find($this->intentId);
+        $this->mailOutcome($intent?->status === 'sending' ? 'uncertain' : 'failed', 'retry_budget_exhausted');
     }
 
     private function recipientIsStillAuthorized(

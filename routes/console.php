@@ -31,3 +31,5 @@ Schedule::command('platform:heartbeat')->everyMinute()->evenInMaintenanceMode()-
 Schedule::command('customers:expire-recovery')->everyMinute()->withoutOverlapping();
 
 Schedule::command('financial-artifacts:drain')->everyMinute()->withoutOverlapping();
+
+Schedule::command('collections:clean-evidence --limit=500')->daily()->withoutOverlapping();

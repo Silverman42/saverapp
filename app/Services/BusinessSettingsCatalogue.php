@@ -36,6 +36,7 @@ class BusinessSettingsCatalogue
             'collection_cash' => ['Agent cash', 'Collection methods & limits', false, ['required', 'boolean']],
             'collection_transfer' => ['Business bank transfer', 'Collection methods & limits', false, ['required', 'boolean']],
             'collection_pos' => ['POS', 'Collection methods & limits', false, ['required', 'boolean']],
+            'collection_other' => ['Configured Other methods', 'Collection methods & limits', false, ['required', 'boolean']],
             'withdrawal_cash' => ['Cash payout', 'Withdrawal methods', false, ['required', 'boolean']],
             'withdrawal_transfer' => ['Bank payout', 'Withdrawal methods', false, ['required', 'boolean']],
             'dashboard_activity_range' => ['Collection dashboard range', 'Dashboard & reports', 'today', ['required', 'in:today,week,month']],
@@ -60,8 +61,8 @@ class BusinessSettingsCatalogue
         if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
             $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
         }
-        $readOnly = [...$readOnly, 'manual_charges', 'fee_refunds', 'cash_disbursements'];
-        foreach (['withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements'] as $code) {
+        $readOnly = [...$readOnly, 'collection_other', 'manual_charges', 'fee_refunds', 'cash_disbursements'];
+        foreach (['plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements'] as $code) {
             if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
                 $readOnly = array_values(array_diff($readOnly, [$code]));
             }

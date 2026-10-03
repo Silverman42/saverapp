@@ -17,26 +17,37 @@ use App\Models\CollectionException;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
+use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
+use App\Models\FinancialArtifact;
 use App\Models\FinancialPeriod;
+use App\Models\LedgerAccount;
 use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Services\DashboardReadService;
 use App\Services\FeeObligationService;
+use App\Services\FinancialArtifactService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\ReportCatalogue;
 use App\Services\ReportReadService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 require_once __DIR__.'/../FeeFixtures.php';
+
+beforeEach(function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-02 12:00:00', 'Africa/Lagos'));
+});
 
 function reportFixture(string $planId = 'PLN-TEST-001'): array
 {
@@ -560,6 +571,8 @@ test('mixed cash separates savings fees and tender without multiplying receipts'
     expect(reportValue($data, 'received_savings'))->toBe(200000);
     expect(reportValue($data, 'received_fees'))->toBe(50000);
     expect(reportValue($data, 'cash_received'))->toBe(250000);
+    expect(reportValue($data, 'total_received'))->toBe(250000);
+    expect($data['sections']['primary']['rows'][0]['method'])->toBe('Cash');
     expect(reportValue($data, 'posted_receipt_count'))->toBe(1);
     expect(reportValue(reportData($agent, 'reconciliation'), 'agent_receivable'))->toBe(250000);
     $batchData = reportData($agent, 'reconciliation');
@@ -1090,4 +1103,91 @@ test('shared dashboard and report metrics retain one definition and reconcile fo
         expect($reportMetric['date_basis'])->toBe($dashboardMetric['date_basis']);
         expect($reportMetric['definition_version'])->toBe($dashboardMetric['definition_version']);
     }
+});
+
+test('FEE-AC-043: actual filtered fee CSV retains its ledger snapshot and denies private or unauthorized downloads', function (): void {
+    Queue::fake();
+    Storage::fake('local');
+    config()->set('collections.enabled', true);
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00:00', 'Africa/Lagos'));
+    [$agent, $customer, $assignment, $plan, $date] = reportFixture();
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    $fee = reportFeeObligation($agent, $customer, 100000);
+    $postFee = function (array $fixture, FeeObligation $obligation, string $amount): void {
+        [$recorder, $profile, $currentAssignment, $currentPlan] = $fixture;
+        $payload = [...reportReceiptPayload($profile->fresh(), $currentAssignment->fresh(), $currentPlan->fresh(),
+            now('Africa/Lagos')->toDateString(), '0'), 'plan_id' => null, 'plan_version' => null,
+            'fees' => [['obligation_id' => $obligation->id, 'amount_ngn' => $amount]], 'notes' => 'PRIVATE fee receipt investigation note'];
+        $payload['preview_fingerprint'] = $this->actingAs($recorder)->withSession(['auth.login_at' => now()->timestamp, 'auth.last_active_at' => now()->timestamp])->postJson(route('customers.collections.preview', $profile->customer_id), $payload)
+            ->assertOk()->json('preview_fingerprint');
+        $this->post(route('customers.collections.store', $profile->customer_id), $payload)->assertRedirect()->assertSessionHasNoErrors();
+        app(LedgerTransactionProjectionService::class)->rebuild();
+    };
+    $fixture = [$agent, $customer, $assignment, $plan, $date];
+    $postFee($fixture, $fee, '100.00');
+    $this->travelTo(CarbonImmutable::parse('2026-10-02 12:00:00', 'Africa/Lagos'));
+    $postFee($fixture, $fee, '200.00');
+    $postFee($fixture, $fee, '300.00');
+    $foreign = reportFixture('PLN-FOREIGN-FEE');
+    $foreignFee = reportFeeObligation($foreign[0], $foreign[1], 70000, 2);
+    $postFee($foreign, $foreignFee, '700.00');
+    $admin = User::factory()->admin()->create();
+    $filters = ['customer' => $customer->customer_id, 'from' => '2026-10-02', 'to' => '2026-10-02'];
+    $payload = [...$filters, 'operation_reference' => (string) Str::uuid(), 'format' => 'csv', 'confirmed' => true];
+    $this->actingAs($admin)->postJson(route('reports.export', 'fees'), $payload)->assertForbidden();
+    $this->assertDatabaseCount('financial_artifacts', 0);
+    $admin->givePermissionTo(AdminPermission::ReportsExport);
+    $this->actingAs($admin->fresh())->postJson(route('reports.export', 'fees'), $payload)->assertRedirect()->assertSessionHasNoErrors();
+    $artifact = FinancialArtifact::query()->sole();
+    $snapshot = $artifact->snapshot;
+    $source = reportData($admin, 'fees', [...$filters, 'page_size' => 100]);
+    expect($snapshot['sections'])->toEqual($source['sections'])
+        ->and($snapshot['sections']['external_receipts']['rows'])->toHaveCount(2)
+        ->and(reportValue($snapshot, 'external_fees_received', 'external_receipts'))->toBe(50000)
+        ->and(reportValue($snapshot, 'gross_assessed'))->toBe(0)
+        ->and($snapshot['manifest']['utc_start'])->toBe('2026-10-01T23:00:00+00:00')
+        ->and($snapshot['manifest']['utc_end_exclusive'])->toBe('2026-10-02T11:00:00+00:00');
+    $receiptIds = DB::table('collection_receipts')->where('customer_profile_id', $customer->id)
+        ->whereDate('received_date', '2026-10-02')->pluck('id');
+    $groups = DB::table('collection_fee_components')->whereIn('collection_receipt_id', $receiptIds)->pluck('ledger_posting_group_id');
+    expect((int) DB::table('collection_fee_components')->whereIn('collection_receipt_id', $receiptIds)->sum('amount_kobo'))->toBe(50000)
+        ->and((int) DB::table('ledger_entries')->whereIn('ledger_posting_group_id', $groups)->where('side', 'credit')->sum('amount_kobo'))->toBe(50000)
+        ->and((int) $fee->entries()->where('entry_type', 'settlement')->whereDate('created_at', '2026-10-02')->sum('amount_kobo'))->toBe(50000);
+    $ownerRows = [];
+    foreach (['collection_receipts', 'collection_fee_components', 'fee_snapshots', 'fee_obligations', 'fee_obligation_entries',
+        'collection_batches', 'ledger_posting_groups', 'ledger_entries'] as $table) {
+        $ownerRows[$table] = DB::table($table)->orderBy('id')->get()->all();
+    }
+    $service = app(FinancialArtifactService::class);
+    $service->render($artifact->id);
+    $artifact->refresh();
+    $manifest = $artifact->manifest;
+    $url = URL::temporarySignedRoute('financial-artifacts.download', now()->addMinutes(15), ['artifact' => $artifact, 'viewer' => $admin->id]);
+    $bytes = $this->actingAs($admin)->get($url)->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8')->getContent();
+    expect($bytes)->toBe($service->csv($snapshot, $manifest))->toContain('₦500.00')
+        ->not->toContain('PRIVATE fee receipt investigation note')->not->toContain($foreign[1]->customer_id)
+        ->and(hash('sha256', $bytes))->toBe($artifact->artifact_hash);
+    foreach ($ownerRows as $table => $rows) {
+        expect(DB::table($table)->orderBy('id')->get()->all())->toEqual($rows);
+    }
+    $otherAdmin = User::factory()->admin()->create();
+    $otherAdmin->givePermissionTo(AdminPermission::ReportsExport);
+    foreach ([$otherAdmin, $agent, $customer->user] as $denied) {
+        $deniedUrl = URL::temporarySignedRoute('financial-artifacts.download', now()->addMinutes(15), ['artifact' => $artifact, 'viewer' => $denied->id]);
+        $this->actingAs($denied)->get($deniedUrl)->assertNotFound();
+    }
+    $admin->revokePermissionTo(AdminPermission::ReportsExport);
+    $this->actingAs($admin->fresh())->get($url)->assertNotFound();
+    foreach ($ownerRows as $table => $rows) {
+        expect(DB::table($table)->orderBy('id')->get()->all())->toEqual($rows);
+    }
+    $admin->givePermissionTo(AdminPermission::ReportsExport);
+    $this->travel(1)->minutes();
+    $postFee($fixture, $fee, '400.00');
+    expect(reportValue(reportData($admin, 'fees', $filters), 'external_fees_received', 'external_receipts'))->toBe(90000)
+        ->and($artifact->fresh()->snapshot)->toBe($snapshot)->and($artifact->fresh()->manifest)->toBe($manifest);
+    $this->actingAs($admin->fresh())->get($url)->assertOk()->assertContent($bytes);
+    $this->post(route('reports.export', 'fees'), $payload)->assertRedirect()->assertSessionHasNoErrors();
+    $this->assertDatabaseCount('financial_artifacts', 1);
+    expect($artifact->fresh()->snapshot)->toBe($snapshot)->and($artifact->fresh()->artifact_hash)->toBe(hash('sha256', $bytes));
 });

@@ -9,6 +9,7 @@ use App\Jobs\DeliverCollectionNotificationIntent;
 use App\Jobs\DeliverCustomerHandoverNotice;
 use App\Jobs\DeliverCustomerInvitationJob;
 use App\Jobs\DeliverCustomerStatusNotificationIntent;
+use App\Jobs\DeliverFeeApplicationNotificationIntent;
 use App\Jobs\DeliverPlanNotificationIntent;
 use App\Jobs\DeliverProfileNotificationIntent;
 use App\Jobs\DeliverReversalNotificationIntent;
@@ -55,6 +56,21 @@ class PlatformCatalogue
         return $owner === null || ($owner->channel ?? 'database') === 'database';
     }
 
+    public function ownsExternalDeliveryBoundary(object $job): bool
+    {
+        if ($job instanceof DeliverFeeApplicationNotificationIntent) {
+            return true;
+        }
+        if ($job instanceof DeliverPlanNotificationIntent) {
+            return DB::table('plan_notification_intents')->where('id', $job->intentId)->where('channel', 'mail')->exists();
+        }
+        if (! $job instanceof DeliverCollectionNotificationIntent) {
+            return false;
+        }
+
+        return DB::table('collection_notification_intents')->where('id', $job->intentId)->where('channel', 'mail')->exists();
+    }
+
     /** @var array<string, array{class: string, owner: string, dependencies: list<string>, recovery_tier: string}> */
     public const OPERATIONS = [
         'read' => ['class' => 'read', 'owner' => 'Modules 01–15', 'dependencies' => ['database', 'authorization'], 'recovery_tier' => 'A'],
@@ -66,6 +82,9 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const SERVICES = [
+        'FeeSavingsApplicationService' => 'financial',
+        'FeeActionAttemptService' => 'mutation',
+        'CollectionMethodCatalogue' => 'mutation', 'CollectionPaymentEvidenceService' => 'mutation',
         'DeductionReversalOwner' => 'financial', 'FeeRefundService' => 'financial', 'CashDisbursementService' => 'financial', 'CashRecoveryService' => 'financial', 'ManualChargeService' => 'financial', 'CollectionService' => 'financial', 'CollectionLedgerService' => 'financial', 'LedgerPostingService' => 'financial',
         'FinancialArtifactService' => 'derived', 'CashExecutionService' => 'financial', 'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
         'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'CustomerLifecycleService' => 'financial', 'ThriftPlanService' => 'financial',
@@ -79,6 +98,7 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const COMMANDS = [
+        'collections:clean-evidence' => 'mutation',
         'financial:release-evidence' => 'mutation', 'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
         'platform:replay' => 'mutation',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
@@ -94,8 +114,11 @@ class PlatformCatalogue
 
     /** @var array<string, string> */
     public const HTTP_ACTIONS = [
+        'collection-methods.store' => 'mutation',
+        'customers.collection-evidence.store' => 'mutation',
+        'collection-evidence.review' => 'mutation',
         'admin.fees.refunds.store' => 'financial', 'fee-refunds.cash' => 'financial', 'earnings-draws.start' => 'financial', 'cash-disbursements.handoff' => 'financial', 'cash-disbursements.acknowledge' => 'financial',
-        'admin.charges.publish' => 'mutation', 'admin.charges.assess' => 'financial', 'customers.statements.issue' => 'mutation', 'reports.export' => 'mutation', 'financial-artifacts.cancel' => 'mutation', 'financial-artifacts.retry' => 'mutation', 'financial-artifacts.hold' => 'mutation',
+        'admin.charges.status' => 'read', 'admin.charges.preview' => 'read', 'admin.charges.publish' => 'mutation', 'admin.charges.assess' => 'financial', 'customers.statements.issue' => 'mutation', 'reports.export' => 'mutation', 'financial-artifacts.cancel' => 'mutation', 'financial-artifacts.retry' => 'mutation', 'financial-artifacts.hold' => 'mutation',
         'withdrawals.cash.start' => 'financial',
         'plans.settlement.confirm' => 'financial', 'reversals.replacement.preview' => 'read', 'reversals.replacement.store' => 'financial', 'cash-disbursements.return' => 'financial',
         'cash-executions.return' => 'financial', 'cash-recoveries.acknowledge' => 'financial',
@@ -111,9 +134,17 @@ class PlatformCatalogue
         'admin.business-settings.drafts.update' => 'mutation',
         'admin.business-settings.versions.cancel' => 'mutation',
         'admin.business-settings.versions.rollback' => 'mutation',
+        'admin.fees.obligations.attempts.prepare' => 'mutation',
+        'admin.fees.obligations.attempts.cancel' => 'mutation',
+        'admin.fees.obligations.attempts.status' => 'read',
         'admin.fees.obligations.correct' => 'financial',
         'admin.fees.obligations.waive' => 'financial',
+        'admin.fees.obligations.savings-preview' => 'read',
+        'admin.fees.obligations.apply-savings' => 'financial',
         'admin.fees.registration.store' => 'mutation',
+        'admin.fees.registration.preview' => 'read',
+        'admin.fees.registration.retirement-preview' => 'read',
+        'admin.fees.registration.retire' => 'mutation',
         'admin.financial-periods.open' => 'mutation',
         'admin.financial-periods.close' => 'mutation',
         'admin.financial-periods.reopen' => 'mutation',
@@ -136,9 +167,11 @@ class PlatformCatalogue
         'agents.update' => 'mutation',
         'boost.browser-logs' => 'read',
         'collection-batches.exceptions.reopen' => 'mutation',
+        'collection-batches.exceptions.progress' => 'mutation',
         'collection-batches.exceptions.resolve' => 'mutation',
         'collection-batches.exceptions.store' => 'mutation',
         'collection-batches.remittances.store' => 'financial',
+        'collection-batches.settlements.store' => 'financial',
         'collection-batches.review' => 'mutation',
         'customers.collections.preview' => 'read',
         'customers.collections.store' => 'financial',
@@ -225,6 +258,13 @@ class PlatformCatalogue
         throw new PlatformBlocked('platform_operation_unclassified');
     }
 
+    public function ownsRequestTransaction(Request $request): bool
+    {
+        $route = app('router')->getRoutes()->match($request);
+
+        return ! in_array($route->getName(), ['customers.collection-evidence.store', 'collection-evidence.review', 'collection-batches.settlements.store'], true);
+    }
+
     public function jobClass(object $job): string
     {
         return $this->jobOperation($job::class);
@@ -239,6 +279,7 @@ class PlatformCatalogue
             DeliverAgentInvitationJob::class,
             DeliverAgentStatusNotificationIntent::class,
             DeliverCollectionNotificationIntent::class,
+            DeliverFeeApplicationNotificationIntent::class,
             DeliverCustomerHandoverNotice::class,
             DeliverCustomerInvitationJob::class,
             DeliverCustomerStatusNotificationIntent::class,

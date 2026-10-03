@@ -125,6 +125,9 @@ function money(kobo: number): string {
                 <option value="withdrawal">Withdrawal</option>
                 <option value="reversal">Correction</option>
                 <option value="deduction">Deduction</option>
+                <option value="fee_application">
+                    Fee applied from savings
+                </option>
                 <option value="fee_refund">Fee refund entitlement</option>
                 <option value="external_refund_payment">
                     Cash refund payment

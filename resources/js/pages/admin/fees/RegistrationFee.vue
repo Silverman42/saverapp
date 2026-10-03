@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, useForm, useHttp } from '@inertiajs/vue3';
+import { ref, watch } from 'vue';
 import type { AcceptableValue } from 'reka-ui';
 import {
     AlertCircle,
@@ -15,6 +15,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Card,
     CardContent,
@@ -44,10 +45,13 @@ import { dashboard } from '@/routes';
 import {
     index as feesRegistrationIndex,
     store as feesRegistrationStore,
+    retire as retireFeeRule,
+    retirementPreview as previewFeeRuleRetirement,
+    preview as previewFeeRulePublication,
 } from '@/routes/admin/fees/registration';
 
 export type FeeRuleItem = {
-    id: string;
+    id: number;
     version: number;
     name: string;
     model: string;
@@ -86,6 +90,94 @@ defineOptions({
 
 const showPublishModal = ref(false);
 
+type RetirementReview = {
+    rule: FeeRuleItem;
+    reason: string;
+    impact: string;
+    preview_fingerprint: string;
+};
+const retiringRule = ref<FeeRuleItem | null>(null);
+const retirementQuote = ref<RetirementReview | null>(null);
+const retirementError = ref('');
+let retirementReviewSequence = 0;
+const retirementReview = useHttp<{ reason: string }, RetirementReview>({
+    reason: '',
+});
+const retirementForm = useForm({
+    reason: '',
+    preview_fingerprint: '',
+    confirmed: false,
+});
+watch(
+    () => retirementReview.reason,
+    () => {
+        retirementReviewSequence++;
+        retirementQuote.value = null;
+        retirementForm.reset();
+        retirementForm.clearErrors();
+    },
+);
+function openRetirement(rule: FeeRuleItem): void {
+    retirementReviewSequence++;
+    retirementReview.reset();
+    retirementReview.clearErrors();
+    retirementForm.reset();
+    retirementForm.clearErrors();
+    retirementQuote.value = null;
+    retirementError.value = '';
+    retiringRule.value = rule;
+}
+async function reviewRetirement(): Promise<void> {
+    if (!retiringRule.value) return;
+    const ruleId = retiringRule.value.id;
+    const sequence = ++retirementReviewSequence;
+    retirementQuote.value = null;
+    retirementError.value = '';
+    retirementForm.reset();
+    retirementForm.clearErrors();
+    try {
+        const reviewed = await retirementReview.post(
+            previewFeeRuleRetirement.url(ruleId),
+        );
+        if (
+            sequence !== retirementReviewSequence ||
+            retiringRule.value?.id !== ruleId
+        )
+            return;
+        retirementQuote.value = reviewed;
+        retirementForm.reason = retirementQuote.value.reason;
+        retirementForm.preview_fingerprint =
+            retirementQuote.value.preview_fingerprint;
+    } catch {
+        if (
+            sequence !== retirementReviewSequence ||
+            retiringRule.value?.id !== ruleId
+        )
+            return;
+        retirementError.value =
+            'The retirement review is unavailable. Check the reason and reload the catalogue if this rule has changed.';
+    }
+}
+function confirmRetirement(): void {
+    if (
+        !retiringRule.value ||
+        !retirementQuote.value ||
+        !retirementForm.confirmed
+    )
+        return;
+    retirementForm.post(retireFeeRule.url(retiringRule.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            retiringRule.value = null;
+        },
+        onError: () => {
+            retirementQuote.value = null;
+            retirementForm.confirmed = false;
+            retirementForm.preview_fingerprint = '';
+        },
+    });
+}
+
 const form = useForm({
     kind: 'registration',
     rule_key: '',
@@ -98,7 +190,63 @@ const form = useForm({
     effective_at: '',
     customer_description: '',
     publication_reason: '',
+    confirmed: false,
+    preview_fingerprint: '',
 });
+
+type PublicationReview = {
+    terms: {
+        name: string;
+        model_label: string;
+        formatted_amount: string;
+        timing: string;
+        basis: string;
+        settlement_source: string;
+        effective_at: string;
+        customer_description: string;
+        publication_reason: string;
+        current_catalogue_version: number;
+        next_version: number;
+    };
+    example: { label: string; formatted_fee: string };
+    impact: string;
+    preview_fingerprint: string;
+};
+const publicationQuote = ref<PublicationReview | null>(null);
+const publicationError = ref('');
+const publicationReview = useHttp<
+    ReturnType<typeof form.data>,
+    PublicationReview
+>(form.data());
+let publicationReviewSequence = 0;
+watch(
+    () => [
+        form.kind,
+        form.rule_key,
+        form.name,
+        form.model,
+        form.timing,
+        form.basis,
+        form.basis_points,
+        form.amount_ngn,
+        form.effective_at,
+        form.customer_description,
+        form.publication_reason,
+    ],
+    () => {
+        publicationReviewSequence++;
+        publicationQuote.value = null;
+        publicationError.value = '';
+        form.confirmed = false;
+        form.preview_fingerprint = '';
+    },
+    { flush: 'sync' },
+);
+function closePublication(open: boolean): void {
+    if (form.processing || publicationReview.processing) return;
+    showPublishModal.value = open;
+    if (!open) publicationReviewSequence++;
+}
 
 const openPublishModal = (kind: 'registration' | 'plan'): void => {
     form.reset();
@@ -124,7 +272,25 @@ const handleModelChange = (value: AcceptableValue): void => {
     }
 };
 
-const submitPublish = (): void => {
+const submitPublish = async (): Promise<void> => {
+    if (publicationQuote.value) {
+        if (!form.confirmed) return;
+        form.post(feesRegistrationStore().url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                showPublishModal.value = false;
+                form.reset();
+            },
+            onError: () => {
+                publicationQuote.value = null;
+                form.confirmed = false;
+                form.preview_fingerprint = '';
+                publicationError.value =
+                    'Publication was not completed. Review the current terms again.';
+            },
+        });
+        return;
+    }
     if (form.model !== 'fixed') {
         form.amount_ngn = '';
     }
@@ -146,13 +312,25 @@ const submitPublish = (): void => {
         form.basis = 'none';
     }
 
-    form.post(feesRegistrationStore().url, {
-        preserveScroll: true,
-        onSuccess: () => {
-            showPublishModal.value = false;
-            form.reset();
-        },
-    });
+    form.clearErrors();
+    publicationError.value = '';
+    const sequence = ++publicationReviewSequence;
+    Object.assign(publicationReview, form.data());
+    try {
+        const reviewed = await publicationReview.post(
+            previewFeeRulePublication.url(),
+        );
+        if (sequence !== publicationReviewSequence || !showPublishModal.value)
+            return;
+        publicationQuote.value = reviewed;
+        form.preview_fingerprint = reviewed.preview_fingerprint;
+    } catch {
+        if (sequence !== publicationReviewSequence || !showPublishModal.value)
+            return;
+        form.setError(publicationReview.errors);
+        publicationError.value =
+            'The publication review is unavailable. Check the entered terms and reload the catalogue if it has changed.';
+    }
 };
 </script>
 
@@ -387,6 +565,14 @@ const submitPublish = (): void => {
                                 </p>
                             </div>
                             <div class="text-left sm:text-right">
+                                <Button
+                                    v-if="rule.is_active"
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    @click="openRetirement(rule)"
+                                    >Retire rule</Button
+                                >
                                 <p class="font-mono font-semibold">
                                     {{ rule.formatted_amount }}
                                 </p>
@@ -469,6 +655,14 @@ const submitPublish = (): void => {
                             <div
                                 class="flex shrink-0 flex-col items-start gap-1 text-right sm:items-end"
                             >
+                                <Button
+                                    v-if="rule.is_active"
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    @click="openRetirement(rule)"
+                                    >Retire rule</Button
+                                >
                                 <span class="font-mono text-base font-bold">{{
                                     rule.formatted_amount
                                 }}</span>
@@ -488,12 +682,156 @@ const submitPublish = (): void => {
                 </CardContent>
             </Card>
 
-            <!-- Publish Rule Modal -->
             <Dialog
-                :open="showPublishModal"
-                @update:open="showPublishModal = $event"
+                :open="retiringRule !== null"
+                @update:open="if (!$event) retiringRule = null;"
             >
-                <DialogContent class="sm:max-w-lg">
+                <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Retire fee rule</DialogTitle>
+                        <DialogDescription
+                            >Review the effect on new agreements before
+                            confirming. Existing agreed fees remain payable
+                            under their original terms.</DialogDescription
+                        >
+                    </DialogHeader>
+                    <form
+                        class="space-y-4"
+                        @submit.prevent="
+                            retirementQuote
+                                ? confirmRetirement()
+                                : reviewRetirement()
+                        "
+                    >
+                        <p v-if="retiringRule" class="text-sm font-medium">
+                            {{ retiringRule.name }} · Version
+                            {{ retiringRule.version }}
+                        </p>
+                        <div class="space-y-2">
+                            <Label for="retirement-reason"
+                                >Retirement reason</Label
+                            >
+                            <Input
+                                id="retirement-reason"
+                                v-model="retirementReview.reason"
+                                maxlength="500"
+                                required
+                                :disabled="
+                                    retirementReview.processing ||
+                                    retirementForm.processing
+                                "
+                                :aria-invalid="
+                                    Boolean(
+                                        retirementReview.errors.reason ||
+                                        retirementForm.errors.reason,
+                                    )
+                                "
+                                aria-describedby="retirement-reason-error"
+                            />
+                            <p
+                                id="retirement-reason-error"
+                                class="text-destructive text-sm"
+                            >
+                                {{
+                                    retirementReview.errors.reason ||
+                                    retirementForm.errors.reason
+                                }}
+                            </p>
+                        </div>
+                        <p
+                            v-if="retirementError"
+                            role="alert"
+                            class="text-destructive text-sm"
+                        >
+                            {{ retirementError }}
+                        </p>
+                        <div
+                            v-if="retirementQuote"
+                            class="bg-muted space-y-3 rounded-lg p-4 text-sm"
+                            aria-live="polite"
+                        >
+                            <p>
+                                {{ retirementQuote.rule.formatted_amount }} ·
+                                {{ retirementQuote.rule.model_label }}
+                            </p>
+                            <p>
+                                {{ retirementQuote.rule.customer_description }}
+                            </p>
+                            <p>{{ retirementQuote.impact }}</p>
+                            <div class="flex items-start gap-2">
+                                <Checkbox
+                                    id="confirm-retirement"
+                                    v-model="retirementForm.confirmed"
+                                    :disabled="retirementForm.processing"
+                                />
+                                <Label
+                                    for="confirm-retirement"
+                                    class="leading-5"
+                                    >I confirm this reason and the effect on new
+                                    agreements.</Label
+                                >
+                            </div>
+                        </div>
+                        <p
+                            v-if="
+                                retirementForm.errors.confirmed ||
+                                retirementForm.errors.preview_fingerprint
+                            "
+                            role="alert"
+                            class="text-destructive text-sm"
+                        >
+                            {{
+                                retirementForm.errors.confirmed ||
+                                retirementForm.errors.preview_fingerprint
+                            }}
+                        </p>
+                        <p class="text-muted-foreground text-sm">
+                            Confirmation requires a fresh password and
+                            authenticator session.
+                        </p>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                :disabled="
+                                    retirementReview.processing ||
+                                    retirementForm.processing
+                                "
+                                @click="retiringRule = null"
+                                >Cancel</Button
+                            >
+                            <Button
+                                type="submit"
+                                :disabled="
+                                    retirementReview.processing ||
+                                    retirementForm.processing ||
+                                    Boolean(
+                                        retirementQuote &&
+                                        !retirementForm.confirmed,
+                                    )
+                                "
+                            >
+                                <Loader2
+                                    v-if="
+                                        retirementReview.processing ||
+                                        retirementForm.processing
+                                    "
+                                    class="mr-2 size-4 animate-spin"
+                                />
+                                {{
+                                    retirementQuote
+                                        ? 'Confirm retirement'
+                                        : 'Review retirement'
+                                }}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Publish Rule Modal -->
+            <Dialog :open="showPublishModal" @update:open="closePublication">
+                <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>{{
                             form.kind === 'registration'
@@ -790,27 +1128,159 @@ const submitPublish = (): void => {
                                 Step-up Authentication Requirement
                             </p>
                             <p class="mt-1">
-                                Publishing fee rules requires a fresh
-                                authentication session. If your session is older
-                                than 15 minutes, you will be prompted for your
-                                password before the change takes effect.
+                                Confirmation requires a fresh password and
+                                authenticator check under the shared
+                                authentication policy.
                             </p>
+                        </div>
+
+                        <Alert
+                            v-if="publicationError"
+                            variant="destructive"
+                            role="alert"
+                        >
+                            <AlertDescription>{{
+                                publicationError
+                            }}</AlertDescription>
+                        </Alert>
+                        <div
+                            v-if="publicationQuote"
+                            class="space-y-3 rounded-lg border p-4"
+                        >
+                            <p class="font-medium">Review publication</p>
+                            <dl class="space-y-2 text-sm">
+                                <div>
+                                    <dt class="text-muted-foreground">Rule</dt>
+                                    <dd>{{ publicationQuote.terms.name }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Fee</dt>
+                                    <dd>
+                                        {{ publicationQuote.terms.model_label }}
+                                        ·
+                                        {{
+                                            publicationQuote.terms
+                                                .formatted_amount
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Timing and basis
+                                    </dt>
+                                    <dd>
+                                        {{ publicationQuote.terms.timing }} ·
+                                        {{ publicationQuote.terms.basis }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Settlement source
+                                    </dt>
+                                    <dd>
+                                        {{
+                                            publicationQuote.terms
+                                                .settlement_source
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Effective time (UTC)
+                                    </dt>
+                                    <dd>
+                                        {{
+                                            publicationQuote.terms.effective_at
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Catalogue
+                                    </dt>
+                                    <dd>
+                                        Version
+                                        {{
+                                            publicationQuote.terms
+                                                .current_catalogue_version
+                                        }}
+                                        →
+                                        {{
+                                            publicationQuote.terms.next_version
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Customer disclosure
+                                    </dt>
+                                    <dd>
+                                        {{
+                                            publicationQuote.terms
+                                                .customer_description
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Reason
+                                    </dt>
+                                    <dd>
+                                        {{
+                                            publicationQuote.terms
+                                                .publication_reason
+                                        }}
+                                    </dd>
+                                </div>
+                            </dl>
+                            <p class="text-sm">
+                                {{ publicationQuote.example.label }}:
+                                {{ publicationQuote.example.formatted_fee }}
+                            </p>
+                            <p class="text-muted-foreground text-sm">
+                                {{ publicationQuote.impact }}
+                            </p>
+                            <div class="flex items-start gap-2">
+                                <Checkbox
+                                    id="confirm-publication"
+                                    v-model="form.confirmed"
+                                    :disabled="form.processing"
+                                />
+                                <Label for="confirm-publication"
+                                    >I confirm these fee terms and their effect
+                                    on new agreements.</Label
+                                >
+                            </div>
                         </div>
 
                         <DialogFooter class="gap-2 sm:gap-0">
                             <Button
                                 type="button"
                                 variant="outline"
-                                @click="showPublishModal = false"
+                                @click="closePublication(false)"
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit" :disabled="form.processing">
+                            <Button
+                                type="submit"
+                                :disabled="
+                                    form.processing ||
+                                    publicationReview.processing ||
+                                    Boolean(publicationQuote && !form.confirmed)
+                                "
+                            >
                                 <Loader2
-                                    v-if="form.processing"
+                                    v-if="
+                                        form.processing ||
+                                        publicationReview.processing
+                                    "
                                     class="mr-2 size-4 animate-spin"
                                 />
-                                Publish Rule
+                                {{
+                                    publicationQuote
+                                        ? 'Confirm publication'
+                                        : 'Review publication'
+                                }}
                             </Button>
                         </DialogFooter>
                     </form>

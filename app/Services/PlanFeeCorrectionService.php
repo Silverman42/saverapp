@@ -10,6 +10,7 @@ use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
+use App\Models\AuditEvent;
 use App\Models\CollectionReceipt;
 use App\Models\FeeObligation;
 use App\Models\FeeObligationEntry;
@@ -58,30 +59,35 @@ class PlanFeeCorrectionService
                 'snapshot_id' => $snapshot->id, 'target_kobo' => $target, 'refund_kobo' => 0,
                 'savings_refund_kobo' => 0, 'external_refund_kobo' => 0, 'principal_kobo' => $principal, 'history_ids' => []];
         }
-        $refund = max(0, $obligation->settledAmountKobo() + $waived - $target);
-        $applications = $obligation->entries()->where('entry_type', FeeObligationEntryType::Settlement)->get();
-        $savingsSettled = 0;
-        foreach ($applications as $entry) {
-            $group = LedgerPostingGroup::query()->where('posting_reference', $entry->ledger_posting_reference)->with('entries.account')->firstOrFail();
-            if ($group->event_type === 'savings_fee_application') {
-                $savingsSettled += $entry->amount_kobo;
-            }
-        }
-        foreach ($obligation->entries()->where('entry_type', FeeObligationEntryType::SettlementReversal)->get() as $reversal) {
-            $group = LedgerPostingGroup::query()->where('posting_reference', $reversal->ledger_posting_reference)->firstOrFail();
-            $savingsSettled -= (int) $group->entries()->where('fee_obligation_id', $obligation->id)
-                ->where('side', LedgerEntrySide::Credit)->whereIn('ledger_account_id', LedgerAccount::query()->where('code', LedgerAccountCode::CustomerSavingsLiability)->select('id'))->sum('amount_kobo');
-        }
-        if ($savingsSettled < 0) {
+        $position = app(FeeConcessionPosition::class);
+        $concessions = $position->read($obligation);
+        $retained = $position->retainedSources($obligation);
+        $savingsSettled = $retained['savings_kobo'] + $concessions['savings_kobo'];
+        if ($savingsSettled < 0 || $savingsSettled > $obligation->settledAmountKobo()) {
             throw new ConflictHttpException('Original savings fee application provenance is unavailable.');
         }
-        if ($refund > 0 && ($obligation->entries()->where('source_type', '!=', 'plan_fee_correction')->whereIn('entry_type', [FeeObligationEntryType::SavingsRefund, FeeObligationEntryType::ExternalRefundEntitlement])->whereNotIn('source_id', FeeRefund::query()->whereNotNull('compensation_posting_group_id')->select('refund_reference'))->exists())) {
-            throw new ConflictHttpException('External or independently conceded fee settlement requires its refund owner before correction.');
+        if ($concessions['savings_kobo'] > $savingsSettled
+            || $concessions['external_kobo'] > $obligation->settledAmountKobo() - $savingsSettled) {
+            throw new ConflictHttpException('Fee concessions exceed their retained settlement source.');
         }
+        $receiptFee = $excluding === null ? 0 : (int) DB::table('collection_fee_components')
+            ->where('collection_receipt_id', $excluding->id)->where('fee_obligation_id', $obligation->id)->sum('amount_kobo');
+        $receiptConcession = max(0, $receiptFee - $retained['external_kobo']);
+        if ($receiptFee > $obligation->settledAmountKobo() - $savingsSettled || $receiptConcession > $concessions['external_kobo']) {
+            throw new ConflictHttpException('Receipt-owned fee settlement exceeds its authoritative external source.');
+        }
+        $concessions['external_kobo'] -= $receiptConcession;
+        $refund = max(0, $obligation->settledAmountKobo() - $receiptFee + $waived - $target);
+        $consumedSavings = min($refund, $concessions['savings_kobo']);
+        $consumedExternal = min($refund - $consumedSavings, $concessions['external_kobo']);
+        $additionalRefund = $refund - $consumedSavings - $consumedExternal;
+        $savingsRefund = min($additionalRefund, $savingsSettled - $concessions['savings_kobo']);
 
         return ['kind' => 'plan_fee', 'classification' => 'compensable', 'fee_obligation_id' => $obligation->id,
             'snapshot_id' => $snapshot->id, 'target_kobo' => $target, 'refund_kobo' => $refund,
-            'savings_refund_kobo' => min($refund, $savingsSettled), 'external_refund_kobo' => max(0, $refund - $savingsSettled),
+            'savings_refund_kobo' => $savingsRefund, 'external_refund_kobo' => $additionalRefund - $savingsRefund,
+            'consumed_savings_concession_kobo' => $consumedSavings, 'consumed_external_concession_kobo' => $consumedExternal,
+            'excluded_receipt_fee_kobo' => $receiptFee, 'excluded_receipt_concession_kobo' => $receiptConcession,
             'principal_kobo' => $principal, 'history_ids' => $obligation->entries()->pluck('id')->all()];
     }
 
@@ -119,6 +125,10 @@ class PlanFeeCorrectionService
                 'customer_profile_id' => $obligation->customer_profile_id, 'fee_obligation_id' => $obligation->id,
                 'actor_user_id' => $actor->id, 'amount_kobo' => $amount, 'kind' => 'external',
                 'compensation_posting_group_id' => $group->id, 'reason' => 'Reviewed plan fee correction linked to compensation '.$group->posting_reference, 'ledger_posting_group_id' => $refundGroup->id]);
+            AuditEvent::record('fee.refund_authorized', FeeRefund::class, $refund->id, $reference,
+                ['customer_profile_id' => $obligation->customer_profile_id, 'amount_kobo' => $amount,
+                    'source_type' => 'external', 'source_id' => $reference, 'reason' => $refund->reason], $actor,
+                context: ['executor' => self::class, 'correlation_reference' => $reference, 'required_permission' => 'reversals.review']);
             app(FinancialCashNotice::class)->queue($actor, $refund, 'refund_authorized');
             app(LedgerTransactionProjectionService::class)->projectRefund($refund);
         }

@@ -28,7 +28,7 @@ class ReversalController extends Controller
         $query = ReversalRequest::query()
             ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
             ->with(['customerProfile.user', 'originalPostingGroup']);
-        if (in_array($request->query('state'), ['pending_review', 'rejected', 'cancelled', 'approved_posted'], true)) {
+        if (in_array($request->query('state'), ['pending_review', 'rejected', 'cancelled', 'approved_posted', 'approved_no_money'], true)) {
             $query->where('state', $request->query('state'));
         }
         $query = $request->user()->user_type === UserType::Admin
@@ -54,7 +54,7 @@ class ReversalController extends Controller
             'reversal' => [
                 ...$this->summary($reversal->load(['customerProfile.user', 'originalPostingGroup'])),
                 'version' => $reversal->version,
-                'customer_explanation' => ! $isCustomer || $reversal->state === 'approved_posted'
+                'customer_explanation' => ! $isCustomer || in_array($reversal->state, ['approved_posted', 'approved_no_money'], true)
                     ? $reversal->customer_explanation : null,
                 'internal_reason' => $isCustomer || ($request->user()->user_type === UserType::Admin && ! $canReview)
                     ? null : $reversal->internal_reason,

@@ -13,9 +13,9 @@ use Illuminate\Support\Str;
 
 require_once __DIR__.'/WithdrawalFixtures.php';
 
-function cashPaymentFixture(bool $funded = true): array
+function cashPaymentFixture(bool $funded = true, bool $fixedWithdrawalFee = false): array
 {
-    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture($fixedWithdrawalFee);
     enableFixtureMethod();
     LedgerAccount::query()->where('code', LedgerAccountCode::CashRecoveryClearing)->update(['mapping_status' => 'mapped']);
     $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);

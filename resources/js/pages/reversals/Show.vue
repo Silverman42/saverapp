@@ -142,6 +142,10 @@ function submit(): void {
             <CardHeader><CardTitle>Request state</CardTitle></CardHeader>
             <CardContent class="grid gap-2 text-sm">
                 <p>{{ reversal.state.replaceAll('_', ' ') }}</p>
+                <p v-if="reversal.state === 'approved_no_money'">
+                    The fee was already fully conceded. The correction preserves
+                    your existing refund and records no further money movement.
+                </p>
                 <p>
                     Original amount {{ money(reversal.original_amount_kobo) }}
                 </p>
@@ -194,6 +198,36 @@ function submit(): void {
                     class="grid gap-2 text-sm"
                 >
                     <p>Full correction amount {{ money(review.gross_kobo) }}</p>
+                    <p v-if="review.summary.no_money === true">
+                        The fee was already fully conceded. Approval will
+                        preserve the existing refund and correct the receipt
+                        history without further money movement or a replacement
+                        allocation.
+                    </p>
+                    <p
+                        v-if="
+                            typeof review.summary.controlled_kobo === 'number'
+                        "
+                    >
+                        Amount available for replacement
+                        {{ money(review.summary.controlled_kobo) }}
+                    </p>
+                    <p
+                        v-if="
+                            typeof review.summary
+                                .consumed_external_concession_kobo ===
+                                'number' &&
+                            review.summary.consumed_external_concession_kobo > 0
+                        "
+                    >
+                        Existing fee refund preserved
+                        {{
+                            money(
+                                review.summary
+                                    .consumed_external_concession_kobo,
+                            )
+                        }}
+                    </p>
                     <pre class="overflow-auto text-xs whitespace-pre-wrap">{{
                         JSON.stringify(review.dependencies, null, 2)
                     }}</pre>

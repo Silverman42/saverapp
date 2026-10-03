@@ -1,12 +1,16 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Enums\LedgerAccountCode;
 use App\Models\CashRecovery;
+use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
 use App\Services\CashRecoveryService;
 use App\Services\LedgerTransactionProjectionService;
+use App\Services\PlanFinancialActivityReadService;
 use App\Services\ReversalService;
 use App\Services\WithdrawalBalanceService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -37,6 +41,7 @@ test('unknown cash return needs the exact authenticated recipient and preserves 
 test('posted payout compensation requires proven full return and posts the complete gross net fee bundle once', function (): void {
     config()->set('withdrawals.cash_compensation_enabled', true);
     [$admin, $customer, $plan, $withdrawal] = cashPaymentFixture();
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
     [$execution] = startCashFixture($this, $admin, $withdrawal);
     $this->post(route('cash-executions.handoff', $execution), ['evidence' => 'Customer received full net cash.', 'confirmed' => true])->assertRedirect();
     $this->actingAs($customer->user)->post(route('cash-executions.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
@@ -64,4 +69,42 @@ test('posted payout compensation requires proven full return and posts the compl
     $this->assertDatabaseCount('reversal_requests', 1);
     $this->assertDatabaseHas('withdrawal_reservations', ['status' => 'consumed']);
     app(LedgerTransactionProjectionService::class)->rebuild();
+    $cycle = app(PlanFinancialActivityReadService::class)->read($customer->user, $plan->fresh());
+    expect($cycle['status'])->toBe('available');
+    $metrics = collect($cycle['metrics'])->keyBy('code');
+    expect($metrics['gross_withdrawals']['value'])->toBe(30000)
+        ->and($metrics['net_cash_payouts']['value'])->toBe(29400)
+        ->and($metrics['withdrawal_compensation']['value'])->toBe(30000)
+        ->and($metrics['withdrawal_cash_returns']['value'])->toBe(29400)
+        ->and($metrics['effective_withdrawal_cash_paid']['value'])->toBe(0)
+        ->and($metrics['effective_withdrawal_debits']['value'])->toBe(0);
+});
+
+test('returned payout compensation rejects unavailable earnings accounting even without any draw history', function (): void {
+    config()->set('withdrawals.cash_compensation_enabled', true);
+    [$admin, $customer, , $withdrawal] = cashPaymentFixture();
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    [$execution] = startCashFixture($this, $admin, $withdrawal);
+    $this->post(route('cash-executions.handoff', $execution), ['evidence' => 'Original full net cash delivered.', 'confirmed' => true])->assertRedirect();
+    $this->actingAs($customer->user)->post(route('cash-executions.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
+    $recovery = recoverCashFixture($this, $admin, $customer, $execution);
+    $original = LedgerPostingGroup::query()->where('source_type', 'withdrawal')->sole();
+    $agent = $customer->currentAssignment->agentProfile->user;
+    $mapping = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessDistributions->value)->sole();
+    $mapping->update(['mapping_status' => 'unmapped']);
+    $before = [];
+    foreach (['ledger_posting_groups', 'ledger_entries', 'fee_obligation_entries', 'cash_recoveries', 'withdrawal_requests',
+        'withdrawal_reservations', 'reversal_requests', 'reversal_events', 'cash_disbursements'] as $table) {
+        $before[$table] = DB::table($table)->orderBy('id')->get()->all();
+    }
+
+    expect(fn () => app(ReversalService::class)->preview($agent, $original))
+        ->toThrow(RuntimeException::class, 'mapping is unavailable');
+
+    foreach ($before as $table => $rows) {
+        expect(DB::table($table)->orderBy('id')->get()->all())->toEqual($rows);
+    }
+    expect($recovery->fresh()->status)->toBe('confirmed');
+    $mapping->update(['mapping_status' => 'mapped']);
+    expect(app(ReversalService::class)->preview($agent, $original)['gross_kobo'])->toBe(30000);
 });

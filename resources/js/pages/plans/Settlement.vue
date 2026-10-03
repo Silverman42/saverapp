@@ -12,6 +12,16 @@ const props = defineProps<{
     preview: {
         action: string;
         can_close: boolean;
+        can_prepare: boolean;
+        preparation_blockers: string[];
+        termination_fee: {
+            description: string | null;
+            principal_kobo: number;
+            target_kobo: number;
+            assessment_delta_kobo: number;
+            unpaid_after_preparation_kobo: number;
+            insufficient_savings: boolean;
+        } | null;
         blockers: string[];
         preview_fingerprint: string;
         position: {
@@ -96,6 +106,56 @@ function submit(): void {
                         ).toFixed(2)
                     }}.
                 </p>
+                <div v-if="preview.termination_fee" class="space-y-2">
+                    <p>{{ preview.termination_fee.description }}</p>
+                    <p>
+                        Net cycle contributions before withdrawals: ₦{{
+                            (
+                                preview.termination_fee.principal_kobo / 100
+                            ).toFixed(2)
+                        }}. Agreed fee outcome: ₦{{
+                            (preview.termination_fee.target_kobo / 100).toFixed(
+                                2,
+                            )
+                        }}.
+                    </p>
+                    <p>
+                        Unpaid fee after preparation: ₦{{
+                            (
+                                preview.termination_fee
+                                    .unpaid_after_preparation_kobo / 100
+                            ).toFixed(2)
+                        }}.
+                    </p>
+                    <p
+                        v-if="preview.termination_fee.insufficient_savings"
+                        role="status"
+                    >
+                        Available savings cannot cover the unpaid fee. Final
+                        closure requires permitted settlement or an authorized
+                        waiver.
+                    </p>
+                </div>
+                <ul
+                    v-if="preview.preparation_blockers.length"
+                    role="status"
+                    class="list-inside list-disc"
+                >
+                    <li
+                        v-for="blocker in preview.preparation_blockers"
+                        :key="blocker"
+                    >
+                        {{ blocker }}
+                    </li>
+                </ul>
+                <p
+                    v-if="
+                        preview.action === 'prepare_termination' &&
+                        preview.blockers.length
+                    "
+                >
+                    Before final closure:
+                </p>
                 <ul
                     v-if="preview.blockers.length"
                     role="status"
@@ -151,8 +211,9 @@ function submit(): void {
                         :disabled="
                             form.processing ||
                             !form.confirmed ||
-                            (preview.action !== 'prepare_termination' &&
-                                !preview.can_close)
+                            (preview.action === 'prepare_termination'
+                                ? !preview.can_prepare
+                                : !preview.can_close)
                         "
                         >{{
                             form.processing ? 'Confirming…' : 'Confirm action'

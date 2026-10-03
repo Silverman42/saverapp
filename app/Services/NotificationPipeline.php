@@ -7,12 +7,20 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Models\AuditEvent;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
+use App\Models\FeeRule;
+use App\Models\LedgerPostingGroup;
+use App\Models\ManualCharge;
+use App\Models\PlanLifecycleEvent;
+use App\Models\PlanNotificationIntent;
+use App\Models\ThriftPlan;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use stdClass;
@@ -190,6 +198,24 @@ class NotificationPipeline
                         'channel' => 'database', 'attempt' => $number, 'category' => $failureCategory], null,
                     ['executor' => self::class, 'outcome' => $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'),
                         'operation_id' => 'inbox-attempt:'.$intentId.':'.$number]);
+            } elseif ($event?->family === 'fee_rule') {
+                $this->recordFeeRuleDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
+            } elseif ($event?->family === 'fee_application') {
+                $this->recordFeeApplicationDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
+            } elseif ($event?->family === 'charge') {
+                $this->recordChargeDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
+            } elseif (in_array($event?->family, ['fee_obligation', 'financial_cash'], true)) {
+                $this->recordFinancialSourceDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
+            } elseif ($event?->family === 'collection') {
+                $this->recordCollectionDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
+            } elseif ($event?->family === 'plan') {
+                $this->recordPlanDeliveryAttempt($intent, $event, $number, $failureCategory,
+                    $status === 'delivered' ? 'Succeeded' : ($status === 'suppressed' ? 'Denied' : 'Failed'));
             }
             DB::table('notification_inbox_attempts')->insert([
                 'intent_id' => $intentId, 'attempt_number' => $number, 'outcome' => $status,
@@ -215,6 +241,7 @@ class NotificationPipeline
         $attempts = (int) $intent->attempt_count + ($countAttempt ? 1 : 0);
         $status = in_array($code, ['unsupported_contract', 'invalid_contract', 'source_identity_conflict', 'owner_state_conflict', 'owner_result_unverified'], true)
             ? 'blocked' : ($state === 'dead_letter' ? 'dead_letter' : 'pending');
+        $deliveryAudit = null;
         if ($attempts > (int) $intent->attempt_count) {
             $event = DB::table('notification_events')->where('id', $intent->event_id)->first();
             if (in_array($event?->family, ['invitation_issue', 'profile', 'customer_status', 'agent_status', 'agent_lifecycle', 'handover'], true)) {
@@ -223,6 +250,18 @@ class NotificationPipeline
                     ['notification_reference' => $intent->notification_id, 'source_audit_event_id' => $event->audit_event_id,
                         'channel' => 'database', 'attempt' => $attempts, 'category' => $code], null,
                     ['executor' => self::class, 'outcome' => 'Failed', 'operation_id' => 'inbox-attempt:'.$intentId.':'.$attempts]);
+            } elseif ($event?->family === 'fee_rule') {
+                $deliveryAudit = $this->recordFeeRuleDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
+            } elseif ($event?->family === 'fee_application') {
+                $deliveryAudit = $this->recordFeeApplicationDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
+            } elseif ($event?->family === 'charge') {
+                $deliveryAudit = $this->recordChargeDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
+            } elseif (in_array($event?->family, ['fee_obligation', 'financial_cash'], true)) {
+                $deliveryAudit = $this->recordFinancialSourceDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
+            } elseif ($event?->family === 'collection') {
+                $deliveryAudit = $this->recordCollectionDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
+            } elseif ($event?->family === 'plan') {
+                $this->recordPlanDeliveryAttempt($intent, $event, $attempts, $code, 'Failed');
             }
             DB::table('notification_inbox_attempts')->insert([
                 'intent_id' => $intentId, 'attempt_number' => $attempts, 'outcome' => $status,
@@ -234,6 +273,111 @@ class NotificationPipeline
             'next_attempt_at' => $availableAt, 'updated_at' => now(),
         ]);
         $this->syncOwners($intentId, $status);
+        if ($deliveryAudit !== null && $status !== 'blocked') {
+            foreach (DB::table('notification_inbox_aliases')->where('intent_id', $intentId)->get() as $alias) {
+                app(FeeOperationalIssues::class)->delivery($alias->family, (int) $alias->owner_intent_id, 'database',
+                    $status === 'dead_letter' ? 'dead_letter' : 'local_failure', $code, $deliveryAudit->id);
+            }
+        }
+    }
+
+    private function recordCollectionDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): AuditEvent
+    {
+        $source = $this->catalogue->validatesStoredContract($event, $intent)
+            ? DB::table('collection_receipts')->where('id', $event->source_id)->first() : null;
+
+        return AuditEvent::record('collection.delivery_attempt', CollectionReceipt::class, $source === null ? null : (int) $source->id,
+            $source?->receipt_reference, ['notification_reference' => $intent->notification_id, 'channel' => 'database',
+                'attempt' => $attempt, 'category' => $category,
+                'source_audit_event_id' => $source === null ? null : $event->audit_event_id], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt]);
+    }
+
+    private function recordFinancialSourceDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): AuditEvent
+    {
+        $audit = $this->catalogue->validatesStoredContract($event, $intent)
+            ? DB::table('audit_events')->where('id', $event->audit_event_id)->first() : null;
+        $family = $event->family === 'fee_obligation' || $event->event_type === 'refund_authorized' ? 'fee' : 'cash_disbursement';
+
+        return AuditEvent::record($family.'.delivery_attempt', $audit->target_type ?? $family, $audit?->target_id, $audit?->target_reference,
+            ['notification_reference' => $intent->notification_id, 'channel' => 'database', 'attempt' => $attempt,
+                'category' => $category, 'source_event_id' => $audit === null ? null : (int) $event->source_id,
+                'customer_profile_id' => $audit === null ? null : $intent->customer_profile_id,
+                'source_audit_event_id' => $audit === null ? null : (int) $event->audit_event_id], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt]);
+    }
+
+    private function recordChargeDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): AuditEvent
+    {
+        $source = $this->catalogue->validatesStoredContract($event, $intent)
+            ? DB::table('manual_charges')->where('id', $event->source_id)->first() : null;
+
+        return AuditEvent::record('charge.delivery_attempt', ManualCharge::class, $source === null ? null : (int) $source->id,
+            $source?->operation_reference, ['notification_reference' => $intent->notification_id, 'channel' => 'database',
+                'attempt' => $attempt, 'category' => $category, 'manual_charge_id' => $source === null ? null : (int) $source->id,
+                'customer_profile_id' => $source === null ? null : (int) $source->customer_profile_id,
+                'source_audit_event_id' => $source === null ? null : (int) $event->audit_event_id], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt]);
+    }
+
+    private function recordFeeApplicationDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): AuditEvent
+    {
+        $source = $this->catalogue->validatesStoredContract($event, $intent) ? DB::table('fee_savings_applications as application')
+            ->join('ledger_posting_groups as posting', fn ($query) => $query->on('posting.source_id', '=', 'application.operation_reference')
+                ->where('posting.source_type', 'fee_savings_application'))
+            ->where('application.id', $event->source_id)->first(['application.id', 'application.customer_profile_id',
+                'posting.id as posting_id', 'posting.posting_reference']) : null;
+
+        return AuditEvent::record('fee_application.delivery_attempt', LedgerPostingGroup::class, $source === null ? null : (int) $source->posting_id,
+            $source?->posting_reference, ['notification_reference' => $intent->notification_id, 'channel' => 'database',
+                'attempt' => $attempt, 'category' => $category, 'application_id' => $source === null ? null : (int) $source->id,
+                'customer_profile_id' => $source === null ? null : (int) $source->customer_profile_id,
+                'source_audit_event_id' => $source === null ? null : (int) $event->audit_event_id], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt]);
+    }
+
+    private function recordFeeRuleDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): AuditEvent
+    {
+        $source = DB::table('fee_rule_notification_intents as owner')
+            ->join('fee_rule_events as source', 'source.id', '=', 'owner.fee_rule_event_id')
+            ->join('fee_rules as rule', 'rule.id', '=', 'source.fee_rule_id')
+            ->join('audit_events as audit', 'audit.id', '=', 'source.audit_event_id')
+            ->whereIn('owner.id', DB::table('notification_inbox_aliases')->where('intent_id', $intent->id)
+                ->where('family', 'fee_rule')->select('owner_intent_id'))
+            ->where('owner.notification_id', $intent->notification_id)->where('owner.recipient_user_id', $intent->recipient_user_id)
+            ->where('owner.channel', 'database')->where('owner.audience_type', 'fee_manager')
+            ->where('source.id', $event->source_id)->where('source.event_type', $event->event_type)
+            ->where('source.version', $event->source_version)->whereColumn('source.version', 'rule.version')
+            ->where('source.audit_event_id', $event->audit_event_id)->where('audit.target_type', FeeRule::class)
+            ->whereColumn('audit.target_id', 'rule.id')->whereColumn('audit.actor_id', 'source.actor_user_id')
+            ->where('audit.event_type', 'fee_rule.'.$event->event_type)
+            ->first(['source.id', 'source.audit_event_id', 'rule.id as rule_id', 'rule.kind', 'rule.rule_key', 'rule.version']);
+
+        return AuditEvent::record('fee_rule.delivery_attempt', FeeRule::class, $source === null ? null : (int) $source->rule_id,
+            $source === null ? null : "{$source->kind}:{$source->rule_key}:v{$source->version}",
+            ['notification_reference' => $intent->notification_id, 'channel' => 'database', 'attempt' => $attempt,
+                'category' => $category, 'fee_rule_event_id' => $source === null ? null : (int) $source->id,
+                'source_audit_event_id' => $source === null ? null : (int) $source->audit_event_id,
+                'version' => $source === null ? null : (int) $source->version], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt,
+                'source_version' => $source === null ? 1 : (int) $source->version]);
+    }
+
+    private function recordPlanDeliveryAttempt(stdClass $intent, stdClass $event, int $attempt, ?string $category, string $outcome): void
+    {
+        $source = PlanLifecycleEvent::query()->whereKey($event->source_id)->first();
+        $owner = $source === null ? null : PlanNotificationIntent::query()
+            ->whereIn('id', DB::table('notification_inbox_aliases')->where('intent_id', $intent->id)
+                ->where('family', 'plan')->select('owner_intent_id'))
+            ->where('plan_lifecycle_event_id', $source->id)->where('thrift_plan_id', $source->thrift_plan_id)
+            ->where('customer_profile_id', $intent->customer_profile_id)->first();
+        $plan = $owner === null || $source->plan_version !== (int) $event->source_version ? null
+            : ThriftPlan::query()->whereKey($owner->thrift_plan_id)->where('customer_profile_id', $intent->customer_profile_id)->first();
+        AuditEvent::record('thrift_plan.delivery_attempt', ThriftPlan::class, $plan?->id, $plan?->plan_id,
+            ['notification_reference' => $intent->notification_id, 'channel' => 'database', 'attempt' => $attempt,
+                'category' => $category, 'customer_profile_id' => $plan?->customer_profile_id,
+                'lifecycle_event_id' => $plan !== null ? $source->id : null], null,
+            ['executor' => self::class, 'outcome' => $outcome, 'operation_id' => 'inbox-attempt:'.$intent->id.':'.$attempt]);
     }
 
     public function recipientScope(User $user, bool $requireAccess = true): Builder
@@ -251,6 +395,18 @@ class NotificationPipeline
                     ->where('invitation.status', 'delivery_failed')->where('invitation.expires_at', '>', now());
             });
         });
+        if (Schema::hasTable('fee_operational_issues')) {
+            $issues = DB::table('notification_inbox_intents as candidate')
+                ->join('notification_events as issue_event', 'issue_event.id', '=', 'candidate.event_id')
+                ->where('candidate.recipient_user_id', $user->id)->where('issue_event.family', 'fee_issue')
+                ->where('candidate.expires_at', '>', now())->get(['candidate.id', 'issue_event.source_id']);
+            $canActAsAgent = $user->user_type !== UserType::Agent || $this->eligibility->canPerformAssignedCustomerWork($user);
+            $unavailableIssues = $issues->filter(fn (stdClass $issue): bool => ! $canActAsAgent
+                || ! app(FeeOperationalIssueNotificationSource::class)->isActionable((int) $issue->source_id))->pluck('id')->all();
+            if ($unavailableIssues !== []) {
+                $query->whereNotIn('i.id', $unavailableIssues);
+            }
+        }
         $canReadAssigned = $user->user_type === UserType::Agent && $this->eligibility->canReadAssignedCustomers($user);
         $canManageCustomers = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::CustomersManage);
         $canManageAgents = $user->user_type === UserType::Admin && $this->authorization->allows($user, AdminPermission::AgentsManage);
@@ -328,6 +484,14 @@ class NotificationPipeline
             if ($this->authorization->allows($user, AdminPermission::CashExecute) && $this->authorization->allows($user, AdminPermission::FeesManage)) {
                 $audiences->orWhereJsonContains('i.audiences', 'cash_executor');
             }
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::CashExecute)) {
+                $audiences->orWhereJsonContains('i.audiences', 'refund_cash_operator');
+            }
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::ReversalsReview)) {
+                $audiences->orWhereJsonContains('i.audiences', 'refund_correction_operator');
+            }
             if ($canManageAgents) {
                 $audiences->orWhereJsonContains('i.audiences', 'managing_admin');
             }
@@ -344,6 +508,14 @@ class NotificationPipeline
                     });
                 });
             }
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::FeesManage)) {
+                $audiences->orWhereJsonContains('i.audiences', 'fee_manager');
+            }
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::DeductionsManage)) {
+                $audiences->orWhereJsonContains('i.audiences', 'deduction_manager');
+            }
             if ($canManageSettings) {
                 $audiences->orWhereJsonContains('i.audiences', 'settings_manager');
             }
@@ -358,6 +530,9 @@ class NotificationPipeline
     {
         if ($descriptor['audience'] !== 'current_agent') {
             return null;
+        }
+        if (($owner->assignment_id ?? null) !== null) {
+            return (int) $owner->assignment_id;
         }
         $assignment = DB::table('customer_assignments as a')->join('agent_profiles as ap', 'ap.id', '=', 'a.agent_profile_id')
             ->where('a.customer_profile_id', $descriptor['customer_profile_id'])->where('ap.user_id', $owner->recipient_user_id)

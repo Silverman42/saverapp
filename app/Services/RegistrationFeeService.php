@@ -14,9 +14,13 @@ use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\FeeRule;
 use App\Models\User;
+use App\Support\FeePercentageCalculator;
+use App\Support\MoneyFormatter;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -78,6 +82,39 @@ class RegistrationFeeService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function previewPublication(User $admin, array $data): array
+    {
+        app(PlatformGuard::class)->assertAllowed('read');
+        $this->ensureCanManageFees(User::query()->findOrFail($admin->id));
+        $terms = $this->publicationTerms($data);
+        $catalogue = $this->publicationCatalogue($terms['kind'], DB::transactionLevel() > 0);
+        $version = collect($catalogue)->max('version') ?? 0;
+        $display = new FeeRule($terms);
+        $example = match ($terms['model']) {
+            FeeRuleModel::Percentage => ['label' => $terms['basis'] === FeeRuleBasis::GrossWithdrawalDebit
+                ? 'At ₦100,000 gross withdrawal debit' : 'At ₦100,000 net cycle contributions',
+                'formatted_fee' => MoneyFormatter::formatNaira(FeePercentageCalculator::calculate(10000000, $terms['basis_points'] ?? 0))],
+            FeeRuleModel::OneDay => ['label' => 'At ₦2,000 contractual daily contribution', 'formatted_fee' => '₦2,000.00'],
+            default => ['label' => 'Configured fee', 'formatted_fee' => MoneyFormatter::formatNaira($terms['amount_kobo'])],
+        };
+
+        return ['terms' => [
+            'name' => $terms['name'], 'kind' => $terms['kind']->value, 'rule_key' => $terms['rule_key'],
+            'model_label' => $terms['model']->displayName(), 'formatted_amount' => $display->formattedAmount(),
+            'timing' => $terms['timing']->value, 'basis' => $terms['basis']->value,
+            'settlement_source' => $terms['settlement_source']->value, 'currency' => 'NGN',
+            'customer_description' => $terms['customer_description'], 'publication_reason' => $terms['publication_reason'],
+            'effective_at' => $terms['effective_at']?->toIso8601String() ?? 'On confirmation',
+            'current_catalogue_version' => (int) $version, 'next_version' => (int) $version + 1,
+        ], 'example' => $example,
+            'impact' => 'Applies only to new agreements from the effective time. Issued Customer snapshots and existing obligations retain their original terms.',
+            'preview_fingerprint' => $this->publicationFingerprint($admin, $terms, $catalogue)];
+    }
+
+    /**
      * Publish an immutable version of a registration or plan fee rule.
      *
      * @param  array<string, mixed>  $data
@@ -94,48 +131,27 @@ class RegistrationFeeService
                 throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
             }
 
-            $kind = $this->enumValue(FeeRuleKind::class, $data['kind'] ?? FeeRuleKind::Registration->value);
-            $model = $this->enumValue(FeeRuleModel::class, $data['model'] ?? null);
-            $timing = $this->enumValue(
-                FeeRuleTiming::class,
-                $data['timing'] ?? ($kind === FeeRuleKind::Registration ? FeeRuleTiming::Registration->value : null),
-            );
-            $basis = $this->enumValue(FeeRuleBasis::class, $data['basis'] ?? FeeRuleBasis::None->value);
-            $settlementSource = $this->enumValue(
-                FeeSettlementSource::class,
-                $data['settlement_source'] ?? $this->defaultSettlementSource($kind, $timing)->value,
-            );
-            $amountKobo = (int) ($data['amount_kobo'] ?? 0);
-            $basisPoints = isset($data['basis_points']) && $data['basis_points'] !== '' ? (int) $data['basis_points'] : null;
-            $ruleKey = $kind === FeeRuleKind::Registration ? 'registration' : trim((string) ($data['rule_key'] ?? ''));
-            $name = trim((string) ($data['name'] ?? ''));
-            $customerDescription = trim((string) ($data['customer_description'] ?? ''));
-            $publicationReason = trim((string) ($data['publication_reason'] ?? ''));
-
-            $requiredTermErrors = [];
-            if ($name === '') {
-                $requiredTermErrors['name'] = ['Enter a fee rule name.'];
+            $terms = $this->publicationTerms($data);
+            $kind = $terms['kind'];
+            $model = $terms['model'];
+            $timing = $terms['timing'];
+            $basis = $terms['basis'];
+            $settlementSource = $terms['settlement_source'];
+            $amountKobo = $terms['amount_kobo'];
+            $basisPoints = $terms['basis_points'];
+            $ruleKey = $terms['rule_key'];
+            $name = $terms['name'];
+            $customerDescription = $terms['customer_description'];
+            $publicationReason = $terms['publication_reason'];
+            if (($data['confirmed'] ?? false) !== true) {
+                throw ValidationException::withMessages(['confirmed' => ['Confirm the reviewed fee publication.']]);
             }
-            if ($customerDescription === '') {
-                $requiredTermErrors['customer_description'] = ['Enter the Customer disclosure.'];
+            $catalogue = $this->publicationCatalogue($kind, true);
+            if (! is_string($data['preview_fingerprint'] ?? null)
+                || ! hash_equals($this->publicationFingerprint($freshAdmin, $terms, $catalogue), $data['preview_fingerprint'])) {
+                throw new ConflictHttpException('The reviewed fee terms or catalogue changed. Review again.');
             }
-            if ($publicationReason === '') {
-                $requiredTermErrors['publication_reason'] = ['Enter the publication reason.'];
-            }
-            if ($requiredTermErrors !== []) {
-                throw ValidationException::withMessages($requiredTermErrors);
-            }
-
-            $this->validateRuleTerms($kind, $model, $timing, $basis, $settlementSource, $amountKobo, $basisPoints, $ruleKey);
-
-            $now = Carbon::now();
-            $effectiveAt = isset($data['effective_at']) && $data['effective_at'] !== ''
-                ? Carbon::parse((string) $data['effective_at'])
-                : $now;
-
-            if ($effectiveAt->lessThan($now)) {
-                throw ValidationException::withMessages(['effective_at' => ['Fee rules cannot be published retroactively.']]);
-            }
+            $effectiveAt = $terms['effective_at'] ?? Carbon::now();
 
             $this->closeApplicableRuleInterval($kind, $ruleKey, $effectiveAt);
 
@@ -164,7 +180,7 @@ class RegistrationFeeService
                 'publication_reason' => $publicationReason,
             ]);
 
-            AuditEvent::record(
+            $audit = AuditEvent::record(
                 eventType: 'fee_rule.published',
                 targetType: FeeRule::class,
                 targetId: $rule->id,
@@ -189,33 +205,145 @@ class RegistrationFeeService
                 context: ['executor' => self::class, 'required_permission' => $freshAdmin->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
+            $this->captureRuleNotice($rule, 'published', $freshAdmin, $audit);
+
             return $rule;
         }, attempts: 3);
     }
 
     /**
-     * End rule applicability now without changing its published terms.
+     * @param  array<string, mixed>  $data
+     * @return array{kind: FeeRuleKind, model: FeeRuleModel, timing: FeeRuleTiming, basis: FeeRuleBasis, settlement_source: FeeSettlementSource, amount_kobo: int, basis_points: int|null, rule_key: string, name: string, customer_description: string, publication_reason: string, effective_at: Carbon|null}
      */
-    public function retireRule(User $admin, int $ruleId, string $reason): FeeRule
+    private function publicationTerms(array $data): array
     {
-        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $ruleId, $reason): FeeRule {
+        $kind = $this->enumValue(FeeRuleKind::class, $data['kind'] ?? FeeRuleKind::Registration->value);
+        if (! in_array($kind, [FeeRuleKind::Registration, FeeRuleKind::Plan], true)) {
+            throw ValidationException::withMessages(['kind' => ['Choose a registration or plan rule.']]);
+        }
+        if (isset($data['currency']) && $data['currency'] !== 'NGN') {
+            throw ValidationException::withMessages(['currency' => ['Fee rules use NGN.']]);
+        }
+        $model = $this->enumValue(FeeRuleModel::class, $data['model'] ?? null);
+        $timing = $this->enumValue(
+            FeeRuleTiming::class,
+            $data['timing'] ?? ($kind === FeeRuleKind::Registration ? FeeRuleTiming::Registration->value : null),
+        );
+        $basis = $this->enumValue(FeeRuleBasis::class, $data['basis'] ?? FeeRuleBasis::None->value);
+        $settlementSource = $this->enumValue(
+            FeeSettlementSource::class,
+            $data['settlement_source'] ?? $this->defaultSettlementSource($kind, $timing)->value,
+        );
+        $amountKobo = $data['amount_kobo'] ?? 0;
+        if (! is_int($amountKobo)) {
+            throw ValidationException::withMessages(['amount_ngn' => ['Fee amounts require integer kobo.']]);
+        }
+        $basisPoints = isset($data['basis_points']) && $data['basis_points'] !== '' ? $data['basis_points'] : null;
+        if ($basisPoints !== null && ! is_int($basisPoints)) {
+            throw ValidationException::withMessages(['basis_points' => ['Fee rates require integer basis points.']]);
+        }
+        $ruleKey = $kind === FeeRuleKind::Registration ? 'registration' : trim((string) ($data['rule_key'] ?? ''));
+        foreach (['name' => 100, 'customer_description' => 500, 'publication_reason' => 500] as $field => $maximum) {
+            if (! is_string($data[$field] ?? null) || trim($data[$field]) === '' || mb_strlen(trim($data[$field])) > $maximum) {
+                throw ValidationException::withMessages([$field => ['Enter non-empty text within the supported length.']]);
+            }
+        }
+        $name = trim($data['name']);
+        $customerDescription = trim($data['customer_description']);
+        $publicationReason = trim($data['publication_reason']);
+
+        $this->validateRuleTerms($kind, $model, $timing, $basis, $settlementSource, $amountKobo, $basisPoints, $ruleKey);
+
+        $effectiveAt = null;
+        if (isset($data['effective_at']) && $data['effective_at'] !== '') {
+            if (! is_string($data['effective_at'])) {
+                throw ValidationException::withMessages(['effective_at' => ['Enter a valid future effective time.']]);
+            }
+            try {
+                $effectiveAt = Carbon::parse($data['effective_at'])->utc()->startOfSecond();
+            } catch (\InvalidArgumentException) {
+                throw ValidationException::withMessages(['effective_at' => ['Enter a valid future effective time.']]);
+            }
+            if ($effectiveAt->lessThan(Carbon::now())) {
+                throw ValidationException::withMessages(['effective_at' => ['Fee rules cannot be published retroactively.']]);
+            }
+        }
+
+        return ['kind' => $kind, 'model' => $model, 'timing' => $timing, 'basis' => $basis,
+            'settlement_source' => $settlementSource, 'amount_kobo' => $amountKobo, 'basis_points' => $basisPoints,
+            'rule_key' => $ruleKey, 'name' => $name, 'customer_description' => $customerDescription,
+            'publication_reason' => $publicationReason, 'effective_at' => $effectiveAt];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function publicationCatalogue(FeeRuleKind $kind, bool $lock): array
+    {
+        $query = FeeRule::query()->where('kind', $kind->value)->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $catalogue = [];
+        foreach ($query->get() as $rule) {
+            $catalogue[] = $rule->getAttributes();
+        }
+
+        return $catalogue;
+    }
+
+    /**
+     * @param  array<string, mixed>  $terms
+     * @param  list<array<string, mixed>>  $catalogue
+     */
+    private function publicationFingerprint(User $admin, array $terms, array $catalogue): string
+    {
+        return hash_hmac('sha256', json_encode(['fee_rule_publication', $admin->id, $terms, $catalogue], JSON_THROW_ON_ERROR), (string) config('app.key'));
+    }
+
+    /** @return array<string, mixed> */
+    public function previewRetirement(User $admin, int $ruleId, string $reason): array
+    {
+        app(PlatformGuard::class)->assertAllowed('read');
+        $this->ensureCanManageFees(User::query()->findOrFail($admin->id));
+        $reason = $this->retirementReason($reason);
+        $rule = FeeRule::query()->whereIn('kind', [FeeRuleKind::Registration->value, FeeRuleKind::Plan->value])->findOrFail($ruleId);
+        $this->assertRetirementAvailable($rule);
+
+        return [
+            'rule' => $this->serializeRule($rule),
+            'reason' => $reason,
+            'impact' => 'Stops new selection immediately. Existing Customer agreements and obligations retain their published fee terms.',
+            'preview_fingerprint' => $this->retirementFingerprint($admin, $rule, $reason),
+        ];
+    }
+
+    /**
+     * End reviewed rule applicability without changing its published terms.
+     */
+    public function retireRule(User $admin, int $ruleId, string $reason, Request $request, string $previewFingerprint, bool $confirmed): FeeRule
+    {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $ruleId, $reason, $request, $previewFingerprint, $confirmed): FeeRule {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->whereKey($admin->id)->lockForUpdate()->firstOrFail();
             $this->ensureCanManageFees($freshAdmin);
-
-            $rule = FeeRule::query()->whereKey($ruleId)->lockForUpdate()->firstOrFail();
-            if ($rule->effective_at->isFuture()) {
-                throw new ConflictHttpException('A future fee rule must be cancelled before it becomes applicable.');
+            if (! $this->freshAuthenticationService->isFresh($freshAdmin, $request)) {
+                throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
             }
-
-            if ($rule->retired_at !== null && $rule->retired_at->isPast()) {
-                return $rule;
+            if (! $confirmed) {
+                throw ValidationException::withMessages(['confirmed' => ['Confirm the reviewed rule retirement.']]);
+            }
+            $reason = $this->retirementReason($reason);
+            $rule = FeeRule::query()->whereIn('kind', [FeeRuleKind::Registration->value, FeeRuleKind::Plan->value])
+                ->whereKey($ruleId)->lockForUpdate()->firstOrFail();
+            $this->assertRetirementAvailable($rule);
+            if (! hash_equals($this->retirementFingerprint($freshAdmin, $rule, $reason), $previewFingerprint)) {
+                throw new ConflictHttpException('The reviewed rule or retirement reason changed. Review again.');
             }
 
             $rule->retired_at = now();
             $rule->save();
 
-            AuditEvent::record(
+            $audit = AuditEvent::record(
                 eventType: 'fee_rule.retired',
                 targetType: FeeRule::class,
                 targetId: $rule->id,
@@ -225,15 +353,63 @@ class RegistrationFeeService
                     'rule_key' => $rule->rule_key,
                     'version' => $rule->version,
                     'retired_at' => $rule->retired_at->toIso8601String(),
-                    'reason' => trim($reason),
+                    'reason' => $reason,
                 ],
                 actor: $freshAdmin,
-
                 context: ['executor' => self::class, 'required_permission' => $freshAdmin->user_type === UserType::Admin ? 'fees.manage' : null]
             );
 
+            $this->captureRuleNotice($rule, 'retired', $freshAdmin, $audit);
+
             return $rule;
         }, attempts: 3);
+    }
+
+    private function captureRuleNotice(FeeRule $rule, string $action, User $actor, AuditEvent $audit): void
+    {
+        $eventId = DB::table('fee_rule_events')->insertGetId([
+            'fee_rule_id' => $rule->id, 'version' => $rule->version, 'event_type' => $action,
+            'actor_user_id' => $actor->id, 'audit_event_id' => $audit->id,
+            'effective_at' => $action === 'retired' ? $rule->retired_at : $rule->effective_at,
+            'created_at' => now(),
+        ]);
+        foreach (User::query()->where('user_type', UserType::Admin->value)
+            ->where('account_state', AccountState::Active->value)->cursor() as $recipient) {
+            if (! $this->authorizationService->allows($recipient, AdminPermission::FeesManage)) {
+                continue;
+            }
+            $intentId = DB::table('fee_rule_notification_intents')->insertGetId([
+                'fee_rule_event_id' => $eventId, 'recipient_user_id' => $recipient->id,
+                'notification_id' => (string) Str::uuid(), 'audience_type' => 'fee_manager',
+                'channel' => 'database', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            app(NotificationPipeline::class)->capture('fee_rule', $intentId);
+        }
+    }
+
+    private function retirementReason(string $reason): string
+    {
+        $reason = trim($reason);
+        if ($reason === '' || mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages(['reason' => ['Enter a retirement reason of at most 500 characters.']]);
+        }
+
+        return $reason;
+    }
+
+    private function assertRetirementAvailable(FeeRule $rule): void
+    {
+        if ($rule->effective_at->isFuture()) {
+            throw new ConflictHttpException('A future fee rule must be cancelled before it becomes applicable.');
+        }
+        if ($rule->retired_at !== null && $rule->retired_at->lessThanOrEqualTo(now())) {
+            throw new ConflictHttpException('This fee rule has already ended. Review the current catalogue.');
+        }
+    }
+
+    private function retirementFingerprint(User $admin, FeeRule $rule, string $reason): string
+    {
+        return hash_hmac('sha256', json_encode(['fee_rule_retirement', $admin->id, $rule->getAttributes(), $reason], JSON_THROW_ON_ERROR), (string) config('app.key'));
     }
 
     /**
@@ -263,7 +439,7 @@ class RegistrationFeeService
             'publication_reason' => $rule->publication_reason,
             'effective_at' => $rule->effective_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             'retired_at' => $rule->retired_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
-            'is_active' => $rule->effective_at->isPast() && ($rule->retired_at === null || $rule->retired_at->isFuture()),
+            'is_active' => $rule->effective_at->lessThanOrEqualTo(now()) && ($rule->retired_at === null || $rule->retired_at->isFuture()),
         ];
     }
 
@@ -451,6 +627,7 @@ class RegistrationFeeService
             ->where('rule_key', $ruleKey)
             ->where('effective_at', '>', $effectiveAt)
             ->orderBy('effective_at')
+            ->lockForUpdate()
             ->value('effective_at');
 
         return $next === null ? null : Carbon::parse($next);

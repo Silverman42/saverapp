@@ -3,12 +3,13 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import InputError from '@/components/InputError.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import { create as createCollection } from '@/routes/customers/collections';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
 import { store as storeAnnotation } from '@/routes/plans/card/annotations';
-import { ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 type Slot = {
     id: number;
@@ -55,16 +56,48 @@ const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const annotation = useForm({ version: 0, kind: 'missed', reason: '' });
 const selectedSlot = ref<number | null>(null);
+const annotationMessage = ref('');
+const annotationNotice = ref<HTMLElement | null>(null);
+const selectedDay = computed(() =>
+    props.card.slots.find((slot) => slot.id === selectedSlot.value),
+);
 function selectSlot(slot: Slot): void {
+    if (annotation.processing) return;
     selectedSlot.value = slot.id;
     annotation.version = slot.annotation_version;
     annotation.reason = '';
+    annotation.clearErrors();
+    annotationMessage.value = '';
 }
 function saveAnnotation(): void {
-    if (selectedSlot.value !== null)
+    if (selectedSlot.value !== null && !annotation.processing) {
+        annotationMessage.value = '';
         annotation.post(
             storeAnnotation.url([props.card.plan_id, selectedSlot.value]),
+            {
+                preserveScroll: true,
+                onHttpException: (response) => {
+                    annotationMessage.value =
+                        response.status === 409
+                            ? 'The attendance note was rejected. Future or funded days cannot be marked missed or skipped, and the slot may have changed. Reload the card and review the day before retrying.'
+                            : 'The attendance note could not be saved. Reload the card to check your current access and the day before retrying.';
+                    return false;
+                },
+                onNetworkError: () => {
+                    annotationMessage.value =
+                        'The outcome could not be confirmed. Reload the card to check whether the note was saved before retrying.';
+                },
+                onSuccess: () => {
+                    annotationMessage.value = 'Attendance note saved.';
+                    selectedSlot.value = null;
+                    annotation.resetAndClearErrors();
+                },
+                onFinish: () => {
+                    void nextTick(() => annotationNotice.value?.focus());
+                },
+            },
         );
+    }
 }
 </script>
 
@@ -142,45 +175,85 @@ function saveAnnotation(): void {
                             type="button"
                             variant="outline"
                             class="mt-2"
+                            :disabled="annotation.processing"
                             @click="selectSlot(slot)"
                             >Annotate day</Button
                         >
                     </li>
                 </ol>
-                <div
+                <p
+                    v-if="annotationMessage"
+                    ref="annotationNotice"
+                    role="alert"
+                    tabindex="-1"
+                    class="mt-5 text-sm"
+                >
+                    {{ annotationMessage }}
+                </p>
+                <form
                     v-if="selectedSlot !== null && can_record"
                     class="mt-5 grid max-w-md gap-3"
+                    :aria-busy="annotation.processing"
+                    @submit.prevent="saveAnnotation"
                 >
+                    <p v-if="selectedDay" class="text-sm">
+                        Day {{ selectedDay.ordinal }} ·
+                        {{ selectedDay.due_date }}
+                    </p>
                     <Label for="annotation-kind">Attendance note</Label
                     ><select
                         id="annotation-kind"
                         v-model="annotation.kind"
+                        :disabled="annotation.processing"
+                        :aria-invalid="Boolean(annotation.errors.kind)"
+                        :aria-describedby="
+                            annotation.errors.kind
+                                ? 'annotation-kind-error'
+                                : undefined
+                        "
                         class="bg-background rounded-md border p-2 text-sm"
                     >
                         <option value="missed">Missed</option>
                         <option value="skipped">Skipped</option>
                         <option value="clear">Clear note</option></select
-                    ><Label for="annotation-reason">Reason</Label
+                    ><InputError
+                        id="annotation-kind-error"
+                        :message="annotation.errors.kind"
+                    />
+                    <Label for="annotation-reason">Reason</Label
                     ><Input
                         id="annotation-reason"
                         v-model="annotation.reason"
+                        :disabled="annotation.processing"
+                        :maxlength="500"
+                        :aria-invalid="Boolean(annotation.errors.reason)"
+                        :aria-describedby="
+                            annotation.errors.reason
+                                ? 'annotation-reason-error'
+                                : undefined
+                        "
                     /><Button
-                        type="button"
+                        type="submit"
                         class="w-fit"
                         :disabled="
                             annotation.processing || !annotation.reason.trim()
                         "
-                        @click="saveAnnotation"
                         >Save note</Button
                     >
+                    <InputError
+                        id="annotation-reason-error"
+                        :message="annotation.errors.reason"
+                    />
                     <p
                         v-for="(error, key) in annotation.errors"
+                        v-show="key !== 'kind' && key !== 'reason'"
                         :key="key"
                         class="text-destructive text-sm"
+                        role="alert"
                     >
                         {{ error }}
                     </p>
-                </div></CardContent
+                </form></CardContent
             ></Card
         >
         <Card

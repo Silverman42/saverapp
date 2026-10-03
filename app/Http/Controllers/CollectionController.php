@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminPermission;
 use App\Http\Requests\PreviewCollectionRequest;
 use App\Http\Requests\StoreCollectionRequest;
 use App\Models\AuditEvent;
@@ -12,11 +13,14 @@ use App\Models\CollectionReceipt;
 use App\Models\ContributionSlot;
 use App\Models\CustomerProfile;
 use App\Models\ThriftPlan;
+use App\Services\AuthorizationService;
+use App\Services\CollectionMethodCatalogue;
 use App\Services\CollectionReadService;
 use App\Services\CollectionReceivedTime;
 use App\Services\CollectionService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\ResourceScopeService;
+use App\Support\PlatformBlocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,7 +30,9 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class CollectionController extends Controller
 {
@@ -37,7 +43,7 @@ class CollectionController extends Controller
         $filters = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', 'in:all,paid,partial,pending,missed,advance-covered,blocked'],
+            'status' => ['nullable', 'in:all,paid,partial,pending,missed,advance-covered,blocked,unavailable,service-interrupted'],
         ]);
         $date = $filters['date'] ?? $today;
         if (! is_string($date) || ! preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $date)
@@ -48,15 +54,18 @@ class CollectionController extends Controller
         $status = $filters['status'] ?? 'all';
         $receipts = CollectionReceipt::query()
             ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
-            ->with(['customerProfile.user', 'plan'])
+            ->with(['customerProfile.user', 'customerProfile.currentAssignment', 'plan'])
             ->where('received_date', $date)
             ->orderByDesc('recorded_at')->orderByDesc('id')->paginate(25)->withQueryString();
         $receipts->setCollection($receipts->getCollection()->map(fn (CollectionReceipt $receipt): array => [
             'id' => $receipt->receipt_reference,
             'customer_id' => $receipt->customerProfile->customer_id,
             'customer_name' => $receipt->customerProfile->user?->name,
+            'can_record' => $receipt->customerProfile->operational_status->value === 'active'
+                && Gate::forUser($request->user())->allows('recordCollection', $receipt->customerProfile),
             'plan_id' => $receipt->plan?->plan_id,
             'received_date' => $receipt->received_date,
+            'method' => $receipt->method_label,
             'recorded_at' => $receipt->recorded_at->toIso8601String(),
             'savings_kobo' => $receipt->savings_amount_kobo,
             'fees_kobo' => $receipt->fee_amount_kobo,
@@ -73,6 +82,7 @@ class CollectionController extends Controller
             'due_slots' => $due['slots'],
             'filters' => ['search' => $search, 'status' => $status],
             'viewer_type' => $request->user()->user_type->value,
+            'can_review_evidence' => app(AuthorizationService::class)->allows($request->user(), AdminPermission::ReconciliationManage),
         ]);
     }
 
@@ -90,7 +100,10 @@ class CollectionController extends Controller
             ])->values();
 
         return Inertia::render('collections/Create', [
-            'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
+            'customer' => ['id' => $profile->customer_id, 'resource_id' => $profile->id, 'name' => $profile->user?->name,
+                'version' => $profile->version, 'assignment_version' => $profile->currentAssignment?->version],
+            'collection_methods' => app(CollectionMethodCatalogue::class)->available(),
+            'initial_evidence' => $request->validate(['evidence' => ['nullable', 'uuid']])['evidence'] ?? null,
             'plans' => $plans->map(fn (ThriftPlan $plan): array => [
                 'id' => $plan->plan_id, 'name' => $plan->currentTermsRevision()?->name,
                 'timezone' => $plan->currentTermsRevision()?->timezone,
@@ -155,12 +168,17 @@ class CollectionController extends Controller
         return response()->json(['status' => 'posted', 'receipt_reference' => $receipt->receipt_reference]);
     }
 
-    public function show(CollectionReceipt $receipt, Request $request, ResourceScopeService $scope, CollectionReadService $read): Response
+    public function show(CollectionReceipt $receipt, Request $request, ResourceScopeService $scope, CollectionReadService $read): Response|HttpResponse
     {
         if (! $scope->forCustomers($request->user())->whereKey($receipt->customer_profile_id)->exists()) {
             abort(404, 'Record unavailable.');
         }
         $receipt->load(['customerProfile.user', 'plan', 'allocations.slot']);
+        try {
+            $position = $read->position($receipt->customerProfile);
+        } catch (ServiceUnavailableHttpException) {
+            return (new PlatformBlocked('collection_read_unavailable'))->response($request);
+        }
 
         return Inertia::render('collections/Show', [
             'receipt' => [
@@ -169,26 +187,33 @@ class CollectionController extends Controller
                 'plan_id' => $receipt->plan?->plan_id, 'received_date' => $receipt->received_date,
                 'received_at_utc' => $receipt->received_at_utc?->toIso8601String(),
                 'recorded_at' => $receipt->recorded_at->toIso8601String(),
-                'timezone' => $receipt->timezone, 'method' => 'Cash',
+                'timezone' => $receipt->timezone, 'method' => $receipt->method_label,
+                'method_reference' => $receipt->method_reference,
                 'tender_kobo' => $receipt->tender_amount_kobo, 'savings_kobo' => $receipt->savings_amount_kobo,
                 'fees_kobo' => $receipt->fee_amount_kobo,
                 'allocations' => $receipt->allocations->map(fn ($allocation): array => [
                     'date' => $allocation->slot->due_date, 'amount_kobo' => $allocation->amount_kobo,
                     'is_advance' => $allocation->is_advance,
                 ]),
-                'position' => $read->position($receipt->customerProfile),
+                'position' => $position,
             ],
         ]);
     }
 
-    public function card(ThriftPlan $plan, Request $request, ResourceScopeService $scope, CollectionReadService $read): Response
+    public function card(ThriftPlan $plan, Request $request, ResourceScopeService $scope, CollectionReadService $read): Response|HttpResponse
     {
         if (! $scope->forCustomers($request->user())->whereKey($plan->customer_profile_id)->exists()) {
             abort(404, 'Record unavailable.');
         }
 
+        try {
+            $card = $read->card($plan);
+        } catch (ServiceUnavailableHttpException) {
+            return (new PlatformBlocked('collection_read_unavailable'))->response($request);
+        }
+
         return Inertia::render('collections/Card', [
-            'card' => $read->card($plan),
+            'card' => $card,
             'can_record' => $plan->status->value === 'active'
                 && $plan->customerProfile->operational_status->value === 'active'
                 && Gate::forUser($request->user())->allows('recordCollection', $plan->customerProfile),
@@ -235,8 +260,11 @@ class CollectionController extends Controller
                 'reason' => trim($data['reason']),
             ]);
             AuditEvent::record('collection.slot_annotated', CollectionAnnotation::class, $annotation->id,
-                (string) $annotation->id, ['kind' => $annotation->kind, 'slot_id' => $current->id], $request->user(),
-                context: ['executor' => self::class]
+                (string) $annotation->id, ['kind' => $annotation->kind, 'slot_id' => $current->id,
+                    'version' => $annotation->version, 'plan_id' => $plan->plan_id,
+                    'customer_profile_id' => $plan->customer_profile_id, 'reason' => $annotation->reason], $request->user(),
+                context: ['executor' => self::class, 'source_version' => $annotation->version,
+                    'correlation_reference' => 'annotation:'.$annotation->id]
             );
         }, attempts: 3);
 

@@ -29,6 +29,13 @@ return [
     */
 
     'disks' => [
+        'collection_evidence' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/collection-evidence'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+        ],
 
         'local' => [
             'driver' => 'local',

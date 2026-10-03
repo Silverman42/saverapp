@@ -76,6 +76,9 @@ function applyFilter(): void {
                     <option value="">All states</option>
                     <option value="pending_review">Pending review</option>
                     <option value="approved_posted">Approved and posted</option>
+                    <option value="approved_no_money">
+                        Approved, no money movement
+                    </option>
                     <option value="rejected">Rejected</option>
                     <option value="cancelled">Cancelled</option>
                 </select>

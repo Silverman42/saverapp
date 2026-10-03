@@ -31,6 +31,9 @@ class EnforcePlatformMode
             if ($operation === 'read' && $request->isMethodSafe()) {
                 $this->guard->assertAllowed('read');
                 $response = $next($request);
+            } elseif (! $this->catalogue->ownsRequestTransaction($request)) {
+                $this->guard->assertAllowed($operation);
+                $response = $next($request);
             } else {
                 $response = $this->guard->transaction($operation, fn (): Response => $next($request));
             }

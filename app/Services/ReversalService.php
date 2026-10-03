@@ -3,10 +3,15 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\LedgerAccountClass;
+use App\Enums\LedgerAccountCode;
+use App\Enums\LedgerEntrySide;
 use App\Enums\UserType;
 use App\Models\AgentProfile;
 use App\Models\AuditEvent;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
+use App\Models\FinancialWorkflowSupplement;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalAttempt;
 use App\Models\ReversalEvent;
@@ -14,6 +19,7 @@ use App\Models\ReversalRequest;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -39,7 +45,7 @@ class ReversalService
             throw new ConflictHttpException('This posting is not eligible for a full Customer reversal.');
         }
         if (ReversalRequest::query()->where('original_posting_group_id', $original->id)
-            ->whereIn('state', ['pending_review', 'approved_posted'])->exists()) {
+            ->whereIn('state', ['pending_review', 'approved_posted', 'approved_no_money'])->exists()) {
             throw new ConflictHttpException('A reversal already exists for this posting.');
         }
 
@@ -196,13 +202,21 @@ class ReversalService
                     throw new ConflictHttpException('The dependency preview changed. Review it again.');
                 }
                 $compensation = $owner->compensate($locked, $current, $actor);
-                $this->assertCompensation($locked, $compensation);
-                if ($compensation->id < 1) {
-                    throw new ConflictHttpException('The compensation posting was not persisted.');
+                if ($compensation instanceof LedgerPostingGroup) {
+                    $this->assertCompensation($locked, $compensation);
+                    if ($compensation->id < 1) {
+                        throw new ConflictHttpException('The compensation posting was not persisted.');
+                    }
+                    $locked->state = 'approved_posted';
+                    $locked->compensation_posting_group_id = $compensation->id;
+                } else {
+                    $proof = app(CollectionNoMoneyCorrection::class)->assertOutcome($locked, false);
+                    if ($proof->id !== $compensation->id) {
+                        throw new ConflictHttpException('The no-money correction proof was not persisted.');
+                    }
+                    $locked->state = 'approved_no_money';
                 }
-                $locked->state = 'approved_posted';
                 $locked->posted_original_posting_group_id = $locked->original_posting_group_id;
-                $locked->compensation_posting_group_id = $compensation->id;
             } else {
                 $locked->state = $action === 'reject' ? 'rejected' : 'cancelled';
             }
@@ -220,24 +234,76 @@ class ReversalService
                 'attempt_reference' => $data['attempt_reference'], 'reversal_request_id' => $locked->id,
                 'actor_user_id' => $actor->id, 'operation' => $action, 'payload_hash' => $payloadHash,
             ]);
-            $this->recordEvent($locked, $actor, $locked->state);
-            if ($locked->state === 'approved_posted' && in_array($compensation?->event_type, ['receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation'], true)) {
+            $this->recordEvent($locked, $actor, $locked->state, $compensation);
+            if ($locked->state === 'approved_no_money' || ($compensation instanceof LedgerPostingGroup
+                && $locked->state === 'approved_posted' && in_array($compensation->event_type, ['receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_application_compensation'], true))) {
                 app(LedgerTransactionProjectionService::class)->projectReversal($locked);
             }
 
             return $locked;
-        });
+        }, attempts: 3);
     }
 
-    private function assertCompensation(ReversalRequest $request, LedgerPostingGroup $group): void
+    public function assertApprovedReceiptCorrection(ReversalRequest $request, CollectionReceipt $receipt): void
+    {
+        $snapshot = $request->getAttribute('dependency_snapshot');
+        $original = LedgerPostingGroup::query()->find($request->original_posting_group_id);
+        $originalId = $receipt->savings_posting_group_id ?? DB::table('collection_fee_components')->where('collection_receipt_id', $receipt->id)->orderBy('id')->value('ledger_posting_group_id');
+        if (! is_array($snapshot) || ($snapshot['summary']['receipt_id'] ?? null) !== $receipt->id
+            || $original?->source_type !== 'collection_receipt' || $original->customer_profile_id !== $receipt->customer_profile_id
+            || $original->currency !== 'NGN' || $originalId !== $request->original_posting_group_id
+            || $request->original_amount_kobo !== $receipt->tender_amount_kobo
+            || $request->customer_profile_id !== $receipt->customer_profile_id || $request->currency !== 'NGN'
+            || $request->posted_original_posting_group_id !== $request->original_posting_group_id
+            || $request->live_original_posting_group_id !== null || $request->reviewed_at === null
+            || $request->reviewed_by_user_id === null || $request->reviewed_by_user_id === $request->requested_by_user_id
+            || $request->events()->where('event_type', $request->state)->where('actor_user_id', $request->reviewed_by_user_id)->count() !== 1) {
+            throw new ConflictHttpException('The receipt has no independently approved correction outcome.');
+        }
+        if ($request->state === 'approved_no_money') {
+            app(CollectionNoMoneyCorrection::class)->assertOutcome($request);
+
+            return;
+        }
+        app(CollectionReplacementService::class)->controlledAmount($request, $receipt);
+        $compensation = LedgerPostingGroup::query()->with('entries.account')->findOrFail($request->compensation_posting_group_id);
+        $this->assertCompensation($request, $compensation);
+        if ($receipt->savings_amount_kobo > 0) {
+            $credits = $original->entries()->with('account')->where('side', LedgerEntrySide::Credit)->get();
+            $debits = $compensation->entries->filter(fn ($entry): bool => $entry->side === LedgerEntrySide::Debit
+                && $entry->account->code === LedgerAccountCode::CustomerSavingsLiability);
+            $credit = $credits->first();
+            $debit = $debits->first();
+            if ($original->source_id !== (string) $receipt->id || $original->thrift_plan_id !== $receipt->thrift_plan_id
+                || $original->actor_user_id !== $receipt->recorded_by_user_id || $original->occurred_on?->toDateString() !== $receipt->received_date
+                || $credits->count() !== 1 || $credit === null || $debits->count() !== 1 || $debit === null
+                || $credit->account->code !== LedgerAccountCode::CustomerSavingsLiability
+                || $credit->account->account_class !== LedgerAccountClass::CustomerSavingsLiability
+                || $credit->account->currency !== 'NGN' || $credit->account->normal_balance !== LedgerEntrySide::Credit
+                || $credit->amount_kobo !== $receipt->savings_amount_kobo || $credit->customer_profile_id !== $receipt->customer_profile_id
+                || $credit->thrift_plan_id !== $receipt->thrift_plan_id || $credit->agent_profile_id !== null || $credit->fee_obligation_id !== null
+                || $debit->ledger_account_id !== $credit->ledger_account_id || $debit->amount_kobo !== $receipt->savings_amount_kobo
+                || $debit->customer_profile_id !== $receipt->customer_profile_id || $debit->thrift_plan_id !== $receipt->thrift_plan_id
+                || $debit->agent_profile_id !== null || $debit->fee_obligation_id !== null
+                || $compensation->actor_user_id !== $request->reviewed_by_user_id || $compensation->thrift_plan_id !== $receipt->thrift_plan_id
+                || ($compensation->metadata['receipt_id'] ?? null) !== $receipt->id
+                || ($compensation->metadata['original_posting_group_id'] ?? null) !== $original->id
+                || $compensation->payload_hash !== $request->dependency_fingerprint) {
+                throw new ConflictHttpException('The correction has no exact original savings compensation.');
+            }
+        }
+    }
+
+    public function assertCompensation(ReversalRequest $request, LedgerPostingGroup $group, bool $forUpdate = false): void
     {
         if ($group->source_type !== 'reversal_request' || $group->source_id !== (string) $request->id
             || $group->customer_profile_id !== $request->customer_profile_id || $group->currency !== $request->currency) {
             throw new ConflictHttpException('The compensation posting identity is invalid.');
         }
-        $debits = (int) $group->entries()->where('side', 'debit')->sum('amount_kobo');
-        $credits = (int) $group->entries()->where('side', 'credit')->sum('amount_kobo');
-        if ($debits <= 0 || $debits !== $credits || $group->entries()->count() < 2) {
+        $entries = $group->entries()->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        $debits = $entries->where('side', LedgerEntrySide::Debit)->sum('amount_kobo');
+        $credits = $entries->where('side', LedgerEntrySide::Credit)->sum('amount_kobo');
+        if ($debits <= 0 || $debits !== $credits || $entries->count() < 2) {
             throw new ConflictHttpException('The compensation posting is not balanced.');
         }
     }
@@ -253,7 +319,13 @@ class ReversalService
             throw new ConflictHttpException('This reversal operation reference belongs to a different action.');
         }
 
-        return $attempt->reversalRequest;
+        $reversal = $attempt->reversalRequest;
+        if ($reversal->state === 'approved_posted'
+            && $reversal->originalPostingGroup?->source_type === 'fee_savings_application') {
+            app(FeeSavingsApplicationReversalOwner::class)->assertPosted($reversal->id, true);
+        }
+
+        return $reversal;
     }
 
     /** @param array<string, mixed> $data */
@@ -264,14 +336,16 @@ class ReversalService
         return hash('sha256', json_encode([$operation, $actor->id, $targetId, $data], JSON_THROW_ON_ERROR));
     }
 
-    private function recordEvent(ReversalRequest $reversal, User $actor, string $eventType): void
+    private function recordEvent(ReversalRequest $reversal, User $actor, string $eventType, LedgerPostingGroup|FinancialWorkflowSupplement|null $compensation = null): void
     {
         $event = ReversalEvent::create([
             'reversal_request_id' => $reversal->id, 'actor_user_id' => $actor->id,
             'event_type' => $eventType, 'effective_at' => now(),
-            'customer_explanation' => $eventType === 'approved_posted' ? $reversal->customer_explanation : null,
+            'customer_explanation' => in_array($eventType, ['approved_posted', 'approved_no_money'], true) ? $reversal->customer_explanation : null,
             'metadata' => ['version' => $reversal->version,
-                'compensation_posting_group_id' => $reversal->compensation_posting_group_id],
+                'compensation_posting_group_id' => $reversal->compensation_posting_group_id,
+                'no_money_supplement_id' => $compensation instanceof FinancialWorkflowSupplement ? $compensation->id : null,
+                'owner_fingerprint' => $compensation?->payload_hash],
         ]);
         AuditEvent::record('reversal.'.$eventType, ReversalRequest::class, $reversal->id,
             $reversal->reversal_id, [
@@ -280,7 +354,9 @@ class ReversalService
                 'state' => $reversal->state, 'version' => $reversal->version,
                 'compensation_posting_group_id' => $reversal->compensation_posting_group_id,
             ], $actor,
-            context: ['executor' => self::class, 'approver_id' => $reversal->reviewed_by_user_id, 'required_permission' => $actor->user_type === UserType::Admin ? 'reversals.review' : null]
+            context: ['executor' => self::class, 'approver_id' => $reversal->reviewed_by_user_id,
+                'source_version' => $reversal->version, 'correlation_reference' => 'reversal-event:'.$event->id,
+                'required_permission' => $actor->user_type === UserType::Admin ? 'reversals.review' : null]
         );
         $this->notices->queue($reversal, $event);
     }
@@ -300,10 +376,16 @@ class ReversalService
                 continue;
             }
             if ($request->state !== 'approved_posted') {
+                if ($request->state === 'approved_no_money') {
+                    app(CollectionNoMoneyCorrection::class)->assertOutcome($request);
+
+                    continue;
+                }
+
                 return 'unavailable';
             }
             $original = $request->originalPostingGroup;
-            if ($original === null || $this->capabilities->resolve($original) === null) {
+            if ($original === null || ($original->source_type !== 'fee_savings_application' && $this->capabilities->resolve($original) === null)) {
                 return 'unavailable';
             }
             $group = LedgerPostingGroup::query()->find($request->compensation_posting_group_id);
@@ -311,6 +393,9 @@ class ReversalService
                 return 'unavailable';
             }
             $this->assertCompensation($request, $group);
+            if ($original->source_type === 'fee_savings_application') {
+                app(FeeSavingsApplicationReversalOwner::class)->assertPosted($request->id, DB::transactionLevel() > 0);
+            }
         }
 
         return 'passed';
@@ -323,6 +408,11 @@ class ReversalService
             $query->lockForUpdate();
         }
         foreach ($query->get() as $request) {
+            if ($request->state === 'approved_no_money') {
+                app(CollectionNoMoneyCorrection::class)->assertOutcome($request);
+
+                continue;
+            }
             if (in_array($request->state, ['pending_review'], true) && app(CustomerReassignmentService::class)
                 ->hasVerifiedHandover($request->customerProfile, $agent->id, $forUpdate)) {
                 continue;

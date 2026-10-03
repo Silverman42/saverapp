@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
 
+/** @property array<string, mixed>|null $metadata */
 #[Fillable(['reversal_request_id', 'actor_user_id', 'event_type', 'customer_explanation', 'metadata', 'effective_at'])]
 class ReversalEvent extends Model
 {

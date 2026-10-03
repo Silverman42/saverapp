@@ -19,8 +19,10 @@ use App\Models\ReversalRequest;
 use App\Models\WithdrawalRequest;
 use App\Support\PlatformBlocked;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class LedgerTransactionProjectionService
 {
@@ -87,12 +89,17 @@ class LedgerTransactionProjectionService
                 }
                 $transactions++;
             }
-            foreach (CashRemittance::query()->whereNotNull('ledger_posting_group_id')->lazyById(100) as $remittance) {
-                $group = LedgerPostingGroup::query()->whereKey($remittance->ledger_posting_group_id)->firstOrFail();
-                if ($group->source_type !== 'cash_remittance' || $group->source_id !== (string) $remittance->id) {
+            foreach (CashRemittance::query()->with('postingGroup.entries.account')->whereNotNull('ledger_posting_group_id')->lazyById(100) as $remittance) {
+                $group = $remittance->postingGroup;
+                if ($group === null || $group->source_type !== 'cash_remittance' || $group->source_id !== (string) $remittance->id) {
                     throw new RuntimeException('A remittance has an inconsistent ledger source.');
                 }
                 $this->writeRemittance($remittance, $group, $version);
+                $covered[$group->id] = true;
+                $transactions++;
+            }
+            foreach (DB::table('collection_settlements')->orderBy('id')->lazyById(100) as $settlement) {
+                $group = $this->writeSettlement($settlement, $version);
                 $covered[$group->id] = true;
                 $transactions++;
             }
@@ -111,6 +118,13 @@ class LedgerTransactionProjectionService
                 $covered[$group->id] = true;
                 $transactions++;
             }
+            if (Schema::hasTable('fee_savings_applications')) {
+                foreach (DB::table('fee_savings_applications')->orderBy('id')->lazyById(100) as $application) {
+                    $group = $this->writeSavingsApplication($application->operation_reference, $version);
+                    $covered[$group->id] = true;
+                    $transactions++;
+                }
+            }
             foreach (CashDisbursement::query()->where('status', 'posted')->lazyById(100) as $disbursement) {
                 $group = LedgerPostingGroup::query()->findOrFail($disbursement->ledger_posting_group_id);
                 $this->writeDisbursement($disbursement, $group, $version);
@@ -125,7 +139,13 @@ class LedgerTransactionProjectionService
                 $transactions++;
             }
 
-            foreach (ReversalRequest::query()->where('state', 'approved_posted')->lazyById(100) as $reversal) {
+            foreach (ReversalRequest::query()->whereIn('state', ['approved_posted', 'approved_no_money'])->lazyById(100) as $reversal) {
+                if ($reversal->state === 'approved_no_money') {
+                    $this->writeNoMoneyCorrection($reversal, $version);
+                    $transactions++;
+
+                    continue;
+                }
                 $group = LedgerPostingGroup::query()->findOrFail($reversal->compensation_posting_group_id);
                 $this->writeReversal($reversal, $group, $version);
                 $covered[$group->id] = true;
@@ -188,6 +208,41 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($remittanceId): void {
             $this->projectRemittanceAllowed($remittanceId);
         });
+    }
+
+    public function projectSettlement(int $settlementId): void
+    {
+        app(PlatformGuard::class)->transaction('derived', function () use ($settlementId): void {
+            $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
+            if ($state === null || $state->status !== 'ready') {
+                return;
+            }
+            $settlement = DB::table('collection_settlements')->where('id', $settlementId)->first();
+            if ($settlement === null) {
+                throw new RuntimeException('The settlement source is unavailable.');
+            }
+            $this->writeSettlement($settlement, (int) $state->active_version);
+            $this->advanceWatermark();
+        });
+    }
+
+    private function writeSettlement(\stdClass $settlement, int $version): LedgerPostingGroup
+    {
+        try {
+            $group = app(CollectionSettlementService::class)->assertPosted($settlement);
+        } catch (ConflictHttpException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+        $this->assertBalanced($group);
+        $this->upsertProjection($this->reference('collection_settlement', $settlement->settlement_reference, $settlement->settled_date), $version, [
+            'customer_profile_id' => null, 'type' => 'remittance', 'status' => 'posted',
+            'occurred_on' => $settlement->settled_date, 'committed_at' => $group->committed_at,
+            'timezone' => $settlement->timezone, 'currency' => 'NGN', 'gross_amount_kobo' => (int) $settlement->amount_kobo,
+            'savings_effect_kobo' => 0, 'fee_amount_kobo' => 0, 'posting_group_count' => 1,
+            'source_hash' => $this->sourceHash([$group]), 'source_max_group_id' => $group->id,
+        ]);
+
+        return $group;
     }
 
     private function projectRemittanceAllowed(int $remittanceId): void
@@ -279,6 +334,7 @@ class LedgerTransactionProjectionService
 
     private function writeRemittance(CashRemittance $remittance, LedgerPostingGroup $group, int $version): void
     {
+        app(CollectionRemittanceProof::class)->assertPosted($remittance);
         $this->assertBalanced($group);
         if ($group->occurred_on?->toDateString() !== $remittance->handoff_date) {
             throw new RuntimeException('Remittance occurrence date and ledger group do not reconcile.');
@@ -342,7 +398,28 @@ class LedgerTransactionProjectionService
 
     public function projectRefund(FeeRefund $refund): void
     {
-        $this->projectAdditionalOwner(fn (int $version) => $this->writeRefund($refund, LedgerPostingGroup::query()->findOrFail($refund->ledger_posting_group_id), $version));
+        $this->projectAdditionalOwner(fn (int $version) => $this->writeRefund($refund, LedgerPostingGroup::query()->findOrFail($refund->ledger_posting_group_id), $version, true));
+    }
+
+    public function projectSavingsApplication(string $reference): void
+    {
+        $this->projectAdditionalOwner(function (int $version) use ($reference): void {
+            $this->writeSavingsApplication($reference, $version);
+        });
+    }
+
+    private function writeSavingsApplication(string $reference, int $version): LedgerPostingGroup
+    {
+        try {
+            $group = app(FeeSavingsApplicationService::class)->assertPosted($reference);
+        } catch (ConflictHttpException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+        $this->assertBalanced($group);
+        $amount = $group->entries->firstOrFail()->amount_kobo;
+        $this->writeOwnedMovement('fee_application', $reference, $group, $version, $amount, -$amount, $amount, 'fee_savings_application');
+
+        return $group;
     }
 
     public function projectDisbursement(CashDisbursement $disbursement): void
@@ -363,7 +440,7 @@ class LedgerTransactionProjectionService
         });
     }
 
-    private function writeRefund(FeeRefund $refund, LedgerPostingGroup $group, int $version): void
+    private function writeRefund(FeeRefund $refund, LedgerPostingGroup $group, int $version, bool $current = false): void
     {
         $this->assertBalanced($group);
         $expectedSource = $refund->kind === 'savings' ? 'fee_refund' : 'external_refund_entitlement';
@@ -375,6 +452,18 @@ class LedgerTransactionProjectionService
             $expected = $line->side === LedgerEntrySide::Debit ? LedgerAccountCode::FeeIncome : ($refund->kind === 'savings' ? LedgerAccountCode::CustomerSavingsLiability : LedgerAccountCode::RefundPayable);
             if ($line->amount_kobo !== $refund->amount_kobo || $line->fee_obligation_id !== $refund->fee_obligation_id || $line->account->code !== $expected) {
                 throw new RuntimeException('Refund amounts or destinations do not match the approved source.');
+            }
+        }
+        if ($refund->kind === 'savings') {
+            try {
+                $cycle = app(LedgerPostingService::class)->savingsRefundCycle(FeeObligation::query()
+                    ->whereKey($refund->fee_obligation_id)->when($current, fn ($query) => $query->sharedLock())->firstOrFail(), $current);
+            } catch (ConflictHttpException $exception) {
+                throw new RuntimeException($exception->getMessage(), 0, $exception);
+            }
+            $credit = $group->entries->first(fn ($line): bool => $line->side === LedgerEntrySide::Credit);
+            if ($group->thrift_plan_id !== $cycle || $credit === null || $credit->thrift_plan_id !== $cycle) {
+                throw new RuntimeException('The savings refund has no matching original source cycle.');
             }
         }
         $this->writeOwnedMovement('fee_refund', $refund->refund_reference, $group, $version, $refund->amount_kobo,
@@ -450,7 +539,11 @@ class LedgerTransactionProjectionService
             if ($state === null || $state->status !== 'ready') {
                 return;
             }
-            $this->writeReversal($reversal, LedgerPostingGroup::query()->findOrFail($reversal->compensation_posting_group_id), (int) $state->active_version);
+            if ($reversal->state === 'approved_no_money') {
+                $this->writeNoMoneyCorrection($reversal, (int) $state->active_version);
+            } else {
+                $this->writeReversal($reversal, LedgerPostingGroup::query()->findOrFail($reversal->compensation_posting_group_id), (int) $state->active_version);
+            }
             $this->advanceWatermark();
         });
     }
@@ -461,6 +554,12 @@ class LedgerTransactionProjectionService
         if ($reversal->state !== 'approved_posted' || $group->source_type !== 'reversal_request'
             || $group->source_id !== (string) $reversal->id || $group->customer_profile_id !== $reversal->customer_profile_id) {
             throw new RuntimeException('The reversal and its compensation do not reconcile.');
+        }
+        if ($group->event_type === 'fee_application_compensation' || $reversal->originalPostingGroup?->source_type === 'fee_savings_application') {
+            $verified = app(FeeSavingsApplicationReversalOwner::class)->assertPosted($reversal->id, DB::transactionLevel() > 0);
+            if ($verified->id !== $group->id) {
+                throw new RuntimeException('The fee compensation source does not reconcile.');
+            }
         }
         $effect = 0;
         foreach ($group->entries as $entry) {
@@ -474,6 +573,20 @@ class LedgerTransactionProjectionService
             'occurred_on' => $date, 'committed_at' => $group->committed_at, 'timezone' => $group->business_timezone,
             'currency' => 'NGN', 'gross_amount_kobo' => $reversal->original_amount_kobo, 'savings_effect_kobo' => $effect,
             'fee_amount_kobo' => 0, 'posting_group_count' => 1, 'source_hash' => $this->sourceHash([$group]), 'source_max_group_id' => $group->id,
+        ]);
+    }
+
+    private function writeNoMoneyCorrection(ReversalRequest $reversal, int $version): void
+    {
+        $proof = app(CollectionNoMoneyCorrection::class)->assertOutcome($reversal);
+        $date = $proof->facts['occurred_on'];
+        $this->upsertProjection($this->reference('reversal_request', (string) $reversal->id, $date), $version, [
+            'customer_profile_id' => $reversal->customer_profile_id, 'type' => 'reversal', 'status' => 'approved_no_money',
+            'occurred_on' => $date, 'committed_at' => $proof->created_at, 'timezone' => $proof->facts['timezone'],
+            'currency' => 'NGN', 'gross_amount_kobo' => $reversal->original_amount_kobo, 'savings_effect_kobo' => 0,
+            'fee_amount_kobo' => 0, 'posting_group_count' => 0,
+            'source_hash' => hash('sha256', json_encode([$proof->id, $proof->payload_hash, $proof->facts], JSON_THROW_ON_ERROR)),
+            'source_max_group_id' => $proof->facts['source_group_watermark'],
         ]);
     }
 

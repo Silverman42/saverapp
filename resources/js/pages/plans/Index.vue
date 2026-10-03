@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { reactive, watch } from 'vue';
 import { Search, WalletCards } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,16 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
+import InputError from '@/components/InputError.vue';
+import PlanFundingSummary from '@/components/PlanFundingSummary.vue';
+import PlanFeeSummary from '@/components/PlanFeeSummary.vue';
+import PlanSavingsDirectorySummary from '@/components/PlanSavingsDirectorySummary.vue';
+import PlanPostedActivityDirectorySummary from '@/components/PlanPostedActivityDirectorySummary.vue';
+import type { PlanPostedActivity } from '@/types/plan-posted-activity';
+import type { PlanSavings } from '@/types/plan-savings';
+import type { PlanFeeHistory } from '@/types/plan-fee-history';
+import type { PlanFundingSummary as FundingSummary } from '@/types/plan-funding';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
@@ -20,14 +30,25 @@ import { index as plansIndex, show as showPlan } from '@/routes/plans';
 type PlanRow = {
     id: string;
     name: string;
-    customer: { id: string; name: string };
+    customer: { id: string; name: string; status: string };
+    agent: { id: string; name: string } | null;
+    timezone: string | null;
+    currency: string | null;
+    fee: { name: string; amount: string; description: string } | null;
+    fee_actuals: Pick<
+        PlanFeeHistory,
+        'status' | 'totals' | 'as_of' | 'message' | 'source_version'
+    >;
+    updated_at: string | null;
     status: string;
     status_label: string;
     terms_revision: number;
     contribution_amount: string | null;
     start_date: string | null;
     scheduled_end_date: string | null;
-    financials: { status: string; message: string };
+    financials: FundingSummary;
+    savings_summary: PlanSavings;
+    posted_activity: PlanPostedActivity;
     can_manage: boolean;
     created_at: string | null;
 };
@@ -43,11 +64,20 @@ type Pagination = {
 
 const props = defineProps<{
     plans: Pagination;
-    filters: { search: string; status: string; per_page: number };
+    filters: {
+        search: string;
+        status: string;
+        per_page: number;
+        start_from: string;
+        start_to: string;
+        agent: string;
+    };
     viewer_type: string;
+    directory_context: Record<string, string | number>;
 }>();
 
 const filters = reactive({ ...props.filters });
+const page = usePage();
 watch(
     () => props.filters,
     (value) => Object.assign(filters, value),
@@ -68,6 +98,10 @@ const applyFilters = (): void => {
     };
     if (filters.search.trim() !== '') query.search = filters.search.trim();
     if (filters.status !== '') query.status = filters.status;
+    if (filters.start_from !== '') query.start_from = filters.start_from;
+    if (filters.start_to !== '') query.start_to = filters.start_to;
+    if (props.viewer_type === 'admin' && filters.agent.trim() !== '')
+        query.agent = filters.agent.trim();
     router.get(
         plansIndex.url({ query }),
         {},
@@ -92,8 +126,8 @@ const statusVariant = (
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Thrift plans</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                View agreed daily schedules and plan history. Collection totals
-                and savings progress are not available yet.
+                View agreed daily schedules and plan history. Open the thrift
+                card to review collection activity.
             </p>
         </div>
 
@@ -152,6 +186,45 @@ const statusVariant = (
                             <option :value="100">100</option>
                         </select>
                     </div>
+                    <div class="grid w-fit gap-2">
+                        <Label for="plan-start-from">Plan starts from</Label>
+                        <DatePicker
+                            id="plan-start-from"
+                            aria-label="Plan starts from"
+                            v-model="filters.start_from"
+                            :error-message="page.props.errors.start_from"
+                        />
+                        <InputError
+                            :message="page.props.errors.start_from"
+                            role="alert"
+                        />
+                    </div>
+                    <div class="grid w-fit gap-2">
+                        <Label for="plan-start-to">Plan starts through</Label>
+                        <DatePicker
+                            id="plan-start-to"
+                            aria-label="Plan starts through"
+                            v-model="filters.start_to"
+                            :error-message="page.props.errors.start_to"
+                        />
+                        <InputError
+                            :message="page.props.errors.start_to"
+                            role="alert"
+                        />
+                    </div>
+                    <div
+                        v-if="viewer_type === 'admin'"
+                        class="grid w-fit gap-2"
+                    >
+                        <Label for="plan-agent">Current Agent ID</Label>
+                        <Input
+                            id="plan-agent"
+                            v-model="filters.agent"
+                            placeholder="Agent ID"
+                            @keyup.enter="applyFilters"
+                        />
+                        <InputError :message="page.props.errors.agent" />
+                    </div>
                     <Button variant="outline" @click="applyFilters"
                         >Apply filters</Button
                     >
@@ -178,6 +251,13 @@ const statusVariant = (
                             <tr>
                                 <th class="px-3 py-3 font-medium">Plan</th>
                                 <th class="px-3 py-3 font-medium">Customer</th>
+                                <th
+                                    v-if="viewer_type !== 'customer'"
+                                    class="px-3 py-3 font-medium"
+                                >
+                                    Current Agent
+                                </th>
+                                <th class="px-3 py-3 font-medium">Fee terms</th>
                                 <th class="px-3 py-3 font-medium">Status</th>
                                 <th class="px-3 py-3 font-medium">
                                     Agreed schedule
@@ -198,7 +278,14 @@ const statusVariant = (
                             >
                                 <td class="px-3 py-4">
                                     <Link
-                                        :href="showPlan(plan.id).url"
+                                        :href="
+                                            showPlan(plan.id, {
+                                                query: {
+                                                    directory:
+                                                        props.directory_context,
+                                                },
+                                            }).url
+                                        "
                                         class="font-medium hover:underline"
                                         >{{ plan.name }}</Link
                                     >
@@ -207,6 +294,7 @@ const statusVariant = (
                                     >
                                         {{ plan.id }} · revision
                                         {{ plan.terms_revision }}
+                                        <div>Updated {{ plan.updated_at }}</div>
                                     </div>
                                 </td>
                                 <td class="px-3 py-4">
@@ -221,7 +309,39 @@ const statusVariant = (
                                         class="text-muted-foreground mt-1 text-xs"
                                     >
                                         {{ plan.customer.id }}
+                                        <div>
+                                            Customer {{ plan.customer.status }}
+                                        </div>
                                     </div>
+                                </td>
+                                <td
+                                    v-if="viewer_type !== 'customer'"
+                                    class="px-3 py-4"
+                                >
+                                    <template v-if="plan.agent"
+                                        >{{ plan.agent.name }}
+                                        <div
+                                            class="text-muted-foreground text-xs"
+                                        >
+                                            {{ plan.agent.id }}
+                                        </div></template
+                                    >
+                                    <span v-else>Unassigned</span>
+                                </td>
+                                <td class="px-3 py-4">
+                                    <template v-if="plan.fee"
+                                        >Captured agreement: {{ plan.fee.name }}
+                                        <div
+                                            class="text-muted-foreground text-xs"
+                                        >
+                                            {{ plan.fee.amount }}
+                                        </div></template
+                                    >
+                                    <span v-else>Unavailable</span>
+                                    <PlanFeeSummary
+                                        :summary="plan.fee_actuals"
+                                        class="mt-3"
+                                    />
                                 </td>
                                 <td class="px-3 py-4">
                                     <Badge
@@ -242,16 +362,39 @@ const statusVariant = (
                                     >
                                         {{ plan.start_date }} –
                                         {{ plan.scheduled_end_date }}
+                                        <div>
+                                            {{ plan.timezone }} ·
+                                            {{ plan.currency }}
+                                        </div>
                                     </div>
                                 </td>
                                 <td
                                     class="text-muted-foreground px-3 py-4 text-xs"
                                 >
-                                    Unavailable
+                                    <PlanFundingSummary
+                                        :summary="plan.financials"
+                                        compact
+                                    />
+                                    <PlanSavingsDirectorySummary
+                                        :summary="plan.savings_summary"
+                                        class="mt-3"
+                                    />
+                                    <PlanPostedActivityDirectorySummary
+                                        :summary="plan.posted_activity"
+                                        class="mt-3"
+                                    />
                                 </td>
                                 <td class="px-3 py-4 text-right">
                                     <Button as-child variant="outline" size="sm"
-                                        ><Link :href="showPlan(plan.id).url"
+                                        ><Link
+                                            :href="
+                                                showPlan(plan.id, {
+                                                    query: {
+                                                        directory:
+                                                            props.directory_context,
+                                                    },
+                                                }).url
+                                            "
                                             >View</Link
                                         ></Button
                                     >

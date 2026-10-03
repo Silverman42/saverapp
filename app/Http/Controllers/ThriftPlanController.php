@@ -13,6 +13,11 @@ use App\Models\PlanOperationAttempt;
 use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
+use App\Services\PlanEstimateService;
+use App\Services\PlanFeeHistoryReadService;
+use App\Services\PlanFinancialActivityReadService;
+use App\Services\PlanFundingReadService;
+use App\Services\PlanSavingsReadService;
 use App\Services\RegistrationFeeService;
 use App\Services\ResourceScopeService;
 use App\Services\ThriftPlanService;
@@ -31,7 +36,7 @@ use Inertia\Response;
 
 class ThriftPlanController extends Controller
 {
-    public function index(Request $request, ResourceScopeService $scopeService): Response
+    public function index(Request $request, ResourceScopeService $scopeService, PlanFundingReadService $fundingReader, PlanFeeHistoryReadService $feeReader, PlanSavingsReadService $savingsReader, PlanFinancialActivityReadService $activityReader): Response
     {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -39,17 +44,29 @@ class ThriftPlanController extends Controller
             Gate::authorize('viewAny', CustomerProfile::class);
         }
 
-        $filters = $request->validate([
-            'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', 'string', 'in:active,paused,completed,closed,cancelled,all'],
-            'per_page' => ['nullable', 'integer', 'in:25,50,100'],
-        ]);
+        $filters = $this->directoryFilters($request, $viewer);
 
         $query = ThriftPlan::query()
             ->whereIn('customer_profile_id', $scopeService->forCustomers($viewer)->select('customer_profiles.id'))
-            ->with(['customerProfile.user', 'customerProfile.currentAssignment', 'termsRevisions.feeSnapshot'])
+            ->with(['customerProfile.user', 'customerProfile.currentAssignment.agentProfile.user', 'termsRevisions.feeSnapshot'])
             ->orderByDesc('created_at')
             ->orderByDesc('id');
+
+        if (filled($filters['agent'] ?? null)) {
+            $query->whereHas('customerProfile.currentAssignment.agentProfile', fn (Builder $agentQuery): Builder => $agentQuery
+                ->where('agent_id', $filters['agent']));
+        }
+        if (filled($filters['start_from'] ?? null) || filled($filters['start_to'] ?? null)) {
+            $query->whereHas('termsRevisions', function (Builder $termsQuery) use ($filters): void {
+                $termsQuery->whereColumn('revision', 'thrift_plans.current_terms_revision');
+                if (filled($filters['start_from'] ?? null)) {
+                    $termsQuery->where('start_date', '>=', $filters['start_from']);
+                }
+                if (filled($filters['start_to'] ?? null)) {
+                    $termsQuery->where('start_date', '<=', $filters['start_to']);
+                }
+            });
+        }
 
         $status = $filters['status'] ?? null;
         if (filled($status) && $status !== 'all') {
@@ -69,8 +86,14 @@ class ThriftPlanController extends Controller
         }
 
         $plans = $query->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
-        $plans->through(function (ThriftPlan $plan) use ($viewer): array {
+        $funding = $fundingReader->readMany($viewer, array_values($plans->getCollection()->map(fn (ThriftPlan $plan): string => $plan->plan_id)->all()));
+        $feeSummaries = $feeReader->readMany($viewer, array_values($plans->getCollection()->all()));
+        $savings = $savingsReader->readMany($viewer, array_values($plans->getCollection()->all()));
+        $activity = $activityReader->readMany($viewer, array_values($plans->getCollection()->all()));
+        $plans->through(function (ThriftPlan $plan) use ($viewer, $funding, $fundingReader, $feeSummaries, $feeReader, $savings, $savingsReader, $activity, $activityReader): array {
             $revision = $this->currentRevision($plan);
+            $agent = $plan->customerProfile->currentAssignment?->agentProfile;
+            $fee = $revision?->feeSnapshot;
 
             return [
                 'id' => $plan->plan_id,
@@ -78,28 +101,41 @@ class ThriftPlanController extends Controller
                 'customer' => [
                     'id' => $plan->customerProfile->customer_id,
                     'name' => $plan->customerProfile->user->name ?? 'Customer',
+                    'status' => $plan->customerProfile->operational_status->displayName(),
                 ],
+                'agent' => $viewer->user_type === UserType::Customer || $agent === null ? null : [
+                    'id' => $agent->agent_id, 'name' => $agent->user->name,
+                ],
+                'timezone' => $revision?->timezone,
+                'currency' => $revision?->currency,
+                'fee' => $fee === null ? null : ['name' => $fee->name, 'amount' => $fee->formattedAmount(),
+                    'description' => $fee->customer_description],
+                'fee_actuals' => $feeSummaries[$plan->plan_id] ?? $feeReader->unavailable(),
+                'savings_summary' => $savings[$plan->plan_id] ?? $savingsReader->unavailableSummary(),
+                'posted_activity' => $activity[$plan->plan_id] ?? $activityReader->unavailableSummary(),
                 'status' => $plan->status->value,
                 'status_label' => $plan->status->displayName(),
                 'terms_revision' => $plan->current_terms_revision,
                 'contribution_amount' => $revision === null ? null : MoneyFormatter::formatNaira($revision->contribution_amount_kobo),
                 'start_date' => $revision?->start_date,
                 'scheduled_end_date' => $revision === null ? null : $this->scheduledEndDate($revision),
-                'financials' => [
-                    'status' => 'unavailable',
-                    'message' => 'Collections and savings totals are unavailable until the financial modules are connected.',
-                ],
+                'financials' => $funding[$plan->plan_id] ?? $fundingReader->unavailable(),
                 'can_manage' => Gate::forUser($viewer)->allows('managePlan', $plan->customerProfile),
                 'created_at' => $plan->created_at?->toDateString(),
+                'updated_at' => $plan->updated_at?->toDateString(),
             ];
         });
 
         return Inertia::render('plans/Index', [
             'plans' => $plans,
+            'directory_context' => [...$filters, 'per_page' => $plans->perPage(), 'page' => $plans->currentPage()],
             'filters' => [
                 'search' => $filters['search'] ?? '',
                 'status' => $filters['status'] ?? '',
                 'per_page' => (int) ($filters['per_page'] ?? 25),
+                'start_from' => $filters['start_from'] ?? '',
+                'start_to' => $filters['start_to'] ?? '',
+                'agent' => $filters['agent'] ?? '',
             ],
             'viewer_type' => $viewer->user_type->value,
         ]);
@@ -215,23 +251,37 @@ class ThriftPlanController extends Controller
         return to_route('plans.show', $result['plan']->plan_id);
     }
 
-    public function show(Request $request, string $plan, ResourceScopeService $scopeService): Response
+    public function show(Request $request, string $plan, ResourceScopeService $scopeService, PlanFundingReadService $fundingReader, PlanSavingsReadService $savingsReader, PlanFinancialActivityReadService $activityReader, PlanFeeHistoryReadService $feeReader, ThriftPlanService $planService): Response
     {
         /** @var User $viewer */
         $viewer = $request->user();
         $record = $this->scopedPlan($scopeService, $viewer, $plan);
         Gate::authorize('view', $record->customerProfile);
+        $directoryContext = $this->directoryFilters($request, $viewer, true);
+        $feePagination = $request->validate([
+            'fee_page' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'fee_per_page' => ['nullable', 'integer', 'in:25,50,100'],
+            'activity_page' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'activity_per_page' => ['nullable', 'integer', 'in:25,50,100'],
+        ]);
         $revision = $this->currentRevision($record);
         $canManage = Gate::forUser($viewer)->allows('managePlan', $record->customerProfile);
-        $hasFeeObligation = $record->termsRevisions->contains(fn ($item): bool => $item->feeSnapshot?->obligation !== null);
-        $canCancel = $canManage
-            && in_array($record->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused], true)
-            && $record->activity_started_at === null
-            && ! $hasFeeObligation;
+        $canCancel = $canManage && $planService->canCancelUnusedCycle($record);
         $hasSuccessor = $record->successor()->exists();
+        $serializedPlan = $this->serializePlan($record, $viewer);
+        $funding = $fundingReader->readDetail($viewer, $record);
+        $serializedPlan['financial_summary'] = $funding['summary'];
+        $serializedPlan['savings_summary'] = $savingsReader->read($viewer, $record);
+        $serializedPlan['posted_activity'] = $activityReader->read($viewer, $record);
+        $serializedPlan['posting_history'] = $activityReader->history($viewer, $record, (int) ($feePagination['activity_page'] ?? 1), (int) ($feePagination['activity_per_page'] ?? 25));
+        $serializedPlan['fee_history'] = $feeReader->read($viewer, $record, (int) ($feePagination['fee_page'] ?? 1), (int) ($feePagination['fee_per_page'] ?? 25));
+        if ($funding['slots'] !== null) {
+            $serializedPlan['slots'] = $funding['slots'];
+        }
 
         return Inertia::render('plans/Show', [
-            'plan' => $this->serializePlan($record, $viewer),
+            'plan' => $serializedPlan,
+            'directory_context' => $directoryContext,
             'customer' => [
                 'id' => $record->customerProfile->customer_id,
                 'name' => $record->customerProfile->user->name ?? 'Customer',
@@ -341,7 +391,7 @@ class ThriftPlanController extends Controller
             'preview' => $preview,
             'fee_options' => $options,
             'attempt_reference' => (string) Str::uuid(),
-            'financial_terms_locked' => $record->activity_started_at !== null,
+            'financial_terms_locked' => $planService->hasCycleActivity($record),
         ]);
     }
 
@@ -490,6 +540,42 @@ class ThriftPlanController extends Controller
     }
 
     /** @return array<string, mixed> */
+    private function directoryFilters(Request $request, User $viewer, bool $nested = false): array
+    {
+        $rules = [
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', 'in:active,paused,completed,closed,cancelled,all'],
+            'per_page' => ['nullable', 'integer', 'in:25,50,100'],
+            'page' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'start_from' => ['nullable', 'date_format:Y-m-d'],
+            'start_to' => ['nullable', 'date_format:Y-m-d'],
+            'agent' => ['nullable', 'string', 'max:100'],
+        ];
+        $prefix = $nested ? 'directory.' : '';
+        $validationRules = $nested ? ['directory' => ['nullable', 'array:'.implode(',', array_keys($rules))]] : [];
+        foreach ($rules as $key => $rule) {
+            $validationRules[$prefix.$key] = $rule;
+        }
+        $validated = $request->validate($validationRules);
+        $filters = $nested ? ($validated['directory'] ?? []) : $validated;
+        if (filled($filters['agent'] ?? null) && $viewer->user_type !== UserType::Admin) {
+            abort(403);
+        }
+        if (filled($filters['start_from'] ?? null) && filled($filters['start_to'] ?? null)
+            && $filters['start_to'] < $filters['start_from']) {
+            throw ValidationException::withMessages([$prefix.'start_to' => ['Choose an end date on or after the start date.']]);
+        }
+        $filters = array_filter($filters, fn (mixed $value): bool => $value !== null && $value !== '');
+        foreach (['per_page', 'page'] as $key) {
+            if (isset($filters[$key])) {
+                $filters[$key] = (int) $filters[$key];
+            }
+        }
+
+        return $filters;
+    }
+
+    /** @return array<string, mixed> */
     private function serializePlan(ThriftPlan $plan, User $viewer): array
     {
         $currentRevision = $this->currentRevision($plan);
@@ -537,13 +623,19 @@ class ThriftPlanController extends Controller
                     : MoneyFormatter::formatNaira($currentFeeSnapshot->amount_kobo),
                 'estimate_available' => ! ($currentFeeSnapshot->model->value === 'percentage' && $currentFeeSnapshot->timing->value === 'withdrawal'),
                 'description' => $currentFeeSnapshot->customer_description,
+                'early_termination_policy_version' => $currentFeeSnapshot->early_termination_policy_version,
+                'early_termination_description' => $currentFeeSnapshot->early_termination_description,
                 'acknowledged_at' => $currentFeeSnapshot->acknowledged_at?->timezone($currentRevision->timezone)->format('Y-m-d H:i'),
             ],
+            'estimate' => $currentRevision === null ? null : app(PlanEstimateService::class)->forSnapshot($plan, $currentRevision),
             'slots' => $plan->slots->whereNotNull('active_ordinal')->sortBy('active_ordinal')->values()->map(fn ($slot): array => [
                 'ordinal' => $slot->active_ordinal,
                 'due_date' => $slot->due_date,
                 'formatted_expected_amount' => MoneyFormatter::formatNaira($slot->expected_amount_kobo),
                 'collection_status' => 'unavailable',
+                'formatted_funded_amount' => null,
+                'formatted_remaining_amount' => null,
+                'advance' => null,
             ]),
             'revisions' => $plan->termsRevisions->map(fn ($revision): array => [
                 'revision' => $revision->revision,

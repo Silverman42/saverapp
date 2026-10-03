@@ -9,6 +9,7 @@ use App\Enums\FeeObligationEntryType;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
+use App\Models\CollectionBatch;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Support\MoneyFormatter;
@@ -25,7 +26,7 @@ use Throwable;
 
 class ReportReadService
 {
-    public const SCHEMA_VERSION = 5;
+    public const SCHEMA_VERSION = 7;
 
     public function __construct(
         private ResourceScopeService $scope,
@@ -163,10 +164,10 @@ class ReportReadService
                     }
                     $spec = $this->batchReconciliationSpec($viewer, $agentId, $state, $cutoff);
                     $sections['batch_reconciliation'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
-                        'Current verified cash batch snapshot. Historical opening, movement and closing balances and complete variance history remain unavailable.',
+                        'Current verified method-custody batch snapshot. Historical opening, movement and closing balances and complete variance history remain unavailable.',
                         $state, 'batch_reconciliation');
                 } catch (RuntimeException|QueryException) {
-                    $sections['batch_reconciliation'] = $this->unavailable('Verified cash batch reconciliation is unavailable or inconsistent.');
+                    $sections['batch_reconciliation'] = $this->unavailable('Verified batch reconciliation is unavailable or inconsistent.');
                 }
             }
             if ($code === 'exceptions') {
@@ -197,10 +198,11 @@ class ReportReadService
                                 });
                         })->reorder()->orderBy('batches.received_date')->orderBy('batches.id');
                         $spec['columns'] = ['reference' => 'Batch', 'received_date' => 'Received date',
-                            'original_agent' => 'Original Agent', 'revision' => 'Revision', 'predecessor' => 'Previous batch',
-                            'state' => 'Current state', 'unremitted' => 'Unremitted cash', 'open_exceptions' => 'Open exceptions',
+                            'original_agent' => 'Original Agent', 'method' => 'Method', 'revision' => 'Revision', 'predecessor' => 'Previous batch',
+                            'state' => 'Current state', 'unremitted' => 'Unremitted cash', 'bank_received' => 'Confirmed bank custody',
+                            'pending_settlement' => 'Pending clearing settlement', 'open_exceptions' => 'Open exceptions',
                             'latest_review' => 'Latest review'];
-                        $spec['money'] = ['unremitted'];
+                        $spec['money'] = ['unremitted', 'bank_received', 'pending_settlement'];
                         $spec['counts'] = ['unreconciled_batches' => null, 'open_exceptions' => 'open_exceptions'];
                         $spec['link'] = 'collection-batches.show';
                         $sections['custody_batches'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
@@ -210,7 +212,7 @@ class ReportReadService
                         $reason = match ($exception->getMessage()) {
                             'Customer filters do not identify original-Agent custody.' => 'Clear the Customer filter to view original-Agent custody work.',
                             'Collections are disabled.' => 'The collection owner is disabled; custody exceptions are unavailable.',
-                            default => 'Verified cash batch reconciliation is unavailable or inconsistent.',
+                            default => 'Verified batch reconciliation is unavailable or inconsistent.',
                         };
                         $sections['custody_batches'] = $this->unavailable($reason);
                     }
@@ -380,6 +382,11 @@ class ReportReadService
                 OR posting.id IS NULL OR posting.source_type <> 'cash_remittance'
                 OR posting.source_id <> remittances.id OR posting.event_type <> 'cash_remittance'
                 OR posting.currency <> 'NGN' OR posting.committed_at > ? OR posting.id > ?
+                OR posting.actor_user_id IS NULL OR posting.actor_user_id <> remittances.confirmed_by_user_id
+                OR posting.customer_profile_id IS NOT NULL OR posting.thrift_plan_id IS NOT NULL
+                OR posting.occurred_on IS NULL OR DATE(posting.occurred_on) <> remittances.handoff_date
+                OR posting.business_timezone IS NULL OR posting.business_timezone <> remittance_batches.timezone
+                OR posting.occurred_at IS NULL OR posting.schema_version < 1
                 OR lines.line_count <> 2 OR lines.cash_debit <> remittances.amount_kobo
                 OR lines.receivable_credit <> remittances.amount_kobo
                 OR lines.receivable_agent <> remittances.agent_profile_id
@@ -391,6 +398,25 @@ class ReportReadService
                 OR remittance_projection.committed_at > ?
                 THEN 1 ELSE 0 END) AS invalid_remittances", [$cutoff, $cutoff, $state['watermark'], $cutoff])
             ->groupBy('remittances.collection_batch_id');
+
+        $settlements = DB::table('collection_settlements as settlements')
+            ->leftJoin('ledger_posting_groups as settlement_posting', 'settlement_posting.id', '=', 'settlements.ledger_posting_group_id')
+            ->leftJoin('ledger_transaction_references as settlement_refs', function (JoinClause $join): void {
+                $join->on('settlement_refs.root_id', '=', 'settlements.settlement_reference')->where('settlement_refs.root_type', 'collection_settlement');
+            })->leftJoin('ledger_transaction_projections as settlement_projection', function (JoinClause $join) use ($state): void {
+                $join->on('settlement_projection.ledger_transaction_reference_id', '=', 'settlement_refs.id')
+                    ->where('settlement_projection.projection_version', $state['version']);
+            })->selectRaw('settlements.collection_batch_id, SUM(settlements.amount_kobo) AS settled')
+            ->selectRaw("SUM(CASE WHEN settlements.created_at > ? OR settlement_posting.id IS NULL
+                OR settlement_posting.id > ? OR settlement_posting.committed_at > ?
+                OR settlement_projection.id IS NULL OR settlement_projection.status <> 'posted'
+                OR settlement_projection.type <> 'remittance' OR settlement_projection.currency <> 'NGN'
+                OR settlement_projection.gross_amount_kobo <> settlements.amount_kobo
+                OR settlement_projection.occurred_on <> settlements.settled_date
+                OR settlement_projection.source_max_group_id <> settlement_posting.id
+                OR settlement_projection.committed_at > ? THEN 1 ELSE 0 END) AS invalid_settlements",
+                [$cutoff, $state['watermark'], $cutoff, $cutoff])
+            ->groupBy('settlements.collection_batch_id');
 
         $latestReviews = DB::table('collection_batch_reviews')->selectRaw('collection_batch_id, MAX(id) AS latest_id,
             COUNT(*) AS review_count, MAX(updated_at) AS latest_update')->groupBy('collection_batch_id');
@@ -404,11 +430,15 @@ class ReportReadService
             ->leftJoin('collection_batches as predecessor', 'predecessor.id', '=', 'batches.predecessor_batch_id')
             ->leftJoinSub($receipts, 'receipts', 'receipts.collection_batch_id', '=', 'batches.id')
             ->leftJoinSub($remittances, 'remittances', 'remittances.collection_batch_id', '=', 'batches.id')
+            ->leftJoinSub($settlements, 'settlements', 'settlements.collection_batch_id', '=', 'batches.id')
+            ->leftJoin('collection_method_versions as methods', 'methods.id', '=', 'batches.collection_method_version_id')
             ->leftJoinSub($latestReviews, 'review_versions', 'review_versions.collection_batch_id', '=', 'batches.id')
             ->leftJoin('collection_batch_reviews as review', 'review.id', '=', 'review_versions.latest_id')
             ->leftJoinSub($exceptions, 'exceptions', 'exceptions.collection_batch_id', '=', 'batches.id')
             ->where('batches.created_at', '<=', $cutoff)
             ->select('batches.id as reference', 'batches.id as _key', 'batches.received_date', 'agents.agent_id as original_agent',
+                'batches.custody_account_code as _custody', 'batches.method_identity as _method_identity',
+                'predecessor.method_identity as _predecessor_method', 'methods.label as method',
                 'batches.revision', 'batches.predecessor_batch_id as predecessor', 'batches.status as state',
                 'review.outcome as latest_review', 'review.batch_version as _review_version',
                 'review.expected_kobo as _review_expected', 'review.remitted_kobo as _review_remitted',
@@ -420,11 +450,18 @@ class ReportReadService
                 'exceptions.exception_count as _exception_count', 'exceptions.latest_id as _exception_latest',
                 'exceptions.latest_update as _exception_update', 'receipts.invalid_receipts as _invalid_receipts',
                 'remittances.invalid_remittances as _invalid_remittances')
+            ->selectRaw('COALESCE(settlements.invalid_settlements, 0) AS _invalid_settlements')
             ->selectRaw('COALESCE(receipts.receipt_count, 0) AS receipt_count,
                 COALESCE(receipts.tender, 0) AS gross_tender, COALESCE(receipts.savings, 0) AS savings_component,
                 COALESCE(receipts.fees, 0) AS external_fee_component,
                 COALESCE(remittances.remitted, 0) AS confirmed_remittances,
-                COALESCE(receipts.tender, 0) - COALESCE(remittances.remitted, 0) AS unremitted,
+                COALESCE(settlements.settled, 0) AS _settled,
+                CASE WHEN batches.custody_account_code = \'agent_receivable_ngn\'
+                    THEN COALESCE(receipts.tender, 0) - COALESCE(remittances.remitted, 0) ELSE 0 END AS unremitted,
+                CASE WHEN batches.custody_account_code = \'business_bank_ngn\' THEN COALESCE(receipts.tender, 0)
+                    ELSE COALESCE(settlements.settled, 0) END AS bank_received,
+                CASE WHEN batches.custody_account_code = \'payment_clearing_ngn\'
+                    THEN COALESCE(receipts.tender, 0) - COALESCE(settlements.settled, 0) ELSE 0 END AS pending_settlement,
                 COALESCE(exceptions.open_exceptions, 0) AS open_exceptions')
             ->orderByDesc('batches.received_date')->orderByDesc('batches.id');
         if ($viewer->user_type === UserType::Agent) {
@@ -439,11 +476,12 @@ class ReportReadService
 
         return ['code' => 'batch_reconciliation', 'query' => $query,
             'columns' => ['reference' => 'Batch', 'received_date' => 'Received date', 'original_agent' => 'Original Agent',
-                'revision' => 'Revision', 'predecessor' => 'Previous batch', 'state' => 'Current state',
+                'method' => 'Method', 'revision' => 'Revision', 'predecessor' => 'Previous batch', 'state' => 'Current state',
                 'receipt_count' => 'Receipts', 'gross_tender' => 'Gross tender', 'savings_component' => 'Savings component',
                 'external_fee_component' => 'External fee component', 'confirmed_remittances' => 'Confirmed remittances',
-                'unremitted' => 'Unremitted cash', 'open_exceptions' => 'Open exceptions', 'latest_review' => 'Latest review'],
-            'money' => ['gross_tender', 'savings_component', 'external_fee_component', 'confirmed_remittances', 'unremitted'],
+                'unremitted' => 'Unremitted cash', 'bank_received' => 'Confirmed bank custody',
+                'pending_settlement' => 'Pending clearing settlement', 'open_exceptions' => 'Open exceptions', 'latest_review' => 'Latest review'],
+            'money' => ['gross_tender', 'savings_component', 'external_fee_component', 'confirmed_remittances', 'unremitted', 'bank_received', 'pending_settlement'],
             'counts' => ['batch_count' => null, 'receipt_count' => 'receipt_count', 'open_exceptions' => 'open_exceptions'],
             'link' => $viewer->user_type === UserType::Admin ? 'collection-batches.show' : null,
             'reference' => 'reference', 'viewer' => $viewer];
@@ -456,6 +494,11 @@ class ReportReadService
      */
     private function planFundingSpec(EloquentBuilder $customers, array $filters, array $state, CarbonImmutable $cutoff): array
     {
+        if (! DB::table('ledger_accounts')->where('code', 'customer_savings_liability_ngn')->where('currency', 'NGN')
+            ->where('account_class', 'customer_savings_liability')->where('normal_balance', 'credit')
+            ->where('mapping_status', 'mapped')->where('version', '>=', 1)->exists()) {
+            throw new RuntimeException('The savings allocation account is unavailable.');
+        }
         $expectedSlotDate = match (DB::getDriverName()) {
             'sqlite' => "date(current_slot_terms.start_date, '+' || (slots.active_ordinal - 1) || ' days')",
             'mysql', 'mariadb' => 'DATE_ADD(current_slot_terms.start_date, INTERVAL (slots.active_ordinal - 1) DAY)',
@@ -469,6 +512,10 @@ class ReportReadService
         if (filled($filters['plan_status'] ?? null)) {
             $scopedPlans->where('scoped_plans.status', $filters['plan_status']);
         }
+        if (isset($filters['_funding_plan_ids'])) {
+            $scopedPlans->whereIn('scoped_plans.plan_id', $filters['_funding_plan_ids']);
+        }
+        app(CollectionAllocationReleaseProof::class)->assertForPlans((clone $scopedPlans)->select('scoped_plans.id'));
         $receiptAllocations = DB::table('collection_allocations')
             ->selectRaw('collection_receipt_id, SUM(amount_kobo) AS allocated_savings')
             ->groupBy('collection_receipt_id');
@@ -487,7 +534,8 @@ class ReportReadService
                     ->orWhereRaw('receipts.savings_amount_kobo + receipts.fee_amount_kobo <> receipts.tender_amount_kobo')
                     ->orWhere('receipts.recorded_at', '>', $cutoff)
                     ->orWhereNull('projection.id')->orWhere('projection.status', '<>', 'posted')
-                    ->orWhere('projection.type', '<>', 'contribution')->orWhere('projection.currency', '<>', 'NGN')
+                    ->orWhereRaw("projection.type <> CASE WHEN receipts.replacement_reversal_id IS NULL THEN 'contribution' ELSE 'replacement' END")
+                    ->orWhere('projection.currency', '<>', 'NGN')
                     ->orWhereColumn('projection.customer_profile_id', '<>', 'receipts.customer_profile_id')
                     ->orWhereColumn('projection.gross_amount_kobo', '<>', 'receipts.tender_amount_kobo')
                     ->orWhereColumn('projection.fee_amount_kobo', '<', 'receipts.fee_amount_kobo')
@@ -506,6 +554,7 @@ class ReportReadService
             ->join('contribution_slots as funded_slots', 'funded_slots.id', '=', 'allocations.contribution_slot_id')
             ->join('thrift_plans as funded_plans', 'funded_plans.id', '=', 'funded_slots.thrift_plan_id')
             ->join('collection_receipts as receipts', 'receipts.id', '=', 'allocations.collection_receipt_id')
+            ->whereIn('funded_plans.id', (clone $scopedPlans)->select('scoped_plans.id'))
             ->selectRaw('allocations.contribution_slot_id, SUM(allocations.amount_kobo) AS funded')
             ->selectRaw('SUM(CASE WHEN allocations.amount_kobo < 1 OR receipts.thrift_plan_id <> funded_slots.thrift_plan_id
                 OR receipts.customer_profile_id <> funded_plans.customer_profile_id OR receipts.recorded_at > ?
@@ -520,6 +569,7 @@ class ReportReadService
             ->leftJoin('plan_terms_revisions as originating_terms', 'originating_terms.id', '=', 'slots.plan_terms_revision_id')
             ->leftJoinSub($allocations, 'funding', 'funding.contribution_slot_id', '=', 'slots.id')
             ->whereNotNull('slots.active_ordinal')
+            ->whereIn('slots.thrift_plan_id', (clone $scopedPlans)->select('scoped_plans.id'))
             ->selectRaw('slots.thrift_plan_id, COUNT(*) AS active_slots, MIN(slots.active_ordinal) AS first_ordinal,
                 MAX(slots.active_ordinal) AS last_ordinal, MIN(slots.expected_amount_kobo) AS first_target,
                 MAX(slots.expected_amount_kobo) AS last_target, SUM(slots.expected_amount_kobo) AS slot_target,
@@ -535,6 +585,7 @@ class ReportReadService
         $inactiveAllocations = DB::table('contribution_slots as inactive_slots')
             ->join('collection_allocations as inactive_allocations', 'inactive_allocations.contribution_slot_id', '=', 'inactive_slots.id')
             ->whereNotIn('inactive_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
+            ->whereIn('inactive_slots.thrift_plan_id', (clone $scopedPlans)->select('scoped_plans.id'))
             ->whereNull('inactive_slots.active_ordinal')->selectRaw('inactive_slots.thrift_plan_id, COUNT(*) AS invalid_count')
             ->groupBy('inactive_slots.thrift_plan_id');
         $query = $this->customerQuery($customers)
@@ -563,6 +614,9 @@ class ReportReadService
                 COALESCE(inactive_funding.invalid_count, 0) AS _inactive_allocations');
         if (filled($filters['plan'] ?? null)) {
             $query->where('plans.plan_id', $filters['plan']);
+        }
+        if (isset($filters['_funding_plan_ids'])) {
+            $query->whereIn('plans.plan_id', $filters['_funding_plan_ids']);
         }
         if (filled($filters['plan_status'] ?? null)) {
             $query->where('plans.status', $filters['plan_status']);
@@ -695,7 +749,9 @@ class ReportReadService
         $ledgerTotals = DB::table('ledger_entries as lines')
             ->join('ledger_accounts as accounts', 'accounts.id', '=', 'lines.ledger_account_id')
             ->selectRaw("lines.ledger_posting_group_id, COUNT(*) AS line_count,
-                SUM(CASE WHEN accounts.code = 'agent_receivable_ngn' AND lines.side = 'debit' THEN lines.amount_kobo ELSE 0 END) AS agent_debit,
+                SUM(CASE WHEN accounts.code IN ('agent_receivable_ngn', 'business_bank_ngn', 'payment_clearing_ngn') AND lines.side = 'debit' THEN lines.amount_kobo ELSE 0 END) AS custody_debit,
+                MAX(CASE WHEN lines.side = 'debit' THEN accounts.code ELSE NULL END) AS debit_code,
+                MAX(CASE WHEN lines.side = 'debit' THEN lines.agent_profile_id ELSE NULL END) AS debit_agent,
                 SUM(CASE WHEN accounts.code = 'fee_income_ngn' AND lines.side = 'credit' THEN lines.amount_kobo ELSE 0 END) AS fee_credit")
             ->groupBy('lines.ledger_posting_group_id');
         $feeReceiptCount = DB::table('collection_receipts as receipts')
@@ -743,6 +799,7 @@ class ReportReadService
                 'components.amount_kobo as _component_amount', 'receipts.id as _receipt_id',
                 'receipts.customer_profile_id as _receipt_customer', 'receipts.fee_amount_kobo as _receipt_fees',
                 'receipts.savings_amount_kobo as _receipt_savings', 'receipts.tender_amount_kobo as _receipt_tender',
+                'receipts.custody_account_code as _custody_code', 'receipts.recording_agent_profile_id as _recording_agent_id',
                 'projection.status as _projection_status', 'projection.gross_amount_kobo as _projection_tender',
                 'projection.fee_amount_kobo as _projection_fees', 'posting.event_type as _posting_type',
                 'posting.source_type as _posting_source_type', 'posting.source_id as _posting_source_id',
@@ -750,7 +807,8 @@ class ReportReadService
                 'posting.id as _posting_id',
                 'posting.committed_at as _posting_committed', 'settlement.amount_kobo as _settlement_amount',
                 'settlement.currency as _settlement_currency', 'ledger_totals.line_count as _line_count',
-                'ledger_totals.agent_debit as _agent_debit', 'ledger_totals.fee_credit as _fee_credit')
+                'ledger_totals.custody_debit as _custody_debit', 'ledger_totals.debit_code as _debit_code',
+                'ledger_totals.debit_agent as _debit_agent', 'ledger_totals.fee_credit as _fee_credit')
             ->orderByDesc('receipts.received_date')->orderByDesc('components.id');
         $receiptSpec = ['code' => 'fee_external_receipts', 'query' => $receipts,
             'columns' => ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer',
@@ -763,7 +821,7 @@ class ReportReadService
             'primary' => $this->consume($activitySpec, $filters, $cursor, $binding, $manifest,
                 'Recorded fee obligation activity only. Assessment and waiver are not cash or income; unsupported fee families remain unavailable.', $state, 'primary'),
             'external_receipts' => $this->consume($receiptSpec, $filters, $cursor, $binding, $manifest,
-                'Verified external fee components by receipt date. Cash tender is counted once in the collection owner; this section excludes savings principal.', $state, 'external_receipts'),
+                'Verified external fee components by receipt date. Tender is counted once in the collection owner; this section excludes savings principal.', $state, 'external_receipts'),
         ];
     }
 
@@ -811,7 +869,8 @@ class ReportReadService
                     'refs.transaction_reference as transaction', 'receipts.received_date as date', 'projection.committed_at as committed_at',
                     'receipts.timezone as receipt_timezone', 'recording_agents.agent_id as recording_agent', 'plans.plan_id as plan',
                     'projection.status as correction_state', 'projection.gross_amount_kobo as _projected_tender', 'receipts.savings_amount_kobo as received_savings',
-                    'receipts.fee_amount_kobo as received_fees', 'receipts.tender_amount_kobo as cash_received');
+                    'receipts.fee_amount_kobo as received_fees', 'receipts.tender_amount_kobo as total_received', 'receipts.method_label as method')
+                ->selectRaw("CASE WHEN receipts.method = 'cash' THEN receipts.tender_amount_kobo ELSE 0 END AS cash_received");
             if (($filters['agent_basis'] ?? '') === 'recording') {
                 $query->where('receipts.recording_agent_profile_id', $agentId);
             }
@@ -823,10 +882,10 @@ class ReportReadService
                 ->selectRaw('COALESCE(allocations.slots, 0) AS allocation_count');
             $date = 'receipts.received_date';
             $id = 'receipts.id';
-            $money = ['received_savings', 'received_fees', 'cash_received'];
+            $money = ['received_savings', 'received_fees', 'cash_received', 'total_received'];
             $counts = ['posted_receipt_count' => null];
             $columns = ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer', 'date' => 'Received date',
-                'committed_at' => 'Committed (UTC)', 'receipt_timezone' => 'Receipt timezone', 'plan' => 'Plan',
+                'committed_at' => 'Committed (UTC)', 'receipt_timezone' => 'Receipt timezone', 'plan' => 'Plan', 'method' => 'Method',
                 'recording_agent' => 'Recording Agent', 'current_agent' => 'Current Agent', 'correction_state' => 'Correction state', 'allocation_count' => 'Allocated slots'];
             $link = 'collections.show';
             $reference = 'reference';
@@ -976,6 +1035,11 @@ class ReportReadService
         foreach ($tables as $table) {
             $ownerVersions[$table] = DB::table($table)->selectRaw('COUNT(*) AS rows_count, MAX(id) AS watermark, MAX(updated_at) AS updated_at')->first();
         }
+        if ($spec['code'] === 'batch_reconciliation') {
+            foreach (['collection_settlements', 'collection_settlement_files', 'collection_bank_reference_claims', 'collection_method_versions', 'collection_evidence_reviews', 'collection_evidence_files', 'collection_payment_evidence'] as $table) {
+                $ownerVersions[$table] = DB::table($table)->selectRaw('COUNT(*) AS rows_count, MAX(id) AS watermark, MAX(created_at) AS created_at')->first();
+            }
+        }
         hash_update($digest, json_encode([$state, $binding, $ownerVersions], JSON_THROW_ON_ERROR));
         $totals = array_fill_keys([...$spec['money'], ...array_keys($spec['counts'])], 0);
         $groups = [];
@@ -1061,7 +1125,10 @@ class ReportReadService
                     || $this->integer($row['_projection_tender']) !== $this->integer($row['_receipt_tender'])
                     || $this->add($this->integer($row['_receipt_savings']), $this->integer($row['_receipt_fees'])) !== $this->integer($row['_receipt_tender'])
                     || $this->integer($row['_settlement_amount']) !== $amount || $this->integer($row['_line_count']) !== 2
-                    || $this->integer($row['_agent_debit']) !== $amount || $this->integer($row['_fee_credit']) !== $amount
+                    || $this->integer($row['_custody_debit']) !== $amount || $this->integer($row['_fee_credit']) !== $amount
+                    || $row['_debit_code'] !== $row['_custody_code']
+                    || ($row['_custody_code'] === 'agent_receivable_ngn'
+                        ? $row['_debit_agent'] !== $row['_recording_agent_id'] : $row['_debit_agent'] !== null)
                     || $this->integer($row['_posting_id']) > $state['watermark']
                     || CarbonImmutable::parse($row['_posting_committed'], 'UTC')->greaterThan(CarbonImmutable::parse($manifest['cutoff']))) {
                     throw new RuntimeException('External fee receipt disagrees with its posting.');
@@ -1070,8 +1137,8 @@ class ReportReadService
             if (isset($row['received_savings'])) {
                 $savings = $this->integer($row['received_savings']);
                 $fees = $this->integer($row['received_fees']);
-                if ($row['correction_state'] !== 'posted' || $this->integer($row['_projected_tender']) !== $this->integer($row['cash_received'])
-                    || $this->add($savings, $fees) !== $this->integer($row['cash_received'])) {
+                if ($row['correction_state'] !== 'posted' || $this->integer($row['_projected_tender']) !== $this->integer($row['total_received'])
+                    || $this->add($savings, $fees) !== $this->integer($row['total_received'])) {
                     throw new RuntimeException('Receipt components disagree.');
                 }
             }
@@ -1088,7 +1155,31 @@ class ReportReadService
                 $savings = $this->integer($row['savings_component']);
                 $fees = $this->integer($row['external_fee_component']);
                 $remitted = $this->integer($row['confirmed_remittances']);
+                $row['method'] ??= 'Cash';
+                $received = $remitted;
                 $outstanding = $this->integer($row['unremitted']);
+                if ($row['_custody'] !== 'agent_receivable_ngn') {
+                    try {
+                        $batch = CollectionBatch::query()->whereKey($row['reference'])->sole();
+                        $position = app(CollectionBatchPosition::class)->read($batch);
+                    } catch (Throwable $exception) {
+                        throw new RuntimeException('Batch custody verification unavailable.', previous: $exception);
+                    }
+                    $received = $this->integer($row['bank_received']);
+                    $outstanding = $this->integer($row['pending_settlement']);
+                    if ($remitted !== 0 || $position['expected_kobo'] !== $tender
+                        || $position['received_kobo'] !== $received || $position['outstanding_kobo'] !== $outstanding
+                        || $this->integer($row['_invalid_settlements']) !== 0) {
+                        throw new RuntimeException('Bank custody disagrees with its verified owner.');
+                    }
+                } else {
+                    $batch = CollectionBatch::query()->whereKey($row['reference'])->sole();
+                    $position = app(CollectionBatchPosition::class)->read($batch);
+                    if ($this->integer($row['_settled']) !== 0 || $position['expected_kobo'] !== $tender
+                        || $position['received_kobo'] !== $received || $position['outstanding_kobo'] !== $outstanding) {
+                        throw new RuntimeException('Agent custody disagrees with its verified owner.');
+                    }
+                }
                 $receiptCount = $this->integer($row['receipt_count']);
                 $openExceptions = $this->integer($row['open_exceptions']);
                 $revision = $this->integer($row['revision']);
@@ -1096,20 +1187,21 @@ class ReportReadService
                 if ($receiptCount === 0 || $revision < 1 || $this->integer($row['_invalid_receipts']) !== 0
                     || ($row['_invalid_remittances'] !== null && $this->integer($row['_invalid_remittances']) !== 0)
                     || $this->add($savings, $fees) !== $tender || $remitted > $tender
-                    || $tender - $remitted !== $outstanding
+                    || $received > $tender || $tender - $received !== $outstanding
                     || ! in_array($row['state'], ['open', 'ready_for_review', 'in_review', 'exception', 'reconciled'], true)
                     || ($revision === 1 && $row['predecessor'] !== null)
                     || ($revision > 1 && ($row['predecessor'] === null
                         || $row['_predecessor_agent'] !== $row['_agent_id']
                         || $row['_predecessor_date'] !== $row['received_date']
                         || $row['_predecessor_timezone'] !== $row['_timezone']
+                        || $row['_predecessor_method'] !== $row['_method_identity']
                         || $this->integer($row['_predecessor_revision']) + 1 !== $revision))) {
-                    throw new RuntimeException('Cash batch source disagrees with its owner.');
+                    throw new RuntimeException('Batch source disagrees with its owner.');
                 }
                 if ($row['latest_review'] !== null) {
                     $reviewExpected = $this->integer($row['_review_expected']);
                     $reviewRemitted = $this->integer($row['_review_remitted']);
-                    if ($reviewExpected !== $tender || $reviewRemitted > $remitted
+                    if ($reviewExpected !== $tender || $reviewRemitted > $received
                         || $reviewRemitted > $reviewExpected
                         || $this->integer($row['_review_outstanding']) !== $reviewExpected - $reviewRemitted
                         || $this->integer($row['_review_version']) >= $version

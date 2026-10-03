@@ -1,6 +1,23 @@
 <script setup lang="ts">
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import PlanFeeHistory from '@/components/PlanFeeHistory.vue';
+import type { PlanFeeHistory as FeeHistory } from '@/types/plan-fee-history';
+import PlanPostedActivity from '@/components/PlanPostedActivity.vue';
+import PlanPostingHistory from '@/components/PlanPostingHistory.vue';
+import type { PlanPostingHistory as PostingHistory } from '@/types/plan-posted-activity';
+import type { PlanPostedActivity as PostedActivity } from '@/types/plan-posted-activity';
+import PlanSavingsSummary from '@/components/PlanSavingsSummary.vue';
+import type { PlanSavings } from '@/types/plan-savings';
+import PlanEstimateSummary from '@/components/PlanEstimateSummary.vue';
+import type { PlanEstimate } from '@/types/plan-estimate';
+import {
+    Head,
+    Link,
+    router,
+    setLayoutProps,
+    useForm,
+    usePage,
+} from '@inertiajs/vue3';
+import { computed, nextTick, ref, watch, watchEffect } from 'vue';
 import {
     AlertCircle,
     ArrowLeft,
@@ -11,6 +28,8 @@ import {
 } from '@lucide/vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import PlanFundingSummary from '@/components/PlanFundingSummary.vue';
+import type { PlanFundingSummary as FundingSummary } from '@/types/plan-funding';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -46,6 +65,11 @@ import { create as createCollection } from '@/routes/customers/collections';
 const page = usePage();
 
 type PlanData = {
+    fee_history: FeeHistory;
+    posted_activity: PostedActivity;
+    posting_history: PostingHistory;
+    savings_summary: PlanSavings;
+    estimate: PlanEstimate | null;
     id: string;
     status: string;
     status_label: string;
@@ -73,6 +97,8 @@ type PlanData = {
         estimated_amount: string | null;
         estimate_available: boolean;
         description: string;
+        early_termination_policy_version: number | null;
+        early_termination_description: string | null;
         acknowledged_at: string | null;
     } | null;
     slots: Array<{
@@ -80,6 +106,9 @@ type PlanData = {
         due_date: string;
         formatted_expected_amount: string;
         collection_status: string;
+        formatted_funded_amount: string | null;
+        formatted_remaining_amount: string | null;
+        advance: boolean | null;
     }>;
     revisions: Array<{
         revision: number;
@@ -99,7 +128,7 @@ type PlanData = {
         actor: string | null;
         effective_at: string | null;
     }>;
-    financial_summary: { status: string; message: string };
+    financial_summary: FundingSummary;
     created_at: string | null;
 };
 
@@ -124,9 +153,14 @@ const props = defineProps<{
         can_renew: boolean;
     };
     attempt_reference: string;
+    directory_context: Record<string, string | number>;
 }>();
 
 const confirmationAction = ref<LifecycleAction | null>(null);
+const actionMessage = ref('');
+const actionNotice = ref<HTMLElement | null>(null);
+const actionRequiresReload = ref(false);
+const reloadingAction = ref(false);
 const showAllSlots = ref(false);
 const transitionForm = useForm({
     attempt_reference: props.attempt_reference,
@@ -145,6 +179,19 @@ defineOptions({
             { title: 'Plan', href: '#' },
         ],
     },
+});
+
+const directoryLink = computed(() =>
+    plansIndex({ query: props.directory_context }),
+);
+watchEffect(() => {
+    setLayoutProps({
+        breadcrumbs: [
+            { title: 'Dashboard', href: dashboard() },
+            { title: 'Plans', href: directoryLink.value },
+            { title: 'Plan', href: '#' },
+        ],
+    });
 });
 
 const visibleSlots = computed(() =>
@@ -176,13 +223,74 @@ watch(
 );
 
 const openAction = (action: LifecycleAction): void => {
+    if (
+        transitionForm.processing ||
+        reloadingAction.value ||
+        actionRequiresReload.value
+    )
+        return;
     confirmationAction.value = action;
+    actionMessage.value = '';
     transitionForm.clearErrors();
+};
+
+const focusActionNotice = (): void => {
+    void nextTick(() => actionNotice.value?.focus());
+};
+
+const reloadAction = (): void => {
+    if (transitionForm.processing || reloadingAction.value) return;
+    reloadingAction.value = true;
+    router.reload({
+        only: ['plan', 'customer', 'actions', 'attempt_reference'],
+        onSuccess: (currentPage) => {
+            const currentPlan = currentPage.props.plan as
+                | { id?: string }
+                | undefined;
+            if (
+                currentPage.component !== 'plans/Show' ||
+                currentPlan?.id !== props.plan.id
+            )
+                return;
+            actionRequiresReload.value = false;
+            actionMessage.value = '';
+            transitionForm.clearErrors();
+            transitionForm.reset('reason', 'customer_explanation');
+            confirmationAction.value = null;
+        },
+        onError: () => {
+            actionMessage.value =
+                'The current plan could not be verified. Reload again before confirming another action.';
+        },
+        onHttpException: (response) => {
+            actionMessage.value =
+                response.status === 403 || response.status === 404
+                    ? 'The current plan is unavailable or your access has changed. Your previous action remains unverified.'
+                    : 'The current plan could not be verified. Reload again before confirming another action.';
+            return false;
+        },
+        onNetworkError: () => {
+            actionMessage.value =
+                'The current plan could not be verified because the connection failed. Reload again before confirming another action.';
+            return false;
+        },
+        onFinish: () => {
+            reloadingAction.value = false;
+            focusActionNotice();
+        },
+    });
 };
 
 const submitAction = (): void => {
     const action = confirmationAction.value;
-    if (!action) return;
+    if (
+        !action ||
+        transitionForm.processing ||
+        reloadingAction.value ||
+        actionRequiresReload.value
+    )
+        return;
+    actionMessage.value = '';
     const path =
         action === 'pause'
             ? pausePlan(props.plan.id).url
@@ -200,10 +308,27 @@ const submitAction = (): void => {
         }))
         .post(path, {
             preserveScroll: true,
+            onHttpException: (response) => {
+                actionRequiresReload.value = true;
+                actionMessage.value =
+                    response.status === 409
+                        ? 'The plan or Customer changed, or this action is no longer available. Reload the current plan and review it before confirming another action.'
+                        : response.status === 403 || response.status === 404
+                          ? 'This action was rejected because the plan is unavailable or your access has changed. Reload to check your current access before confirming another action.'
+                          : 'The action outcome could not be confirmed. Reload the current plan to check its status before confirming another action.';
+                return false;
+            },
+            onNetworkError: () => {
+                actionRequiresReload.value = true;
+                actionMessage.value =
+                    'The action outcome could not be confirmed because the connection failed. Reload the current plan to check whether it was saved before confirming another action.';
+                return false;
+            },
             onSuccess: () => {
                 confirmationAction.value = null;
                 transitionForm.reset('reason', 'customer_explanation');
             },
+            onFinish: focusActionNotice,
         });
 };
 
@@ -280,8 +405,17 @@ const statusVariant = (
                     ></Button
                 >
                 <Button
-                    v-if="actions.can_cancel"
+                    v-if="
+                        actions.can_manage &&
+                        ['active', 'paused'].includes(plan.status)
+                    "
                     variant="destructive"
+                    :disabled="!actions.can_cancel"
+                    :aria-describedby="
+                        actions.can_cancel
+                            ? undefined
+                            : 'plan-cancellation-blocker'
+                    "
                     @click="openAction('cancel')"
                     >Cancel unused plan</Button
                 >
@@ -297,6 +431,20 @@ const statusVariant = (
                 >
             </div>
         </div>
+
+        <p
+            v-if="
+                actions.can_manage &&
+                ['active', 'paused'].includes(plan.status) &&
+                !actions.can_cancel
+            "
+            id="plan-cancellation-blocker"
+            class="text-muted-foreground text-sm"
+        >
+            This cycle has fee or financial activity and cannot use unused
+            cancellation. Review its recorded fees and payments before choosing
+            a settlement action.
+        </p>
 
         <div
             class="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]"
@@ -384,25 +532,60 @@ const statusVariant = (
             <Card>
                 <CardHeader>
                     <CardTitle class="flex items-center gap-2"
-                        ><WalletCards class="size-4" /> Actual
-                        savings</CardTitle
+                        ><WalletCards class="size-4" /> Plan funding</CardTitle
                     >
                     <CardDescription
-                        >Financial activity belongs to collection and ledger
-                        workflows.</CardDescription
+                        >Recorded allocation coverage of the agreed
+                        schedule.</CardDescription
                     >
                 </CardHeader>
                 <CardContent>
-                    <Alert>
-                        <AlertCircle class="size-4" />
-                        <AlertTitle>Unavailable</AlertTitle>
-                        <AlertDescription>{{
-                            plan.financial_summary.message
-                        }}</AlertDescription>
-                    </Alert>
+                    <PlanFundingSummary :summary="plan.financial_summary" />
                 </CardContent>
             </Card>
         </div>
+
+        <Card>
+            <CardHeader
+                ><CardTitle>Contractual estimates</CardTitle></CardHeader
+            >
+            <CardContent
+                ><PlanEstimateSummary :estimate="plan.estimate"
+            /></CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader
+                ><CardTitle
+                    >Actual savings and reservations</CardTitle
+                ></CardHeader
+            >
+            <CardContent
+                ><PlanSavingsSummary :summary="plan.savings_summary"
+            /></CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader
+                ><CardTitle
+                    >Posted payouts and deductions</CardTitle
+                ></CardHeader
+            >
+            <CardContent class="space-y-6">
+                <PlanPostedActivity :summary="plan.posted_activity" />
+                <PlanPostingHistory
+                    :plan-id="plan.id"
+                    :summary="plan.posting_history"
+                />
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader><CardTitle>Recorded cycle fees</CardTitle></CardHeader>
+            <CardContent
+                ><PlanFeeHistory :plan-id="plan.id" :summary="plan.fee_history"
+            /></CardContent>
+        </Card>
 
         <Card v-if="plan.fee">
             <CardHeader>
@@ -413,6 +596,13 @@ const statusVariant = (
                 <p class="font-medium">{{ plan.fee.formatted_amount }}</p>
                 <p class="text-muted-foreground text-sm">
                     {{ plan.fee.description }}
+                </p>
+                <p
+                    v-if="plan.fee.early_termination_description"
+                    class="text-muted-foreground text-sm"
+                >
+                    Early termination:
+                    {{ plan.fee.early_termination_description }}
                 </p>
                 <p
                     v-if="plan.fee.estimate_available"
@@ -434,8 +624,9 @@ const statusVariant = (
                     <div>
                         <CardTitle>Expected contribution dates</CardTitle
                         ><CardDescription
-                            >These are expected schedule slots. Collection
-                            status is unavailable.</CardDescription
+                            >Agreed dates and verified allocated contributions.
+                            Unavailable funding retains the agreed
+                            target.</CardDescription
                         >
                     </div>
                 </div>
@@ -463,7 +654,24 @@ const statusVariant = (
                                 {{ slot.formatted_expected_amount }}
                             </p>
                             <p class="text-muted-foreground text-[11px]">
-                                collection unavailable
+                                Target
+                            </p>
+                            <template
+                                v-if="slot.formatted_funded_amount !== null"
+                            >
+                                <p class="mt-1 text-xs">
+                                    Allocated {{ slot.formatted_funded_amount }}
+                                </p>
+                                <p class="text-muted-foreground text-xs">
+                                    Remaining
+                                    {{ slot.formatted_remaining_amount }}
+                                </p>
+                            </template>
+                            <p
+                                class="text-muted-foreground mt-1 text-xs capitalize"
+                            >
+                                {{ slot.collection_status }}
+                                <span v-if="slot.advance"> · Advance</span>
                             </p>
                         </div>
                     </div>
@@ -576,7 +784,7 @@ const statusVariant = (
 
         <div class="flex justify-start">
             <Button as-child variant="ghost"
-                ><Link :href="plansIndex()"
+                ><Link :href="directoryLink"
                     ><ArrowLeft class="mr-2 size-4" />Back to plans</Link
                 ></Button
             >
@@ -587,11 +795,43 @@ const statusVariant = (
         :open="confirmationAction !== null"
         @update:open="
             (open) => {
-                if (!open) confirmationAction = null;
+                if (
+                    !open &&
+                    !transitionForm.processing &&
+                    !reloadingAction &&
+                    !actionRequiresReload
+                )
+                    confirmationAction = null;
             }
         "
     >
-        <DialogContent>
+        <DialogContent
+            :show-close-button="
+                !transitionForm.processing &&
+                !reloadingAction &&
+                !actionRequiresReload
+            "
+            @escape-key-down="
+                (event) => {
+                    if (
+                        transitionForm.processing ||
+                        reloadingAction ||
+                        actionRequiresReload
+                    )
+                        event.preventDefault();
+                }
+            "
+            @interact-outside="
+                (event) => {
+                    if (
+                        transitionForm.processing ||
+                        reloadingAction ||
+                        actionRequiresReload
+                    )
+                        event.preventDefault();
+                }
+            "
+        >
             <DialogHeader>
                 <DialogTitle>{{ confirmationTitle }}</DialogTitle>
                 <DialogDescription>
@@ -611,17 +851,40 @@ const statusVariant = (
                 </DialogDescription>
             </DialogHeader>
             <div class="grid gap-4">
+                <p
+                    v-if="actionMessage"
+                    id="plan-action-notice"
+                    ref="actionNotice"
+                    role="alert"
+                    tabindex="-1"
+                    class="text-destructive border-destructive/30 focus-visible:ring-ring rounded-xl border p-3 text-sm outline-none focus-visible:ring-2"
+                >
+                    {{ actionMessage }}
+                </p>
                 <div class="grid gap-2">
                     <Label for="plan-action-reason">Reason</Label>
                     <textarea
                         id="plan-action-reason"
                         v-model="transitionForm.reason"
+                        :disabled="
+                            transitionForm.processing ||
+                            reloadingAction ||
+                            actionRequiresReload
+                        "
+                        :aria-invalid="!!transitionForm.errors.reason"
+                        :aria-describedby="
+                            transitionForm.errors.reason
+                                ? 'plan-action-reason-error'
+                                : undefined
+                        "
                         rows="2"
                         maxlength="500"
                         class="border-input bg-background focus-visible:ring-ring/30 min-h-20 w-full rounded-xl border px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2"
                     />
                     <p
                         v-if="transitionForm.errors.reason"
+                        id="plan-action-reason-error"
+                        role="alert"
                         class="text-destructive text-sm"
                     >
                         {{ transitionForm.errors.reason }}
@@ -634,12 +897,27 @@ const statusVariant = (
                     <textarea
                         id="plan-action-explanation"
                         v-model="transitionForm.customer_explanation"
+                        :disabled="
+                            transitionForm.processing ||
+                            reloadingAction ||
+                            actionRequiresReload
+                        "
+                        :aria-invalid="
+                            !!transitionForm.errors.customer_explanation
+                        "
+                        :aria-describedby="
+                            transitionForm.errors.customer_explanation
+                                ? 'plan-action-explanation-error'
+                                : undefined
+                        "
                         rows="2"
                         maxlength="500"
                         class="border-input bg-background focus-visible:ring-ring/30 min-h-20 w-full rounded-xl border px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2"
                     />
                     <p
                         v-if="transitionForm.errors.customer_explanation"
+                        id="plan-action-explanation-error"
+                        role="alert"
                         class="text-destructive text-sm"
                     >
                         {{ transitionForm.errors.customer_explanation }}
@@ -647,6 +925,8 @@ const statusVariant = (
                 </div>
                 <p
                     v-if="transitionForm.errors.plan_version"
+                    id="plan-action-version-error"
+                    role="alert"
                     class="text-destructive text-sm"
                 >
                     {{ transitionForm.errors.plan_version }}
@@ -654,10 +934,21 @@ const statusVariant = (
             </div>
             <DialogFooter>
                 <Button
+                    v-if="!actionRequiresReload"
                     variant="outline"
-                    :disabled="transitionForm.processing"
+                    :disabled="transitionForm.processing || reloadingAction"
                     @click="confirmationAction = null"
                     >Keep current status</Button
+                >
+                <Button
+                    v-if="actionRequiresReload"
+                    variant="outline"
+                    :disabled="transitionForm.processing || reloadingAction"
+                    aria-describedby="plan-action-notice"
+                    @click="reloadAction"
+                    >{{
+                        reloadingAction ? 'Reloading…' : 'Reload current plan'
+                    }}</Button
                 >
                 <Button
                     :variant="
@@ -667,8 +958,17 @@ const statusVariant = (
                     "
                     :disabled="
                         transitionForm.processing ||
+                        reloadingAction ||
+                        actionRequiresReload ||
                         transitionForm.reason.trim().length < 3 ||
                         transitionForm.customer_explanation.trim().length < 3
+                    "
+                    :aria-describedby="
+                        transitionForm.errors.plan_version
+                            ? 'plan-action-version-error'
+                            : actionMessage
+                              ? 'plan-action-notice'
+                              : undefined
                     "
                     @click="submitAction"
                 >

@@ -51,23 +51,33 @@ class CashRecoveryLedger
     {
         $total = 0;
         foreach ($returns as $returned) {
-            $matches = $execution instanceof CashExecution ? $returned->cash_execution_id === $execution->id : $returned->cash_disbursement_id === $execution->id;
-            $posting = LedgerPostingGroup::query()->find($returned->return_posting_group_id);
-            if (! $matches || $returned->status !== 'confirmed' || $returned->recipient_user_id !== $execution->recipient_user_id
-                || $returned->custodian_user_id !== $execution->executor_user_id || $returned->confirmed_at === null
-                || $posting === null || $posting->source_type !== 'cash_recovery' || $posting->source_id !== (string) $returned->id
-                || $posting->event_type !== 'cash_return' || ! hash_equals($posting->payload_hash, $returned->payload_hash)) {
+            if ($returned->status !== 'confirmed') {
                 throw new ConflictHttpException('The original execution requires verified linked cash return postings.');
             }
-            $lines = $posting->entries()->with('account')->get();
-            if ($lines->count() !== 2 || ! $lines->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::BusinessCash && $line->side === LedgerEntrySide::Debit && $line->amount_kobo === $returned->amount_kobo)
-                || ! $lines->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::CashRecoveryClearing && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $returned->amount_kobo)) {
-                throw new ConflictHttpException('The recovery clearing source is not authoritative.');
-            }
+            $this->assertReturnPosting($execution, $returned, DB::transactionLevel() > 0);
             $total += $returned->amount_kobo;
         }
         if ($total !== $execution->amount_kobo || app(FinancialCashPosition::class)->balance(LedgerAccountCode::CashRecoveryClearing) < $total) {
             throw new ConflictHttpException('Full verified returned cash is required before compensation.');
+        }
+    }
+
+    public function assertReturnPosting(CashExecution|CashDisbursement $execution, CashRecovery $returned, bool $forUpdate = false): void
+    {
+        $matches = $execution instanceof CashExecution ? $returned->cash_execution_id === $execution->id : $returned->cash_disbursement_id === $execution->id;
+        $posting = LedgerPostingGroup::query()->whereKey($returned->return_posting_group_id)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
+        if (! $matches || $returned->recipient_user_id !== $execution->recipient_user_id
+            || $returned->custodian_user_id !== $execution->executor_user_id || $returned->confirmed_at === null
+            || $posting === null || $posting->source_type !== 'cash_recovery' || $posting->source_id !== (string) $returned->id
+            || $posting->event_type !== 'cash_return' || ! hash_equals($posting->payload_hash, $returned->payload_hash)) {
+            throw new ConflictHttpException('The original execution requires verified linked cash return postings.');
+        }
+        $lines = $posting->entries()->with(['account' => fn ($query) => $query->when($forUpdate, fn ($query) => $query->lockForUpdate())])
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        if ($lines->count() !== 2 || ! $lines->contains(fn ($line): bool => $line->account?->code === LedgerAccountCode::BusinessCash && $line->side === LedgerEntrySide::Debit && $line->amount_kobo === $returned->amount_kobo)
+            || ! $lines->contains(fn ($line): bool => $line->account?->code === LedgerAccountCode::CashRecoveryClearing && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $returned->amount_kobo)) {
+            throw new ConflictHttpException('The recovery clearing source is not authoritative.');
         }
     }
 

@@ -15,6 +15,7 @@ type Receipt = {
     recorded_at: string;
     timezone: string;
     method: string;
+    method_reference: string | null;
     tender_kobo: number;
     savings_kobo: number;
     fees_kobo: number;
@@ -48,13 +49,20 @@ const money = (kobo: number): string =>
     <div class="flex flex-col gap-6">
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">
-                Cash receipt {{ receipt.id }}
+                Receipt {{ receipt.id }}
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
                 Posted for {{ receipt.customer_name }} on
                 {{ receipt.received_date }} ({{ receipt.timezone }}).
+                {{ receipt.method }}
             </p>
         </div>
+        <p
+            v-if="receipt.method_reference"
+            class="text-muted-foreground text-sm break-all"
+        >
+            Payment reference: {{ receipt.method_reference }}
+        </p>
         <p v-if="receipt.received_at_utc" class="text-muted-foreground text-sm">
             Actual received instant: {{ receipt.received_at_utc }} UTC. Recorded
             in the system: {{ receipt.recorded_at }}.
@@ -71,7 +79,7 @@ const money = (kobo: number): string =>
                     Fees<br /><strong>{{ money(receipt.fees_kobo) }}</strong>
                 </div>
                 <div>
-                    Total cash<br /><strong>{{
+                    Total received<br /><strong>{{
                         money(receipt.tender_kobo)
                     }}</strong>
                 </div></CardContent

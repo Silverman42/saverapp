@@ -18,6 +18,7 @@ use App\Models\FeeObligation;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
 use App\Models\FinancialWorkflowSupplement;
+use App\Models\ManualCharge;
 use App\Models\PlanLifecycleEvent;
 use App\Models\PlanNotificationIntent;
 use App\Models\PlanOperationAttempt;
@@ -123,9 +124,12 @@ class ThriftPlanService
                 'estimate_available' => ! ($rule->model === FeeRuleModel::Percentage && $rule->timing === FeeRuleTiming::Withdrawal),
                 'formatted_amount' => $this->formatFeeQuote($rule, $quote->amountKobo),
                 'customer_description' => $rule->customer_description,
+                'early_termination_policy_version' => EarlyTerminationPolicy::VERSION,
+                'early_termination_description' => app(EarlyTerminationPolicy::class)->disclosure($rule),
             ],
             'slots' => $slots,
             'open_cycle_available' => true,
+            'estimate' => app(PlanEstimateService::class)->forQuote($rule, $quote, $expectedGrossKobo),
             'preview_fingerprint' => hash('sha256', json_encode($fingerprintData, JSON_THROW_ON_ERROR)),
         ];
     }
@@ -153,7 +157,8 @@ class ThriftPlanService
 
         $business = BusinessProfile::current();
 
-        $terms = $this->normalizeTerms($data, $currentRevision->timezone);
+        $hasActivity = $this->hasCycleActivity($plan);
+        $terms = $this->normalizeTerms($data, $currentRevision->timezone, $hasActivity ? $currentRevision->start_date : null);
         $submittedRuleId = (int) ($data['fee_rule_id'] ?? 0);
         $rule = $submittedRuleId === $currentRevision->feeSnapshot->fee_rule_id
             ? FeeRule::query()->whereKey($submittedRuleId)->firstOrFail()
@@ -164,7 +169,6 @@ class ThriftPlanService
 
         $expectedGrossKobo = $this->checkedMultiply($terms['contribution_amount_kobo'], $terms['contribution_days']);
         $financialTermsChanged = $this->financialTermsChanged($terms, $currentRevision, $rule);
-        $hasActivity = $this->hasCycleActivity($plan);
         if ($hasActivity && $financialTermsChanged) {
             throw new ConflictHttpException('Financial and schedule terms are locked after activity. Only the plan name and Customer-visible notes can change.');
         }
@@ -226,8 +230,11 @@ class ThriftPlanService
                 'estimate_available' => ! ($rule->model === FeeRuleModel::Percentage && $rule->timing === FeeRuleTiming::Withdrawal),
                 'formatted_amount' => $this->formatFeeQuote($rule, $quote->amountKobo),
                 'customer_description' => $rule->customer_description,
+                'early_termination_policy_version' => $financialTermsChanged ? EarlyTerminationPolicy::VERSION : $currentRevision->feeSnapshot->early_termination_policy_version,
+                'early_termination_description' => $financialTermsChanged ? app(EarlyTerminationPolicy::class)->disclosure($rule) : $currentRevision->feeSnapshot->early_termination_description,
             ],
             'financial_terms_changed' => $financialTermsChanged,
+            'estimate' => app(PlanEstimateService::class)->forQuote($rule, $quote, $expectedGrossKobo),
             'financial_terms_locked' => $hasActivity,
             'slots' => $slots,
             'preview_fingerprint' => $fingerprint,
@@ -403,7 +410,7 @@ class ThriftPlanService
                 ],
                 actor: $context->actor,
 
-                context: ['executor' => self::class]
+                context: ['executor' => self::class, 'correlation_reference' => $attempt->attempt_reference]
             );
 
             $attempt->thrift_plan_id = $plan->id;
@@ -469,8 +476,8 @@ class ThriftPlanService
             }
             $this->assertBusinessTimezone($currentRevision->timezone);
 
-            $terms = $this->normalizeTerms($data, $currentRevision->timezone);
-            $hasActivity = $this->hasCycleActivity($planRecord);
+            $hasActivity = $this->hasCycleActivity($planRecord, true);
+            $terms = $this->normalizeTerms($data, $currentRevision->timezone, $hasActivity ? $currentRevision->start_date : null);
             $submittedRuleId = (int) $data['fee_rule_id'];
             $rule = $submittedRuleId === $currentRevision->feeSnapshot->fee_rule_id
                 ? FeeRule::query()->whereKey($submittedRuleId)->lockForUpdate()->firstOrFail()
@@ -490,7 +497,7 @@ class ThriftPlanService
                 throw new ConflictHttpException('Financial and schedule terms are locked after activity. Only the plan name and Customer-visible notes can change.');
             }
 
-            if (! $hasActivity && $this->hasFeeObligations($planRecord)) {
+            if (! $hasActivity && $this->hasFeeObligations($planRecord, true)) {
                 throw new ConflictHttpException('A fee obligation exists for this plan. Terms cannot be amended.');
             }
             if (! (bool) ($data['customer_agreement_attested'] ?? false)) {
@@ -528,14 +535,16 @@ class ThriftPlanService
                 $quote = $this->feeObligationService->quote($rule, $previewBasisKobo, 'plan_preview', $planRecord->plan_id);
                 $quoteAmountKobo = $quote->amountKobo;
             }
-            $snapshot = $this->createFeeSnapshot(
-                $context->customerProfile,
-                $planRecord,
-                $revisionNumber,
-                $rule,
-                $quoteAmountKobo,
-                $previewBasisKobo,
-            );
+            $snapshot = $financialTermsChanged
+                ? $this->createFeeSnapshot(
+                    $context->customerProfile,
+                    $planRecord,
+                    $revisionNumber,
+                    $rule,
+                    $quoteAmountKobo,
+                    $previewBasisKobo,
+                )
+                : $currentRevision->feeSnapshot;
 
             $revision = $this->createTermsRevision(
                 plan: $planRecord,
@@ -582,11 +591,14 @@ class ThriftPlanService
                     'to_version' => $planRecord->version,
                     'terms_revision' => $revisionNumber,
                     'financial_terms_changed' => $financialTermsChanged,
+                    'customer_profile_id' => $context->customerProfile->id,
+                    'assignment_version' => $context->currentAssignment->version,
+                    'fee_snapshot_id' => $snapshot->id,
                     'reason' => trim((string) $data['reason']),
                 ],
                 actor: $context->actor,
 
-                context: ['executor' => self::class]
+                context: ['executor' => self::class, 'correlation_reference' => $attempt->attempt_reference]
             );
 
             $attempt->status = 'committed';
@@ -656,7 +668,7 @@ class ThriftPlanService
             if ($customerStatus === CustomerStatus::Archived || ($action === 'resume' && $customerStatus !== CustomerStatus::Active)) {
                 throw new ConflictHttpException('The Customer’s current status does not allow this plan action.');
             }
-            if ($action === 'cancel' && ($this->hasCycleActivity($planRecord) || $this->hasFeeObligations($planRecord))) {
+            if ($action === 'cancel' && ! $this->canCancelUnusedCycle($planRecord)) {
                 throw new ConflictHttpException('Only a never-used plan with no fee obligation can be cancelled.');
             }
 
@@ -697,10 +709,13 @@ class ThriftPlanService
                 targetType: ThriftPlan::class,
                 targetId: $planRecord->id,
                 targetReference: $planRecord->plan_id,
-                payload: ['from' => $fromStatus->value, 'to' => $toStatus->value, 'version' => $planRecord->version, 'reason' => $reason],
+                payload: ['from' => $fromStatus->value, 'to' => $toStatus->value, 'from_version' => $fromVersion,
+                    'version' => $planRecord->version, 'customer_profile_id' => $context->customerProfile->id,
+                    'assignment_version' => $context->currentAssignment->version,
+                    'terms_revision' => $planRecord->current_terms_revision, 'reason' => $reason],
                 actor: $context->actor,
 
-                context: ['executor' => self::class]
+                context: ['executor' => self::class, 'correlation_reference' => $attempt->attempt_reference]
             );
 
             $attempt->status = 'committed';
@@ -734,7 +749,7 @@ class ThriftPlanService
      * @param  array<string, mixed>  $data
      * @return array{name: string, contribution_amount_kobo: int, start_date: string, contribution_days: int<1, 366>, customer_visible_notes: ?string}
      */
-    private function normalizeTerms(array $data, string $timezone): array
+    private function normalizeTerms(array $data, string $timezone, ?string $retainedStartDate = null): array
     {
         $name = trim((string) ($data['name'] ?? ''));
         $startDate = trim((string) ($data['start_date'] ?? ''));
@@ -754,7 +769,7 @@ class ThriftPlanService
 
         $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $startDate, $timezone);
         $today = CarbonImmutable::now($timezone)->startOfDay();
-        if ($selectedDate->lt($today) || $selectedDate->gt($today->addDays(365))) {
+        if ($startDate !== $retainedStartDate && ($selectedDate->lt($today) || $selectedDate->gt($today->addDays(365)))) {
             throw ValidationException::withMessages(['start_date' => ['Start date must be today or within the next 365 calendar days.']]);
         }
         if ($notes !== null && mb_strlen($notes) > 2000) {
@@ -882,16 +897,46 @@ class ThriftPlanService
         }
     }
 
-    private function hasCycleActivity(ThriftPlan $plan): bool
+    public function canCancelUnusedCycle(ThriftPlan $plan): bool
     {
-        return $plan->activity_started_at !== null;
+        return in_array($plan->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused], true)
+            && ! $this->hasCycleActivity($plan, DB::transactionLevel() > 0)
+            && ! $this->hasFeeObligations($plan, DB::transactionLevel() > 0)
+            && ! $this->hasPendingCancellationWork($plan);
     }
 
-    private function hasFeeObligations(ThriftPlan $plan): bool
+    public function hasCycleActivity(ThriftPlan $plan, bool $forUpdate = false): bool
     {
-        $snapshotIds = $plan->termsRevisions()->pluck('fee_snapshot_id');
+        return $plan->activity_started_at !== null || ManualCharge::query()->where('thrift_plan_id', $plan->id)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists()
+            || DB::table('collection_receipts')->where('thrift_plan_id', $plan->id)
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists()
+            || DB::table('ledger_posting_groups')->where('thrift_plan_id', $plan->id)
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists();
+    }
 
-        return $snapshotIds->isNotEmpty() && FeeObligation::query()->whereIn('fee_snapshot_id', $snapshotIds)->exists();
+    private function hasPendingCancellationWork(ThriftPlan $plan): bool
+    {
+        $forUpdate = DB::transactionLevel() > 0;
+
+        return $plan->currentTermsRevision()?->feeSnapshot === null
+            || DB::table('withdrawal_requests')->where('thrift_plan_id', $plan->id)
+                ->whereNotIn('state', ['rejected', 'cancelled', 'expired'])
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists()
+            || DB::table('reversal_requests')->where('customer_profile_id', $plan->customer_profile_id)
+                ->where('state', 'pending_review')
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists()
+            || DB::table('cash_disbursements')->where('customer_profile_id', $plan->customer_profile_id)
+                ->whereIn('status', ['processing', 'outcome_unknown'])
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists();
+    }
+
+    private function hasFeeObligations(ThriftPlan $plan, bool $forUpdate = false): bool
+    {
+        $snapshotIds = $plan->termsRevisions()->when($forUpdate, fn ($query) => $query->lockForUpdate())->pluck('fee_snapshot_id');
+
+        return $snapshotIds->isNotEmpty() && FeeObligation::query()->whereIn('fee_snapshot_id', $snapshotIds)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->exists();
     }
 
     /**
@@ -914,6 +959,7 @@ class ThriftPlanService
             'business_version' => $businessVersion,
             'fee_rule_id' => $feeRuleId,
             'fee_rule_version' => $feeRuleVersion,
+            'early_termination_policy_version' => EarlyTerminationPolicy::VERSION,
             'name' => $terms['name'],
             'contribution_amount_kobo' => $terms['contribution_amount_kobo'],
             'start_date' => $terms['start_date'],
@@ -945,6 +991,7 @@ class ThriftPlanService
             'fee_rule_id' => $rule->id,
             'fee_rule_version' => $rule->version,
             'financial_terms_changed' => $financialTermsChanged,
+            'early_termination_policy_version' => $financialTermsChanged ? EarlyTerminationPolicy::VERSION : $plan->currentTermsRevision()?->feeSnapshot?->early_termination_policy_version,
         ], JSON_THROW_ON_ERROR));
     }
 
@@ -983,6 +1030,8 @@ class ThriftPlanService
             'basis_points' => $rule->basis_points,
             'basis_amount_kobo' => $basisKobo,
             'customer_description' => $rule->customer_description,
+            'early_termination_policy_version' => EarlyTerminationPolicy::VERSION,
+            'early_termination_description' => app(EarlyTerminationPolicy::class)->disclosure($rule),
             'acknowledged_at' => now(),
         ]);
     }
@@ -1218,14 +1267,12 @@ class ThriftPlanService
 
         if ($channel === 'database') {
             app(NotificationPipeline::class)->capture('plan', $intent->id, false);
+        } else {
+            app(ManagementMailDelivery::class)->register('plan', $intent->id);
         }
 
         DB::afterCommit(static function () use ($intent): void {
-            if ($intent->channel === 'database') {
-                app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit());
-            } else {
-                DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit();
-            }
+            app(NotificationPipeline::class)->dispatchRecoverably(static fn () => DeliverPlanNotificationIntent::dispatch($intent->id)->afterCommit());
         });
     }
 

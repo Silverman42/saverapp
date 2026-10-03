@@ -20,6 +20,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class CashDisbursementService
 {
@@ -59,15 +60,19 @@ class CashDisbursementService
                 $this->assertPayable($refund);
                 abort_unless($customer->user->account_state->value === 'active', 409, 'The cash recipient must have an active authenticated account.');
             }
-            $position = app(FinancialCashPosition::class)->read();
+            try {
+                $position = app(FinancialCashPosition::class)->read(forUpdate: true);
+            } catch (\RuntimeException $exception) {
+                throw new ServiceUnavailableHttpException(null, 'Verified cash and earnings are unavailable.', $exception);
+            }
             $limit = $kind === 'earnings_draw' ? $position['draw_limit_kobo'] : $position['available_cash_kobo'];
             if ($amountKobo > $limit) {
                 throw new ConflictHttpException('The payment exceeds verified cash or undrawn cash-backed earnings.');
             }
             $business = BusinessProfile::current();
             app(FinancialPeriodService::class)->assertOpen(now($business->timezone)->toDateString(), $business->timezone, true);
-            $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->sole();
-            $debit = LedgerAccount::query()->where('code', $kind === 'earnings_draw' ? LedgerAccountCode::BusinessDistributions->value : LedgerAccountCode::RefundPayable->value)->sole();
+            $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->lockForUpdate()->sole();
+            $debit = LedgerAccount::query()->where('code', $kind === 'earnings_draw' ? LedgerAccountCode::BusinessDistributions->value : LedgerAccountCode::RefundPayable->value)->lockForUpdate()->sole();
             $execution = CashDisbursement::create(['execution_reference' => $reference, 'payload_hash' => $hash,
                 'fee_refund_id' => $refund?->id, 'live_fee_refund_id' => $refund?->id, 'customer_profile_id' => $customer?->id,
                 'executor_user_id' => $actor->id, 'recipient_user_id' => $customer->user_id ?? $actor->id, 'kind' => $kind,
@@ -124,11 +129,11 @@ class CashDisbursementService
                 throw new ConflictHttpException('Recovery evidence owns this attempt; resolve its full disposition before posting a payment.');
             }
             app(CashMethodCatalogue::class)->version($execution->kind, $execution->method_version);
-            if ($execution->kind === 'earnings_draw' && $execution->amount_kobo > app(FinancialCashPosition::class)->read($execution->id)['draw_limit_kobo']) {
+            if ($execution->kind === 'earnings_draw' && $execution->amount_kobo > app(FinancialCashPosition::class)->read($execution->id, true)['draw_limit_kobo']) {
                 throw new ConflictHttpException('Cash-backed earnings changed; the handed-over draw remains an owned exception.');
             }
-            $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->sole();
-            if ($cash->version !== $execution->cash_mapping_version || app(FinancialCashPosition::class)->balance(LedgerAccountCode::BusinessCash) < $execution->amount_kobo) {
+            $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->lockForUpdate()->sole();
+            if ($cash->version !== $execution->cash_mapping_version || app(FinancialCashPosition::class)->balance(LedgerAccountCode::BusinessCash, true) < $execution->amount_kobo) {
                 throw new ConflictHttpException('The original execution cash requires recovery.');
             }
             $refund = $execution->fee_refund_id === null ? null : FeeRefund::query()->whereKey($execution->fee_refund_id)->lockForUpdate()->firstOrFail();
@@ -136,11 +141,11 @@ class CashDisbursementService
                 $this->assertPayable($refund);
             }
             $code = $refund === null ? LedgerAccountCode::BusinessDistributions : LedgerAccountCode::RefundPayable;
-            $debit = LedgerAccount::query()->where('code', $code->value)->sole();
+            $debit = LedgerAccount::query()->where('code', $code->value)->lockForUpdate()->sole();
             if ($debit->version !== $execution->debit_mapping_version) {
                 throw new ConflictHttpException('The approved execution destination changed and requires recovery.');
             }
-            app(FinancialCashPosition::class)->balance($code);
+            app(FinancialCashPosition::class)->balance($code, true);
             $business = BusinessProfile::current();
             $date = $execution->handoff_at->setTimezone($business->timezone)->toDateString();
             app(FinancialPeriodService::class)->assertOpen($date, $business->timezone, true);

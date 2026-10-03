@@ -3,13 +3,20 @@
 namespace App\Services;
 
 use App\Models\BusinessProfile;
+use App\Models\FeeRule;
+use App\Models\LedgerPostingGroup;
+use App\Models\ManualCharge;
 use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use JsonException;
 use stdClass;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use ValueError;
 
 class NotificationCatalogue
 {
@@ -17,6 +24,7 @@ class NotificationCatalogue
 
     /** @var array<string, list<string>> */
     private const EVENTS = [
+        'fee_rule' => ['published', 'retired'],
         'invitation_issue' => ['invitation_delivery_issue'],
         'handover' => ['customer.reassigned', 'auth.customer_recovery_requested', 'auth.customer_recovery_verified', 'auth.customer_recovery_approved', 'auth.customer_recovery_reissued', 'auth.customer_recovery_handover', 'auth.customer_recovery_rejected', 'auth.customer_recovery_cancelled', 'auth.customer_recovery_completed', 'auth.customer_recovery_expired'],
         'business_settings' => ['published', 'effective', 'cancelled', 'activation_failed'],
@@ -32,11 +40,15 @@ class NotificationCatalogue
         'financial_cash' => ['recovery_recorded', 'recovery_confirmed', 'refund_authorized', 'started', 'handoff_recorded', 'not_delivered', 'posted'],
         'financial_artifact' => ['ready', 'failed'],
         'charge' => ['assessed'],
-        'reversal' => ['submitted', 'approved_posted', 'rejected', 'cancelled'],
+        'fee_application' => ['posted'],
+        'fee_obligation' => ['waived', 'assessment_corrected'],
+        'fee_issue' => ['trigger_unapplied', 'delivery_issue', 'posting_issue'],
+        'reversal' => ['submitted', 'approved_posted', 'approved_no_money', 'rejected', 'cancelled'],
     ];
 
     /** @var array<string, array{table: string, source: string, key: string}> */
     public const OWNERS = [
+        'fee_rule' => ['table' => 'fee_rule_notification_intents', 'source' => 'fee_rule_events', 'key' => 'fee_rule_event_id'],
         'invitation_issue' => ['table' => 'invitation_issue_notification_intents', 'source' => 'invitation_delivery_issues', 'key' => 'invitation_delivery_issue_id'],
         'handover' => ['table' => 'customer_handover_notices', 'source' => 'customer_handover_events', 'key' => 'customer_handover_event_id'],
         'business_settings' => ['table' => 'business_settings_notification_intents', 'source' => 'business_configuration_events', 'key' => 'business_configuration_event_id'],
@@ -51,6 +63,9 @@ class NotificationCatalogue
         'financial_cash' => ['table' => 'financial_cash_notification_intents', 'source' => 'financial_cash_events', 'key' => 'financial_cash_event_id'],
         'financial_artifact' => ['table' => 'financial_artifact_notification_intents', 'source' => 'financial_artifact_events', 'key' => 'financial_artifact_event_id'],
         'charge' => ['table' => 'manual_charge_notification_intents', 'source' => 'manual_charges', 'key' => 'manual_charge_id'],
+        'fee_application' => ['table' => 'fee_application_notification_intents', 'source' => 'fee_savings_applications', 'key' => 'fee_savings_application_id'],
+        'fee_obligation' => ['table' => 'fee_obligation_notification_intents', 'source' => 'fee_obligation_events', 'key' => 'fee_obligation_event_id'],
+        'fee_issue' => ['table' => 'fee_issue_notification_intents', 'source' => 'fee_operational_issues', 'key' => 'fee_operational_issue_id'],
         'reversal' => ['table' => 'reversal_notification_intents', 'source' => 'reversal_events', 'key' => 'reversal_event_id'],
     ];
 
@@ -73,6 +88,8 @@ class NotificationCatalogue
         $actionCorrectionId = null;
         $eventType = $source->event_type ?? $family;
         $sourceVersion = $source->request_version ?? $source->plan_version ?? $source->to_version ?? 1;
+        $auditEventId = $source->audit_event_id ?? null;
+        $sourceTimezone = $source->timezone ?? null;
 
         switch ($family) {
             case 'invitation_issue':
@@ -104,6 +121,23 @@ class NotificationCatalogue
                     $subject = DB::table('customer_profiles')->where('id', $customerId)->firstOrFail();
                     $destination = ['route' => 'customers.recovery.show', 'parameters' => [$subject->customer_id]];
                 }
+                break;
+            case 'fee_rule':
+                $this->audience($audience, ['fee_manager']);
+                if (! in_array($eventType, self::EVENTS['fee_rule'], true)) {
+                    throw new InvalidArgumentException('Invalid fee rule notification event.');
+                }
+                $rule = DB::table('fee_rules')->where('id', $source->fee_rule_id)->first();
+                if ($rule === null || (int) $rule->version !== (int) $source->version) {
+                    throw new InvalidArgumentException('Fee rule notification source is unavailable.');
+                }
+                $sourceVersion = (int) $source->version;
+                $title = 'Fee rule '.$eventType;
+                $reference = strtoupper($rule->kind).'-v'.$sourceVersion;
+                $summary = ucfirst($rule->kind).' fee rule version '.$sourceVersion.' was '.$eventType
+                    .'. Effective time (UTC): '.CarbonImmutable::parse($source->effective_at, 'UTC')->toIso8601String()
+                    .'. New agreements follow the applicable catalogue; existing agreements retain their original fee terms.';
+                $destination = ['route' => 'admin.fees.registration.index', 'parameters' => []];
                 break;
             case 'business_settings':
                 if ($audience !== 'settings_manager' || ! in_array($eventType, self::EVENTS['business_settings'], true)) {
@@ -264,8 +298,12 @@ class NotificationCatalogue
                 $destination = ['route' => 'plans.show', 'parameters' => [$reference]];
                 break;
             case 'collection':
+                if (($owner->context_ciphertext ?? null) !== null) {
+                    return app(CollectionFeeReceiptNotificationSource::class)->describe($owner, $source);
+                }
                 $customerId = $source->customer_profile_id;
                 $this->audience($audience, ['subject_customer']);
+                $this->matchSubject($owner->recipient_user_id, (int) DB::table('customer_profiles')->where('id', $customerId)->value('user_id'));
                 foreach (['savings_amount_kobo', 'fee_amount_kobo', 'tender_amount_kobo'] as $key) {
                     if (! is_numeric($source->{$key}) || (int) $source->{$key} < 0) {
                         throw new InvalidArgumentException('Invalid receipt amount.');
@@ -293,28 +331,53 @@ class NotificationCatalogue
                 $destination = ['route' => 'financial-artifacts.show', 'parameters' => [$reference]];
                 break;
             case 'financial_cash':
-                $this->audience($audience, $customerId === null ? ['cash_executor'] : ['subject_customer']);
-                if ($customerId !== null && (int) $source->customer_profile_id !== (int) $customerId) {
-                    throw new InvalidArgumentException('Financial cash notice dimensions changed.');
+                return $this->financialNoticeDescriptor($source, $owner, app(FinancialCashNotificationSource::class)->describe($owner, $source));
+            case 'fee_obligation':
+                return $this->financialNoticeDescriptor($source, $owner, app(FeeObligationNotificationSource::class)->describe($owner, $source));
+            case 'fee_issue':
+                return app(FeeOperationalIssueNotificationSource::class)->describe($owner, $source);
+            case 'fee_application':
+                $this->audience($audience, ['subject_customer', 'current_agent']);
+                $group = app(FeeSavingsApplicationService::class)->assertPosted($source->operation_reference, DB::transactionLevel() > 0);
+                if ((int) $owner->customer_profile_id !== $group->customer_profile_id
+                    || (int) $owner->thrift_plan_id !== $group->thrift_plan_id) {
+                    throw new InvalidArgumentException('The fee application notice has mismatched source dimensions.');
                 }
-                $title = $source->kind === 'earnings_draw' ? 'Business earnings cash draw' : 'Fee refund updated';
-                $summary = match ($eventType) {
-                    'recovery_recorded' => 'Cash recovery evidence was recorded. Confirm only the exact returned amount.',
-                    'recovery_confirmed' => 'Returned cash was confirmed. Unresolved amounts remain owned by the original attempt.',
-                    'refund_authorized' => 'A cash-backed fee concession was authorized.',
-                    'started' => 'Cash was reserved for an evidenced payment attempt.',
-                    'handoff_recorded' => 'Cash handoff was recorded. Confirm the exact amount personally received.',
-                    'not_delivered' => 'Definitive non-delivery was recorded. The payment attempt failed.',
-                    'posted' => 'Authenticated receipt was confirmed and the payment posted.',
-                    default => throw new InvalidArgumentException('Unknown financial cash notice.'),
-                };
-                $summary .= ' Amount '.MoneyFormatter::formatNaira((int) $source->amount_kobo).'.';
+                $subject = DB::table('customer_profiles')->where('id', $group->customer_profile_id)->sole();
+                if ($audience === 'subject_customer' && ((int) $owner->recipient_user_id !== (int) $subject->user_id || $agentId !== null)) {
+                    throw new InvalidArgumentException('The fee application notice has no original Customer recipient.');
+                }
+                if ($audience === 'current_agent' && ! DB::table('customer_assignments as assignment')
+                    ->join('agent_profiles as agent', 'agent.id', '=', 'assignment.agent_profile_id')
+                    ->where('assignment.customer_profile_id', $group->customer_profile_id)->where('agent.id', $agentId)
+                    ->where('agent.user_id', $owner->recipient_user_id)->where('assignment.effective_at', '<=', $owner->created_at)
+                    ->where(fn ($query) => $query->whereNull('assignment.ended_at')->orWhere('assignment.ended_at', '>', $owner->created_at))->exists()) {
+                    throw new InvalidArgumentException('The fee application notice has no original Agent assignment.');
+                }
+                $audit = DB::table('audit_events')->where('event_type', 'ledger.fee_posted')->where('target_type', LedgerPostingGroup::class)
+                    ->where('target_id', $group->id)->where('target_reference', $group->posting_reference)->where('actor_id', $group->actor_user_id)->first();
+                $auditPayload = $audit === null ? null : json_decode($audit->payload, true, flags: JSON_THROW_ON_ERROR);
+                if ($audit === null || ! is_array($auditPayload) || ($auditPayload['source_type'] ?? null) !== 'fee_savings_application'
+                    || ($auditPayload['source_id'] ?? null) !== $source->operation_reference
+                    || ($auditPayload['fee_obligation_id'] ?? null) !== (int) $source->fee_obligation_id
+                    || ($auditPayload['amount_kobo'] ?? null) !== (int) $source->amount_kobo) {
+                    throw new InvalidArgumentException('The fee application notice has no verified posting audit.');
+                }
+                $auditEventId = $audit->id;
+                $eventType = 'posted';
+                $sourceVersion = 1;
+                $sourceTimezone = $group->business_timezone;
+                $title = 'Fee paid from savings';
+                $summary = $source->customer_description.' Amount '.MoneyFormatter::formatNaira((int) $source->amount_kobo).' was applied from cycle savings.';
+                $summary .= ' At posting: cycle savings '.MoneyFormatter::formatNaira((int) $source->remaining_cycle_savings_kobo)
+                    .'; available cycle savings '.MoneyFormatter::formatNaira((int) $source->remaining_available_kobo)
+                    .'; unpaid fee '.MoneyFormatter::formatNaira((int) $source->remaining_fee_kobo).'.';
                 $category = 'financial';
-                $reference = $source->operation_reference;
-                $destination = ['route' => 'cash-disbursements.index', 'parameters' => []];
+                $reference = $group->posting_reference;
+                $destination = ['route' => 'customers.show', 'parameters' => [$subject->customer_id]];
                 break;
             case 'charge':
-                $this->audience($audience, ['subject_customer']);
+                $this->audience($audience, ['subject_customer', 'current_agent']);
                 $chargeCategory = DB::table('charge_category_versions')->where('id', $source->charge_category_version_id)->firstOrFail();
                 $subject = DB::table('customer_profiles')->where('id', $source->customer_profile_id)->firstOrFail();
                 if ((int) $customerId !== (int) $subject->id) {
@@ -322,7 +385,10 @@ class NotificationCatalogue
                 }
                 $eventType = 'assessed';
                 $title = $chargeCategory->kind === 'manual_fee' ? 'Manual fee assessed' : 'Savings deduction posted';
-                $summary = $chargeCategory->customer_description.' Amount '.MoneyFormatter::formatNaira((int) $source->amount_kobo).'.';
+                $chargeNotice = $this->chargeNotice($owner, $source, $chargeCategory, $subject);
+                $summary = $chargeNotice['summary'];
+                $auditEventId = $chargeNotice['audit_event_id'];
+                $sourceTimezone = $chargeNotice['timezone'];
                 $category = 'financial';
                 $reference = $source->operation_reference;
                 $destination = ['route' => 'customers.show', 'parameters' => [$subject->customer_id]];
@@ -366,12 +432,13 @@ class NotificationCatalogue
                 $customerId = $request->customer_profile_id;
                 $this->matchSubject($owner->customer_profile_id, $customerId);
                 $this->audience($audience, ['subject_customer', 'current_agent']);
-                if ($audience === 'subject_customer' && $eventType !== 'approved_posted') {
+                if ($audience === 'subject_customer' && ! in_array($eventType, ['approved_posted', 'approved_no_money'], true)) {
                     throw new InvalidArgumentException('Customer correction notice is not enabled.');
                 }
                 $messages = [
                     'submitted' => 'A correction request was submitted for review. The original transaction remains effective.',
                     'approved_posted' => 'A reviewed correction was posted. Open the linked account record to review its effect.',
+                    'approved_no_money' => 'A reviewed correction was completed. Existing fee refunds are preserved; no new money movement was required.',
                     'rejected' => 'A correction request was rejected. The original transaction remains effective.',
                     'cancelled' => 'A correction request was cancelled. The original transaction remains effective.',
                 ];
@@ -396,11 +463,11 @@ class NotificationCatalogue
 
         return [
             'source_id' => (int) $source->id, 'source_version' => (int) $sourceVersion,
-            'event_type' => $eventType, 'facts' => $facts, 'audit_event_id' => $source->audit_event_id ?? null,
+            'event_type' => $eventType, 'facts' => $facts, 'audit_event_id' => $auditEventId,
             'effective_at' => $effectiveAt, 'customer_profile_id' => $customerId, 'agent_profile_id' => $agentId,
             'audience' => $audience, 'category' => $category, 'title' => $title, 'summary' => $summary,
             'reference' => $reference, 'destination' => $destination, 'action_required' => $actionRequired, 'action_correction_id' => $actionCorrectionId,
-            'timezone' => $source->timezone ?? ($family === 'security' ? config('app.timezone') : BusinessProfile::current()->timezone),
+            'timezone' => $sourceTimezone ?? ($family === 'security' ? config('app.timezone') : BusinessProfile::current()->timezone),
             'operation_reference' => $source->operation_reference ?? (isset($source->operation_id) ? $source->operation_id : ($source->attempt_reference ?? null)),
             'actor_category' => DB::table('users')->where('id', $source->actor_user_id ?? $source->actor_id ?? $source->recorded_by_user_id ?? $source->changed_by_user_id ?? null)->value('user_type') ?? 'system',
         ];
@@ -414,6 +481,36 @@ class NotificationCatalogue
             || $intent->locale !== 'en-NG' || (int) $event->source_version < 1) {
             return false;
         }
+        if (in_array($event->family, ['fee_application', 'charge', 'fee_obligation', 'financial_cash', 'fee_issue', 'collection'], true) && ! $this->validatesFinancialNoticeSource($event->family, $event, $intent)) {
+            return false;
+        }
+        if ($event->family === 'fee_rule' && ! DB::table('fee_rule_notification_intents as owner')
+            ->join('fee_rule_events as source', 'source.id', '=', 'owner.fee_rule_event_id')
+            ->join('fee_rules as rule', 'rule.id', '=', 'source.fee_rule_id')
+            ->join('audit_events as audit', 'audit.id', '=', 'source.audit_event_id')
+            ->whereIn('owner.id', DB::table('notification_inbox_aliases')->where('intent_id', $intent->id)
+                ->where('family', 'fee_rule')->select('owner_intent_id'))
+            ->where('owner.notification_id', $intent->notification_id)->where('owner.recipient_user_id', $intent->recipient_user_id)
+            ->where('owner.channel', 'database')->where('owner.audience_type', 'fee_manager')
+            ->where('source.event_type', $event->event_type)->where('source.id', $event->source_id)
+            ->where('source.version', $event->source_version)->whereColumn('source.version', 'rule.version')
+            ->where('source.audit_event_id', $event->audit_event_id)->where('audit.target_type', FeeRule::class)
+            ->whereColumn('audit.target_id', 'rule.id')->whereColumn('audit.actor_id', 'source.actor_user_id')
+            ->where('audit.event_type', 'fee_rule.'.$event->event_type)->exists()) {
+            return false;
+        }
+        if ($event->family === 'plan' && ! DB::table('plan_notification_intents as owner')
+            ->join('plan_lifecycle_events as source', 'source.id', '=', 'owner.plan_lifecycle_event_id')
+            ->join('thrift_plans as plan', 'plan.id', '=', 'source.thrift_plan_id')
+            ->whereIn('owner.id', DB::table('notification_inbox_aliases')->where('intent_id', $intent->id)
+                ->where('family', 'plan')->select('owner_intent_id'))
+            ->where('owner.notification_id', $intent->notification_id)->where('owner.recipient_user_id', $intent->recipient_user_id)
+            ->where('owner.channel', 'database')->where('source.event_type', $event->event_type)
+            ->where('source.id', $event->source_id)->where('source.plan_version', $event->source_version)
+            ->whereColumn('owner.thrift_plan_id', 'plan.id')->whereColumn('owner.customer_profile_id', 'plan.customer_profile_id')
+            ->where('plan.customer_profile_id', $intent->customer_profile_id)->exists()) {
+            return false;
+        }
         try {
             $facts = json_decode($event->facts, true, flags: JSON_THROW_ON_ERROR);
             $audiences = json_decode($intent->audiences, true, flags: JSON_THROW_ON_ERROR);
@@ -424,12 +521,15 @@ class NotificationCatalogue
         $allowedAudiences = match ($event->family) {
             'invitation_issue' => ['current_agent', 'customer_manager', 'managing_admin'],
             'handover' => ['subject_customer', 'current_agent', 'subject_agent', 'security_operations_admin'],
+            'fee_rule' => ['fee_manager'],
             'business_settings' => ['settings_manager'],
             'security' => ['security_operations_admin'],
             'profile' => ['subject_customer', 'subject_agent', 'current_agent', 'customer_manager', 'security_operations_admin'],
             'agent_status', 'agent_lifecycle' => ['subject_agent', 'assigned_customer', 'managing_admin', 'service_manager'],
-            'collection' => ['subject_customer'],
-            'financial_cash' => ['subject_customer', 'cash_executor'],
+            'collection' => ['subject_customer', 'current_agent'],
+            'financial_cash' => ['subject_customer', 'current_agent', 'fee_manager', 'refund_cash_operator', 'refund_correction_operator', 'cash_executor'],
+            'fee_obligation' => ['subject_customer', 'current_agent', 'fee_manager'],
+            'fee_issue' => ['current_agent', 'fee_manager', 'deduction_manager', 'refund_cash_operator', 'refund_correction_operator'],
             'financial_artifact' => ['artifact_requester'],
             default => ['subject_customer', 'current_agent'],
         };
@@ -469,6 +569,144 @@ class NotificationCatalogue
             'destination' => $destination];
 
         return hash_equals($intent->snapshot_hash, hash('sha256', json_encode($snapshot, JSON_THROW_ON_ERROR)));
+    }
+
+    /** @param array<string, mixed> $verified
+     * @return array<string, mixed>
+     */
+    private function financialNoticeDescriptor(stdClass $source, stdClass $owner, array $verified): array
+    {
+        return [
+            'source_id' => (int) $source->id, 'source_version' => 1, 'event_type' => $source->event_type,
+            'facts' => [], 'audit_event_id' => $source->audit_event_id ?? null,
+            'effective_at' => CarbonImmutable::parse($source->effective_at ?? $source->created_at, 'UTC'),
+            'customer_profile_id' => $owner->customer_profile_id ?? null, 'agent_profile_id' => $owner->agent_profile_id ?? null,
+            'audience' => $owner->audience_type, 'category' => 'financial',
+            'action_required' => false, 'action_correction_id' => null,
+            'operation_reference' => $source->operation_reference,
+            'actor_category' => DB::table('users')->where('id', $source->actor_user_id)->value('user_type') ?? 'system',
+            ...$verified,
+        ];
+    }
+
+    private function validatesFinancialNoticeSource(string $family, stdClass $event, stdClass $intent): bool
+    {
+        if (! Schema::hasTable(self::OWNERS[$family]['table']) || ! Schema::hasTable(self::OWNERS[$family]['source'])) {
+            return false;
+        }
+        $owner = DB::table(self::OWNERS[$family]['table'])->whereIn('id', DB::table('notification_inbox_aliases')
+            ->where('intent_id', $intent->id)->where('family', $family)->select('owner_intent_id'))
+            ->where('notification_id', $intent->notification_id)->where('recipient_user_id', $intent->recipient_user_id)
+            ->where('channel', 'database')->first();
+        if ($owner === null) {
+            return false;
+        }
+        try {
+            $descriptor = $this->describe($family, $owner);
+
+            return $descriptor['source_id'] === (int) $event->source_id && $descriptor['source_version'] === (int) $event->source_version
+                && $descriptor['audit_event_id'] === ($event->audit_event_id === null ? null : (int) $event->audit_event_id)
+                && $descriptor['timezone'] === $event->timezone
+                && $descriptor['operation_reference'] === $event->operation_reference
+                && $descriptor['effective_at']->equalTo(CarbonImmutable::parse($event->effective_at, 'UTC'))
+                && (int) $descriptor['customer_profile_id'] === (int) $intent->customer_profile_id
+                && (int) ($descriptor['agent_profile_id'] ?? 0) === (int) ($intent->agent_profile_id ?? 0)
+                && (! property_exists($owner, 'assignment_id') || (int) ($owner->assignment_id ?? 0) === (int) ($intent->assignment_id ?? 0))
+                && json_decode($intent->audiences, true, flags: JSON_THROW_ON_ERROR) === [$descriptor['audience']]
+                && $descriptor['title'] === $intent->title && $descriptor['summary'] === $intent->summary
+                && $descriptor['reference'] === $intent->reference
+                && json_decode($intent->destination, true, flags: JSON_THROW_ON_ERROR) === $descriptor['destination'];
+        } catch (DecryptException|InvalidArgumentException|ConflictHttpException|JsonException|ValueError) {
+            return false;
+        }
+    }
+
+    /** @return array{summary: string, audit_event_id: int, timezone: string|null} */
+    private function chargeNotice(stdClass $owner, stdClass $charge, stdClass $category, stdClass $customer): array
+    {
+        $amount = (int) $charge->amount_kobo;
+        $audit = DB::table('audit_events')->where('event_type', 'charge.assessed')->where('target_type', ManualCharge::class)
+            ->where('target_id', $charge->id)->where('target_reference', $charge->operation_reference)->first();
+        $auditPayload = $audit === null ? null : json_decode($audit->payload, true, flags: JSON_THROW_ON_ERROR);
+        if (! in_array($category->kind, ['manual_fee', 'deduction'], true) || $amount < 1 || $amount !== (int) $category->amount_kobo
+            || $audit === null || (int) $audit->actor_id !== (int) $charge->actor_user_id || ! is_array($auditPayload)
+            || ($auditPayload['amount_kobo'] ?? null) !== $amount || ($auditPayload['customer_profile_id'] ?? null) !== (int) $customer->id
+            || ($auditPayload['kind'] ?? null) !== $category->kind || ($auditPayload['version'] ?? null) !== (int) $category->version) {
+            throw new InvalidArgumentException('Charge notification source is unavailable.');
+        }
+        if ($owner->audience_type === 'subject_customer') {
+            $this->matchSubject((int) $customer->user_id, (int) $owner->recipient_user_id);
+            if (($owner->agent_profile_id ?? null) !== null || ($owner->assignment_id ?? null) !== null) {
+                throw new InvalidArgumentException('Charge Customer audience changed.');
+            }
+        } else {
+            $assignment = DB::table('customer_assignments as assignment')->join('agent_profiles as agent', 'agent.id', '=', 'assignment.agent_profile_id')
+                ->where('assignment.id', $owner->assignment_id ?? null)->where('assignment.customer_profile_id', $customer->id)
+                ->where('agent.id', $owner->agent_profile_id ?? null)->where('agent.user_id', $owner->recipient_user_id)->first(['assignment.id']);
+            if ($assignment === null || $owner->channel !== 'database') {
+                throw new InvalidArgumentException('Charge Agent audience changed.');
+            }
+        }
+        if ($category->kind === 'deduction') {
+            $group = DB::table('ledger_posting_groups')->where('id', $charge->ledger_posting_group_id)->where('source_type', 'manual_charge')
+                ->where('source_id', $charge->operation_reference)->where('event_type', 'other_deduction')->where('currency', 'NGN')
+                ->where('customer_profile_id', $customer->id)->where('thrift_plan_id', $charge->thrift_plan_id)->whereNotNull('committed_at')->first();
+            $lines = $group === null ? collect() : DB::table('ledger_entries as line')->join('ledger_accounts as account', 'account.id', '=', 'line.ledger_account_id')
+                ->where('line.ledger_posting_group_id', $group->id)->orderBy('line.line_number')->get(['line.*', 'account.code']);
+            if ($group === null || $charge->fee_obligation_id !== null || $lines->count() !== 2
+                || $lines[0]->code !== 'customer_savings_liability_ngn' || $lines[0]->side !== 'debit'
+                || $lines[1]->code !== 'other_deduction_destination_ngn' || $lines[1]->side !== 'credit'
+                || (int) $lines[0]->amount_kobo !== $amount || (int) $lines[1]->amount_kobo !== $amount
+                || (int) $lines[0]->customer_profile_id !== (int) $customer->id || (int) $lines[1]->customer_profile_id !== (int) $customer->id
+                || (int) $lines[0]->thrift_plan_id !== (int) $charge->thrift_plan_id || $lines[1]->thrift_plan_id !== null) {
+                throw new InvalidArgumentException('Charge deduction source changed.');
+            }
+        } elseif ($charge->ledger_posting_group_id !== null || ! DB::table('fee_obligations as obligation')
+            ->join('fee_snapshots as snapshot', 'snapshot.id', '=', 'obligation.fee_snapshot_id')->where('obligation.id', $charge->fee_obligation_id)
+            ->where('obligation.customer_profile_id', $customer->id)->where('snapshot.source_type', 'manual_charge')
+            ->where('snapshot.source_id', $charge->operation_reference)->exists()) {
+            throw new InvalidArgumentException('Charge assessment source changed.');
+        }
+        $summary = $category->customer_description.' Amount '.MoneyFormatter::formatNaira($amount).'.';
+        $payload = json_decode($owner->payload, true, flags: JSON_THROW_ON_ERROR);
+        if ($payload === []) {
+            if ($owner->audience_type !== 'subject_customer' || $owner->channel !== 'database') {
+                throw new InvalidArgumentException('Legacy charge audience changed.');
+            }
+
+            return ['summary' => $summary, 'audit_event_id' => (int) $audit->id, 'timezone' => null];
+        }
+        if (! is_array($payload) || array_keys($payload) !== ['context_ciphertext'] || ! is_string($payload['context_ciphertext'])) {
+            throw new InvalidArgumentException('Charge notification snapshot is unavailable.');
+        }
+        $context = json_decode(Crypt::decryptString($payload['context_ciphertext']), true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($context) || ($context['schema_version'] ?? null) !== 1 || ($context['manual_charge_id'] ?? null) !== (int) $charge->id
+            || ($context['category_version_id'] ?? null) !== (int) $category->id || ($context['posting_group_id'] ?? null) !== ($charge->ledger_posting_group_id === null ? null : (int) $charge->ledger_posting_group_id)
+            || ($context['audit_event_id'] ?? null) !== (int) $audit->id || ($context['amount_kobo'] ?? null) !== $amount
+            || ! is_string($context['timezone'] ?? null) || ! in_array($context['timezone'], \DateTimeZone::listIdentifiers(), true)
+            || ! is_int($context['outstanding_fee_kobo'] ?? null) || $context['outstanding_fee_kobo'] < 0) {
+            throw new InvalidArgumentException('Charge notification snapshot changed.');
+        }
+        if ($owner->audience_type === 'current_agent' && (($context['assignment_id'] ?? null) !== (int) $owner->assignment_id
+            || ($context['agent_profile_id'] ?? null) !== (int) $owner->agent_profile_id)) {
+            throw new InvalidArgumentException('Charge notification assignment changed.');
+        }
+        if ($category->kind === 'deduction') {
+            if (! is_int($context['cycle_liability_kobo'] ?? null) || ! is_int($context['cycle_available_kobo'] ?? null)
+                || $context['cycle_available_kobo'] < 0 || $context['cycle_liability_kobo'] < $context['cycle_available_kobo']
+                || $context['outstanding_fee_kobo'] !== 0) {
+                throw new InvalidArgumentException('Charge deduction position changed.');
+            }
+            $summary .= ' Cycle savings '.MoneyFormatter::formatNaira($context['cycle_liability_kobo'])
+                .'; available cycle savings '.MoneyFormatter::formatNaira($context['cycle_available_kobo']).'.';
+        } else {
+            if (($context['cycle_liability_kobo'] ?? null) !== null || ($context['cycle_available_kobo'] ?? null) !== null || $owner->channel === 'mail') {
+                throw new InvalidArgumentException('Charge assessment channels changed.');
+            }
+            $summary .= ' Unpaid fee '.MoneyFormatter::formatNaira($context['outstanding_fee_kobo']).'.';
+        }
+
+        return ['summary' => $summary, 'audit_event_id' => (int) $audit->id, 'timezone' => $context['timezone']];
     }
 
     private function matchSubject(int $expected, int $actual): void

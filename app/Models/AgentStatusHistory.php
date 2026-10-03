@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
     'agent_facing_explanation',
     'changed_by_user_id',
     'audit_event_id',
+    'created_at',
 ])]
 class AgentStatusHistory extends Model
 {

@@ -4,9 +4,11 @@ use App\Enums\LedgerAccountCode;
 use App\Models\CustomerProfile;
 use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
+use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\CollectionService;
 use App\Services\LedgerTransactionProjectionService;
+use App\Services\PlanFundingReadService;
 use App\Services\ReportReadService;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,38 @@ beforeEach(function (): void {
     FinancialPeriod::factory()->create();
 });
 
+test('mysql dated plan funding and receipt posting publish one coherent allocation snapshot', function (): void {
+    [$admin, $customer, $agent] = $this->createLifecycleFixture();
+    $plan = $this->createLifecyclePlan($customer, $agent->user);
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $payload = $this->lifecycleCollectionPayload($customer, $plan);
+    $payload['preview_fingerprint'] = app(CollectionService::class)->preview($agent->user, $customer, $payload)['preview_fingerprint'];
+    $adminId = $admin->id;
+    $planId = $plan->id;
+    $results = Concurrency::driver('process')->run([
+        reportMysqlDatedReaderTask($adminId, $planId),
+        reportMysqlReceiptTask($agent->user_id, $customer->id, $payload),
+    ]);
+    expect($results[1])->toBe('posted');
+    $read = $results[0];
+    expect($read['summary']['status'])->toBeIn(['Partial', 'Unavailable']);
+    if ($read['summary']['status'] === 'Partial') {
+        expect($read['summary']['funded_principal'])->toBe('₦0.00')
+            ->and($read['slots'][0]['formatted_funded_amount'])->toBe('₦0.00')
+            ->and($read['slots'][1]['formatted_funded_amount'])->toBe('₦0.00');
+    } else {
+        expect($read['summary']['funded_principal'])->toBeNull()->and($read['slots'])->toBeNull();
+    }
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $after = app(PlanFundingReadService::class)->readDetail($admin, $plan->fresh());
+    expect($after['summary']['funded_principal'])->toBe('₦1,000.00')
+        ->and($after['slots'][0]['formatted_funded_amount'])->toBe('₦1,000.00')
+        ->and($after['slots'][0]['formatted_remaining_amount'])->toBe('₦1,000.00')
+        ->and($after['slots'][1]['formatted_funded_amount'])->toBe('₦0.00');
+});
+
 /** @return array<string, mixed> */
 function reportMysqlPlans(User $viewer, ?string $cursor = null): array
 {
@@ -35,6 +69,18 @@ function reportMysqlPlans(User $viewer, ?string $cursor = null): array
     }
 
     return app(ReportReadService::class)->read($viewer, 'plans', $filters);
+}
+
+/** @return Closure(): array<string, mixed> */
+function reportMysqlDatedReaderTask(int $adminId, int $planId): Closure
+{
+    return static function () use ($adminId, $planId): array {
+        if (DB::getDriverName() !== 'mysql' || DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
+            throw new RuntimeException('Unsafe dated funding reader database.');
+        }
+
+        return app(PlanFundingReadService::class)->readDetail(User::findOrFail($adminId), ThriftPlan::findOrFail($planId));
+    };
 }
 
 /** @param array<string, mixed> $section */

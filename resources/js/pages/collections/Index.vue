@@ -6,6 +6,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { index as evidenceIndex } from '@/routes/collection-evidence';
 import { dashboard } from '@/routes';
 import {
     index as collectionsIndex,
@@ -21,9 +22,11 @@ type Receipt = {
     customer_name: string;
     plan_id: string | null;
     received_date: string;
+    method: string;
     savings_kobo: number;
     fees_kobo: number;
     tender_kobo: number;
+    can_record: boolean;
 };
 type DueSlot = {
     id: number;
@@ -42,6 +45,8 @@ type DueTotals = {
     covered_kobo: number;
     outstanding_kobo: number;
     blocked_target_kobo: number;
+    unavailable_target_kobo: number;
+    service_interrupted_target_kobo: number;
 };
 const props = defineProps<{
     receipts: {
@@ -53,6 +58,10 @@ const props = defineProps<{
     timezone: string;
     totals: {
         tender_kobo: number;
+        cash_kobo: number;
+        bank_kobo: number;
+        clearing_kobo: number;
+        other_kobo: number;
         savings_kobo: number;
         fees_kobo: number;
         receipt_count: number;
@@ -60,6 +69,7 @@ const props = defineProps<{
     due_totals: DueTotals;
     filters: { search: string; status: string };
     viewer_type: string;
+    can_review_evidence: boolean;
     due_slots: {
         data: DueSlot[];
         prev_page_url: string | null;
@@ -98,8 +108,8 @@ function applyFilters(): void {
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Collections</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Daily work and posted cash receipts in your current Customer
-                scope. Dates use {{ timezone }}.
+                Daily work and posted receipts in your current Customer scope.
+                Dates use {{ timezone }}.
             </p>
         </div>
         <div class="flex flex-row flex-wrap items-end gap-4">
@@ -107,6 +117,7 @@ function applyFilters(): void {
                 <Label for="collection-date">Business date</Label
                 ><DatePicker
                     id="collection-date"
+                    aria-label="Business date"
                     v-model="selectedDate"
                     class="w-fit"
                 />
@@ -134,12 +145,22 @@ function applyFilters(): void {
                     <option value="missed">Missed</option>
                     <option value="advance-covered">Advance covered</option>
                     <option value="blocked">Blocked</option>
+                    <option value="unavailable">History unavailable</option>
+                    <option value="service-interrupted">
+                        Agent unavailable
+                    </option>
                 </select>
             </div>
             <Button type="button" variant="outline" @click="applyFilters"
                 >Apply filters</Button
             >
         </div>
+        <Link
+            v-if="viewer_type === 'agent' || can_review_evidence"
+            :href="evidenceIndex()"
+            class="w-fit text-sm underline"
+            >Open protected payment evidence</Link
+        >
         <Card
             ><CardContent class="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4"
                 ><div>
@@ -148,8 +169,28 @@ function applyFilters(): void {
                     }}</strong>
                 </div>
                 <div>
-                    Cash received<br /><strong>{{
+                    Total received<br /><strong>{{
                         money(totals.tender_kobo)
+                    }}</strong>
+                </div>
+                <div>
+                    Cash received<br /><strong>{{
+                        money(totals.cash_kobo)
+                    }}</strong>
+                </div>
+                <div>
+                    Bank received<br /><strong>{{
+                        money(totals.bank_kobo)
+                    }}</strong>
+                </div>
+                <div>
+                    Clearing captured<br /><strong>{{
+                        money(totals.clearing_kobo)
+                    }}</strong>
+                </div>
+                <div>
+                    Other Agent custody<br /><strong>{{
+                        money(totals.other_kobo)
                     }}</strong>
                 </div>
                 <div>
@@ -169,8 +210,8 @@ function applyFilters(): void {
                 ><h2 class="font-medium">Slots due {{ date }}</h2>
                 <p class="text-muted-foreground mt-1 text-sm">
                     Due work totals cover every matching slot, across all pages.
-                    Received cash above uses the receipt date and may fund other
-                    days.
+                    Received tender above uses the receipt date and may fund
+                    other days.
                 </p>
                 <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <div>
@@ -199,6 +240,23 @@ function applyFilters(): void {
                         }}</strong>
                     </div>
                 </div>
+                <p
+                    v-if="due_totals.service_interrupted_target_kobo > 0"
+                    class="text-muted-foreground mt-3 text-sm"
+                >
+                    The assigned Agent is unavailable for
+                    {{ money(due_totals.service_interrupted_target_kobo) }} of
+                    scheduled targets. These rows are excluded from eligible
+                    outstanding. Recorded contributions remain unchanged.
+                </p>
+                <p
+                    v-if="due_totals.unavailable_target_kobo > 0"
+                    class="text-muted-foreground mt-3 text-sm"
+                >
+                    Participation history is unavailable for
+                    {{ money(due_totals.unavailable_target_kobo) }} of scheduled
+                    targets. These rows are excluded from eligible outstanding.
+                </p>
                 <p
                     v-if="due_slots.data.length === 0"
                     class="text-muted-foreground mt-5 text-sm"
@@ -235,7 +293,7 @@ function applyFilters(): void {
                             "
                             :href="createCollection(slot.customer_id)"
                             class="text-primary mt-2 inline-block underline"
-                            >Record cash</Link
+                            >Record collection</Link
                         >
                     </li>
                 </ul>
@@ -262,6 +320,7 @@ function applyFilters(): void {
             cash</Link
         >
         <Link
+            v-if="viewer_type === 'admin' || viewer_type === 'agent'"
             :href="batchesIndex()"
             class="text-primary w-fit text-sm underline"
             >Cash batches and reconciliation</Link
@@ -287,7 +346,8 @@ function applyFilters(): void {
                                 >{{ receipt.id }}</Link
                             ><span class="text-muted-foreground text-sm"
                                 >{{ receipt.customer_name }} · received
-                                {{ receipt.received_date }}</span
+                                {{ receipt.received_date }} ·
+                                {{ receipt.method }}</span
                             >
                         </div>
                         <div class="flex items-center gap-4">
@@ -295,6 +355,7 @@ function applyFilters(): void {
                                 money(receipt.tender_kobo)
                             }}</span
                             ><Link
+                                v-if="receipt.can_record"
                                 :href="createCollection(receipt.customer_id)"
                                 class="text-primary text-sm underline"
                                 >Record another</Link

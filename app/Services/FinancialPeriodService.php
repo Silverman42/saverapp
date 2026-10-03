@@ -97,7 +97,10 @@ class FinancialPeriodService
                         ->where('received_date', '>=', $firstDay->toDateString())
                         ->where('received_date', '<', $nextMonth)
                         ->orderBy('id')->lockForUpdate()->get(['id', 'status']);
-                    if ($batches->contains(static fn (CollectionBatch $batch): bool => $batch->status !== 'reconciled')
+                    if (app(CollectionPaymentEvidenceService::class)->unresolved()->where('evidence.timezone', $period->timezone)
+                        ->where('evidence.received_date', '>=', $firstDay->toDateString())->where('evidence.received_date', '<', $nextMonth)
+                        ->lockForUpdate()->first(['evidence.id']) !== null
+                        || $batches->contains(static fn (CollectionBatch $batch): bool => $batch->status !== 'reconciled')
                         || $this->collections->hasPendingCorrectionForBatches(DB::table('collection_batches')
                             ->where('timezone', $period->timezone)
                             ->where('received_date', '>=', $firstDay->toDateString())
@@ -109,7 +112,7 @@ class FinancialPeriodService
                             ->where('batches.received_date', '<', $nextMonth)
                             ->where('exceptions.status', '!=', 'resolved')
                             ->lockForUpdate()->first(['exceptions.id']) !== null) {
-                        throw new ConflictHttpException('Reconcile every cash batch and exception before closing this month.');
+                        throw new ConflictHttpException('Resolve payment evidence and reconcile every collection batch and exception before closing this month.');
                     }
                 }
                 $before = $period->status;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import PlanEstimateSummary from '@/components/PlanEstimateSummary.vue';
+import type { PlanEstimate } from '@/types/plan-estimate';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { AlertCircle, CheckCircle2 } from '@lucide/vue';
 import type { AcceptableValue } from 'reka-ui';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -44,6 +46,7 @@ type FeeOption = {
 };
 
 type RevisionPreview = {
+    estimate: PlanEstimate | null;
     preview_fingerprint: string;
     plan_version: number;
     terms_revision: number;
@@ -67,6 +70,8 @@ type RevisionPreview = {
         formatted_amount: string;
         estimate_available: boolean;
         customer_description: string;
+        early_termination_policy_version: number | null;
+        early_termination_description: string | null;
     };
     financial_terms_changed: boolean;
     financial_terms_locked: boolean;
@@ -140,9 +145,36 @@ const amountKobo = (): number | null => {
     return Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
 };
 
+const previewBusy = ref(false);
+const previewRequiresRefresh = ref(false);
+const previewMessage = ref('');
+const previewNotice = ref<HTMLElement | null>(null);
+const busy = computed(() => previewBusy.value || form.processing);
+const previewGeneralErrors = computed(() =>
+    Object.entries(form.errors).filter(
+        ([field]) =>
+            ![
+                'name',
+                'amount_ngn',
+                'start_date',
+                'contribution_days',
+                'customer_visible_notes',
+                'fee_rule_id',
+                'reason',
+                'customer_explanation',
+            ].includes(field),
+    ),
+);
+
+const focusPreviewNotice = (): void => {
+    if (previewMessage.value) void nextTick(() => previewNotice.value?.focus());
+};
+
 const previewIsCurrent = computed(() => {
     const preview = props.preview;
     return (
+        !previewBusy.value &&
+        !previewRequiresRefresh.value &&
         preview !== null &&
         preview.terms.name === form.name.trim() &&
         preview.terms.start_date === form.start_date &&
@@ -169,10 +201,16 @@ watch(
 );
 
 const setFeeRule = (value: AcceptableValue): void => {
+    if (busy.value) return;
     if (typeof value === 'string') form.fee_rule_id = Number(value);
 };
 
 const requestPreview = (): void => {
+    if (busy.value) return;
+    previewBusy.value = true;
+    previewRequiresRefresh.value = true;
+    previewMessage.value = '';
+    form.customer_agreement_attested = false;
     const query: Record<string, string | number> = {
         preview: 1,
         name: form.name,
@@ -194,12 +232,54 @@ const requestPreview = (): void => {
             preserveState: true,
             preserveScroll: true,
             replace: true,
+            onSuccess: (currentPage) => {
+                const current = currentPage.props.plan as
+                    | { id?: string }
+                    | undefined;
+                if (
+                    currentPage.component !== 'plans/Edit' ||
+                    current?.id !== props.plan.id ||
+                    !currentPage.props.preview
+                ) {
+                    previewMessage.value =
+                        'A current preview was not returned. Your draft is retained. Build a fresh preview before confirming.';
+                    return;
+                }
+                previewRequiresRefresh.value = false;
+                form.clearErrors();
+            },
+            onError: (errors) => {
+                form.clearErrors().setError(errors);
+                previewMessage.value =
+                    'The preview could not be built. Review the validation errors and build a fresh preview before confirming.';
+            },
+            onHttpException: (response) => {
+                previewMessage.value =
+                    response.status === 403 || response.status === 404
+                        ? 'The preview is unavailable or your access has changed. Reload to check current access before confirming.'
+                        : 'The preview could not be verified. Your draft is retained. Build a fresh preview before confirming.';
+                return false;
+            },
+            onNetworkError: () => {
+                previewMessage.value =
+                    'The preview could not be checked because the connection failed. Your draft is retained. Check your connection and build a fresh preview before confirming.';
+                return false;
+            },
+            onCancel: () => {
+                previewMessage.value =
+                    'Preview checking was interrupted. Your draft is retained. Build a fresh preview before confirming.';
+            },
+            onFinish: () => {
+                previewBusy.value = false;
+                focusPreviewNotice();
+            },
         },
     );
 };
 
 const submit = (): void => {
     if (
+        busy.value ||
         !previewIsCurrent.value ||
         !props.preview ||
         !form.customer_agreement_attested
@@ -244,6 +324,27 @@ const submit = (): void => {
             >
         </Alert>
 
+        <p v-if="previewBusy" role="status" aria-live="polite">
+            Checking the current agreement and schedule. Wait for the preview
+            before confirming.
+        </p>
+        <div
+            v-if="previewMessage"
+            ref="previewNotice"
+            role="alert"
+            tabindex="-1"
+            aria-live="assertive"
+            aria-atomic="true"
+            class="rounded-lg border p-4 text-sm"
+        >
+            <p>{{ previewMessage }}</p>
+            <ul v-if="previewGeneralErrors.length" class="mt-2 grid gap-1">
+                <li v-for="[field, error] in previewGeneralErrors" :key="field">
+                    {{ error }}
+                </li>
+            </ul>
+        </div>
+
         <Card>
             <CardHeader>
                 <CardTitle>Proposed revision</CardTitle>
@@ -258,6 +359,7 @@ const submit = (): void => {
                         <Label for="edit-plan-name">Plan name</Label>
                         <Input
                             id="edit-plan-name"
+                            :disabled="busy"
                             v-model="form.name"
                             maxlength="100"
                         />
@@ -276,7 +378,7 @@ const submit = (): void => {
                             id="edit-plan-amount"
                             v-model="form.amount_ngn"
                             inputmode="decimal"
-                            :disabled="financial_terms_locked"
+                            :disabled="busy || financial_terms_locked"
                         />
                         <p
                             v-if="form.errors.amount_ngn"
@@ -289,11 +391,14 @@ const submit = (): void => {
                         <Label for="edit-plan-date">Start date</Label>
                         <DatePicker
                             id="edit-plan-date"
+                            aria-label="Start date"
                             v-model="form.start_date"
-                            :disabled="financial_terms_locked"
+                            :error-message="form.errors.start_date"
+                            :disabled="busy || financial_terms_locked"
                         />
                         <p
                             v-if="form.errors.start_date"
+                            role="alert"
                             class="text-destructive text-sm"
                         >
                             {{ form.errors.start_date }}
@@ -307,7 +412,7 @@ const submit = (): void => {
                             type="number"
                             min="1"
                             max="366"
-                            :disabled="financial_terms_locked"
+                            :disabled="busy || financial_terms_locked"
                         />
                         <p
                             v-if="form.errors.contribution_days"
@@ -320,7 +425,7 @@ const submit = (): void => {
                         <Label for="edit-plan-fee">Fee option</Label>
                         <Select
                             :model-value="String(form.fee_rule_id)"
-                            :disabled="financial_terms_locked"
+                            :disabled="busy || financial_terms_locked"
                             @update:model-value="setFeeRule"
                         >
                             <SelectTrigger id="edit-plan-fee" class="w-full"
@@ -352,6 +457,7 @@ const submit = (): void => {
                         >
                         <textarea
                             id="edit-plan-notes"
+                            :disabled="busy"
                             v-model="form.customer_visible_notes"
                             rows="3"
                             maxlength="2000"
@@ -370,6 +476,7 @@ const submit = (): void => {
                         >
                         <textarea
                             id="edit-plan-reason"
+                            :disabled="busy"
                             v-model="form.reason"
                             rows="2"
                             maxlength="500"
@@ -388,6 +495,7 @@ const submit = (): void => {
                         >
                         <textarea
                             id="edit-plan-explanation"
+                            :disabled="busy"
                             v-model="form.customer_explanation"
                             rows="2"
                             maxlength="500"
@@ -404,7 +512,7 @@ const submit = (): void => {
                 <CardFooter
                     class="flex flex-wrap justify-between gap-3 border-t pt-5"
                 >
-                    <Button as-child variant="outline"
+                    <Button v-if="!busy" as-child variant="outline"
                         ><Link :href="showPlan(plan.id).url"
                             >Back to plan</Link
                         ></Button
@@ -412,14 +520,19 @@ const submit = (): void => {
                     <Button
                         type="button"
                         variant="secondary"
+                        :disabled="busy"
                         @click="requestPreview"
-                        >Build revision preview</Button
+                        >{{
+                            previewBusy
+                                ? 'Building revision preview…'
+                                : 'Build revision preview'
+                        }}</Button
                     >
                 </CardFooter>
             </form>
         </Card>
 
-        <Card v-if="preview">
+        <Card v-if="preview && !previewBusy && !previewRequiresRefresh">
             <CardHeader>
                 <div class="flex items-start gap-3">
                     <CheckCircle2 class="text-primary mt-0.5 size-5 shrink-0" />
@@ -433,7 +546,7 @@ const submit = (): void => {
                 </div>
             </CardHeader>
             <CardContent class="space-y-5">
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="grid gap-4 sm:grid-cols-3">
                     <div class="rounded-xl border p-4">
                         <p class="text-muted-foreground text-xs">
                             Daily contribution
@@ -452,17 +565,6 @@ const submit = (): void => {
                     </div>
                     <div class="rounded-xl border p-4">
                         <p class="text-muted-foreground text-xs">
-                            Expected gross
-                        </p>
-                        <p class="mt-1 font-semibold">
-                            {{ preview.terms.formatted_expected_gross }}
-                        </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            Contractual estimate only
-                        </p>
-                    </div>
-                    <div class="rounded-xl border p-4">
-                        <p class="text-muted-foreground text-xs">
                             Schedule end
                         </p>
                         <p class="mt-1 font-semibold">
@@ -473,6 +575,11 @@ const submit = (): void => {
                         </p>
                     </div>
                 </div>
+                <div class="space-y-3 rounded-xl border p-4">
+                    <h2 class="font-medium">Contractual estimates</h2>
+                    <PlanEstimateSummary :estimate="preview.estimate" />
+                </div>
+
                 <div class="rounded-xl border p-4">
                     <h2 class="font-medium">Fee terms</h2>
                     <p class="mt-2 text-sm font-medium">
@@ -481,6 +588,13 @@ const submit = (): void => {
                     </p>
                     <p class="text-muted-foreground mt-1 text-sm">
                         {{ preview.fee.customer_description }}
+                    </p>
+                    <p
+                        v-if="preview.fee.early_termination_description"
+                        class="text-muted-foreground mt-2 text-sm"
+                    >
+                        Early termination:
+                        {{ preview.fee.early_termination_description }}
                     </p>
                     <p class="text-muted-foreground mt-2 text-xs">
                         {{
@@ -520,7 +634,7 @@ const submit = (): void => {
                     <Checkbox
                         id="revision-agreement"
                         v-model:checked="form.customer_agreement_attested"
-                        :disabled="!previewIsCurrent"
+                        :disabled="busy || !previewIsCurrent"
                     />
                     <div class="grid gap-1">
                         <Label for="revision-agreement" class="leading-5"
@@ -555,7 +669,7 @@ const submit = (): void => {
             <CardFooter class="flex justify-end border-t pt-5">
                 <Button
                     :disabled="
-                        form.processing ||
+                        busy ||
                         !previewIsCurrent ||
                         !form.customer_agreement_attested ||
                         form.reason.trim().length < 3 ||

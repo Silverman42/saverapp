@@ -7,6 +7,7 @@ use App\Enums\UserType;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -121,6 +122,44 @@ class LedgerTransactionReadService
         }
     }
 
+    /**
+     * @param  list<CustomerProfile>  $customers
+     * @return array<int, array{status: 'unavailable'}|array{status: 'ready', liability_kobo: int, reservations_kobo: int, available_kobo: int}>
+     */
+    public function balances(User $viewer, array $customers): array
+    {
+        $ids = array_map(fn (CustomerProfile $customer): int => $customer->id, $customers);
+        if (count($ids) > 100 || count(array_unique($ids)) !== count($ids)) {
+            throw new \InvalidArgumentException('Read at most 100 distinct Customer balances.');
+        }
+        if ($ids === []) {
+            return [];
+        }
+        $unavailable = array_fill_keys($ids, ['status' => 'unavailable']);
+        if (DB::transactionLevel() === 0 && DB::getDriverName() === 'mysql') {
+            DB::statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        }
+        try {
+            return DB::transaction(function () use ($viewer, $ids, $unavailable): array {
+                $allowed = $this->scope->forCustomers($viewer)->whereIn('customer_profiles.id', $ids)
+                    ->get(['customer_profiles.id'])->map(fn (CustomerProfile $customer): int => $customer->id)->values()->all();
+                if ($allowed === [] || $this->state()['status'] !== 'ready') {
+                    return $unavailable;
+                }
+                $result = $unavailable;
+                foreach ($this->balances->positions(array_values($allowed)) as $customerId => $position) {
+                    if ($position !== null) {
+                        $result[$customerId] = ['status' => 'ready', ...$position];
+                    }
+                }
+
+                return $result;
+            });
+        } catch (\RuntimeException|QueryException) {
+            return $unavailable;
+        }
+    }
+
     private function scopedQuery(User $viewer, int $version): Builder
     {
         $query = DB::table('ledger_transaction_projections as transactions')
@@ -171,6 +210,7 @@ class LedgerTransactionReadService
             'viewer' => $viewer->id, 'scope' => $this->scopeHash($viewer),
             'filters' => $this->filterHash($filters),
             'version' => $state['version'], 'watermark' => $state['watermark'],
+            'no_money_watermark' => $this->noMoneyWatermark(),
             'committed_at' => $committedAt, 'id' => $id,
         ], JSON_THROW_ON_ERROR);
         $signature = hash_hmac('sha256', $payload, (string) config('app.key'));
@@ -206,11 +246,17 @@ class LedgerTransactionReadService
             || ($data['filters'] ?? null) !== $this->filterHash($filters)
             || ($data['version'] ?? null) !== $state['version']
             || ($data['watermark'] ?? null) !== $state['watermark']
+            || ($data['no_money_watermark'] ?? null) !== $this->noMoneyWatermark()
             || ! is_string($data['committed_at'] ?? null) || ! is_int($data['id'] ?? null)) {
             throw new UnprocessableEntityHttpException('Transaction cursor expired. Restart the search.');
         }
 
         return ['committed_at' => $data['committed_at'], 'id' => $data['id']];
+    }
+
+    private function noMoneyWatermark(): int
+    {
+        return (int) (DB::table('financial_workflow_supplements')->where('kind', 'receipt_no_money_correction')->max('id') ?? 0);
     }
 
     /** @param array<string, mixed> $filters */

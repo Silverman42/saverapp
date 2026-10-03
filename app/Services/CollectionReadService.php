@@ -2,19 +2,27 @@
 
 namespace App\Services;
 
+use App\Enums\CustomerStatus;
 use App\Enums\FeeLedgerPostingType;
 use App\Enums\LedgerAccountCode;
+use App\Enums\ThriftPlanStatus;
 use App\Models\AgentProfile;
 use App\Models\CollectionBatch;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
+use App\Models\CustomerStatusHistory;
 use App\Models\LedgerPostingGroup;
 use App\Models\ThriftPlan;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use stdClass;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class CollectionReadService
 {
@@ -35,6 +43,9 @@ class CollectionReadService
 
     public function agentOffboardingStatus(AgentProfile $agent, bool $forUpdate = false): string
     {
+        if (app(CollectionPaymentEvidenceService::class)->unresolved()->where('evidence.recording_agent_profile_id', $agent->id)->exists()) {
+            return 'blocked';
+        }
         $mapping = DB::table('ledger_accounts')->where('code', LedgerAccountCode::AgentReceivable->value)
             ->where('mapping_status', 'mapped')->where('currency', 'NGN')->where('normal_balance', 'debit')->first();
         if ($mapping === null) {
@@ -46,12 +57,18 @@ class CollectionReadService
         }
         foreach ($batches->get() as $batch) {
             if ($batch->status !== 'reconciled') {
-                return in_array($batch->status, ['open', 'frozen', 'in_review', 'exception'], true) ? 'blocked' : 'unavailable';
+                return in_array($batch->status, ['open', 'ready_for_review', 'in_review', 'exception'], true) ? 'blocked' : 'unavailable';
             }
             $review = DB::table('collection_batch_reviews')->where('collection_batch_id', $batch->id)->latest('id')->first();
+            try {
+                $position = app(CollectionBatchPosition::class)->read($batch);
+                app(CollectionExceptionResolution::class)->assertResolvedCases($batch);
+            } catch (ConflictHttpException|ServiceUnavailableHttpException) {
+                return 'unavailable';
+            }
             if ($review === null || $review->outcome !== 'reconciled' || (int) $review->outstanding_kobo !== 0
                 || DB::table('collection_exceptions')->where('collection_batch_id', $batch->id)->where('status', '!=', 'resolved')->exists()
-                || (int) $batch->receipts()->sum('tender_amount_kobo') !== (int) $batch->remittances()->sum('amount_kobo')) {
+                || $position['outstanding_kobo'] !== 0) {
                 return 'unavailable';
             }
         }
@@ -72,6 +89,9 @@ class CollectionReadService
             ->where('mapping_status', 'mapped')->where('currency', 'NGN')->where('normal_balance', 'credit')->first();
         if ($account === null) {
             throw new RuntimeException('Savings account mapping is unavailable.');
+        }
+        if ($this->invalidFeeSavingsCustomers((clone $customers)->toBase(), (int) $account->id) !== []) {
+            throw new RuntimeException('Customer fee savings source integrity is unavailable.');
         }
         $total = 0;
         $rows = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
@@ -101,6 +121,9 @@ class CollectionReadService
             ->where('mapping_status', 'mapped')->where('currency', 'NGN')->where('normal_balance', 'credit')->first();
         if ($account === null) {
             throw new RuntimeException('Savings account mapping is unavailable.');
+        }
+        if ($this->invalidFeeSavingsCustomers((clone $customers)->toBase(), (int) $account->id) !== []) {
+            throw new RuntimeException('Customer fee savings source integrity is unavailable.');
         }
         $liabilities = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
             ->selectRaw("customer_profile_id, SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -amount_kobo END) AS liability")
@@ -142,7 +165,10 @@ class CollectionReadService
         $account = $accountQuery->first();
         if ($account === null || $account->mapping_status !== 'mapped' || $account->currency !== 'NGN'
             || $account->account_class !== 'customer_savings_liability' || $account->normal_balance !== 'credit') {
-            throw new RuntimeException('Savings account mapping is unavailable.');
+            throw new ServiceUnavailableHttpException(null, 'Savings account mapping is unavailable.');
+        }
+        if ($this->invalidFeeSavingsCustomers(CustomerProfile::query()->whereKey($customer->id)->toBase(), (int) $account->id, $forUpdate) !== []) {
+            throw new RuntimeException('Customer fee savings source integrity is unavailable.');
         }
         $entries = DB::table('ledger_entries')->join('ledger_accounts', 'ledger_accounts.id', '=', 'ledger_entries.ledger_account_id')
             ->where('ledger_entries.customer_profile_id', $customer->id)
@@ -155,24 +181,129 @@ class CollectionReadService
             $reservations->lockForUpdate();
         }
 
+        return $this->positionFromRows($entries->get(), $reservations->get());
+    }
+
+    /**
+     * Read inside the caller's snapshot; financial commands continue using position().
+     *
+     * @param  list<int>  $customerIds
+     * @return array<int, array{liability_kobo: int, reservations_kobo: int, available_kobo: int}|null>
+     */
+    public function positions(array $customerIds): array
+    {
+        if (count($customerIds) > 100 || count(array_unique($customerIds)) !== count($customerIds)) {
+            throw new \InvalidArgumentException('Read at most 100 distinct Customer savings positions.');
+        }
+        if ($customerIds === []) {
+            return [];
+        }
+        $account = DB::table('ledger_accounts')->where('code', LedgerAccountCode::CustomerSavingsLiability->value)->first();
+        if ($account === null || $account->mapping_status !== 'mapped' || $account->currency !== 'NGN'
+            || $account->account_class !== 'customer_savings_liability' || $account->normal_balance !== 'credit') {
+            throw new RuntimeException('Savings account mapping is unavailable.');
+        }
+        $entries = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
+            ->whereIn('customer_profile_id', $customerIds)->select('customer_profile_id', 'side', 'amount_kobo')->orderBy('id')->get()
+            ->groupBy('customer_profile_id');
+        $reservations = DB::table('withdrawal_reservations')->whereIn('customer_profile_id', $customerIds)
+            ->where('status', 'live')->select('customer_profile_id', 'gross_amount_kobo')->orderBy('id')->get()
+            ->groupBy('customer_profile_id');
+        $invalidCustomers = $this->invalidFeeSavingsCustomers(CustomerProfile::query()->whereKey($customerIds)->toBase(), (int) $account->id);
+        $positions = [];
+        foreach ($customerIds as $customerId) {
+            try {
+                if (in_array($customerId, $invalidCustomers, true)) {
+                    throw new RuntimeException('Customer fee savings source integrity is unavailable.');
+                }
+                $positions[$customerId] = $this->positionFromRows($entries->get($customerId, collect()), $reservations->get($customerId, collect()));
+            } catch (RuntimeException) {
+                $positions[$customerId] = null;
+            }
+        }
+
+        return $positions;
+    }
+
+    /** @return list<int> */
+    private function invalidFeeSavingsCustomers(QueryBuilder $customers, int $liabilityAccountId, bool $current = false): array
+    {
+        $rows = DB::table('ledger_posting_groups as groups')
+            ->leftJoin('reversal_requests as reversals', 'reversals.compensation_posting_group_id', '=', 'groups.id')
+            ->leftJoin('ledger_posting_groups as originals', 'originals.id', '=', 'reversals.original_posting_group_id')
+            ->leftJoin('ledger_entries as lines', function (JoinClause $join) use ($liabilityAccountId): void {
+                $join->on('lines.ledger_posting_group_id', '=', 'groups.id')->where('lines.ledger_account_id', $liabilityAccountId);
+            })
+            ->where(fn (QueryBuilder $query): QueryBuilder => $query->where('groups.source_type', 'fee_savings_application')
+                ->orWhere('groups.event_type', 'fee_application_compensation')->orWhere('originals.source_type', 'fee_savings_application'))
+            ->where(fn (QueryBuilder $query): QueryBuilder => $query->whereIn('groups.customer_profile_id', (clone $customers)->select('id'))
+                ->orWhereIn('lines.customer_profile_id', (clone $customers)->select('id')))
+            ->select('groups.id', 'groups.source_type', 'groups.source_id', 'groups.customer_profile_id',
+                'reversals.id as reversal_id', 'lines.customer_profile_id as entry_customer_id')
+            ->orderBy('groups.id')->when($current, fn (QueryBuilder $query): QueryBuilder => $query->lockForUpdate())->get();
+        $references = [];
+        $requestIds = [];
+        foreach ($rows as $row) {
+            if ($row->source_type === 'fee_savings_application') {
+                if (is_string($row->source_id)) {
+                    $references[] = $row->source_id;
+                }
+            } else {
+                $requestId = filter_var($row->reversal_id ?? $row->source_id, FILTER_VALIDATE_INT);
+                if ($requestId !== false && $requestId > 0) {
+                    $requestIds[] = $requestId;
+                }
+            }
+        }
+        $payments = app(FeeSavingsApplicationService::class)->verifiedPostedSources(array_values(array_unique($references)), $current);
+        $compensations = app(FeeSavingsApplicationReversalOwner::class)->verifiedPostedSources(array_values(array_unique($requestIds)), $current);
+        $invalid = [];
+        foreach ($rows as $row) {
+            if ($row->source_type === 'fee_savings_application') {
+                $group = $payments->get($row->source_id);
+            } else {
+                $requestId = filter_var($row->reversal_id ?? $row->source_id, FILTER_VALIDATE_INT);
+                $group = $requestId !== false && $requestId > 0 ? $compensations->get($requestId) : null;
+            }
+            if ($group === null || $group->id !== (int) $row->id || $group->customer_profile_id !== (int) $row->customer_profile_id
+                || $group->customer_profile_id !== (int) $row->entry_customer_id) {
+                foreach ([$row->customer_profile_id, $row->entry_customer_id] as $customerId) {
+                    $identity = filter_var($customerId, FILTER_VALIDATE_INT);
+                    if ($identity !== false && $identity > 0) {
+                        $invalid[$identity] = true;
+                    }
+                }
+            }
+        }
+
+        return array_keys($invalid);
+    }
+
+    /**
+     * @param  Collection<int, stdClass>  $entries
+     * @param  Collection<int, stdClass>  $reservations
+     * @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int}
+     */
+    private function positionFromRows(Collection $entries, Collection $reservations): array
+    {
         $liability = 0;
-        foreach ($entries->get() as $entry) {
+        foreach ($entries as $entry) {
             $amount = filter_var($entry->amount_kobo, FILTER_VALIDATE_INT);
             if ($amount === false || $amount < 1 || ! in_array($entry->side, ['credit', 'debit'], true)) {
-                throw new RuntimeException('Savings entry integrity is unavailable.');
+                throw new ServiceUnavailableHttpException(null, 'Savings entry integrity is unavailable.');
             }
             $liability = $entry->side === 'credit' ? $this->checkedAdd($liability, $amount) : $liability - $amount;
         }
         $reserved = 0;
-        foreach ($reservations->get() as $reservation) {
+        foreach ($reservations as $reservation) {
             $amount = filter_var($reservation->gross_amount_kobo, FILTER_VALIDATE_INT);
             if ($amount === false || $amount < 1) {
-                throw new RuntimeException('Reservation amount integrity is unavailable.');
+                throw new ServiceUnavailableHttpException(null, 'Reservation amount integrity is unavailable.');
             }
             $reserved = $this->checkedAdd($reserved, $amount);
         }
         if ($liability < 0 || $reserved > $liability) {
-            throw new RuntimeException('Customer savings or reservation integrity is unavailable.');
+            throw new ServiceUnavailableHttpException(null, 'Customer savings or reservation integrity is unavailable.');
         }
 
         return ['liability_kobo' => $liability, 'reservations_kobo' => $reserved, 'available_kobo' => $liability - $reserved];
@@ -181,6 +312,12 @@ class CollectionReadService
     /** @return array<string, mixed> */
     public function card(ThriftPlan $plan): array
     {
+        return $this->fundingCard($plan) + ['position' => $this->position($plan->customerProfile)];
+    }
+
+    /** @return array<string, mixed> */
+    public function fundingCard(ThriftPlan $plan): array
+    {
         $revision = $plan->currentTermsRevision();
         if ($revision === null) {
             throw new RuntimeException('Plan terms are unavailable.');
@@ -188,11 +325,24 @@ class CollectionReadService
         $today = CarbonImmutable::now($revision->timezone)->toDateString();
         $blockedIntervals = [];
         $pauseDate = null;
-        foreach ($plan->lifecycleEvents()->get() as $event) {
+        $planHistory = $plan->lifecycleEvents()->get();
+        $firstPlanEvent = $planHistory->first();
+        $unknownPlanBefore = $firstPlanEvent?->from_status === ThriftPlanStatus::Paused
+            ? $firstPlanEvent->effective_at->setTimezone($revision->timezone)->toDateString() : null;
+        $unknownIntervals = [];
+        $previousPlanEvent = null;
+        foreach ($planHistory as $event) {
             $eventDate = $event->effective_at->setTimezone($revision->timezone)->toDateString();
-            if ($event->event_type === 'pause') {
+            if ($previousPlanEvent !== null && $event->from_status !== null
+                && $previousPlanEvent->to_status !== $event->from_status) {
+                $unknownIntervals[] = [$previousPlanEvent->effective_at->setTimezone($revision->timezone)->toDateString(), $eventDate];
+            }
+            $previousPlanEvent = $event;
+            if ($event->event_type === 'pause' || ($event->to_status === ThriftPlanStatus::Paused
+                && $event->from_status !== ThriftPlanStatus::Paused)) {
                 $pauseDate = $eventDate;
-            } elseif ($event->event_type === 'resume' && $pauseDate !== null) {
+            } elseif (($event->event_type === 'resume' || ($event->from_status === ThriftPlanStatus::Paused
+                && $event->to_status === ThriftPlanStatus::Active)) && $pauseDate !== null) {
                 $blockedIntervals[] = [$pauseDate, $eventDate];
                 $pauseDate = null;
             }
@@ -200,6 +350,15 @@ class CollectionReadService
         if ($pauseDate !== null) {
             $blockedIntervals[] = [$pauseDate, null];
         }
+        $unknownPlanAfter = $previousPlanEvent !== null && $previousPlanEvent->to_status !== null
+            && $previousPlanEvent->to_status !== $plan->status
+            ? $previousPlanEvent->effective_at->setTimezone($revision->timezone)->toDateString() : null;
+        $customerHistory = $this->customerParticipationHistory($plan, $revision->timezone);
+        $blockedIntervals = array_merge($blockedIntervals, $customerHistory['intervals']);
+        $unknownIntervals = array_merge($unknownIntervals, $customerHistory['unknown_intervals']);
+        $serviceHistory = $this->agentServiceHistory($plan, $revision->timezone);
+        $serviceIntervals = $serviceHistory['intervals'];
+        $unknownIntervals = array_merge($unknownIntervals, $serviceHistory['unknown_intervals']);
         $slots = $plan->slots()->whereNotNull('active_ordinal')->orderBy('active_ordinal')->get();
         $totals = DB::table('collection_allocations')->whereNotIn('collection_allocations.id', DB::table('collection_allocation_releases')->select('collection_allocation_id'))
             ->whereIn('contribution_slot_id', $slots->pluck('id'))
@@ -226,8 +385,27 @@ class CollectionReadService
                     break;
                 }
             }
+            $classificationUnavailable = ($unknownPlanBefore !== null && $slot->due_date < $unknownPlanBefore)
+                || ($customerHistory['unknown_before'] !== null && $slot->due_date < $customerHistory['unknown_before'])
+                || ($unknownPlanAfter !== null && $slot->due_date >= $unknownPlanAfter)
+                || ($customerHistory['unknown_after'] !== null && $slot->due_date >= $customerHistory['unknown_after']);
+            foreach ($unknownIntervals as [$start, $end]) {
+                if ($slot->due_date >= $start && ($end === null || $slot->due_date < $end)) {
+                    $classificationUnavailable = true;
+                    break;
+                }
+            }
+            $serviceInterrupted = false;
+            foreach ($serviceIntervals as [$start, $end]) {
+                if ($slot->due_date >= $start && ($end === null || $slot->due_date < $end)) {
+                    $serviceInterrupted = true;
+                    break;
+                }
+            }
             $status = match (true) {
                 $funded === $slot->expected_amount_kobo => 'paid',
+                $classificationUnavailable => 'unavailable',
+                $serviceInterrupted && ! $blocked => 'service-interrupted',
                 $funded > 0 => 'partial',
                 $blocked => 'blocked',
                 $annotation !== null && $annotation->kind === 'skipped' => 'skipped',
@@ -250,8 +428,116 @@ class CollectionReadService
             'plan_id' => $plan->plan_id, 'status' => $plan->status->value, 'timezone' => $revision->timezone,
             'target_kobo' => $revision->expected_gross_kobo, 'funded_kobo' => $fundedTotal,
             'paid_slots' => $paidCount, 'slot_count' => $slots->count(), 'slots' => $rows,
-            'position' => $this->position($plan->customerProfile),
         ];
+    }
+
+    /** @return array{intervals: list<array{0: string, 1: string|null}>, unknown_before: string|null, unknown_after: string|null, unknown_intervals: list<array{0: string, 1: string}>} */
+    private function customerParticipationHistory(ThriftPlan $plan, string $timezone): array
+    {
+        $intervals = [];
+        $blockedDate = null;
+        $history = CustomerStatusHistory::query()->where('customer_profile_id', $plan->customer_profile_id)
+            ->orderBy('created_at')->orderBy('id')->get();
+        $firstEvent = $history->first();
+        $unknownBefore = $firstEvent !== null && $firstEvent->from_status !== null && $firstEvent->from_status !== CustomerStatus::Active
+            ? $firstEvent->created_at->toImmutable()->setTimezone($timezone)->toDateString() : null;
+        $unknownIntervals = [];
+        $previousEvent = null;
+        foreach ($history as $event) {
+            $date = $event->created_at->toImmutable()->setTimezone($timezone)->toDateString();
+            if ($previousEvent !== null && $event->from_status !== null && $previousEvent->to_status !== $event->from_status) {
+                $unknownIntervals[] = [$previousEvent->created_at->toImmutable()->setTimezone($timezone)->toDateString(), $date];
+            }
+            $previousEvent = $event;
+            if ($event->to_status !== CustomerStatus::Active && $blockedDate === null) {
+                $blockedDate = $date;
+            } elseif ($event->to_status === CustomerStatus::Active && $blockedDate !== null) {
+                $intervals[] = [$blockedDate, $date];
+                $blockedDate = null;
+            }
+        }
+        if ($blockedDate !== null) {
+            $intervals[] = [$blockedDate, null];
+        }
+
+        $currentStatus = DB::table('customer_profiles')->where('id', $plan->customer_profile_id)->value('operational_status');
+        $unknownAfter = $previousEvent !== null && $previousEvent->to_status->value !== $currentStatus
+            ? $previousEvent->created_at->toImmutable()->setTimezone($timezone)->toDateString() : null;
+
+        return ['intervals' => $intervals, 'unknown_before' => $unknownBefore, 'unknown_after' => $unknownAfter, 'unknown_intervals' => $unknownIntervals];
+    }
+
+    /** @return array{intervals: list<array{0: string, 1: string|null}>, unknown_intervals: list<array{0: string, 1: string|null}>} */
+    private function agentServiceHistory(ThriftPlan $plan, string $timezone): array
+    {
+        $assignments = $plan->customerProfile->assignments()->orderBy('effective_at')->orderBy('id')->get();
+        $history = DB::table('agent_status_histories')->whereIn('agent_profile_id', $assignments->pluck('agent_profile_id'))
+            ->orderBy('created_at')->orderBy('id')->get()->groupBy('agent_profile_id');
+        $accountHistory = DB::table('agent_lifecycle_histories')->whereIn('agent_profile_id', $assignments->pluck('agent_profile_id'))
+            ->select('agent_profile_id', 'created_at', 'id')->selectRaw('from_account_state as from_status, to_account_state as to_status')
+            ->orderBy('created_at')->orderBy('id')->get()->groupBy('agent_profile_id');
+        $currentStates = DB::table('agent_profiles')->leftJoin('users', 'users.id', '=', 'agent_profiles.user_id')
+            ->whereIn('agent_profiles.id', $assignments->pluck('agent_profile_id'))
+            ->select('agent_profiles.id', 'agent_profiles.operational_status', 'users.account_state')->get()->keyBy('id');
+        $intervals = [];
+        $unknownIntervals = [];
+        foreach ($assignments as $assignment) {
+            $assignedDate = $assignment->effective_at->toImmutable()->setTimezone($timezone)->toDateString();
+            $endedDate = $assignment->ended_at?->toImmutable()->setTimezone($timezone)->toDateString();
+            $agentIntervals = [];
+            $agentUnknownIntervals = [];
+            foreach ([$history->get($assignment->agent_profile_id, collect()), $accountHistory->get($assignment->agent_profile_id, collect())] as $stream => $events) {
+                $firstEvent = $events->first();
+                if ($firstEvent !== null && $firstEvent->from_status !== null && $firstEvent->from_status !== 'active') {
+                    $knownDate = CarbonImmutable::parse($firstEvent->created_at, 'UTC')->setTimezone($timezone)->toDateString();
+                    $agentUnknownIntervals[] = [$assignedDate, $knownDate];
+                }
+                $inactiveDate = null;
+                $previousEvent = null;
+                foreach ($events as $event) {
+                    $date = CarbonImmutable::parse($event->created_at, 'UTC')->setTimezone($timezone)->toDateString();
+                    if ($previousEvent !== null && $event->from_status !== null && $previousEvent->to_status !== $event->from_status) {
+                        $agentUnknownIntervals[] = [CarbonImmutable::parse($previousEvent->created_at, 'UTC')->setTimezone($timezone)->toDateString(), $date];
+                    }
+                    $previousEvent = $event;
+                    if ($event->to_status !== 'active' && $inactiveDate === null) {
+                        $inactiveDate = $date;
+                    } elseif ($event->to_status === 'active' && $inactiveDate !== null) {
+                        $agentIntervals[] = [$inactiveDate, $date];
+                        $inactiveDate = null;
+                    }
+                }
+                if ($inactiveDate !== null) {
+                    $agentIntervals[] = [$inactiveDate, null];
+                }
+                $currentState = $stream === 0
+                    ? ($currentStates->get($assignment->agent_profile_id)?->operational_status)
+                    : ($currentStates->get($assignment->agent_profile_id)?->account_state);
+                if ($previousEvent !== null && $previousEvent->to_status !== $currentState) {
+                    $agentUnknownIntervals[] = [CarbonImmutable::parse($previousEvent->created_at, 'UTC')->setTimezone($timezone)->toDateString(), null];
+                }
+            }
+            foreach ($agentUnknownIntervals as [$start, $end]) {
+                $start = max($start, $assignedDate);
+                if ($endedDate !== null) {
+                    $end = $end === null ? $endedDate : min($end, $endedDate);
+                }
+                if ($end === null || $start < $end) {
+                    $unknownIntervals[] = [$start, $end];
+                }
+            }
+            foreach ($agentIntervals as [$start, $end]) {
+                $start = max($start, $assignedDate);
+                if ($endedDate !== null) {
+                    $end = $end === null ? $endedDate : min($end, $endedDate);
+                }
+                if ($end === null || $start < $end) {
+                    $intervals[] = [$start, $end];
+                }
+            }
+        }
+
+        return ['intervals' => $intervals, 'unknown_intervals' => $unknownIntervals];
     }
 
     private function checkedAdd(int $left, int $right): int
@@ -265,6 +551,9 @@ class CollectionReadService
 
     public function archivalStatus(CustomerProfile $customer): string
     {
+        if (app(CollectionPaymentEvidenceService::class)->unresolved()->where('evidence.customer_profile_id', $customer->id)->exists()) {
+            return 'blocked';
+        }
         $receipts = CollectionReceipt::query()->where('customer_profile_id', $customer->id)->get();
         foreach ($receipts as $receipt) {
             if ($receipt->tender_amount_kobo !== $receipt->savings_amount_kobo + $receipt->fee_amount_kobo) {
@@ -311,11 +600,17 @@ class CollectionReadService
                 return 'unavailable';
             }
             if ($batch->status !== 'reconciled') {
-                return in_array($batch->status, ['open', 'frozen', 'in_review', 'exception'], true) ? 'blocked' : 'unavailable';
+                return in_array($batch->status, ['open', 'ready_for_review', 'in_review', 'exception'], true) ? 'blocked' : 'unavailable';
             }
             $review = DB::table('collection_batch_reviews')->where('collection_batch_id', $batch->id)->orderByDesc('id')->first();
+            try {
+                $position = app(CollectionBatchPosition::class)->read($batch);
+                app(CollectionExceptionResolution::class)->assertResolvedCases($batch);
+            } catch (ConflictHttpException|ServiceUnavailableHttpException) {
+                return 'unavailable';
+            }
             if ($review === null || $review->outcome !== 'reconciled' || (int) $review->outstanding_kobo !== 0
-                || (int) $batch->receipts()->sum('tender_amount_kobo') !== (int) $batch->remittances()->sum('amount_kobo')) {
+                || $position['outstanding_kobo'] !== 0) {
                 return 'unavailable';
             }
         }
@@ -340,7 +635,7 @@ class CollectionReadService
         $position = $this->position($customer, $forUpdate);
         $groups = LedgerPostingGroup::query()->where('customer_profile_id', $customer->id)->with('entries.account')->get();
         foreach ($groups as $group) {
-            if (! in_array($group->event_type, ['cash_contribution', 'cash_withdrawal', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
+            if (! in_array($group->event_type, ['cash_contribution', 'noncash_contribution', 'cash_withdrawal', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
                 || $group->currency !== 'NGN' || $group->entries->count() < 2 || $group->getRawOriginal('committed_at') === null) {
                 return 'unavailable';
             }

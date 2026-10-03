@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreCashRemittanceRequest extends FormRequest
 {
@@ -31,5 +32,14 @@ class StoreCashRemittanceRequest extends FormRequest
             'batch_version' => ['required', 'integer', 'min:1'],
             'confirmed' => ['required', 'accepted'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            foreach (array_diff(array_keys($this->all()), array_keys($this->rules()), ['_token', '_method']) as $field) {
+                $validator->errors()->add($field, 'Only confirmed cash handoff evidence is supported; custody offsets are unavailable.');
+            }
+        });
     }
 }

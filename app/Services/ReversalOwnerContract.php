@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CustomerProfile;
+use App\Models\FinancialWorkflowSupplement;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalRequest;
 use App\Models\User;
@@ -21,5 +22,5 @@ interface ReversalOwnerContract
      *
      * @param  array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}  $preview
      */
-    public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup;
+    public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup|FinancialWorkflowSupplement;
 }

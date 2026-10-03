@@ -36,10 +36,13 @@ class StoreFeeRuleRequest extends FormRequest
             'basis' => ['nullable', 'string', 'in:none,contractual_daily_contribution,net_cycle_contributions,gross_withdrawal_debit'],
             'settlement_source' => ['nullable', 'string', 'in:external_receipt,savings_application,withdrawal_payout'],
             'amount_ngn' => ['nullable', 'numeric', 'regex:/\A(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?\z/'],
+            'currency' => ['sometimes', 'string', 'in:NGN'],
             'basis_points' => ['required_if:model,percentage', 'nullable', 'integer', 'min:0', 'max:10000'],
             'customer_description' => ['required', 'string', 'min:1', 'max:500'],
             'publication_reason' => ['required', 'string', 'min:1', 'max:500'],
             'effective_at' => ['nullable', 'date'],
+            'confirmed' => ['required', 'accepted'],
+            'preview_fingerprint' => ['required', 'string', 'regex:/\A[a-f0-9]{64}\z/'],
         ];
     }
 }

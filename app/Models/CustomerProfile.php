@@ -217,13 +217,19 @@ class CustomerProfile extends Model
     }
 
     /**
-     * Get the fee snapshot for this customer profile.
+     * Get this customer's original registration fee agreement.
      *
      * @return HasOne<FeeSnapshot, $this>
      */
     public function feeSnapshot(): HasOne
     {
-        return $this->hasOne(FeeSnapshot::class, 'customer_profile_id');
+        return $this->hasOne(FeeSnapshot::class, 'customer_profile_id')
+            ->where('kind', 'registration')
+            ->where('source_type', 'registration')
+            ->whereHas('customerProfile', fn (Builder $query): Builder => $query
+                ->where(fn (Builder $source): Builder => $source
+                    ->whereColumn('fee_snapshots.source_id', 'customer_profiles.customer_id')
+                    ->orWhereRaw('fee_snapshots.source_id = CAST(customer_profiles.id AS CHAR)')));
     }
 
     /**

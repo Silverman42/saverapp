@@ -19,12 +19,13 @@ class ReversalNoticeService
         $message = match ($event->event_type) {
             'submitted' => 'A financial correction request was submitted for review. The original transaction remains effective.',
             'approved_posted' => 'A reviewed correction was posted. Open your account to see the original and linked correction.',
+            'approved_no_money' => 'A reviewed correction was completed. Existing fee refunds are preserved; no new money movement was required.',
             'rejected' => 'A financial correction request was rejected. The original transaction remains effective.',
             'cancelled' => 'A financial correction request was cancelled. The original transaction remains effective.',
             default => 'A financial correction request was updated.',
         };
         $recipients = [[$agentUser, 'current_agent', 'database']];
-        if ($event->event_type === 'approved_posted') {
+        if (in_array($event->event_type, ['approved_posted', 'approved_no_money'], true)) {
             $recipients[] = [$customerUser, 'subject_customer', 'database'];
             $recipients[] = [$customerUser, 'subject_customer', 'mail'];
         }

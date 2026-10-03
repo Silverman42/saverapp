@@ -20,10 +20,7 @@ class ImportNotificationInbox extends Command
         $verified = 0;
         $skipped = 0;
         foreach (NotificationCatalogue::OWNERS as $family => $owner) {
-            $query = DB::table($owner['table']);
-            if ($family !== 'collection') {
-                $query->where('channel', 'database');
-            }
+            $query = DB::table($owner['table'])->where('channel', 'database');
             $query->orderBy('id')->chunkById(100, function ($rows) use ($family, $catalogue, $pipeline, &$verified, &$skipped): void {
                 foreach ($rows as $row) {
                     $existing = DB::table('notifications')->where('id', $row->notification_id)->first();

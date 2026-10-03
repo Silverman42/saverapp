@@ -2,10 +2,12 @@
 
 use App\Enums\AdminPermission;
 use App\Models\FinancialArtifact;
+use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\FinancialArtifactService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\StatementPreviewService;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -15,6 +17,7 @@ use Illuminate\Support\Str;
 require_once __DIR__.'/../WithdrawalFixtures.php';
 
 beforeEach(function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-02 12:00:00', 'Africa/Lagos'));
     Queue::fake();
     Storage::fake('local');
 });
@@ -113,6 +116,7 @@ test('statement supersession preserves original bytes and requires a current con
 });
 
 test('reports require current export authority and report expiry preserves held artifacts and manifests', function (): void {
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
     app(LedgerTransactionProjectionService::class)->rebuild();
     $admin = User::factory()->admin()->create();
     $this->actingAs($admin)->postJson(route('reports.export', 'withdrawals'), ['operation_reference' => (string) Str::uuid(), 'format' => 'csv', 'confirmed' => true])->assertForbidden();
@@ -129,6 +133,7 @@ test('reports require current export authority and report expiry preserves held 
 });
 
 test('failed artifact retry keeps its snapshot and checks revoked access and cancellation finality', function (): void {
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
     app(LedgerTransactionProjectionService::class)->rebuild();
     $admin = User::factory()->admin()->create();
     $admin->givePermissionTo(AdminPermission::ReportsExport);

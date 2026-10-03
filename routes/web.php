@@ -3,8 +3,10 @@
 use App\Http\Controllers\Admin\AdminAccessController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\BusinessSettingsController;
+use App\Http\Controllers\Admin\FeeActionAttemptController;
 use App\Http\Controllers\Admin\FeeOverviewController;
 use App\Http\Controllers\Admin\FeeRefundController;
+use App\Http\Controllers\Admin\FeeSavingsApplicationController;
 use App\Http\Controllers\Admin\FinancialPeriodController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\ManualChargeController;
@@ -29,6 +31,8 @@ use App\Http\Controllers\CashDisbursementController;
 use App\Http\Controllers\CashExecutionController;
 use App\Http\Controllers\CashRecoveryController;
 use App\Http\Controllers\CollectionController;
+use App\Http\Controllers\CollectionEvidenceController;
+use App\Http\Controllers\CollectionSettlementController;
 use App\Http\Controllers\CustomerDirectoryController;
 use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerLifecycleController;
@@ -71,6 +75,22 @@ Route::get('customer-recovery/{recovery}/activate', [CustomerRecoveryController:
 Route::post('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('customer-recovery.activate');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('collection-methods', [CollectionEvidenceController::class, 'methods'])->name('collection-methods.index');
+    Route::get('collection-methods/manage', [CollectionEvidenceController::class, 'manage'])->name('collection-methods.manage');
+    Route::get('collection-methods/publications/{reference}', [CollectionEvidenceController::class, 'publicationResult'])->whereUuid('reference')->name('collection-methods.publication-result');
+    Route::post('collection-methods', [CollectionEvidenceController::class, 'publish'])->middleware('fresh')->name('collection-methods.store');
+    Route::post('customers/{customer}/collection-evidence', [CollectionEvidenceController::class, 'store'])->middleware('throttle:20,1')->name('customers.collection-evidence.store');
+    Route::get('collection-evidence', [CollectionEvidenceController::class, 'index'])->name('collection-evidence.index');
+    Route::get('collection-evidence/{reference}/view', [CollectionEvidenceController::class, 'view'])->whereUuid('reference')->name('collection-evidence.view');
+    Route::get('collection-evidence/{reference}', [CollectionEvidenceController::class, 'show'])->whereUuid('reference')->name('collection-evidence.show');
+    Route::get('collection-evidence/{reference}/reviews/{operation}', [CollectionEvidenceController::class, 'reviewResult'])->whereUuid(['reference', 'operation'])->middleware('fresh')->name('collection-evidence.reviews.show');
+    Route::post('collection-evidence/{reference}/review', [CollectionEvidenceController::class, 'review'])->whereUuid('reference')->middleware('fresh')->name('collection-evidence.review');
+    Route::get('collection-evidence/{reference}/files/{file}/link', [CollectionEvidenceController::class, 'link'])->whereUuid('reference')->whereNumber('file')->name('collection-evidence.files.link');
+    Route::get('collection-evidence/{reference}/files/{file}/download', [CollectionEvidenceController::class, 'download'])->whereUuid('reference')->whereNumber('file')->middleware('signed')->name('collection-evidence.files.download');
+    Route::post('collection-batches/{batch}/settlements', [CollectionSettlementController::class, 'store'])->middleware(['fresh', 'throttle:20,1'])->name('collection-batches.settlements.store');
+    Route::get('collection-batches/{batch}/settlements/{reference}', [CollectionSettlementController::class, 'show'])->whereUuid('reference')->name('collection-batches.settlements.show');
+    Route::get('collection-settlements/{reference}/files/{file}/link', [CollectionSettlementController::class, 'link'])->whereUuid('reference')->whereNumber('file')->name('collection-settlements.files.link');
+    Route::get('collection-settlements/{reference}/files/{file}/download', [CollectionSettlementController::class, 'download'])->whereUuid('reference')->whereNumber('file')->middleware('signed')->name('collection-settlements.files.download');
     Route::get('customer-recovery', [CustomerRecoveryController::class, 'index'])->name('customer-recovery.index');
     Route::get('customers/{customer}/reassignment', [CustomerReassignmentController::class, 'edit'])->name('customers.reassignment.edit');
     Route::post('customers/{customer}/reassignment/preview', [CustomerReassignmentController::class, 'preview'])->name('customers.reassignment.preview');
@@ -201,6 +221,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('collection-batches/{batch}/review', [ReconciliationController::class, 'review'])->name('collection-batches.review');
         Route::post('collection-batches/{batch}/exceptions', [ReconciliationController::class, 'reportException'])->name('collection-batches.exceptions.store');
         Route::post('collection-batches/{batch}/exceptions/{exception}/resolve', [ReconciliationController::class, 'resolveException'])->name('collection-batches.exceptions.resolve');
+        Route::post('collection-batches/{batch}/exceptions/{exception}/progress', [ReconciliationController::class, 'progressException'])->name('collection-batches.exceptions.progress');
         Route::post('collection-batches/{batch}/exceptions/{exception}/reopen', [ReconciliationController::class, 'reopenException'])->name('collection-batches.exceptions.reopen');
     });
 
@@ -293,9 +314,20 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('charges', [ManualChargeController::class, 'index'])->name('charges.index');
         Route::post('charges/categories', [ManualChargeController::class, 'publish'])->name('charges.publish');
+        Route::get('charges/attempts/{reference}', [ManualChargeController::class, 'status'])->whereUuid('reference')->name('charges.status');
+        Route::post('charges/preview', [ManualChargeController::class, 'preview'])->name('charges.preview');
         Route::post('charges', [ManualChargeController::class, 'assess'])->name('charges.assess');
         Route::post('fees/obligations/{obligation}/refund', [FeeRefundController::class, 'store'])->middleware('fresh')->name('fees.refunds.store');
         Route::get('fees', [FeeOverviewController::class, 'index'])->name('fees.index');
+        Route::post('fees/obligations/{obligation}/attempts/prepare', [FeeActionAttemptController::class, 'prepare'])->middleware('fresh')->name('fees.obligations.attempts.prepare');
+        Route::post('fees/obligations/{obligation}/attempts/cancel', [FeeActionAttemptController::class, 'cancel'])->middleware('fresh')->name('fees.obligations.attempts.cancel');
+        Route::get('fees/obligations/{obligation}/attempts/{attemptReference}', [FeeActionAttemptController::class, 'status'])->whereUuid('attemptReference')->name('fees.obligations.attempts.status');
+        Route::get('fees/obligations/{obligation}/savings-sources', [FeeSavingsApplicationController::class, 'sources'])->name('fees.obligations.savings-sources');
+        Route::post('fees/obligations/{obligation}/savings-preview', [FeeSavingsApplicationController::class, 'preview'])->name('fees.obligations.savings-preview');
+        Route::post('fees/obligations/{obligation}/apply-savings', [FeeSavingsApplicationController::class, 'store'])->middleware('fresh')->name('fees.obligations.apply-savings');
+        Route::get('fees/obligations/{obligation}/savings-status/{attemptReference}', [FeeSavingsApplicationController::class, 'status'])->whereUuid('attemptReference')->name('fees.obligations.savings-status');
+        Route::get('fees/obligations/{obligation}/action-status/{attemptReference}', [FeeOverviewController::class, 'actionStatus'])->whereUuid('attemptReference')->name('fees.obligations.action-status');
+
         Route::post('fees/obligations/{obligation}/waive', [FeeOverviewController::class, 'waive'])
             ->middleware('fresh')
             ->name('fees.obligations.waive');
@@ -305,6 +337,9 @@ Route::middleware(['auth'])->group(function () {
 
         // Registration Fee Rules (CAM-T06)
         Route::get('fees/registration', [RegistrationFeeRuleController::class, 'index'])->name('fees.registration.index');
+        Route::post('fees/registration/preview', [RegistrationFeeRuleController::class, 'preview'])->name('fees.registration.preview');
+        Route::post('fees/registration/{feeRule}/retirement-preview', [RegistrationFeeRuleController::class, 'previewRetirement'])->name('fees.registration.retirement-preview');
+        Route::post('fees/registration/{feeRule}/retire', [RegistrationFeeRuleController::class, 'retire'])->middleware('fresh')->name('fees.registration.retire');
         Route::post('fees/registration', [RegistrationFeeRuleController::class, 'store'])
             ->middleware('fresh')
             ->name('fees.registration.store');

@@ -17,7 +17,7 @@ class PlatformJobMiddleware
         $operation = $this->catalogue->jobClass($job);
         $outcome = 'failed';
         try {
-            $managed = $this->catalogue->isLocalRecoveryJob($job);
+            $managed = $this->catalogue->isLocalRecoveryJob($job) || $this->catalogue->ownsExternalDeliveryBoundary($job);
             $result = $managed ? $next($job) : $this->guard->work($operation, fn (): mixed => $next($job));
             $outcome = 'succeeded';
 

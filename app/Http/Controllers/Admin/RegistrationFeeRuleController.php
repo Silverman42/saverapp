@@ -6,11 +6,15 @@ use App\Enums\AdminPermission;
 use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\PreviewFeeRulePublicationRequest;
+use App\Http\Requests\PreviewFeeRuleRetirementRequest;
+use App\Http\Requests\RetireFeeRuleRequest;
 use App\Http\Requests\StoreFeeRuleRequest;
 use App\Models\FeeRule;
 use App\Services\AuthorizationService;
 use App\Services\RegistrationFeeService;
 use App\Support\MoneyAmount;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -75,28 +79,10 @@ class RegistrationFeeRuleController extends Controller
 
         $validated = $request->validated();
 
-        $model = FeeRuleModel::from($validated['model']);
-        try {
-            $amountKobo = filled($validated['amount_ngn'] ?? null)
-                ? MoneyAmount::parseNairaToKobo((string) $validated['amount_ngn'])
-                : 0;
-        } catch (\InvalidArgumentException $exception) {
-            throw ValidationException::withMessages(['amount_ngn' => [$exception->getMessage()]]);
-        }
-
         $feeService->publishRule($viewer, [
-            'kind' => $validated['kind'] ?? FeeRuleKind::Registration->value,
-            'rule_key' => $validated['rule_key'] ?? 'registration',
-            'timing' => $validated['timing'] ?? null,
-            'basis' => $validated['basis'] ?? null,
-            'settlement_source' => $validated['settlement_source'] ?? null,
-            'basis_points' => $validated['basis_points'] ?? null,
-            'effective_at' => $validated['effective_at'] ?? null,
-            'name' => $validated['name'],
-            'model' => $model,
-            'amount_kobo' => $amountKobo,
-            'customer_description' => $validated['customer_description'],
-            'publication_reason' => $validated['publication_reason'],
+            ...$this->publicationData($request),
+            'confirmed' => $request->boolean('confirmed'),
+            'preview_fingerprint' => $validated['preview_fingerprint'],
         ], $request);
 
         Inertia::flash('toast', [
@@ -107,5 +93,53 @@ class RegistrationFeeRuleController extends Controller
         ]);
 
         return redirect()->route('admin.fees.registration.index');
+    }
+
+    public function previewRetirement(PreviewFeeRuleRetirementRequest $request, FeeRule $feeRule, RegistrationFeeService $feeService): JsonResponse
+    {
+        return response()->json($feeService->previewRetirement($request->user(), $feeRule->id, $request->validated('reason')));
+    }
+
+    public function retire(RetireFeeRuleRequest $request, FeeRule $feeRule, RegistrationFeeService $feeService): RedirectResponse
+    {
+        $feeService->retireRule($request->user(), $feeRule->id, $request->validated('reason'), $request, $request->validated('preview_fingerprint'), $request->boolean('confirmed'));
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Fee rule retired. Existing agreements retain their fee terms.']);
+
+        return redirect()->route('admin.fees.registration.index');
+    }
+
+    public function preview(PreviewFeeRulePublicationRequest $request, RegistrationFeeService $feeService): JsonResponse
+    {
+        return response()->json($feeService->previewPublication($request->user(), $this->publicationData($request)));
+    }
+
+    /** @return array<string, mixed> */
+    private function publicationData(StoreFeeRuleRequest $request): array
+    {
+        $validated = $request->validated();
+        $model = FeeRuleModel::from($validated['model']);
+        try {
+            $amountKobo = filled($validated['amount_ngn'] ?? null)
+                ? MoneyAmount::parseNairaToKobo((string) $validated['amount_ngn'])
+                : 0;
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['amount_ngn' => [$exception->getMessage()]]);
+        }
+
+        return [
+            'currency' => $validated['currency'] ?? 'NGN',
+            'kind' => $validated['kind'] ?? FeeRuleKind::Registration->value,
+            'rule_key' => $validated['rule_key'] ?? 'registration',
+            'timing' => $validated['timing'] ?? null,
+            'basis' => $validated['basis'] ?? null,
+            'settlement_source' => $validated['settlement_source'] ?? null,
+            'basis_points' => isset($validated['basis_points']) ? (int) $validated['basis_points'] : null,
+            'effective_at' => $validated['effective_at'] ?? null,
+            'name' => $validated['name'],
+            'model' => $model,
+            'amount_kobo' => $amountKobo,
+            'customer_description' => $validated['customer_description'],
+            'publication_reason' => $validated['publication_reason'],
+        ];
     }
 }

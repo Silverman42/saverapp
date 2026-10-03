@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FeeQuoteSummary from '@/components/FeeQuoteSummary.vue';
+import type { FeeDisclosure } from '@/types/fee-disclosure';
 import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,7 @@ type Quote = {
     business_version: number;
     gross_kobo: number;
     fee_kobo: number;
+    fee_disclosure: FeeDisclosure;
     net_kobo: number;
     position: {
         liability_kobo: number;
@@ -247,7 +250,7 @@ function submit(): void {
                         }}</strong>
                     </p>
                     <p>
-                        Included fee<br /><strong>{{
+                        Total fee included in this payout<br /><strong>{{
                             money(quote.fee_kobo)
                         }}</strong>
                     </p>
@@ -257,6 +260,7 @@ function submit(): void {
                         }}</strong>
                     </p>
                 </div>
+                <FeeQuoteSummary :disclosure="quote.fee_disclosure" />
                 <p>
                     Current liability
                     {{ money(quote.position.liability_kobo) }} · reserved

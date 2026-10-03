@@ -7,6 +7,7 @@ use App\Enums\CustomerStatus;
 use App\Jobs\DeliverWithdrawalNotificationIntent;
 use App\Models\AgentProfile;
 use App\Models\CustomerAssignment;
+use App\Models\CustomerProfile;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
@@ -22,8 +23,31 @@ use App\Services\WithdrawalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 require_once __DIR__.'/../WithdrawalFixtures.php';
+
+test('withdrawal rejects fee snapshots without exact cycle revision Customer kind and currency attribution', function (string $damage): void {
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    enableFixtureMethod();
+    $snapshot = $plan->currentTermsRevision()->feeSnapshot;
+    $patch = match ($damage) {
+        'legacy_identity' => ['source_id' => 'PLN-UNRELATED'],
+        'revision_identity' => ['source_type' => 'plan_terms_revision', 'source_id' => $plan->plan_id.'-R2'],
+        'unknown_source' => ['source_type' => 'unverified_plan_source'],
+        'customer' => ['customer_profile_id' => CustomerProfile::factory()->create()->id],
+        'kind' => ['kind' => 'registration'],
+        'currency' => ['currency' => 'USD'],
+    };
+    DB::table('fee_snapshots')->where('id', $snapshot->id)->update($patch);
+    $groups = LedgerPostingGroup::query()->get()->map->getAttributes()->all();
+    expect(fn () => app(WithdrawalService::class)->preview($agent, $customer, withdrawalPayload($customer, $assignment, $plan)))
+        ->toThrow(ConflictHttpException::class, 'The cycle fee snapshot is unavailable.');
+    expect(WithdrawalRequest::count())->toBe(0)
+        ->and(DB::table('withdrawal_reservations')->count())->toBe(0)
+        ->and(DB::table('fee_obligations')->count())->toBe(0)
+        ->and(LedgerPostingGroup::query()->get()->map->getAttributes()->all())->toBe($groups);
+})->with(['legacy_identity', 'revision_identity', 'unknown_source', 'customer', 'kind', 'currency']);
 
 test('production method gate prevents submission and reservations', function (): void {
     [$agent, $customer, $assignment, $plan] = withdrawalFixture();

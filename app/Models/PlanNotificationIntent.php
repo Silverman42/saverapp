@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'notification_id', 'plan_lifecycle_event_id', 'thrift_plan_id', 'customer_profile_id',
     'recipient_user_id', 'audience_type', 'channel', 'purpose', 'payload', 'status',
     'delivered_at', 'suppressed_at', 'failure_reason',
+    'attempt_count', 'attempted_at', 'template_version', 'rendered_snapshot', 'rendered_hash', 'destination_hash',
 ])]
 class PlanNotificationIntent extends Model
 {
@@ -20,6 +21,8 @@ class PlanNotificationIntent extends Model
             'payload' => 'array',
             'delivered_at' => 'immutable_datetime',
             'suppressed_at' => 'immutable_datetime',
+            'attempted_at' => 'immutable_datetime',
+            'attempt_count' => 'integer',
         ];
     }
 

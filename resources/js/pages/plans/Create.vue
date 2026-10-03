@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import PlanEstimateSummary from '@/components/PlanEstimateSummary.vue';
+import type { PlanEstimate } from '@/types/plan-estimate';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { AlertCircle, CheckCircle2, FileCheck2 } from '@lucide/vue';
 import type { AcceptableValue } from 'reka-ui';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -43,6 +45,7 @@ type FeeOption = {
 };
 
 type PlanPreview = {
+    estimate: PlanEstimate | null;
     available: boolean;
     preview_fingerprint: string;
     customer: {
@@ -76,6 +79,8 @@ type PlanPreview = {
         estimate_available: boolean;
         formatted_amount: string;
         customer_description: string;
+        early_termination_policy_version: number | null;
+        early_termination_description: string | null;
     };
     slots: Array<{
         ordinal: number;
@@ -129,9 +134,34 @@ defineOptions({
     },
 });
 
+const previewBusy = ref(false);
+const previewRequiresRefresh = ref(false);
+const previewMessage = ref('');
+const previewNotice = ref<HTMLElement | null>(null);
+const busy = computed(() => previewBusy.value || form.processing);
+const previewGeneralErrors = computed(() =>
+    Object.entries(form.errors).filter(
+        ([field]) =>
+            ![
+                'name',
+                'amount_ngn',
+                'start_date',
+                'contribution_days',
+                'customer_visible_notes',
+                'fee_rule_id',
+            ].includes(field),
+    ),
+);
+
+const focusPreviewNotice = (): void => {
+    if (previewMessage.value) void nextTick(() => previewNotice.value?.focus());
+};
+
 const previewIsCurrent = computed(() => {
     const preview = props.preview;
     return (
+        !previewBusy.value &&
+        !previewRequiresRefresh.value &&
         preview !== null &&
         preview.terms.name === form.name.trim() &&
         preview.terms.start_date === form.start_date &&
@@ -171,10 +201,16 @@ watch(
 );
 
 const setFeeRule = (value: AcceptableValue): void => {
+    if (busy.value) return;
     if (typeof value === 'string') form.fee_rule_id = value;
 };
 
 const requestPreview = (): void => {
+    if (busy.value) return;
+    previewBusy.value = true;
+    previewRequiresRefresh.value = true;
+    previewMessage.value = '';
+    form.customer_agreement_attested = false;
     const query: Record<string, string | number> = {
         preview: 1,
         name: form.name,
@@ -195,12 +231,54 @@ const requestPreview = (): void => {
             preserveState: true,
             preserveScroll: true,
             replace: true,
+            onSuccess: (currentPage) => {
+                const current = currentPage.props.customer as
+                    | { id?: string }
+                    | undefined;
+                if (
+                    currentPage.component !== 'plans/Create' ||
+                    current?.id !== props.customer.id ||
+                    !currentPage.props.preview
+                ) {
+                    previewMessage.value =
+                        'A current preview was not returned. Your draft is retained. Build a fresh preview before confirming.';
+                    return;
+                }
+                previewRequiresRefresh.value = false;
+                form.clearErrors();
+            },
+            onError: (errors) => {
+                form.clearErrors().setError(errors);
+                previewMessage.value =
+                    'The preview could not be built. Review the validation errors and build a fresh preview before confirming.';
+            },
+            onHttpException: (response) => {
+                previewMessage.value =
+                    response.status === 403 || response.status === 404
+                        ? 'The preview is unavailable or your access has changed. Reload to check current access before confirming.'
+                        : 'The preview could not be verified. Your draft is retained. Build a fresh preview before confirming.';
+                return false;
+            },
+            onNetworkError: () => {
+                previewMessage.value =
+                    'The preview could not be checked because the connection failed. Your draft is retained. Check your connection and build a fresh preview before confirming.';
+                return false;
+            },
+            onCancel: () => {
+                previewMessage.value =
+                    'Preview checking was interrupted. Your draft is retained. Build a fresh preview before confirming.';
+            },
+            onFinish: () => {
+                previewBusy.value = false;
+                focusPreviewNotice();
+            },
         },
     );
 };
 
 const submit = (): void => {
     if (
+        busy.value ||
         !previewIsCurrent.value ||
         !props.preview ||
         !form.customer_agreement_attested
@@ -254,6 +332,27 @@ const submit = (): void => {
             >
         </Alert>
 
+        <p v-if="previewBusy" role="status" aria-live="polite">
+            Checking the current agreement and schedule. Wait for the preview
+            before confirming.
+        </p>
+        <div
+            v-if="previewMessage"
+            ref="previewNotice"
+            role="alert"
+            tabindex="-1"
+            aria-live="assertive"
+            aria-atomic="true"
+            class="rounded-lg border p-4 text-sm"
+        >
+            <p>{{ previewMessage }}</p>
+            <ul v-if="previewGeneralErrors.length" class="mt-2 grid gap-1">
+                <li v-for="[field, error] in previewGeneralErrors" :key="field">
+                    {{ error }}
+                </li>
+            </ul>
+        </div>
+
         <Card>
             <CardHeader>
                 <CardTitle>Agreed terms</CardTitle>
@@ -268,6 +367,7 @@ const submit = (): void => {
                         <Label for="plan-name">Plan name</Label>
                         <Input
                             id="plan-name"
+                            :disabled="busy"
                             v-model="form.name"
                             maxlength="100"
                             autocomplete="off"
@@ -285,6 +385,7 @@ const submit = (): void => {
                         >
                         <Input
                             id="plan-amount"
+                            :disabled="busy"
                             v-model="form.amount_ngn"
                             inputmode="decimal"
                             placeholder="e.g. 500.00"
@@ -300,10 +401,14 @@ const submit = (): void => {
                         <Label for="plan-start-date">Start date</Label>
                         <DatePicker
                             id="plan-start-date"
+                            :disabled="busy"
+                            aria-label="Start date"
                             v-model="form.start_date"
+                            :error-message="form.errors.start_date"
                         />
                         <p
                             v-if="form.errors.start_date"
+                            role="alert"
                             class="text-destructive text-sm"
                         >
                             {{ form.errors.start_date }}
@@ -313,6 +418,7 @@ const submit = (): void => {
                         <Label for="plan-days">Daily contribution days</Label>
                         <Input
                             id="plan-days"
+                            :disabled="busy"
                             v-model="form.contribution_days"
                             type="number"
                             min="1"
@@ -328,6 +434,7 @@ const submit = (): void => {
                     <div class="grid gap-2">
                         <Label for="plan-fee-rule">Fee option</Label>
                         <Select
+                            :disabled="busy"
                             :model-value="String(form.fee_rule_id)"
                             @update:model-value="setFeeRule"
                         >
@@ -360,6 +467,7 @@ const submit = (): void => {
                         >
                         <textarea
                             id="plan-notes"
+                            :disabled="busy"
                             v-model="form.customer_visible_notes"
                             rows="3"
                             maxlength="2000"
@@ -376,7 +484,7 @@ const submit = (): void => {
                 <CardFooter
                     class="flex flex-wrap justify-between gap-3 border-t pt-5"
                 >
-                    <Button as-child variant="outline"
+                    <Button v-if="!busy" as-child variant="outline"
                         ><Link :href="showCustomer(customer.id).url"
                             >Back to Customer</Link
                         ></Button
@@ -384,15 +492,19 @@ const submit = (): void => {
                     <Button
                         type="button"
                         variant="secondary"
-                        :disabled="fee_options.length === 0"
+                        :disabled="busy || fee_options.length === 0"
                         @click="requestPreview"
-                        >Build agreement preview</Button
+                        >{{
+                            previewBusy
+                                ? 'Building agreement preview…'
+                                : 'Build agreement preview'
+                        }}</Button
                     >
                 </CardFooter>
             </form>
         </Card>
 
-        <Card v-if="preview">
+        <Card v-if="preview && !previewBusy && !previewRequiresRefresh">
             <CardHeader>
                 <div class="flex items-start gap-3">
                     <CheckCircle2 class="text-primary mt-0.5 size-5 shrink-0" />
@@ -426,7 +538,7 @@ const submit = (): void => {
                         {{ preview.terms.customer_visible_notes || 'None' }}
                     </p>
                 </div>
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="grid gap-4 sm:grid-cols-3">
                     <div class="rounded-xl border p-4">
                         <p class="text-muted-foreground text-xs">
                             Daily contribution
@@ -445,17 +557,6 @@ const submit = (): void => {
                     </div>
                     <div class="rounded-xl border p-4">
                         <p class="text-muted-foreground text-xs">
-                            Expected gross
-                        </p>
-                        <p class="mt-1 font-semibold">
-                            {{ preview.terms.formatted_expected_gross }}
-                        </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            Contractual estimate only
-                        </p>
-                    </div>
-                    <div class="rounded-xl border p-4">
-                        <p class="text-muted-foreground text-xs">
                             Schedule end
                         </p>
                         <p class="mt-1 font-semibold">
@@ -465,6 +566,11 @@ const submit = (): void => {
                             {{ preview.business.timezone }}
                         </p>
                     </div>
+                </div>
+
+                <div class="space-y-3 rounded-xl border p-4">
+                    <h2 class="font-medium">Contractual estimates</h2>
+                    <PlanEstimateSummary :estimate="preview.estimate" />
                 </div>
 
                 <div class="rounded-xl border p-4">
@@ -478,6 +584,13 @@ const submit = (): void => {
                     </p>
                     <p class="text-muted-foreground mt-1 text-sm">
                         {{ preview.fee.customer_description }}
+                    </p>
+                    <p
+                        v-if="preview.fee.early_termination_description"
+                        class="text-muted-foreground mt-2 text-sm"
+                    >
+                        Early termination:
+                        {{ preview.fee.early_termination_description }}
                     </p>
                     <p class="text-muted-foreground mt-1 text-sm">
                         Basis: {{ preview.fee.basis.replaceAll('_', ' ') }} ·
@@ -530,7 +643,7 @@ const submit = (): void => {
                     <Checkbox
                         id="plan-agreement"
                         v-model:checked="form.customer_agreement_attested"
-                        :disabled="!previewIsCurrent"
+                        :disabled="busy || !previewIsCurrent"
                     />
                     <div class="grid gap-1">
                         <Label for="plan-agreement" class="leading-5"
@@ -575,7 +688,7 @@ const submit = (): void => {
             <CardFooter class="flex justify-end border-t pt-5">
                 <Button
                     :disabled="
-                        form.processing ||
+                        busy ||
                         !previewIsCurrent ||
                         !form.customer_agreement_attested ||
                         fee_options.length === 0

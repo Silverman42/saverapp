@@ -46,7 +46,8 @@ class FreezeCollectionBatches extends Command
                     AuditEvent::record('collection.batch_frozen', CollectionBatch::class, $current->id,
                         (string) $current->id, ['agent_profile_id' => $current->agent_profile_id,
                             'received_date' => $current->received_date, 'revision' => $current->revision],
-                        context: ['executor' => self::class]
+                        context: ['executor' => self::class, 'source_version' => $current->version,
+                            'correlation_reference' => 'batch:'.$current->id.':'.$current->version]
                     );
                 }, attempts: 3);
             }

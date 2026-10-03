@@ -161,8 +161,8 @@ class CustomerReassignmentService
             'recoveries' => ['customer_recoveries', ['verification_required', 'awaiting_approval', 'awaiting_activation', 'activation_expired']],
             'names' => ['customer_name_corrections', ['pending']]];
         $state = ['withdrawals' => [], 'reversals' => [], 'recoveries' => [], 'names' => [], 'reservations' => []];
-        $allowed = ['withdrawals' => ['pending_review', 'approved', 'rejected', 'cancelled', 'expired'],
-            'reversals' => ['pending_review', 'approved_posted', 'rejected', 'cancelled'],
+        $allowed = ['withdrawals' => ['pending_review', 'approved', 'posted', 'rejected', 'cancelled', 'expired'],
+            'reversals' => ['pending_review', 'approved_posted', 'approved_no_money', 'rejected', 'cancelled'],
             'recoveries' => ['verification_required', 'awaiting_approval', 'awaiting_activation', 'activation_expired', 'completed', 'rejected', 'cancelled', 'expired'],
             'names' => ['pending', 'accepted', 'rejected', 'cancelled', 'expired', 'invalidated', 'replaced']];
         foreach ($tables as $key => [$table, $states]) {

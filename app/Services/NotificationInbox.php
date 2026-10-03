@@ -76,9 +76,11 @@ class NotificationInbox
             }
             if (isset($filters['action_required'])) {
                 if (filter_var($filters['action_required'], FILTER_VALIDATE_BOOLEAN)) {
-                    $query->where('cc.status', 'pending')->where('cc.expires_at', '>', now());
+                    $query->where(fn (Builder $action) => $action->where('i.template_id', 'like', 'fee_issue.%')
+                        ->orWhere(fn (Builder $correction) => $correction->where('cc.status', 'pending')->where('cc.expires_at', '>', now())));
                 } else {
-                    $query->where(fn (Builder $action) => $action->whereNull('cc.id')->orWhere('cc.status', '!=', 'pending')->orWhere('cc.expires_at', '<=', now()));
+                    $query->where('i.template_id', 'not like', 'fee_issue.%')
+                        ->where(fn (Builder $action) => $action->whereNull('cc.id')->orWhere('cc.status', '!=', 'pending')->orWhere('cc.expires_at', '<=', now()));
                 }
             }
             if (isset($filters['from'])) {
@@ -180,7 +182,7 @@ class NotificationInbox
         $row = $this->visible($user)->where('i.notification_id', $id)->first(['i.destination']);
         abort_if($row === null || $row->destination === null, 404);
         $destination = json_decode($row->destination, true, flags: JSON_THROW_ON_ERROR);
-        abort_unless(in_array($destination['route'] ?? '', ['customers.show', 'agents.show', 'plans.show', 'collections.show', 'withdrawals.show', 'reversals.show', 'admin.security.show'], true), 404);
+        abort_unless(in_array($destination['route'] ?? '', ['customers.show', 'agents.show', 'plans.show', 'collections.show', 'withdrawals.show', 'reversals.show', 'admin.security.show', 'admin.fees.registration.index', 'cash-disbursements.index', 'notifications.show'], true), 404);
 
         return route($destination['route'], $destination['parameters'], false);
     }
@@ -190,7 +192,8 @@ class NotificationInbox
     {
         return ['id' => $row->notification_id, 'title' => $row->title, 'summary' => $row->summary, 'reference' => $row->reference,
             'category' => $row->category, 'importance' => $row->importance, 'mandatory' => (bool) $row->mandatory,
-            'action_required' => $row->correction_status === 'pending' && CarbonImmutable::parse($row->action_expires_at)->isFuture(),
+            'action_required' => str_starts_with($row->template_id, 'fee_issue.')
+                || ($row->correction_status === 'pending' && CarbonImmutable::parse($row->action_expires_at)->isFuture()),
             'visibility' => in_array($row->correction_status, ['replaced', 'invalidated'], true) ? 'superseded' : ($row->correction_status === 'expired' || ($row->correction_status === 'pending' && CarbonImmutable::parse($row->action_expires_at)->isPast()) ? 'expired' : 'current'),
             'effective_at' => CarbonImmutable::parse($row->effective_at, 'UTC')->toIso8601String(),
             'read_at' => $row->read_at === null ? null : CarbonImmutable::parse($row->read_at, 'UTC')->toIso8601String(),

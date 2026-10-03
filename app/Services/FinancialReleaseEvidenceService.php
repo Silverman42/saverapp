@@ -25,6 +25,7 @@ class FinancialReleaseEvidenceService
             'migrations' => DB::table('migrations')->orderBy('migration')->pluck('migration')->all(),
             'mappings' => LedgerAccount::query()->orderBy('code')->get(['code', 'account_class', 'normal_balance', 'currency', 'mapping_status', 'version'])->toArray(),
             'methods' => DB::table('cash_method_versions')->orderBy('id')->get()->toArray(),
+            'collection_methods' => Schema::hasTable('collection_method_versions') ? DB::table('collection_method_versions')->orderBy('id')->get()->toArray() : [],
             'implementation' => config('app.financial_release_revision'),
         ]);
     }
@@ -73,7 +74,7 @@ class FinancialReleaseEvidenceService
     {
         $rows = Schema::hasTable('financial_release_evidence') ? DB::table('financial_release_evidence')->orderBy('version')->get()->groupBy('capability') : collect();
         $hash = $this->dependencyHash();
-        $mappingUnavailable = LedgerAccount::query()->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
+        $mappingUnavailable = LedgerAccount::query()->whereNotIn('code', ['business_bank_ngn', 'payment_clearing_ngn'])->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
         $methodUnavailable = false;
         try {
             app(CashMethodCatalogue::class)->version('withdrawal');

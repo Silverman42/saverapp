@@ -149,6 +149,40 @@ test('a verified empty ledger shows real zeros rather than unavailable', functio
         ->where('dashboard.sections.collections.metrics.0.value', 0));
 });
 
+test('populated dashboards provide renderable activity sections for every role', function (string $role): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture);
+    $viewer = match ($role) {
+        'customer' => $fixture[1]->user,
+        'agent' => $fixture[0],
+        'admin' => User::factory()->admin()->create(),
+    };
+
+    $this->actingAs($viewer)->get(route($role.'.dashboard'))->assertInertia(fn (Assert $page) => $page
+        ->component('Dashboard')
+        ->where('dashboard.sections.activity.status', 'Current')
+        ->where('dashboard.sections.activity.metrics', [])
+        ->where('dashboard.sections.activity.total', 1)
+        ->has('dashboard.sections.activity.rows', 1)
+        ->where('dashboard.sections.activity.rows.0.amount', '₦2,000.00'));
+})->with(['customer', 'agent', 'admin']);
+
+test('populated dashboard partial refresh retains the renderable activity contract', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture);
+
+    $this->actingAs($fixture[1]->user)->get(route('customer.dashboard'))->assertInertia(fn (Assert $page) => $page
+        ->reloadOnly('dashboard', fn (Assert $reload) => $reload
+            ->missing('scopeSummary')
+            ->where('dashboard.sections.activity.status', 'Current')
+            ->where('dashboard.sections.activity.metrics', [])
+            ->where('dashboard.sections.activity.total', 1)
+            ->has('dashboard.sections.activity.rows', 1)
+            ->where('dashboard.sections.activity.rows.0.amount', '₦2,000.00')));
+});
+
 test('customer dashboards isolate balances and subtract live gross reservations once', function (): void {
     $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
     $fixture = dashboardFixture();

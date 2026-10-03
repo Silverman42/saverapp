@@ -7,9 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Models\ChargeCategoryVersion;
 use App\Models\ThriftPlan;
 use App\Services\AuthorizationService;
+use App\Services\FeeSavingsApplicationService;
 use App\Services\ManualChargeService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyAmount;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,7 +32,7 @@ class ManualChargeController extends Controller
                 ->whereColumn('newer.category_key', 'charge_category_versions.category_key')->whereColumn('newer.version', '>', 'charge_category_versions.version'))
             ->orderBy('category_key')->get();
 
-        return Inertia::render('admin/fees/Charges', ['categories' => $categories, 'can_fees' => $fees, 'can_deductions' => $deductions,
+        return Inertia::render('admin/fees/Charges', ['categories' => $categories, 'can_fees' => $fees, 'can_deductions' => $deductions, 'can_apply_savings' => app(FeeSavingsApplicationService::class)->available(),
             'customer' => $customer === null ? null : ['customer_id' => $customer->customer_id, 'name' => $customer->user->name, 'version' => $customer->version],
             'plans' => $customer === null ? [] : ThriftPlan::query()->where('customer_profile_id', $customer->id)->whereIn('status', ['active', 'paused', 'completed'])
                 ->get(['plan_id', 'version']), 'enabled' => config('fees.manual_charges_enabled', false)]);
@@ -53,18 +55,55 @@ class ManualChargeController extends Controller
         return redirect()->route('admin.charges.index');
     }
 
-    public function assess(Request $request, ResourceScopeService $scope, ManualChargeService $service): RedirectResponse
+    public function preview(Request $request, ResourceScopeService $scope, ManualChargeService $service): JsonResponse
     {
-        $this->strict($request, ['operation_reference', 'customer_id', 'plan_id', 'category_id', 'customer_version', 'plan_version', 'reason', 'confirmed']);
-        $data = $request->validate(['operation_reference' => ['required', 'uuid'], 'customer_id' => ['required', 'string'], 'plan_id' => ['required', 'string'],
-            'category_id' => ['required', 'integer'], 'customer_version' => ['required', 'integer', 'min:1'], 'plan_version' => ['required', 'integer', 'min:1'],
-            'reason' => ['required', 'string', 'max:1000'], 'confirmed' => ['required', 'accepted']]);
+        $data = $this->chargeData($request, false);
         $customer = $scope->forCustomers($request->user())->where('customer_id', $data['customer_id'])->firstOrFail();
         $plan = ThriftPlan::query()->where('customer_profile_id', $customer->id)->where('plan_id', $data['plan_id'])->firstOrFail();
-        $service->assess($request->user(), $customer, $plan, ChargeCategoryVersion::query()->where('id', $data['category_id'])->firstOrFail(), $data['operation_reference'],
-            $data['customer_version'], $data['plan_version'], $data['reason'], $request);
+
+        return response()->json($service->preview($request->user(), $customer, $plan,
+            ChargeCategoryVersion::query()->whereKey($data['category_id'])->firstOrFail(), $data, $request));
+    }
+
+    public function assess(Request $request, ResourceScopeService $scope, ManualChargeService $service): RedirectResponse|JsonResponse
+    {
+        $data = $this->chargeData($request, true);
+        $customer = $scope->forCustomers($request->user())->where('customer_id', $data['customer_id'])->firstOrFail();
+        $plan = ThriftPlan::query()->where('customer_profile_id', $customer->id)->where('plan_id', $data['plan_id'])->firstOrFail();
+        $service->assess($request->user(), $customer, $plan, ChargeCategoryVersion::query()->whereKey($data['category_id'])->firstOrFail(), $data['operation_reference'],
+            $data['customer_version'], $data['plan_version'], $data['reason'], $request,
+            ['mode' => $data['mode'], 'preview_fingerprint' => $data['preview_fingerprint'], 'quote_expires_at' => $data['quote_expires_at']]);
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'confirmed', 'charge_reference' => $data['operation_reference']]);
+        }
 
         return redirect()->route('admin.charges.index', ['customer' => $customer->customer_id]);
+    }
+
+    public function status(Request $request, string $reference, ManualChargeService $service): JsonResponse
+    {
+        return response()->json($service->status($request->user(), $reference));
+    }
+
+    /** @return array<string, mixed> */
+    private function chargeData(Request $request, bool $confirmation): array
+    {
+        $rules = ['customer_id' => ['required', 'string'], 'plan_id' => ['required', 'string'],
+            'category_id' => ['required', 'integer'], 'customer_version' => ['required', 'integer', 'min:1'],
+            'plan_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:500'],
+            'mode' => ['required', 'in:assessment_only,assess_and_apply,deduction']];
+        if ($confirmation) {
+            $rules += ['operation_reference' => ['required', 'uuid'], 'preview_fingerprint' => ['required', 'string', 'size:64'],
+                'quote_expires_at' => ['required', 'date'], 'confirmed' => ['required', 'accepted']];
+        }
+        $this->strict($request, array_keys($rules));
+        $data = $request->validate($rules);
+        foreach (['category_id', 'customer_version', 'plan_version'] as $field) {
+            $data[$field] = $request->integer($field);
+        }
+
+        return $data;
     }
 
     /** @param list<string> $allowed */

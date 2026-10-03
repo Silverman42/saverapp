@@ -26,13 +26,15 @@ use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\ThriftPlan;
 use App\Models\User;
-use App\Notifications\FeeObligationNotice;
 use App\Support\FeePercentageCalculator;
 use App\Support\MoneyFormatter;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class FeeObligationService
 {
@@ -218,9 +220,21 @@ class FeeObligationService
         }, attempts: 3);
     }
 
-    private function assertSnapshotMatchesRuleQuote(FeeSnapshot $snapshot): void
+    public function assertSnapshotMatchesRuleQuote(FeeSnapshot $snapshot, bool $useLoadedRule = false): void
     {
-        $rule = $snapshot->feeRule()->first();
+        foreach (['amount_kobo', 'basis_amount_kobo'] as $attribute) {
+            $amount = filter_var($snapshot->getRawOriginal($attribute), FILTER_VALIDATE_INT);
+            if ($amount === false || $amount < 0) {
+                throw new ConflictHttpException('Fee snapshot pricing requires non-negative integer kobo.');
+            }
+        }
+        if ($snapshot->model === FeeRuleModel::Percentage) {
+            $rate = filter_var($snapshot->getRawOriginal('basis_points'), FILTER_VALIDATE_INT);
+            if ($rate === false || $rate < 0 || $rate > 10000) {
+                throw new ConflictHttpException('Fee snapshot percentage rate is unavailable.');
+            }
+        }
+        $rule = $useLoadedRule && $snapshot->relationLoaded('feeRule') ? $snapshot->feeRule : $snapshot->feeRule()->first();
         if ($rule === null
             || $rule->version !== $snapshot->fee_rule_version
             || $rule->kind !== $snapshot->kind
@@ -233,7 +247,7 @@ class FeeObligationService
             throw new ConflictHttpException('Fee snapshot does not match an immutable published rule version.');
         }
 
-        $quote = $this->quote($rule, $snapshot->basis_amount_kobo, $snapshot->source_type, $snapshot->source_id);
+        $quote = $this->quoteAllowed($rule, $snapshot->basis_amount_kobo, $snapshot->source_type, $snapshot->source_id);
         if ($quote->amountKobo !== $snapshot->amount_kobo) {
             throw new ConflictHttpException('Fee snapshot amount does not reproduce from its immutable rule and basis.');
         }
@@ -253,11 +267,15 @@ class FeeObligationService
     ): FeeObligationEntry {
         return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
+            $attemptOwner = app(FeeActionAttemptService::class);
+            $attempt = $attemptOwner->reserveForCommit($admin, $obligationId, 'waive', $attemptReference,
+                ['amount_kobo' => $amountKobo, 'reason' => $reason, 'customer_description' => $customerDescription]);
             $source = FeeObligation::query()->findOrFail($obligationId);
             $this->assertCustomerMayReceiveFeeChanges($source);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
+            $obligation->setRelation('entries', $obligation->entries()->lockForUpdate()->get());
 
-            return $this->recordAdministrativeEntry(
+            $entry = $this->recordAdministrativeEntry(
                 obligation: $obligation,
                 admin: $admin,
                 entryType: FeeObligationEntryType::Waiver,
@@ -267,6 +285,9 @@ class FeeObligationService
                 attemptReference: $attemptReference,
                 eventType: 'fee.obligation.waived',
             );
+            $attemptOwner->markRecorded($attempt, 'fee_obligation_entry', (string) $entry->id);
+
+            return $entry;
         }, attempts: 3);
     }
 
@@ -285,24 +306,19 @@ class FeeObligationService
     ): FeeObligationEntry {
         return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $amountKobo, $direction, $reason, $customerDescription, $attemptReference, $request): FeeObligationEntry {
             $admin = $this->lockAuthorizedAdmin($actor->id, $request);
+            $attemptOwner = app(FeeActionAttemptService::class);
+            $attempt = $attemptOwner->reserveForCommit($admin, $obligationId, 'correct', $attemptReference,
+                ['amount_kobo' => $amountKobo, 'reason' => $reason, 'customer_description' => $customerDescription, 'direction' => $direction->value]);
             $source = FeeObligation::query()->findOrFail($obligationId);
             $this->assertCustomerMayReceiveFeeChanges($source);
             $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
-
-            if ($obligation->settledAmountKobo() > 0 || $obligation->waivedAmountKobo() > 0) {
-                throw new ConflictHttpException('Settled or waived fee obligations require their owning correction workflow.');
-            }
+            $obligation->setRelation('entries', $obligation->entries()->lockForUpdate()->get());
 
             $entryType = $direction === FeeAssessmentCorrectionDirection::Increase
                 ? FeeObligationEntryType::AssessmentCorrectionIncrease
                 : FeeObligationEntryType::AssessmentCorrection;
 
-            if ($direction === FeeAssessmentCorrectionDirection::Increase
-                && $amountKobo > 999_999_999_999 - $obligation->assessedAmountKobo()) {
-                throw ValidationException::withMessages(['amount_ngn' => ['The corrected assessment exceeds the supported fee limit.']]);
-            }
-
-            return $this->recordAdministrativeEntry(
+            $entry = $this->recordAdministrativeEntry(
                 obligation: $obligation,
                 admin: $admin,
                 entryType: $entryType,
@@ -312,7 +328,83 @@ class FeeObligationService
                 attemptReference: $attemptReference,
                 eventType: 'fee.assessment.corrected',
             );
+            $attemptOwner->markRecorded($attempt, 'fee_obligation_entry', (string) $entry->id);
+
+            return $entry;
         }, attempts: 3);
+    }
+
+    /** @return array{status: string, action: string, direction: ?string, attempt_reference: string, entry_id: int, amount_kobo: int, currency: string, recorded_at: string} */
+    public function administrativeActionStatus(User $actor, int $obligationId, string $attemptReference): array
+    {
+        return DB::transaction(function () use ($actor, $obligationId, $attemptReference): array {
+            $admin = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
+            if (! $this->authorizationService->allows($admin, AdminPermission::FeesManage)) {
+                throw new AuthorizationException('Current authority to manage fees is required.');
+            }
+            $obligation = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->first();
+            $entries = FeeObligationEntry::query()->where('fee_obligation_id', $obligationId)
+                ->where('actor_user_id', $admin->id)
+                ->where(fn ($query) => $query->where('idempotency_key', 'fee-admin-'.$attemptReference)
+                    ->orWhere('source_id', $attemptReference))
+                ->lockForUpdate()->get();
+            if ($obligation === null || $entries->isEmpty()) {
+                throw new NotFoundHttpException('Record unavailable.');
+            }
+            $entry = $entries->first();
+            if ($entries->count() !== 1) {
+                throw new ConflictHttpException('The retained administrative fee action is unavailable.');
+            }
+
+            return $this->verifiedAdministrativeAction($entry, $obligation, $admin, $attemptReference);
+        });
+    }
+
+    /** @return array{status: string, action: string, direction: ?string, attempt_reference: string, entry_id: int, amount_kobo: int, currency: string, recorded_at: string} */
+    private function verifiedAdministrativeAction(FeeObligationEntry $entry, FeeObligation $obligation, User $admin, string $attemptReference): array
+    {
+        $type = $entry->getRawOriginal('entry_type');
+        $isWaiver = $type === FeeObligationEntryType::Waiver->value;
+        $isIncrease = $type === FeeObligationEntryType::AssessmentCorrectionIncrease->value;
+        if (! in_array($type, [FeeObligationEntryType::Waiver->value, FeeObligationEntryType::AssessmentCorrection->value, FeeObligationEntryType::AssessmentCorrectionIncrease->value], true)
+            || $entry->source_type !== ($isWaiver ? 'admin_waiver' : 'admin_assessment_correction')
+            || $entry->source_id !== $attemptReference || $entry->idempotency_key !== 'fee-admin-'.$attemptReference
+            || $entry->ledger_posting_reference !== null || $entry->currency !== 'NGN'
+            || $entry->currency !== $obligation->currency || $entry->amount_kobo < 1 || $entry->created_at === null
+            || ! Schema::hasTable('fee_obligation_events')) {
+            throw new ConflictHttpException('The retained administrative fee action is unavailable.');
+        }
+        $event = DB::table('fee_obligation_events')->where('fee_obligation_entry_id', $entry->id)->lockForUpdate()->first();
+        $audit = $event === null ? null : AuditEvent::query()->whereKey($event->audit_event_id)->lockForUpdate()->first();
+        if ($event === null || $audit === null
+            || (int) $event->version !== 1 || $event->operation_reference !== $attemptReference
+            || (int) $event->fee_obligation_id !== $obligation->id
+            || (int) $event->customer_profile_id !== $obligation->customer_profile_id
+            || (int) $event->actor_user_id !== $admin->id || $event->entry_type !== $type
+            || $event->event_type !== ($isWaiver ? 'waived' : 'assessment_corrected')
+            || (int) $event->amount_kobo !== $entry->amount_kobo || $event->currency !== $entry->currency
+            || $event->customer_description !== $entry->customer_description
+            || (int) $event->outstanding_before_kobo < 0 || (int) $event->outstanding_after_kobo < 0
+            || (int) $event->outstanding_after_kobo !== (int) $event->outstanding_before_kobo + ($isIncrease ? $entry->amount_kobo : -$entry->amount_kobo)
+            || $audit->event_type !== ($isWaiver ? 'fee.obligation.waived' : 'fee.assessment.corrected')
+            || $audit->actor_id !== $admin->id || $audit->actor_type !== UserType::Admin->value
+            || $audit->target_type !== FeeObligation::class || $audit->target_id !== $obligation->id
+            || $audit->target_reference !== (string) $obligation->id
+            || ($audit->payload['attempt_reference'] ?? null) !== $attemptReference
+            || ($audit->payload['entry_type'] ?? null) !== $type
+            || ($audit->payload['amount_kobo'] ?? null) !== $entry->amount_kobo
+            || ($audit->payload['currency'] ?? null) !== $entry->currency
+            || ($audit->payload['customer_profile_id'] ?? null) !== $obligation->customer_profile_id
+            || ($audit->payload['outstanding_before_kobo'] ?? null) !== (int) $event->outstanding_before_kobo
+            || ($audit->payload['outstanding_after_kobo'] ?? null) !== (int) $event->outstanding_after_kobo) {
+            throw new ConflictHttpException('The retained administrative fee action is unavailable.');
+        }
+
+        return ['status' => 'recorded', 'action' => $isWaiver ? 'waive' : 'correct',
+            'direction' => $isWaiver ? null : ($isIncrease ? 'increase' : 'reduce'),
+            'attempt_reference' => $attemptReference, 'entry_id' => $entry->id,
+            'amount_kobo' => $entry->amount_kobo, 'currency' => $entry->currency,
+            'recorded_at' => $entry->created_at->toIso8601String()];
     }
 
     /**
@@ -601,6 +693,28 @@ class FeeObligationService
         );
     }
 
+    /** @param array<string, mixed> $payload */
+    public function validatePreparation(int $obligationId, string $operation, array $payload): void
+    {
+        $source = FeeObligation::query()->findOrFail($obligationId);
+        $this->assertCustomerMayReceiveFeeChanges($source);
+        $fee = FeeObligation::query()->whereKey($obligationId)->lockForUpdate()->firstOrFail();
+        $fee->setRelation('entries', $fee->entries()->lockForUpdate()->get());
+        if ($payload['amount_kobo'] < 1) {
+            throw ValidationException::withMessages(['payload.amount_ngn' => ['Enter an amount greater than zero.']]);
+        }
+        if ($operation === 'correct' && ($fee->settledAmountKobo() > 0 || $fee->waivedAmountKobo() > 0)) {
+            throw new ConflictHttpException('Settled or waived fee obligations require their owning correction workflow.');
+        }
+        if (($payload['direction'] ?? null) === 'increase') {
+            if ($payload['amount_kobo'] > 999_999_999_999 - $fee->assessedAmountKobo()) {
+                throw ValidationException::withMessages(['payload.amount_ngn' => ['The corrected assessment exceeds the supported fee limit.']]);
+            }
+        } elseif ($payload['amount_kobo'] > $fee->outstandingAmountKobo()) {
+            throw ValidationException::withMessages(['payload.amount_ngn' => ['The amount exceeds the current unpaid fee balance.']]);
+        }
+    }
+
     private function lockAuthorizedAdmin(int $actorId, Request $request): User
     {
         $admin = User::query()->whereKey($actorId)->lockForUpdate()->firstOrFail();
@@ -638,10 +752,19 @@ class FeeObligationService
         }
 
         $idempotencyKey = 'fee-admin-'.$attemptReference;
-        $existing = FeeObligationEntry::query()->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
+        $retained = FeeObligationEntry::query()
+            ->where(fn ($query) => $query->where('idempotency_key', $idempotencyKey)->orWhere('source_id', $attemptReference))
+            ->lockForUpdate()->get();
+        if ($retained->count() > 1) {
+            throw new ConflictHttpException('The retained administrative fee action is unavailable.');
+        }
+        $existing = $retained->first();
         if ($existing !== null) {
             if ($existing->fee_obligation_id !== $obligation->id
-                || $existing->entry_type !== $entryType
+                || $existing->currency !== $obligation->currency
+                || $existing->source_type !== ($entryType === FeeObligationEntryType::Waiver ? 'admin_waiver' : 'admin_assessment_correction')
+                || $existing->source_id !== $attemptReference || $existing->ledger_posting_reference !== null
+                || $existing->getRawOriginal('entry_type') !== $entryType->value
                 || $existing->amount_kobo !== $amountKobo
                 || $existing->actor_user_id !== $admin->id
                 || $existing->reason !== trim($reason)
@@ -649,7 +772,18 @@ class FeeObligationService
                 throw new ConflictHttpException('Changed fee action payload conflicts with its original attempt.');
             }
 
+            $this->verifiedAdministrativeAction($existing, $obligation, $admin, $attemptReference);
+
             return $existing;
+        }
+
+        if (in_array($entryType, [FeeObligationEntryType::AssessmentCorrection, FeeObligationEntryType::AssessmentCorrectionIncrease], true)
+            && ($obligation->settledAmountKobo() > 0 || $obligation->waivedAmountKobo() > 0)) {
+            throw new ConflictHttpException('Settled or waived fee obligations require their owning correction workflow.');
+        }
+        if ($entryType === FeeObligationEntryType::AssessmentCorrectionIncrease
+            && $amountKobo > 999_999_999_999 - $obligation->assessedAmountKobo()) {
+            throw ValidationException::withMessages(['amount_ngn' => ['The corrected assessment exceeds the supported fee limit.']]);
         }
 
         $outstanding = $obligation->outstandingAmountKobo();
@@ -674,7 +808,7 @@ class FeeObligationService
             ? $outstanding + $amountKobo
             : $outstanding - $amountKobo;
 
-        AuditEvent::record(
+        $audit = AuditEvent::record(
             eventType: $eventType,
             targetType: FeeObligation::class,
             targetId: $obligation->id,
@@ -695,18 +829,7 @@ class FeeObligationService
             context: ['executor' => self::class, 'required_permission' => $admin->user_type === UserType::Admin ? 'fees.manage' : null]
         );
 
-        $customer = $obligation->customerProfile()->with('user')->first();
-        if ($customer?->user !== null) {
-            $customerUser = $customer->user;
-            $customerUser->notify(new FeeObligationNotice(
-                amountKobo: $amountKobo,
-                currency: $obligation->currency,
-                entryType: $entryType,
-                customerDescription: trim($customerDescription),
-                obligationId: $obligation->id,
-                customerId: $customer->customer_id,
-            ));
-        }
+        app(FeeObligationChangeNotice::class)->capture($entry, $audit, $outstanding, $outstandingAfter);
 
         return $entry;
     }

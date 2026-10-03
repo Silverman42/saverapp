@@ -7,27 +7,63 @@ use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
+use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\LedgerPostingGroup;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class CollectionLedgerService
 {
+    public function assertSavingsAccounts(LedgerAccountCode $custody, bool $forUpdate = false): void
+    {
+        $custodyClass = match ($custody) {
+            LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
+            LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
+            LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing => LedgerAccountClass::Asset,
+            default => throw new ConflictHttpException('The receipt custody account is unsupported.'),
+        };
+        $accounts = $this->accountsForCodes([$custody, LedgerAccountCode::CustomerSavingsLiability], $forUpdate);
+        foreach ([[$custody, $custodyClass], [LedgerAccountCode::CustomerSavingsLiability, LedgerAccountClass::CustomerSavingsLiability]] as [$code, $class]) {
+            if (! $this->hasRequiredMapping($accounts->get($code->value), $code, $class)) {
+                throw new ServiceUnavailableHttpException(null, 'Required cash ledger mapping is unavailable.');
+            }
+        }
+    }
+
+    /**
+     * @param  list<LedgerAccountCode>  $codes
+     * @return Collection<string, LedgerAccount>
+     */
+    private function accountsForCodes(array $codes, bool $forUpdate): Collection
+    {
+        return LedgerAccount::query()->whereIn('code', array_map(static fn (LedgerAccountCode $code): string => $code->value, $codes))
+            ->orderBy('id')->when($forUpdate, fn ($query) => $query->lockForUpdate())
+            ->get()->keyBy(static fn (LedgerAccount $account): string => $account->code->value);
+    }
+
+    private function hasRequiredMapping(?LedgerAccount $account, LedgerAccountCode $code, LedgerAccountClass $class): bool
+    {
+        $normalSide = in_array($code, [LedgerAccountCode::BusinessCash, LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing, LedgerAccountCode::AgentReceivable], true)
+            ? LedgerEntrySide::Debit : LedgerEntrySide::Credit;
+
+        return $account !== null && $account->account_class === $class && $account->normal_balance === $normalSide
+            && $account->mapping_status === 'mapped' && $account->currency === 'NGN' && $account->version >= 1;
+    }
+
     public function postCashSavings(int $receiptId, int $customerId, int $agentId, int $amountKobo, User $actor): LedgerPostingGroup
     {
-        $replacement = DB::table('collection_receipts')->where('id', $receiptId)->value('replacement_reversal_id') !== null;
-
-        return $this->post($replacement ? 'unapplied_replacement' : 'cash_contribution', 'collection_receipt', (string) $receiptId,
+        return $this->post('cash_contribution', 'collection_receipt', (string) $receiptId,
             'collection-savings-'.$receiptId, $customerId, $agentId, $amountKobo,
-            $replacement ? LedgerAccountCode::UnappliedFunds : LedgerAccountCode::AgentReceivable,
-            $replacement ? LedgerAccountClass::UnappliedFunds : LedgerAccountClass::AgentReceivable,
+            LedgerAccountCode::AgentReceivable, LedgerAccountClass::AgentReceivable,
             LedgerAccountCode::CustomerSavingsLiability, LedgerAccountClass::CustomerSavingsLiability, $actor);
     }
 
@@ -67,8 +103,19 @@ class CollectionLedgerService
         }
         $sourceData = (array) $source;
         if ($sourceType === 'collection_receipt') {
+            $receipt = (new CollectionReceipt)->newFromBuilder($sourceData);
+            $replacement = $receipt->replacement_reversal_id !== null;
+            $custody = app(CollectionReceiptMethod::class)->assertReceipt($receipt);
+            $debitCode = $replacement ? LedgerAccountCode::UnappliedFunds : $custody;
+            $debitClass = match ($debitCode) {
+                LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
+                LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
+                default => LedgerAccountClass::Asset,
+            };
+            $eventType = $replacement ? 'unapplied_replacement' : ($receipt->method === 'cash' ? 'cash_contribution' : 'noncash_contribution');
             if ((int) $sourceData['customer_profile_id'] !== $customerId
-                || (int) $sourceData['recording_agent_profile_id'] !== $agentId) {
+                || (int) $sourceData['recording_agent_profile_id'] !== $agentId
+                || $receipt->savings_amount_kobo !== $amountKobo) {
                 throw new ConflictHttpException('Collection source dimensions changed.');
             }
             $occurredOn = $sourceData['received_date'];
@@ -76,7 +123,12 @@ class CollectionLedgerService
             $planId = $sourceData['thrift_plan_id'];
             $correlationId = 'collection-receipt-'.$sourceId;
         } else {
-            if ((int) $sourceData['agent_profile_id'] !== $agentId || $customerId !== null) {
+            $batch = DB::table('collection_batches')->where('id', $sourceData['collection_batch_id'])->first();
+            if ($batch === null || $batch->custody_account_code !== LedgerAccountCode::AgentReceivable->value) {
+                throw new ConflictHttpException('A bank or clearing receipt cannot be remitted as Agent cash.');
+            }
+            if ((int) $sourceData['agent_profile_id'] !== $agentId || (int) $sourceData['amount_kobo'] !== $amountKobo
+                || (int) $sourceData['confirmed_by_user_id'] !== $actor->id || $customerId !== null) {
                 throw new ConflictHttpException('Remittance source dimensions changed.');
             }
             $occurredOn = $sourceData['handoff_date'];
@@ -88,14 +140,9 @@ class CollectionLedgerService
             $correlationId = 'cash-remittance-'.$sourceId;
         }
 
-        $accounts = LedgerAccount::query()->whereIn('code', [$debitCode->value, $creditCode->value])
-            ->orderBy('id')->lockForUpdate()->get()->keyBy(fn (LedgerAccount $account): string => $account->code->value);
+        $accounts = $this->accountsForCodes([$debitCode, $creditCode], true);
         foreach ([[$debitCode, $debitClass], [$creditCode, $creditClass]] as [$code, $class]) {
-            $account = $accounts->get($code->value);
-            $normalSide = in_array($code, [LedgerAccountCode::BusinessCash, LedgerAccountCode::AgentReceivable], true)
-                ? LedgerEntrySide::Debit : LedgerEntrySide::Credit;
-            if ($account === null || $account->account_class !== $class || $account->normal_balance !== $normalSide
-                || $account->mapping_status !== 'mapped' || $account->currency !== 'NGN' || $account->version < 1) {
+            if (! $this->hasRequiredMapping($accounts->get($code->value), $code, $class)) {
                 throw new ConflictHttpException('Required cash ledger mapping is unavailable.');
             }
         }

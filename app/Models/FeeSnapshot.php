@@ -33,6 +33,8 @@ use RuntimeException;
  * @property int|null $basis_points
  * @property int $basis_amount_kobo
  * @property string $customer_description
+ * @property int|null $early_termination_policy_version
+ * @property string|null $early_termination_description
  * @property CarbonImmutable|null $acknowledged_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
@@ -55,6 +57,8 @@ use RuntimeException;
     'basis_amount_kobo',
     'customer_description',
     'acknowledged_at',
+    'early_termination_policy_version',
+    'early_termination_description',
 ])]
 class FeeSnapshot extends Model
 {
@@ -76,6 +80,7 @@ class FeeSnapshot extends Model
             'basis_points' => 'integer',
             'basis_amount_kobo' => 'integer',
             'acknowledged_at' => 'datetime',
+            'early_termination_policy_version' => 'integer',
         ];
     }
 
@@ -85,7 +90,7 @@ class FeeSnapshot extends Model
     protected static function booted(): void
     {
         static::updating(function (FeeSnapshot $snapshot): void {
-            if ($snapshot->isDirty(['customer_profile_id', 'source_type', 'source_id', 'fee_rule_id', 'fee_rule_version', 'name', 'kind', 'model', 'timing', 'basis', 'settlement_source', 'currency', 'amount_kobo', 'basis_points', 'basis_amount_kobo', 'customer_description'])) {
+            if ($snapshot->isDirty(['customer_profile_id', 'source_type', 'source_id', 'fee_rule_id', 'fee_rule_version', 'name', 'kind', 'model', 'timing', 'basis', 'settlement_source', 'currency', 'amount_kobo', 'basis_points', 'basis_amount_kobo', 'customer_description', 'early_termination_policy_version', 'early_termination_description'])) {
                 throw new RuntimeException('Fee snapshot terms are immutable and cannot be modified.');
             }
         });

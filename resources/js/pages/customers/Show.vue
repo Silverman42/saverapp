@@ -1260,7 +1260,7 @@ const getInvitationBadgeVariant = (
                             size="sm"
                         >
                             <Link :href="createCollection(customer.id).url"
-                                >Record cash</Link
+                                >Record collection</Link
                             >
                         </Button>
                         <Button

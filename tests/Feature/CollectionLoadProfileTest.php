@@ -1,7 +1,11 @@
 <?php
 
+use App\Enums\LedgerAccountCode;
+use App\Models\FinancialPeriod;
+use App\Models\LedgerAccount;
 use App\Services\CollectionService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\CreatesLifecycleCustomers;
@@ -19,6 +23,9 @@ test('declared local cash capacity profile reports collection p95 response times
     [$admin, $customer, $agent] = $this->createLifecycleFixture();
     $plan = $this->createLifecyclePlan($customer, $agent->user);
     $today = CarbonImmutable::now('Africa/Lagos')->startOfDay();
+    FinancialPeriod::factory()->create(['month' => $today->startOfMonth()->toDateString(), 'changed_by_user_id' => $admin->id]);
+    LedgerAccount::query()->where('code', LedgerAccountCode::AgentReceivable)->update(['mapping_status' => 'mapped']);
+    app(CollectionService::class)->preview($agent->user, $customer, $this->lifecycleCollectionPayload($customer, $plan));
     $timestamp = now();
     $agentIds = [$agent->id];
     $agentUser = $agent->user->getAttributes();
@@ -129,8 +136,24 @@ test('declared local cash capacity profile reports collection p95 response times
         ->and(DB::table('contribution_slots')->count())->toBe(2000000);
 
     $this->actingAs($agent->user);
+    $diagnostic = env('COLLECTION_LOAD_DIAGNOSTIC') === '1';
+    $sampleCount = $diagnostic ? 1 : 20;
+    if ($diagnostic) {
+        $slowestMilliseconds = 0.0;
+        DB::listen(static function (QueryExecuted $query) use (&$slowestMilliseconds): void {
+            if ($query->time <= $slowestMilliseconds || ! str_starts_with(strtolower(ltrim($query->sql)), 'select ')) {
+                return;
+            }
+            $slowestMilliseconds = $query->time;
+            $plan = $query->connection->select('EXPLAIN '.$query->sql, $query->bindings);
+            file_put_contents('/private/tmp/saverapp-collection-load-diagnostic.json', json_encode([
+                'diagnostic' => true, 'milliseconds' => $query->time, 'sql' => $query->sql,
+                'bindings' => $query->bindings, 'explain' => $plan,
+            ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        });
+    }
     $durations = ['workspace' => [], 'search' => [], 'receipt' => []];
-    for ($sample = 0; $sample < 20; $sample++) {
+    for ($sample = 0; $sample < $sampleCount; $sample++) {
         $start = hrtime(true);
         $this->get(route('collections.index', ['date' => $today->toDateString()]))->assertOk();
         $durations['workspace'][] = (hrtime(true) - $start) / 1_000_000_000;
@@ -150,10 +173,10 @@ test('declared local cash capacity profile reports collection p95 response times
     $p95 = [];
     foreach ($durations as $operation => $samples) {
         sort($samples);
-        $p95[$operation] = $samples[18];
+        $p95[$operation] = $samples[(int) ceil($sampleCount * 0.95) - 1];
     }
     $result = ['dataset' => ['customers' => 10000, 'agents' => 30, 'plans' => 20000, 'slots' => 2000000],
-        'samples_per_operation' => 20, 'concurrency' => 1,
+        'samples_per_operation' => $sampleCount, 'diagnostic' => $diagnostic, 'concurrency' => 1,
         'device' => 'local PHP test client on macOS', 'network' => 'in-process, no mobile network',
         'p95_seconds' => $p95, 'targets_seconds' => ['workspace' => 3, 'search' => 1, 'receipt' => 2]];
     file_put_contents('/private/tmp/saverapp-collection-load-profile.json', json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));

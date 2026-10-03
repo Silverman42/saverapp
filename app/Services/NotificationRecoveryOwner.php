@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Support\RecoveryConflict;
 use App\Support\RecoveryOwner;
@@ -21,6 +22,16 @@ class NotificationRecoveryOwner implements RecoveryOwner
     {
         $intent = DB::table('notification_inbox_intents')->where('id', $sourceId)->first();
         $event = $intent === null ? null : DB::table('notification_events')->where('id', $intent->event_id)->first();
+        if ($intent !== null && in_array($event?->family, ['fee_application', 'fee_issue'], true) && DB::transactionLevel() > 0
+            && DB::table('platform_recovery_work')->where('owner', 'notification_inbox')->where('source_id', $sourceId)->where('state', 'running')->exists()) {
+            $intent = DB::table('notification_inbox_intents')->where('id', $sourceId)->lockForUpdate()->firstOrFail();
+            User::query()->whereKey($intent->recipient_user_id)->lockForUpdate()->first();
+            if ($intent->customer_profile_id !== null) {
+                CustomerProfile::query()->whereKey($intent->customer_profile_id)->lockForUpdate()->first();
+                DB::table('customer_assignments')->where('customer_profile_id', $intent->customer_profile_id)
+                    ->where('is_current', 1)->lockForUpdate()->first();
+            }
+        }
         if ($intent === null || $event === null || ! $this->catalogue->validatesStoredContract($event, $intent)) {
             throw new RecoveryConflict('unsupported_contract');
         }

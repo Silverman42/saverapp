@@ -22,8 +22,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $tender_amount_kobo
  * @property CarbonImmutable $recorded_at
  * @property CarbonImmutable|null $received_at_utc
+ * @property string $method
+ * @property string $method_label
+ * @property string $custody_account_code
+ * @property string|null $method_reference
+ * @property int|null $collection_method_version_id
+ * @property int|null $collection_payment_evidence_id
+ * @property int|null $collection_evidence_review_id
+ * @property int|null $replacement_reversal_id
+ * @property int $collection_batch_id
  */
 #[Fillable([
+    'method', 'method_label', 'custody_account_code', 'method_reference', 'collection_method_version_id', 'collection_payment_evidence_id', 'collection_evidence_review_id',
     'replacement_reversal_id', 'receipt_reference', 'attempt_reference', 'payload_hash', 'customer_profile_id', 'thrift_plan_id',
     'recording_agent_profile_id', 'assignment_id', 'collection_batch_id', 'recorded_by_user_id',
     'savings_posting_group_id', 'received_date', 'received_at_utc', 'timezone', 'business_version', 'tender_amount_kobo',
@@ -34,6 +44,9 @@ class CollectionReceipt extends Model
     protected function casts(): array
     {
         return [
+            'collection_method_version_id' => 'integer',
+            'collection_payment_evidence_id' => 'integer',
+            'collection_evidence_review_id' => 'integer',
             'recorded_at' => 'immutable_datetime',
             'received_at_utc' => 'immutable_datetime',
             'tender_amount_kobo' => 'integer',
