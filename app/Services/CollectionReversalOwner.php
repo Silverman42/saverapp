@@ -176,7 +176,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
 
         return ['gross_kobo' => $receipt->tender_amount_kobo, 'summary' => $summary, 'dependencies' => $dependencies,
             'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies, $balance,
-                LedgerPostingGroup::query()->max('id')], JSON_THROW_ON_ERROR))];
+                app(ReversalWatermark::class)->forCustomer($original->customer_profile_id)], JSON_THROW_ON_ERROR))];
     }
 
     public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup|FinancialWorkflowSupplement

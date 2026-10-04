@@ -13,7 +13,7 @@ class PlanFinancialActivityReadService
 {
     /** @var list<string> */
     private const METRICS = [
-        'gross_withdrawals', 'net_cash_payouts', 'withdrawal_fees', 'withdrawal_compensation',
+        'gross_withdrawals', 'net_cash_payouts', 'net_bank_payouts', 'withdrawal_fees', 'withdrawal_deductions', 'withdrawal_compensation',
         'effective_withdrawal_debits', 'withdrawal_cash_returns', 'effective_withdrawal_cash_paid',
         'other_deductions', 'deduction_compensation', 'effective_deductions',
     ];

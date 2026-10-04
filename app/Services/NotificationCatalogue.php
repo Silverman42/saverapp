@@ -36,7 +36,7 @@ class NotificationCatalogue
         'customer_status' => ['customer_status'], 'agent_status' => ['agent_status'],
         'agent_lifecycle' => ['agent.suspend', 'agent.restore', 'agent.start_offboarding', 'agent.transfer_owner', 'agent.cancel_offboarding', 'agent.complete_offboarding', 'agent.return'],
         'plan' => ['created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected', 'closed', 'early_termination_prepared', 'closed_exception_resolved'],
-        'collection' => ['collection'], 'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted'],
+        'collection' => ['collection'], 'withdrawal' => ['cash_return_recorded', 'cash_return_confirmed', 'cash_started', 'cash_handoff_recorded', 'cash_posted', 'cash_not_delivered', 'submitted', 'approve', 'reject', 'cancel', 'revoke', 'expired', 'hold_applied', 'hold_lifted', 'hold_revalidation_required', 'bank_started', 'bank_submitted', 'bank_unknown', 'bank_failed', 'bank_posted', 'bank_settled', 'bank_returned', 'provider_conflict'],
         'financial_cash' => ['recovery_recorded', 'recovery_confirmed', 'refund_authorized', 'started', 'handoff_recorded', 'not_delivered', 'posted'],
         'financial_artifact' => ['ready', 'failed'],
         'charge' => ['assessed'],
@@ -416,6 +416,15 @@ class NotificationCatalogue
                     'expired' => 'A withdrawal request expired and its reservation released.',
                     'hold_applied' => 'A withdrawal request is on hold. No payout can proceed.',
                     'hold_lifted' => 'A withdrawal hold was lifted. Normal approval and payout controls still apply.',
+                    'hold_revalidation_required' => 'A withdrawal hold was lifted but the request must be revalidated before it can proceed. No payout can proceed yet.',
+                    'bank_started' => 'A bank transfer was started for an approved withdrawal. Savings stay reserved until the provider confirms.',
+                    'bank_submitted' => 'The bank transfer was accepted by the provider. The final result is not known yet.',
+                    'bank_unknown' => 'The bank transfer result is not yet known. Savings stay reserved and no second payment will be sent.',
+                    'bank_failed' => 'The bank transfer did not go through. Savings remain reserved.',
+                    'bank_posted' => 'The bank transfer was confirmed and the withdrawal was posted.',
+                    'bank_settled' => 'The provider settled the bank transfer. Your savings balance did not change again.',
+                    'bank_returned' => 'The bank returned the transfer. It is being reviewed; your savings balance has not changed yet.',
+                    'provider_conflict' => 'The provider reported conflicting results for a withdrawal. It is on hold for review.',
                 ];
                 $summary = $messages[$eventType] ?? throw new InvalidArgumentException('Unknown withdrawal event.');
                 $title = 'Withdrawal updated';

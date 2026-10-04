@@ -9,7 +9,10 @@ import {
     store as submitReversal,
 } from '@/routes/reversals';
 import { dashboard } from '@/routes';
-import { index as transactionsIndex } from '@/routes/transactions';
+import {
+    index as transactionsIndex,
+    show as showTransaction,
+} from '@/routes/transactions';
 import { Card, CardContent } from '@/components/ui/card';
 
 const props = defineProps<{
@@ -29,6 +32,16 @@ const props = defineProps<{
         fee_amount_kobo: number;
         posting_group_count: number;
         source_type: string;
+        compensation_reference: string | null;
+        original_reference: string | null;
+        components: {
+            gross_kobo: number;
+            net_kobo: number;
+            fee_kobo: number;
+            deduction_kobo: number;
+        } | null;
+        timeline: Array<{ label: string; at?: string | null; on?: string }>;
+        actors: Record<string, string | null>;
     };
 }>();
 
@@ -41,6 +54,20 @@ defineOptions({
     },
 });
 
+const statusLabel: Record<string, string> = {
+    posted: 'Posted',
+    reversed: 'Reversed',
+    approved_no_money: 'Corrected, no money moved',
+};
+const reasonCategories: Array<[string, string]> = [
+    ['duplicate_posting', 'Duplicate posting'],
+    ['wrong_customer', 'Recorded for the wrong Customer'],
+    ['wrong_amount_allocation', 'Wrong amount or allocation'],
+    ['payment_not_received', 'Payment was never received'],
+    ['incorrect_fee_deduction', 'Incorrect fee or deduction'],
+    ['incorrect_payout_record', 'Incorrect payout record'],
+    ['other', 'Other'],
+];
 const quote = ref<{
     preview_fingerprint: string;
     customer_version: number;
@@ -62,10 +89,11 @@ const reversal = useForm({
     preview_fingerprint: '',
     customer_version: 0,
     assignment_version: 0,
-    reason_category: 'wrong_amount_allocation',
+    reason_category: '',
     internal_reason: '',
     customer_explanation: '',
     evidence_text: '',
+    files: [] as File[],
     confirmed: false,
 });
 async function reviewCorrection(): Promise<void> {
@@ -86,7 +114,13 @@ function requestCorrection(): void {
     reversal.preview_fingerprint = quote.value.preview_fingerprint;
     reversal.customer_version = quote.value.customer_version;
     reversal.assignment_version = quote.value.assignment_version;
-    reversal.post(submitReversal.url(props.reversal_original));
+    reversal.post(submitReversal.url(props.reversal_original), {
+        forceFormData: true,
+    });
+}
+function chooseFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    reversal.files = Array.from(input.files ?? []).slice(0, 3);
 }
 function money(kobo: number): string {
     return `₦${(Math.abs(kobo) / 100).toLocaleString('en-NG', {
@@ -104,7 +138,8 @@ function money(kobo: number): string {
                 {{ transaction.reference }}
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Posted {{ transaction.type }} · {{ transaction.status }}
+                {{ transaction.type.replaceAll('_', ' ') }} ·
+                {{ statusLabel[transaction.status] ?? transaction.status }}
             </p>
         </div>
         <Card>
@@ -184,6 +219,22 @@ function money(kobo: number): string {
                         Original custody is preserved unless the owning
                         full-return contract proves otherwise.
                     </p>
+                    <Label for="correction-category">Reason category</Label>
+                    <select
+                        id="correction-category"
+                        v-model="reversal.reason_category"
+                        required
+                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    >
+                        <option value="" disabled>Choose a reason</option>
+                        <option
+                            v-for="[value, label] in reasonCategories"
+                            :key="value"
+                            :value="value"
+                        >
+                            {{ label }}
+                        </option>
+                    </select>
                     <Label for="correction-reason">Internal reason</Label
                     ><Input
                         id="correction-reason"
@@ -207,6 +258,21 @@ function money(kobo: number): string {
                         required
                         maxlength="1000"
                     />
+                    <Label for="correction-files"
+                        >Evidence files (optional, up to 3)</Label
+                    >
+                    <input
+                        id="correction-files"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        class="border-input bg-background rounded-md border p-2 text-sm"
+                        @change="chooseFiles"
+                    />
+                    <p class="text-muted-foreground text-xs">
+                        JPEG, PNG, WebP or PDF, 5 MB each. Files are scanned and
+                        kept privately; the Customer never sees them.
+                    </p>
                     <p
                         v-for="(error, key) in reversal.errors"
                         :key="key"
@@ -229,6 +295,76 @@ function money(kobo: number): string {
                 </form>
             </CardContent></Card
         >
+        <Card
+            v-if="
+                transaction.compensation_reference ||
+                transaction.original_reference
+            "
+        >
+            <CardContent class="grid gap-1 pt-6 text-sm">
+                <p v-if="transaction.compensation_reference">
+                    Reversed by
+                    <Link
+                        :href="
+                            showTransaction(transaction.compensation_reference)
+                        "
+                        class="underline"
+                        >{{ transaction.compensation_reference }}</Link
+                    >. The original entries are unchanged.
+                </p>
+                <p v-if="transaction.original_reference">
+                    Corrects
+                    <Link
+                        :href="showTransaction(transaction.original_reference)"
+                        class="underline"
+                        >{{ transaction.original_reference }}</Link
+                    >.
+                </p>
+            </CardContent>
+        </Card>
+        <Card v-if="transaction.components">
+            <CardContent class="grid gap-3 pt-6 text-sm sm:grid-cols-4">
+                <p>
+                    Gross savings debit (G)<br /><strong>{{
+                        money(transaction.components.gross_kobo)
+                    }}</strong>
+                </p>
+                <p>
+                    Fee (F)<br /><strong>{{
+                        money(transaction.components.fee_kobo)
+                    }}</strong>
+                </p>
+                <p>
+                    Deduction (D)<br /><strong>{{
+                        money(transaction.components.deduction_kobo)
+                    }}</strong>
+                </p>
+                <p>
+                    Net payout (P)<br /><strong>{{
+                        money(transaction.components.net_kobo)
+                    }}</strong>
+                </p>
+            </CardContent>
+        </Card>
+        <Card>
+            <CardContent class="grid gap-2 pt-6 text-sm">
+                <p class="font-medium">Timeline</p>
+                <ul class="grid gap-1">
+                    <li v-for="step in transaction.timeline" :key="step.label">
+                        {{ step.label }}:
+                        {{ step.at ?? step.on ?? 'Not yet' }}
+                    </li>
+                </ul>
+                <p
+                    v-for="(name, role) in transaction.actors"
+                    :key="role"
+                    class="text-muted-foreground"
+                >
+                    {{ String(role).replaceAll('_', ' ') }}:
+                    {{ name ?? 'Not yet' }}
+                </p>
+            </CardContent>
+        </Card>
         <Link
             :href="transactionsIndex()"
             class="text-primary w-fit text-sm underline"

@@ -1045,3 +1045,18 @@ test('participation history suffix disagreement preserves money and makes uncert
     }
 })->with(['Customer recorded blocked' => ['customer', false], 'Customer recorded restored' => ['customer', true],
     'plan recorded paused' => ['plan', false], 'plan recorded resumed' => ['plan', true]]);
+
+test('the plan directory funding read verifies only its bounded page without scanning every plan', function (): void {
+    [, , , $plan] = planFundingFixture();
+    $admin = User::factory()->admin()->withTwoFactor()->create();
+    $admin->givePermissionTo(AdminPermission::CustomersManage);
+
+    DB::enableQueryLog();
+    $funding = app(PlanFundingReadService::class)->readMany($admin, [$plan->plan_id])[$plan->plan_id];
+    $queries = array_column(DB::getQueryLog(), 'query');
+    DB::disableQueryLog();
+
+    expect($funding['status'])->toBeIn(['Current', 'Partial'])
+        ->and($funding['funded_principal'])->toBe('₦3,000.00')
+        ->and(array_filter($queries, static fn (string $sql): bool => preg_match('/terms.\..name. as .plan_name./', $sql) === 1))->toBe([]);
+});

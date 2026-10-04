@@ -6,7 +6,6 @@ use App\Data\PlanFeeReadSnapshot;
 use App\Enums\FeeObligationEntryType;
 use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
-use App\Models\CashExecution;
 use App\Models\ChargeCategoryVersion;
 use App\Models\CollectionReceipt;
 use App\Models\FeeObligation;
@@ -152,7 +151,7 @@ class PlanFeeHistoryReadService
         $compensations = LedgerPostingGroup::query()->whereIn('id', $reversals->pluck('compensation_posting_group_id'))
             ->with('entries.account')->get();
         $groups = $groups->concat($compensations)->unique('id')->values();
-        $executions = CashExecution::query()->whereIn('withdrawal_request_id', $withdrawals->pluck('id'))->where('status', 'posted')->get();
+        $executions = app(WithdrawalPayoutSource::class)->postedFor($withdrawals->pluck('id'));
         $refunds = FeeRefund::query()->whereIn('fee_obligation_id', $obligations->pluck('id'))->get();
         $receiptPlans = CollectionReceipt::query()->whereIn('thrift_plan_id', $planIds)->where('savings_amount_kobo', '>', 0)
             ->distinct()->pluck('thrift_plan_id');

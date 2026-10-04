@@ -152,6 +152,26 @@ class CollectionReadService
     /** @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int} */
     public function position(CustomerProfile $customer, bool $forUpdate = false): array
     {
+        $entries = $this->liabilityEntries($customer, $forUpdate);
+        $reservations = DB::table('withdrawal_reservations')->where('customer_profile_id', $customer->id)
+            ->where('status', 'live')->select('gross_amount_kobo');
+        if ($forUpdate) {
+            $reservations->lockForUpdate();
+        }
+
+        return $this->positionFromRows($entries->get(), $reservations->get());
+    }
+
+    /**
+     * The posted Customer liability alone, without live reservations. It does not depend on reservation integrity.
+     */
+    public function liability(CustomerProfile $customer, bool $forUpdate = false): int
+    {
+        return $this->positionFromRows($this->liabilityEntries($customer, $forUpdate)->get(), new Collection)['liability_kobo'];
+    }
+
+    private function liabilityEntries(CustomerProfile $customer, bool $forUpdate): QueryBuilder
+    {
         if ($forUpdate) {
             if (DB::transactionLevel() === 0) {
                 throw new RuntimeException('An authoritative savings position requires a transaction.');
@@ -174,14 +194,11 @@ class CollectionReadService
             ->where('ledger_entries.customer_profile_id', $customer->id)
             ->where('ledger_accounts.code', LedgerAccountCode::CustomerSavingsLiability->value)
             ->select('ledger_entries.side', 'ledger_entries.amount_kobo');
-        $reservations = DB::table('withdrawal_reservations')->where('customer_profile_id', $customer->id)
-            ->where('status', 'live')->select('gross_amount_kobo');
         if ($forUpdate) {
             $entries->lockForUpdate();
-            $reservations->lockForUpdate();
         }
 
-        return $this->positionFromRows($entries->get(), $reservations->get());
+        return $entries;
     }
 
     /**
@@ -635,7 +652,7 @@ class CollectionReadService
         $position = $this->position($customer, $forUpdate);
         $groups = LedgerPostingGroup::query()->where('customer_profile_id', $customer->id)->with('entries.account')->get();
         foreach ($groups as $group) {
-            if (! in_array($group->event_type, ['cash_contribution', 'noncash_contribution', 'cash_withdrawal', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
+            if (! in_array($group->event_type, ['cash_contribution', 'noncash_contribution', ...WithdrawalPayoutSource::EVENT_TYPES, 'bank_payout_settlement', 'bank_payout_return', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
                 || $group->currency !== 'NGN' || $group->entries->count() < 2 || $group->getRawOriginal('committed_at') === null) {
                 return 'unavailable';
             }

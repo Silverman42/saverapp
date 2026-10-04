@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, Link, useForm, usePoll } from '@inertiajs/vue3';
+import { computed, ref, watchEffect } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import { start as startCash } from '@/routes/withdrawals/cash';
+import { start as startBank } from '@/routes/withdrawals/bank';
+import { check as checkAttempt } from '@/routes/bank-payout-attempts';
 import { preview as recoveryPreview } from '@/routes/cash-recoveries';
 import CashRecoveryPanel from '@/components/CashRecoveryPanel.vue';
 import { returnMethod as recordReturn } from '@/routes/cash-executions';
@@ -27,10 +29,12 @@ type Withdrawal = {
     gross_kobo: number;
     fee_kobo: number;
     net_kobo: number;
+    deduction_kobo: number;
     method: string;
     destination_mask: string;
     state: string;
     held: boolean;
+    hold_reason: string | null;
     submitted_at: string;
     deadline_at: string;
     reason: string;
@@ -38,8 +42,31 @@ type Withdrawal = {
     internal_notes: string | null;
     version: number;
 };
+type BankAttempt = {
+    reference: string;
+    number: number;
+    status: string;
+    provider_outcome: string | null;
+    failure_code: string | null;
+    amount_kobo: number;
+    initiated_at: string | null;
+    provider_occurred_at: string | null;
+    finalized_at: string | null;
+    posted_at: string | null;
+    occurred_on: string | null;
+    settled_at: string | null;
+};
 const props = defineProps<{
     withdrawal: Withdrawal;
+    can_execute_bank: boolean;
+    timezone: string;
+    bank_attempts: BankAttempt[];
+    bank_returns: {
+        reference: string;
+        status: string;
+        amount_kobo: number;
+        recorded_at: string | null;
+    }[];
     cash_recoveries: {
         recovery_reference: string;
         status: string;
@@ -91,6 +118,47 @@ const cashForm = useForm({
     evidence: '',
     confirmed: false,
 });
+const bankForm = useForm({
+    attempt_reference: crypto.randomUUID(),
+    version: props.withdrawal.version,
+    confirmed: false,
+});
+const checkForm = useForm({});
+const poll = usePoll(
+    10000,
+    { only: ['withdrawal', 'bank_attempts', 'bank_returns'] },
+    { autoStart: false },
+);
+const processing = computed(
+    () =>
+        !props.is_customer &&
+        props.withdrawal.method === 'bank_transfer' &&
+        ['payout_processing', 'outcome_unknown'].includes(
+            props.withdrawal.state,
+        ),
+);
+watchEffect(() => (processing.value ? poll.start() : poll.stop()));
+function startTransfer(): void {
+    bankForm.version = props.withdrawal.version;
+    bankForm.post(startBank.url(props.withdrawal.id), {
+        onSuccess: () => {
+            bankForm.attempt_reference = crypto.randomUUID();
+            bankForm.confirmed = false;
+        },
+    });
+}
+function checkNow(reference: string): void {
+    checkForm.post(checkAttempt.url(reference));
+}
+function when(iso: string | null): string {
+    return iso
+        ? new Intl.DateTimeFormat('en-NG', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+              timeZone: props.timezone,
+          }).format(new Date(iso))
+        : 'Not yet';
+}
 const handoffForm = useForm({ evidence: '', confirmed: false });
 const acknowledgementForm = useForm({ confirmed: false });
 function startPayment(): void {
@@ -147,7 +215,14 @@ function submit(): void {
             ><CardContent class="grid gap-2 text-sm"
                 ><p>
                     {{ withdrawal.state.replaceAll('_', ' ')
-                    }}<span v-if="withdrawal.held"> · On hold</span>
+                    }}<span v-if="withdrawal.held">
+                        · On hold<span v-if="withdrawal.hold_reason"
+                            >:
+                            {{
+                                withdrawal.hold_reason.replaceAll('_', ' ')
+                            }}</span
+                        ></span
+                    >
                 </p>
                 <p>
                     Submitted {{ withdrawal.submitted_at }} · review deadline
@@ -173,6 +248,11 @@ function submit(): void {
                 <p>
                     Included withdrawal fee<br /><strong>{{
                         money(withdrawal.fee_kobo)
+                    }}</strong>
+                </p>
+                <p>
+                    Withdrawal deduction<br /><strong>{{
+                        money(withdrawal.deduction_kobo)
                     }}</strong>
                 </p>
                 <p>
@@ -368,6 +448,106 @@ function submit(): void {
                         {{ error }}
                     </p>
                 </form>
+            </CardContent>
+        </Card>
+        <Card
+            v-if="
+                can_execute_bank &&
+                ['approved', 'payment_failed'].includes(withdrawal.state) &&
+                !withdrawal.held
+            "
+        >
+            <CardHeader><CardTitle>Start bank transfer</CardTitle></CardHeader>
+            <CardContent>
+                <form class="grid gap-4" @submit.prevent="startTransfer">
+                    <p class="text-sm">
+                        Sends {{ money(withdrawal.net_kobo) }} to
+                        <strong>{{ withdrawal.destination_mask }}</strong
+                        >. The provider's confirmed result, not this click,
+                        decides the outcome.
+                    </p>
+                    <label class="flex gap-3 text-sm"
+                        ><input v-model="bankForm.confirmed" type="checkbox" />I
+                        confirm the exact
+                        {{ money(withdrawal.net_kobo) }} transfer to this
+                        verified destination.</label
+                    >
+                    <Button
+                        class="w-fit"
+                        :disabled="bankForm.processing || !bankForm.confirmed"
+                        >Start transfer</Button
+                    >
+                    <p
+                        v-for="(error, key) in bankForm.errors"
+                        :key="key"
+                        class="text-destructive text-sm"
+                        role="alert"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+            </CardContent>
+        </Card>
+        <Card v-if="bank_attempts.length > 0">
+            <CardHeader
+                ><CardTitle>Bank transfer history</CardTitle></CardHeader
+            >
+            <CardContent class="grid gap-4 text-sm" aria-live="polite">
+                <p v-if="withdrawal.state === 'outcome_unknown'">
+                    The provider has not given a final answer. Savings stay
+                    reserved and no second transfer can be sent.
+                </p>
+                <div
+                    v-for="attempt in bank_attempts"
+                    :key="attempt.reference"
+                    class="grid gap-1 rounded-md border p-3"
+                >
+                    <p>
+                        <strong>Attempt {{ attempt.number }}</strong> ·
+                        {{ attempt.status.replaceAll('_', ' ') }} ·
+                        {{ money(attempt.amount_kobo) }}
+                        <span v-if="attempt.failure_code"
+                            >·
+                            {{
+                                attempt.failure_code.replaceAll('_', ' ')
+                            }}</span
+                        >
+                    </p>
+                    <p class="text-muted-foreground">
+                        Started {{ when(attempt.initiated_at) }} · Provider
+                        confirmed {{ when(attempt.provider_occurred_at) }} ·
+                        Posted {{ when(attempt.posted_at)
+                        }}<span v-if="attempt.occurred_on">
+                            (occurred {{ attempt.occurred_on }})</span
+                        >
+                        · Settled {{ when(attempt.settled_at) }}
+                    </p>
+                    <Button
+                        v-if="
+                            can_execute_bank &&
+                            [
+                                'prepared',
+                                'submitted',
+                                'unknown',
+                                'succeeded',
+                            ].includes(attempt.status) &&
+                            !attempt.posted_at
+                        "
+                        type="button"
+                        variant="outline"
+                        class="w-fit"
+                        :disabled="checkForm.processing"
+                        @click="checkNow(attempt.reference)"
+                        >Check status now</Button
+                    >
+                </div>
+                <div v-if="bank_returns.length > 0" class="grid gap-1">
+                    <p class="font-medium">Provider returns and exceptions</p>
+                    <p v-for="item in bank_returns" :key="item.reference">
+                        {{ item.status }} · {{ money(item.amount_kobo) }} ·
+                        {{ when(item.recorded_at) }}
+                    </p>
+                </div>
             </CardContent>
         </Card>
         <CashRecoveryPanel

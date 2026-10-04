@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { replacement } from '@/routes/reversals';
+import {
+    link as evidenceLink,
+    store as storeEvidence,
+} from '@/routes/reversals/evidence';
 import { dashboard } from '@/routes';
 import {
     index as reversalsIndex,
@@ -39,6 +43,13 @@ const props = defineProps<{
     can_review: boolean;
     can_cancel: boolean;
     can_approve: boolean;
+    can_add_evidence: boolean;
+    evidence_files: Array<{
+        id: number;
+        type: string;
+        bytes: number;
+        added_at: string;
+    }>;
 }>();
 
 defineOptions({
@@ -79,7 +90,7 @@ const previewError = ref('');
 async function reviewCompensation(): Promise<void> {
     previewError.value = '';
     try {
-        const result = await previewHttp.post(
+        const result = await previewHttp.get(
             reviewPreview.url(props.reversal.id),
         );
         choose('approve');
@@ -90,6 +101,35 @@ async function reviewCompensation(): Promise<void> {
         review.value = null;
         previewError.value =
             'The full compensation could not be verified. Resolve its owner dependencies and review again.';
+    }
+}
+const evidenceForm = useForm({ files: [] as File[] });
+const evidenceError = ref('');
+function chooseEvidence(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    evidenceForm.files = Array.from(input.files ?? []).slice(0, 3);
+}
+function addEvidence(): void {
+    evidenceForm.post(storeEvidence.url(props.reversal.id), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => evidenceForm.reset(),
+    });
+}
+async function openEvidence(file: number): Promise<void> {
+    evidenceError.value = '';
+    try {
+        const response = await fetch(
+            evidenceLink.url({ reversal: props.reversal.id, file }),
+            {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            },
+        );
+        if (!response.ok) throw new Error('denied');
+        window.location.assign((await response.json()).url);
+    } catch {
+        evidenceError.value = 'This evidence file is not available to you.';
     }
 }
 const money = (kobo: number): string =>
@@ -174,6 +214,71 @@ function submit(): void {
                 <p v-if="reversal.evidence_text">
                     {{ reversal.evidence_text }}
                 </p>
+            </CardContent>
+        </Card>
+        <Card v-if="evidence_files.length > 0 || can_add_evidence">
+            <CardHeader><CardTitle>Evidence files</CardTitle></CardHeader>
+            <CardContent class="grid gap-3 text-sm">
+                <p
+                    v-if="evidence_files.length === 0"
+                    class="text-muted-foreground"
+                >
+                    No evidence file is attached.
+                </p>
+                <ul v-else class="grid gap-2">
+                    <li
+                        v-for="file in evidence_files"
+                        :key="file.id"
+                        class="flex flex-wrap items-center gap-3"
+                    >
+                        <span
+                            >File {{ file.id }} · {{ file.type }} ·
+                            {{ Math.ceil(file.bytes / 1024) }} KB</span
+                        >
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="openEvidence(file.id)"
+                            >Open</Button
+                        >
+                    </li>
+                </ul>
+                <p v-if="evidenceError" role="alert" class="text-destructive">
+                    {{ evidenceError }}
+                </p>
+                <form
+                    v-if="can_add_evidence"
+                    class="grid gap-2"
+                    @submit.prevent="addEvidence"
+                >
+                    <Label for="reversal-evidence-files"
+                        >Add evidence (up to 3 files in total)</Label
+                    >
+                    <input
+                        id="reversal-evidence-files"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        class="border-input bg-background rounded-md border p-2"
+                        @change="chooseEvidence"
+                    />
+                    <Button
+                        class="w-fit"
+                        :disabled="
+                            evidenceForm.processing ||
+                            evidenceForm.files.length === 0
+                        "
+                        >Add evidence</Button
+                    >
+                    <p
+                        v-for="(error, key) in evidenceForm.errors"
+                        :key="key"
+                        role="alert"
+                        class="text-destructive"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
             </CardContent>
         </Card>
         <Card v-if="can_review || can_cancel">

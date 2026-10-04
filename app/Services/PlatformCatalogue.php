@@ -14,6 +14,7 @@ use App\Jobs\DeliverPlanNotificationIntent;
 use App\Jobs\DeliverProfileNotificationIntent;
 use App\Jobs\DeliverReversalNotificationIntent;
 use App\Jobs\DeliverWithdrawalNotificationIntent;
+use App\Jobs\DispatchBankPayout;
 use App\Jobs\ExpirePendingTwoFactorSetup;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Jobs\ProjectAuditEvent;
@@ -58,7 +59,7 @@ class PlatformCatalogue
 
     public function ownsExternalDeliveryBoundary(object $job): bool
     {
-        if ($job instanceof DeliverFeeApplicationNotificationIntent) {
+        if ($job instanceof DeliverFeeApplicationNotificationIntent || $job instanceof DispatchBankPayout) {
             return true;
         }
         if ($job instanceof DeliverPlanNotificationIntent) {
@@ -86,7 +87,7 @@ class PlatformCatalogue
         'FeeActionAttemptService' => 'mutation',
         'CollectionMethodCatalogue' => 'mutation', 'CollectionPaymentEvidenceService' => 'mutation',
         'DeductionReversalOwner' => 'financial', 'FeeRefundService' => 'financial', 'CashDisbursementService' => 'financial', 'CashRecoveryService' => 'financial', 'ManualChargeService' => 'financial', 'CollectionService' => 'financial', 'CollectionLedgerService' => 'financial', 'LedgerPostingService' => 'financial',
-        'FinancialArtifactService' => 'derived', 'CashExecutionService' => 'financial', 'WithdrawalService' => 'financial', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
+        'FinancialArtifactService' => 'derived', 'CashExecutionService' => 'financial', 'WithdrawalService' => 'financial', 'BankPayoutService' => 'financial', 'BankPayoutDestinationService' => 'mutation', 'ReversalService' => 'financial', 'FeeObligationService' => 'financial',
         'CustomerRegistrationService' => 'financial', 'CustomerStatusManagementService' => 'financial', 'CustomerLifecycleService' => 'financial', 'ThriftPlanService' => 'financial',
         'AgentRegistrationService' => 'mutation', 'AgentStatusManagementService' => 'mutation', 'RegistrationFeeService' => 'mutation',
         'EmailReservationService' => 'mutation', 'CustomerHandoverNotifications' => 'mutation', 'AgentLifecycleService' => 'mutation', 'CustomerReassignmentService' => 'mutation', 'CustomerRecoveryService' => 'mutation',
@@ -101,7 +102,7 @@ class PlatformCatalogue
         'collections:clean-evidence' => 'mutation',
         'financial:release-evidence' => 'mutation', 'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
         'platform:replay' => 'mutation',
-        'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial',
+        'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial', 'withdrawals:reconcile-bank-payouts' => 'financial', 'payouts:fake-event' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
         'ledger:rebuild-transactions' => 'derived', 'business:activate-settings' => 'mutation', 'authz:expire-restrictions' => 'mutation',
     ];
@@ -239,6 +240,8 @@ class PlatformCatalogue
         'verification.send' => 'mutation',
         'verification.verify' => 'mutation',
         'withdrawals.approve' => 'financial',
+        'withdrawals.bank.start' => 'financial', 'ledger.incidents.resolve' => 'mutation', 'bank-payout-attempts.check' => 'financial', 'payout-callbacks.store' => 'financial',
+        'customers.payout-destinations.store' => 'mutation', 'reversals.evidence.store' => 'mutation', 'payout-destinations.verify' => 'mutation', 'payout-destinations.reject' => 'mutation', 'payout-destinations.revoke' => 'financial',
         'withdrawals.cancel' => 'financial',
         'withdrawals.reject' => 'financial',
         'withdrawals.revoke' => 'financial',
@@ -262,7 +265,7 @@ class PlatformCatalogue
     {
         $route = app('router')->getRoutes()->match($request);
 
-        return ! in_array($route->getName(), ['customers.collection-evidence.store', 'collection-evidence.review', 'collection-batches.settlements.store'], true);
+        return ! in_array($route->getName(), ['customers.collection-evidence.store', 'collection-evidence.review', 'collection-batches.settlements.store', 'customers.payout-destinations.store', 'bank-payout-attempts.check', 'payout-callbacks.store', 'reversals.evidence.store'], true);
     }
 
     public function jobClass(object $job): string
@@ -287,6 +290,7 @@ class PlatformCatalogue
             DeliverProfileNotificationIntent::class,
             DeliverReversalNotificationIntent::class,
             DeliverWithdrawalNotificationIntent::class,
+            DispatchBankPayout::class,
             MaterializeNotificationIntent::class,
             SendQueuedNotifications::class => 'external',
             default => throw new PlatformBlocked('platform_operation_unclassified'),

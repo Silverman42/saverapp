@@ -8,7 +8,6 @@ use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
-use App\Models\CashExecution;
 use App\Models\FeeObligation;
 use App\Models\FeeSnapshot;
 use App\Models\LedgerPostingGroup;
@@ -38,8 +37,7 @@ class PlanWithdrawalFeePosition
             $sourceGroups = $captured === null ? LedgerPostingGroup::query()->where('source_type', 'withdrawal')
                 ->whereIn('source_id', $withdrawals->pluck('id')->all())->with('entries.account', 'entries.feeObligation.feeSnapshot', 'entries.feeObligation.entries')->get()->toBase()
                 : $captured->groups->where('source_type', 'withdrawal')->whereIn('source_id', $withdrawals->pluck('id'));
-            $executions = $captured === null ? CashExecution::query()->whereIn('withdrawal_request_id', $withdrawals->pluck('id'))
-                ->where('status', 'posted')->get() : $captured->executions;
+            $executions = $captured === null ? app(WithdrawalPayoutSource::class)->postedFor($withdrawals->pluck('id')) : $captured->executions;
             $groups = $sourceGroups->groupBy(fn (LedgerPostingGroup $group): string => $group->source_id);
             foreach ($withdrawals as $withdrawal) {
                 $postings = $groups->get((string) $withdrawal->id);
@@ -54,20 +52,25 @@ class PlanWithdrawalFeePosition
                     throw new RuntimeException('A payout has conflicting fee source evidence.');
                 }
                 $group = $postings->sole();
-                $execution = $executions->where('withdrawal_request_id', $withdrawal->id)->where('ledger_posting_group_id', $group->id)->where('status', 'posted')->first();
+                $execution = $executions->where('withdrawalRequestId', $withdrawal->id)->where('groupId', $group->id)->first();
+                $deduction = $withdrawal->deduction_amount_kobo;
+                $deductionLine = fn ($line): bool => $deduction === 0 || ($line->account->code === LedgerAccountCode::OtherDeductionDestination
+                    && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $deduction);
+                $extraLines = $deduction > 0 ? 1 : 0;
                 $feeLine = $group->entries->first(fn ($line): bool => $line->account->code === LedgerAccountCode::FeeIncome);
                 if ($withdrawal->fee_amount_kobo === 0) {
-                    if ($withdrawal->fee_snapshot_id !== $agreement->id || $feeLine !== null || $execution === null || $execution->acknowledged_at === null
-                        || $execution->customer_acknowledgement === null || $execution->amount_kobo !== $withdrawal->net_amount_kobo
+                    if ($withdrawal->fee_snapshot_id !== $agreement->id || $feeLine !== null || $execution === null || ! $execution->finalityProven
+                        || $execution->amountKobo !== $withdrawal->net_amount_kobo
                         || $withdrawal->customer_profile_id !== $plan->customer_profile_id || $withdrawal->currency !== 'NGN'
-                        || $withdrawal->gross_amount_kobo !== $withdrawal->net_amount_kobo
-                        || $group->event_type !== 'cash_withdrawal' || $group->currency !== 'NGN'
+                        || $withdrawal->gross_amount_kobo !== $withdrawal->net_amount_kobo + $deduction
+                        || $group->event_type !== $execution->eventType || $group->currency !== 'NGN'
                         || $group->customer_profile_id !== $plan->customer_profile_id || $group->thrift_plan_id !== $plan->id
-                        || $group->entries->count() !== 2
+                        || $group->entries->count() !== 2 + $extraLines
+                        || ! $group->entries->contains($deductionLine)
                         || ! $group->entries->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::CustomerSavingsLiability
                             && $line->side === LedgerEntrySide::Debit && $line->amount_kobo === $withdrawal->gross_amount_kobo
                             && $line->thrift_plan_id === $plan->id && $line->customer_profile_id === $plan->customer_profile_id)
-                        || ! $group->entries->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::BusinessCash
+                        || ! $group->entries->contains(fn ($line): bool => $line->account->code === $execution->payoutAccount
                             && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $withdrawal->net_amount_kobo)) {
                         throw new RuntimeException('A fee-free payout does not match its original journal.');
                     }
@@ -76,12 +79,12 @@ class PlanWithdrawalFeePosition
                 }
                 $obligation = $feeLine?->feeObligation;
                 $snapshot = $obligation?->feeSnapshot;
-                if ($execution === null || $execution->acknowledged_at === null || $execution->customer_acknowledgement === null
-                    || $execution->amount_kobo !== $withdrawal->net_amount_kobo
+                if ($execution === null || ! $execution->finalityProven
+                    || $execution->amountKobo !== $withdrawal->net_amount_kobo
                     || $withdrawal->fee_snapshot_id !== $agreement->id
                     || $withdrawal->customer_profile_id !== $plan->customer_profile_id || $withdrawal->currency !== 'NGN'
-                    || $withdrawal->gross_amount_kobo !== $withdrawal->net_amount_kobo + $withdrawal->fee_amount_kobo
-                    || $group->event_type !== 'cash_withdrawal' || $group->currency !== 'NGN'
+                    || $withdrawal->gross_amount_kobo !== $withdrawal->net_amount_kobo + $withdrawal->fee_amount_kobo + $deduction
+                    || $group->event_type !== $execution->eventType || $group->currency !== 'NGN'
                     || $group->customer_profile_id !== $plan->customer_profile_id || $group->thrift_plan_id !== $plan->id
                     || $feeLine === null || $feeLine->side !== LedgerEntrySide::Credit || $feeLine->amount_kobo !== $withdrawal->fee_amount_kobo
                     || $obligation === null || $snapshot === null || $obligation->customer_profile_id !== $plan->customer_profile_id
@@ -101,11 +104,12 @@ class PlanWithdrawalFeePosition
                     || ($agreement->model === FeeRuleModel::Percentage && $snapshot->basis_amount_kobo !== $withdrawal->gross_amount_kobo)
                     || $snapshot->settlement_source !== $agreement->settlement_source
                     || $snapshot->amount_kobo !== $withdrawal->fee_amount_kobo || $obligation->amount_kobo !== $withdrawal->fee_amount_kobo
-                    || $group->entries->count() !== 3
+                    || $group->entries->count() !== 3 + $extraLines
+                    || ! $group->entries->contains($deductionLine)
                     || ! $group->entries->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::CustomerSavingsLiability
                         && $line->side === LedgerEntrySide::Debit && $line->amount_kobo === $withdrawal->gross_amount_kobo
                         && $line->thrift_plan_id === $plan->id && $line->customer_profile_id === $plan->customer_profile_id)
-                    || ! $group->entries->contains(fn ($line): bool => $line->account->code === LedgerAccountCode::BusinessCash
+                    || ! $group->entries->contains(fn ($line): bool => $line->account->code === $execution->payoutAccount
                         && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $withdrawal->net_amount_kobo)) {
                     throw new RuntimeException('The original cycle fee payout cannot be verified.');
                 }
@@ -194,6 +198,9 @@ class PlanWithdrawalFeePosition
             LedgerAccountCode::CashRecoveryClearing->value => [LedgerEntrySide::Debit, $withdrawal->net_amount_kobo]];
         if ($retainedFee > 0) {
             $expected[LedgerAccountCode::FeeIncome->value] = [LedgerEntrySide::Debit, $retainedFee];
+        }
+        if ($withdrawal->deduction_amount_kobo > 0) {
+            $expected[LedgerAccountCode::OtherDeductionDestination->value] = [LedgerEntrySide::Debit, $withdrawal->deduction_amount_kobo];
         }
         $lines = $captured === null ? $compensation->entries()->with('account')->get() : $compensation->entries;
         if ($lines->count() !== count($expected) || $lines->pluck('ledger_account_id')->unique()->count() !== count($expected)) {

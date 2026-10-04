@@ -9,6 +9,8 @@ use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Enums\ThriftPlanStatus;
 use App\Models\AuditEvent;
+use App\Models\BankPayoutAttempt;
+use App\Models\BankPayoutReturn;
 use App\Models\CashExecution;
 use App\Models\CashRecovery;
 use App\Models\ChargeCategoryVersion;
@@ -305,8 +307,22 @@ class PlanSettlementService
                         'ledger_posting_group_id' => $recovery->ledger_posting_group_id,
                     ])->all()];
             }
+            $bankFacts = [];
+            foreach (BankPayoutAttempt::query()->where('withdrawal_request_id', $withdrawal->id)->orderBy('id')
+                ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get() as $attempt) {
+                $returns = BankPayoutReturn::query()->where('bank_payout_attempt_id', $attempt->id)->orderBy('id')
+                    ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+                $inFlight = in_array($attempt->status, ['prepared', 'submitted', 'unknown'], true)
+                    || ($attempt->status === 'succeeded' && $attempt->ledger_posting_group_id === null);
+                if ($inFlight || $returns->contains(fn (BankPayoutReturn $return): bool => $return->status !== 'consumed' || $return->consumed_at === null)) {
+                    $unsettled = true;
+                }
+                $bankFacts[] = ['id' => $attempt->id, 'status' => $attempt->status, 'posting_group_id' => $attempt->ledger_posting_group_id,
+                    'returns' => $returns->map(fn (BankPayoutReturn $return): array => ['id' => $return->id, 'status' => $return->status,
+                        'amount_kobo' => $return->amount_kobo, 'consumed_at' => $return->consumed_at])->all()];
+            }
             $facts[] = ['id' => $withdrawal->id, 'version' => $withdrawal->version,
-                'state' => $withdrawal->state, 'executions' => $executionFacts];
+                'state' => $withdrawal->state, 'executions' => $executionFacts, 'bank_payouts' => $bankFacts];
         }
 
         return ['unsettled' => $unsettled, 'withdrawals' => $facts];

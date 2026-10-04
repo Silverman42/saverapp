@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
  * @property int $id
@@ -46,6 +47,13 @@ class LedgerEntry extends Model
 
     protected static function booted(): void
     {
+        static::creating(function (self $entry): void {
+            $retiredAt = LedgerAccount::query()->whereKey($entry->ledger_account_id)->value('retired_at');
+            if ($retiredAt !== null && CarbonImmutable::parse($retiredAt)->lessThanOrEqualTo(now())) {
+                throw new ConflictHttpException('A retired ledger account cannot receive new postings.');
+            }
+        });
+
         static::updating(function (): never {
             throw new RuntimeException('Ledger entries are immutable.');
         });

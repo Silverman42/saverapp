@@ -10,9 +10,12 @@ use App\Notifications\FinancialCashMailNotification;
 use App\Notifications\ManualChargeMailNotification;
 use App\Notifications\ThriftPlanNotification;
 use App\Services\AuthorizationService;
+use App\Services\FakePayoutProvider;
 use App\Services\UnavailableExternalOutcomeLookup;
+use App\Services\UnavailablePayoutProvider;
 use App\Support\ExternalOutcomeLookup;
 use App\Support\PasswordPolicy;
+use App\Support\PayoutProvider;
 use App\Support\PlatformJobMiddleware;
 use App\Support\PlatformWorker;
 use Carbon\CarbonImmutable;
@@ -39,6 +42,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ExternalOutcomeLookup::class, UnavailableExternalOutcomeLookup::class);
+        $this->app->bind(PayoutProvider::class, fn (Application $app): PayoutProvider => config('withdrawals.bank.provider') === 'fake'
+            && $app->environment(['local', 'testing']) ? $app->make(FakePayoutProvider::class) : $app->make(UnavailablePayoutProvider::class));
         $this->app->extend('queue.worker', function (Worker $worker, Application $app): PlatformWorker {
             return new PlatformWorker($app['queue'], $app['events'], $app[ExceptionHandler::class],
                 fn (): bool => $app->isDownForMaintenance(), function () use ($app): void {

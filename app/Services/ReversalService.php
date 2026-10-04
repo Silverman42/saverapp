@@ -15,14 +15,18 @@ use App\Models\FinancialWorkflowSupplement;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalAttempt;
 use App\Models\ReversalEvent;
+use App\Models\ReversalEvidenceFile;
 use App\Models\ReversalRequest;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Throwable;
 
 class ReversalService
 {
@@ -108,12 +112,31 @@ class ReversalService
         ];
     }
 
-    /** @param array<string, mixed> $data */
-    public function submit(User $actor, LedgerPostingGroup $original, array $data): ReversalRequest
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<UploadedFile>  $uploads
+     */
+    public function submit(User $actor, LedgerPostingGroup $original, array $data, array $uploads = []): ReversalRequest
     {
-        $payloadHash = $this->payloadHash('submit', $actor, $original->id, $data);
+        $files = $this->prepareEvidence($uploads);
+        $payloadHash = $this->payloadHash('submit', $actor, $original->id, [...$data, 'evidence_checksums' => array_column($files, 'checksum')]);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $original, $data, $payloadHash): ReversalRequest {
+        try {
+            return $this->submitWithEvidence($actor, $original, $data, $files, $payloadHash);
+        } finally {
+            foreach ($files as $file) {
+                app(CollectionEvidenceFiles::class)->removeUnreferencedFile($file['storage_path']);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<array<string, mixed>>  $files
+     */
+    private function submitWithEvidence(User $actor, LedgerPostingGroup $original, array $data, array $files, string $payloadHash): ReversalRequest
+    {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $original, $data, $files, $payloadHash): ReversalRequest {
             $replay = $this->replay($data['attempt_reference'], 'submit', $actor, $payloadHash);
             if ($replay !== null) {
                 Gate::forUser($actor)->authorize('view', $replay->customerProfile);
@@ -151,9 +174,105 @@ class ReversalService
                 'actor_user_id' => $actor->id, 'operation' => 'submit', 'payload_hash' => $payloadHash,
             ]);
             $this->recordEvent($reversal, $actor, 'submitted');
+            $this->attachEvidence($reversal, $actor, $files);
 
             return $reversal;
         });
+    }
+
+    /**
+     * Add scanned evidence files to a still-pending request. Files are immutable: a supplement only adds, up to three in total.
+     *
+     * @param  list<UploadedFile>  $uploads
+     */
+    public function addEvidence(User $actor, ReversalRequest $reversal, array $uploads): int
+    {
+        Gate::forUser($actor)->authorize('initiateReversal', $reversal->customerProfile);
+        if ($reversal->state !== 'pending_review') {
+            throw new ConflictHttpException('Evidence can be added only while the request is pending review.');
+        }
+        $files = $this->prepareEvidence($uploads, $reversal->evidenceFiles()->count());
+        if ($files === []) {
+            throw ValidationException::withMessages(['files' => 'Choose at least one evidence file.']);
+        }
+        try {
+            return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $reversal, $files): int {
+                $customer = CustomerProfile::query()->whereKey($reversal->customer_profile_id)->lockForUpdate()->firstOrFail();
+                Gate::forUser($actor)->authorize('initiateReversal', $customer);
+                $locked = ReversalRequest::query()->whereKey($reversal->id)->lockForUpdate()->firstOrFail();
+                if ($locked->state !== 'pending_review') {
+                    throw new ConflictHttpException('Evidence can be added only while the request is pending review.');
+                }
+                if ($locked->evidenceFiles()->lockForUpdate()->count() + count($files) > 3) {
+                    throw ValidationException::withMessages(['files' => 'A request holds at most three evidence files.']);
+                }
+                $this->attachEvidence($locked, $actor, $files);
+
+                return count($files);
+            }, attempts: 3);
+        } finally {
+            foreach ($files as $file) {
+                app(CollectionEvidenceFiles::class)->removeUnreferencedFile($file['storage_path']);
+            }
+        }
+    }
+
+    /** The one authorized read of a stored evidence file; Customers never receive internal investigation files. */
+    public function evidenceFile(User $actor, ReversalRequest $reversal, int $fileId): ReversalEvidenceFile
+    {
+        $customer = $reversal->customerProfile;
+        $allowed = match ($actor->user_type) {
+            UserType::Agent => Gate::forUser($actor)->allows('initiateReversal', $customer),
+            UserType::Admin => $this->authorization->allows($actor, AdminPermission::ReversalsReview) && Gate::forUser($actor)->allows('view', $customer),
+            default => false,
+        };
+        abort_unless($allowed, 404);
+
+        return $reversal->evidenceFiles()->whereKey($fileId)->firstOrFail();
+    }
+
+    public function evidenceBytes(ReversalEvidenceFile $file): string
+    {
+        return app(CollectionEvidenceFiles::class)->fileBytes((object) $file->getAttributes());
+    }
+
+    /**
+     * @param  list<UploadedFile>  $uploads
+     * @return list<array{storage_path: string, checksum: string, mime_type: string, byte_size: int, scanner_version: string, scanned_at: mixed, created_at: mixed}>
+     */
+    private function prepareEvidence(array $uploads, int $existing = 0): array
+    {
+        if ($existing + count($uploads) > 3) {
+            throw ValidationException::withMessages(['files' => 'A request holds at most three evidence files.']);
+        }
+        $files = [];
+        try {
+            foreach ($uploads as $upload) {
+                $files[] = app(CollectionEvidenceFiles::class)->prepareFile($upload);
+            }
+        } catch (Throwable $exception) {
+            foreach ($files as $file) {
+                app(CollectionEvidenceFiles::class)->removeUnreferencedFile($file['storage_path']);
+            }
+            throw $exception;
+        }
+
+        return $files;
+    }
+
+    /** @param list<array<string, mixed>> $files */
+    private function attachEvidence(ReversalRequest $reversal, User $actor, array $files): void
+    {
+        if ($files === []) {
+            return;
+        }
+        foreach ($files as $file) {
+            ReversalEvidenceFile::create([...$file, 'reversal_request_id' => $reversal->id, 'uploaded_by_user_id' => $actor->id]);
+        }
+        AuditEvent::record('reversal.evidence_added', ReversalRequest::class, $reversal->id, $reversal->reversal_id,
+            ['customer_profile_id' => $reversal->customer_profile_id, 'state' => $reversal->state, 'version' => $reversal->version,
+                'file_count' => count($files)], $actor,
+            context: ['executor' => self::class, 'operation_id' => 'evidence:'.$reversal->reversal_id.':'.$reversal->evidenceFiles()->count()]);
     }
 
     /** @param array<string, mixed> $data */
@@ -181,6 +300,8 @@ class ReversalService
             } elseif (! $this->authorization->allows($actor, AdminPermission::ReversalsReview)
                 || ! $this->freshAuthentication->isFresh($actor, $httpRequest)) {
                 throw new AuthorizationException('Fresh authorized Admin review is required.');
+            } else {
+                Gate::forUser($actor)->authorize('view', $customer);
             }
             if ($locked->state !== 'pending_review' || $locked->version !== (int) $data['version']) {
                 throw new ConflictHttpException('The reversal request changed. Reload it before deciding.');

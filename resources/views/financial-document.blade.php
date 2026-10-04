@@ -16,11 +16,21 @@ footer { position: fixed; bottom: -30px; font-size: 8px; color: #475467; } .page
 <h2>Issued Customer statement · {{ $snapshot['customer_name'] }} · {{ $snapshot['customer_id'] }}</h2>
 <p>{{ $snapshot['from'] }} through {{ $snapshot['to'] }} · {{ $snapshot['timezone'] }}<br>Cutoff {{ $snapshot['cutoff_at'] }} · Ledger watermark {{ $snapshot['ledger_watermark'] }}</p>
 <p>Opening NGN {{ \App\Support\MoneyFormatter::decimal($snapshot['opening_kobo']) }} · Activity NGN {{ \App\Support\MoneyFormatter::decimal($snapshot['activity_kobo']) }} · Closing NGN {{ \App\Support\MoneyFormatter::decimal($snapshot['closing_kobo']) }}</p>
+<p class="muted">Separate positions as at the cutoff, not part of the closing balance: reserved for pending withdrawals {{ ($snapshot['current_reserved_kobo'] ?? null) === null ? 'unavailable' : 'NGN '.\App\Support\MoneyFormatter::decimal($snapshot['current_reserved_kobo']) }} · available savings {{ ($snapshot['current_available_kobo'] ?? null) === null ? 'unavailable' : 'NGN '.\App\Support\MoneyFormatter::decimal($snapshot['current_available_kobo']) }} · unpaid fees {{ ($snapshot['unpaid_fees_kobo'] ?? null) === null ? 'unavailable' : 'NGN '.\App\Support\MoneyFormatter::decimal($snapshot['unpaid_fees_kobo']) }}</p>
+@if (count($snapshot['type_totals'] ?? []) > 0)
+<table><thead><tr><th>Type</th><th>Entries</th><th>Savings effect (NGN)</th><th>Fee (NGN)</th></tr></thead><tbody>
+@foreach ($snapshot['type_totals'] as $total)
+<tr><td>{{ str_replace('_', ' ', $total['type']) }}</td><td>{{ $total['count'] }}</td><td>{{ \App\Support\MoneyFormatter::decimal($total['savings_effect_kobo']) }}</td><td>{{ \App\Support\MoneyFormatter::decimal($total['fee_amount_kobo']) }}</td></tr>
+@endforeach
+</tbody></table>
+@endif
+@foreach (array_chunk($snapshot['lines'], 100) as $chunk)
 <table><thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Savings effect (NGN)</th><th>Fee (NGN)</th></tr></thead><tbody>
-@foreach ($snapshot['lines'] as $line)
+@foreach ($chunk as $line)
 <tr><td>{{ $line['occurred_on'] }}</td><td>{{ $line['reference'] }}</td><td>{{ str_replace('_', ' ', $line['type']) }}</td><td>{{ \App\Support\MoneyFormatter::decimal($line['savings_effect_kobo']) }}</td><td>{{ \App\Support\MoneyFormatter::decimal($line['fee_amount_kobo']) }}</td></tr>
 @endforeach
 </tbody></table>
+@endforeach
 @else
 <h2>{{ $snapshot['title'] }}</h2><p>Report—not an issued Customer statement.</p>
 <p>Cutoff {{ $snapshot['manifest']['cutoff'] }} · {{ $snapshot['manifest']['timezone'] }} · Schema {{ $snapshot['manifest']['schema_version'] }}</p>

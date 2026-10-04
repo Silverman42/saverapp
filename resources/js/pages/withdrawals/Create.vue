@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import { index as withdrawalsIndex } from '@/routes/withdrawals';
+import { index as payoutDestinations } from '@/routes/customers/payout-destinations';
 import {
     preview as previewWithdrawal,
     store as storeWithdrawal,
@@ -24,6 +25,8 @@ type Quote = {
     gross_kobo: number;
     fee_kobo: number;
     fee_disclosure: FeeDisclosure;
+    deduction_kobo: number;
+    deduction_description: string | null;
     net_kobo: number;
     position: {
         liability_kobo: number;
@@ -36,8 +39,9 @@ type Quote = {
 const props = defineProps<{
     customer: { id: string; name: string };
     plans: Array<{ id: string; status: string }>;
-    method_available: boolean;
+    methods: string[];
     cash_destination_reference: string;
+    bank_destinations: Array<{ reference: string; label: string }>;
 }>();
 defineOptions({
     layout: {
@@ -53,8 +57,11 @@ const form = useForm({
     plan_id: props.plans[0]?.id ?? '',
     type: 'partial',
     gross_ngn: '',
-    method: 'cash',
-    destination_reference: props.cash_destination_reference,
+    method: props.methods[0] ?? 'cash',
+    destination_reference:
+        props.methods[0] === 'bank_transfer'
+            ? (props.bank_destinations[0]?.reference ?? '')
+            : props.cash_destination_reference,
     reason: '',
     internal_notes: '',
     preview_fingerprint: '',
@@ -78,6 +85,15 @@ const previewHttp = useHttp({
 const quote = ref<Quote | null>(null);
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+watch(
+    () => form.method,
+    (method) => {
+        form.destination_reference =
+            method === 'bank_transfer'
+                ? (props.bank_destinations[0]?.reference ?? '')
+                : props.cash_destination_reference;
+    },
+);
 watch(
     () => [
         form.plan_id,
@@ -134,7 +150,7 @@ function submit(): void {
                 cycle.
             </p>
         </div>
-        <Card v-if="!method_available"
+        <Card v-if="methods.length === 0"
             ><CardContent class="pt-6"
                 ><p class="text-sm">
                     Requests are unavailable until a payout method has approved
@@ -190,19 +206,51 @@ function submit(): void {
                         v-model="form.method"
                         class="border-input bg-background h-11 rounded-md border px-3 text-sm"
                     >
-                        <option value="cash">Cash</option>
-                        <option value="bank_transfer">Bank transfer</option>
+                        <option v-if="methods.includes('cash')" value="cash">
+                            Cash
+                        </option>
+                        <option
+                            v-if="methods.includes('bank_transfer')"
+                            value="bank_transfer"
+                        >
+                            Bank transfer
+                        </option>
                     </select>
                 </div>
-                <div class="grid gap-2 sm:col-span-2">
+                <div
+                    v-if="form.method === 'bank_transfer'"
+                    class="grid gap-2 sm:col-span-2"
+                >
                     <Label for="withdrawal-destination"
-                        >Verified destination reference</Label
-                    ><Input
+                        >Verified bank destination</Label
+                    >
+                    <select
+                        v-if="bank_destinations.length > 0"
                         id="withdrawal-destination"
                         v-model="form.destination_reference"
-                        maxlength="200"
-                    />
+                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    >
+                        <option
+                            v-for="destination in bank_destinations"
+                            :key="destination.reference"
+                            :value="destination.reference"
+                        >
+                            {{ destination.label }}
+                        </option>
+                    </select>
+                    <p v-else class="text-sm">
+                        This Customer has no verified bank destination.
+                        <Link
+                            :href="payoutDestinations(customer.id)"
+                            class="text-primary underline"
+                            >Register one for review</Link
+                        >.
+                    </p>
                 </div>
+                <p v-else class="text-sm sm:col-span-2">
+                    Cash is paid to the Customer personally and acknowledged by
+                    the Customer.
+                </p>
                 <div class="grid gap-2 sm:col-span-2">
                     <Label for="withdrawal-reason"
                         >Customer-visible reason</Label
@@ -243,11 +291,21 @@ function submit(): void {
                     >Confirm gross debit and net payout</CardTitle
                 ></CardHeader
             ><CardContent class="grid gap-4 text-sm"
-                ><div class="grid gap-3 sm:grid-cols-3">
+                ><div class="grid gap-3 sm:grid-cols-4">
                     <p>
                         Gross savings debit<br /><strong>{{
                             money(quote.gross_kobo)
                         }}</strong>
+                    </p>
+                    <p>
+                        Withdrawal deduction<br /><strong>{{
+                            money(quote.deduction_kobo)
+                        }}</strong
+                        ><span
+                            v-if="quote.deduction_description"
+                            class="text-muted-foreground block"
+                            >{{ quote.deduction_description }}</span
+                        >
                     </p>
                     <p>
                         Total fee included in this payout<br /><strong>{{

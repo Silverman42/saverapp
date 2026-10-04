@@ -52,6 +52,12 @@ class ReversalRequest extends Model
         return 'reversal_id';
     }
 
+    /** @return HasMany<ReversalEvidenceFile, $this> */
+    public function evidenceFiles(): HasMany
+    {
+        return $this->hasMany(ReversalEvidenceFile::class);
+    }
+
     /** @return BelongsTo<CustomerProfile, $this> */
     public function customerProfile(): BelongsTo
     {

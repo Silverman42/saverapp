@@ -2,7 +2,6 @@
 
 namespace App\Data;
 
-use App\Models\CashExecution;
 use App\Models\ChargeCategoryVersion;
 use App\Models\FeeObligation;
 use App\Models\FeeRefund;
@@ -22,7 +21,7 @@ final readonly class PlanFeeReadSnapshot
      * @param  Collection<int, ManualCharge>  $charges
      * @param  Collection<int, ChargeCategoryVersion>  $categories
      * @param  Collection<int, LedgerPostingGroup>  $groups
-     * @param  Collection<int, CashExecution>  $executions
+     * @param  Collection<int, PostedPayout>  $executions
      * @param  Collection<int, ReversalRequest>  $reversals
      * @param  Collection<int, FeeRefund>  $refunds
      * @param  Collection<int, mixed>  $receiptPlanIds

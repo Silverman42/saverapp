@@ -34,9 +34,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class WithdrawalService
 {
+    /** States that can carry a hold overlay and expire. */
+    private const HOLDABLE_STATES = ['pending_review', 'approved', 'payment_failed'];
+
+    /** Holds that follow the Customer's restriction and pause the review deadline. */
+    private const CUSTOMER_HOLDS = ['customer_restricted', 'revalidation_required'];
+
+    /** Holds that block payout but never pause expiry, so the request can still expire and release its reservation. */
+    private const NON_PAUSING_HOLDS = ['destination_invalid'];
+
+    /** States that keep a reservation live and therefore block archival. */
+    private const LIVE_STATES = ['pending_review', 'approved', 'payment_failed', 'payout_processing', 'outcome_unknown'];
+
     public function __construct(
         private CustomerActionAuthorizationGuard $authorizationGuard,
         private CustomerActivityGate $activityGate,
@@ -89,7 +102,9 @@ class WithdrawalService
         }
         $feeQuote = $this->feeQuote($snapshot, $gross, $data['type'], $plan);
         $fee = $feeQuote['amount_kobo'];
-        $position = $this->balances->position($customer, $plan, $forUpdate);
+        $deductionQuote = app(WithdrawalDeductionContract::class)->quote($forUpdate);
+        $deduction = $deductionQuote['amount_kobo'];
+        $position = $this->position($customer, $plan, $forUpdate);
         if ($gross < 1 || $gross > min($position['available_kobo'], $position['cycle_available_kobo'])) {
             throw ValidationException::withMessages(['gross_ngn' => ['The gross debit exceeds available savings.']]);
         }
@@ -100,8 +115,8 @@ class WithdrawalService
             throw ValidationException::withMessages(['gross_ngn' => ['This type requires the exact current source-cycle amount.']]);
         }
 
-        if ($fee >= $gross) {
-            throw ValidationException::withMessages(['gross_ngn' => ['The fee leaves no positive Customer payout.']]);
+        if ($fee + $deduction >= $gross) {
+            throw ValidationException::withMessages(['gross_ngn' => ['The fee and deduction leave no positive Customer payout.']]);
         }
         if (WithdrawalRequest::query()->where('live_thrift_plan_id', $plan->id)->exists()) {
             throw new ConflictHttpException('This cycle already has a live withdrawal request.');
@@ -123,11 +138,14 @@ class WithdrawalService
             'assignment_version' => $assignment->version, 'plan_id' => $plan->plan_id,
             'plan_version' => $plan->version, 'business_version' => $business->version,
             'fee_snapshot_id' => $snapshot->id, 'type' => $data['type'],
-            'gross_kobo' => $gross, 'fee_kobo' => $fee, 'deduction_kobo' => 0, 'fee_disclosure' => $feeQuote['disclosure'],
-            'net_kobo' => $gross - $fee, 'currency' => 'NGN',
+            'gross_kobo' => $gross, 'fee_kobo' => $fee, 'deduction_kobo' => $deduction,
+            'deduction_category_version_id' => $deductionQuote['category_version_id'],
+            'deduction_description' => $deductionQuote['description'], 'fee_disclosure' => $feeQuote['disclosure'],
+            'net_kobo' => $gross - $fee - $deduction, 'currency' => 'NGN',
             'method' => $data['method'], 'method_version' => $method['version'],
             'destination_reference' => $method['destination_reference'],
             'destination_mask' => $method['destination_mask'],
+            'payout_destination_id' => $method['payout_destination_id'] ?? null,
             'reason' => trim($data['reason']),
             'position' => $position, 'quote_expires_at' => $expires->toIso8601String(),
         ];
@@ -172,9 +190,11 @@ class WithdrawalService
                 'fee_snapshot_id' => $quote['fee_snapshot_id'], 'withdrawal_reservation_id' => $reservationId,
                 'type' => $quote['type'], 'state' => 'pending_review', 'held' => false,
                 'gross_amount_kobo' => $quote['gross_kobo'], 'fee_amount_kobo' => $quote['fee_kobo'],
+                'deduction_amount_kobo' => $quote['deduction_kobo'], 'deduction_category_version_id' => $quote['deduction_category_version_id'],
                 'net_amount_kobo' => $quote['net_kobo'], 'currency' => 'NGN',
                 'method' => $quote['method'], 'destination_reference' => $quote['destination_reference'],
-                'destination_mask' => $quote['destination_mask'], 'reason' => $quote['reason'],
+                'destination_mask' => $quote['destination_mask'], 'customer_payout_destination_id' => $quote['payout_destination_id'],
+                'reason' => $quote['reason'],
                 'internal_notes' => trim((string) ($data['internal_notes'] ?? '')) ?: null,
                 'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
                 'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'],
@@ -236,7 +256,8 @@ class WithdrawalService
                 $method = $this->methods->resolve($customer->id, $withdrawal->method, $withdrawal->destination_reference);
                 if ($method['version'] !== $withdrawal->method_version
                     || $method['destination_reference'] !== $withdrawal->destination_reference
-                    || $method['destination_mask'] !== $withdrawal->destination_mask) {
+                    || $method['destination_mask'] !== $withdrawal->destination_mask
+                    || ($method['payout_destination_id'] ?? null) !== $withdrawal->customer_payout_destination_id) {
                     throw new ConflictHttpException('Payout method or destination changed. Reject and request a new quote.');
                 }
                 $withdrawal->state = 'approved';
@@ -273,17 +294,17 @@ class WithdrawalService
         }
         app(PlatformGuard::class)->assertAllowed('financial', true);
         $requests = WithdrawalRequest::query()->where('customer_profile_id', $customer->id)
-            ->whereIn('state', ['pending_review', 'approved', 'payment_failed'])->lockForUpdate()->get();
+            ->whereIn('state', self::LIVE_STATES)->lockForUpdate()->get();
         if ($status === CustomerStatus::Archived && $requests->isNotEmpty()) {
             throw new ConflictHttpException('A Customer with a live withdrawal request cannot be archived.');
         }
-        foreach ($requests as $withdrawal) {
+        foreach ($requests->whereIn('state', self::HOLDABLE_STATES) as $withdrawal) {
             if ($status === CustomerStatus::Restricted && ! $withdrawal->held) {
                 $withdrawal->held = true;
                 $withdrawal->hold_reason = 'customer_restricted';
                 $withdrawal->held_at = now();
                 $event = 'hold_applied';
-            } elseif ($status !== CustomerStatus::Restricted && $withdrawal->held) {
+            } elseif ($status !== CustomerStatus::Restricted && $withdrawal->held && in_array($withdrawal->hold_reason, self::CUSTOMER_HOLDS, true)) {
                 try {
                     $this->assertReservationAndBalance($withdrawal, $customer);
                 } catch (ConflictHttpException|\RuntimeException) {
@@ -315,49 +336,103 @@ class WithdrawalService
     public function expireDue(): int
     {
         try {
-            return app(PlatformGuard::class)->transaction('financial', function () {
-                foreach (WithdrawalRequest::query()->where('held', true)->distinct()->pluck('customer_profile_id') as $customerId) {
-                    app(PlatformGuard::class)->transaction('financial', function () use ($customerId): void {
-                        $customer = CustomerProfile::query()->whereKey($customerId)->lockForUpdate()->first();
-                        if ($customer !== null && $customer->operational_status !== CustomerStatus::Restricted) {
-                            $this->applyCustomerStatus($customer, $customer->operational_status);
-                        }
-                    }, attempts: 3);
-                }
-                $count = 0;
-                foreach (WithdrawalRequest::query()->whereIn('state', ['pending_review', 'approved', 'payment_failed'])
-                    ->where('held', false)->where('deadline_at', '<=', now())->orderBy('id')->pluck('id') as $id) {
-                    $expired = app(PlatformGuard::class)->transaction('financial', function () use ($id): bool {
-                        $reference = WithdrawalRequest::query()->whereKey($id)->first();
-                        if ($reference === null) {
-                            return false;
-                        }
-                        CustomerProfile::query()->whereKey($reference->customer_profile_id)->lockForUpdate()->firstOrFail();
-                        $withdrawal = WithdrawalRequest::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-                        if ($withdrawal->held || ! in_array($withdrawal->state, ['pending_review', 'approved', 'payment_failed'], true)
-                            || $withdrawal->deadline_at->isFuture()) {
-                            return false;
-                        }
-                        $before = $withdrawal->state;
-                        $this->releaseReservation($withdrawal);
-                        $withdrawal->state = 'expired';
-                        $withdrawal->live_thrift_plan_id = null;
-                        $withdrawal->terminal_at = now();
-                        $withdrawal->version++;
-                        $withdrawal->save();
-                        $this->event($withdrawal, 'expired', $before, null, null, 'The request expired before payout.');
-
-                        return true;
-                    }, attempts: 3);
-                    $count += (int) $expired;
-                }
-
-                return $count;
-
-            });
-
+            app(PlatformGuard::class)->assertAllowed('financial');
         } catch (PlatformBlocked) {
             return 0;
+        }
+
+        foreach (WithdrawalRequest::query()->where('held', true)->whereIn('hold_reason', self::CUSTOMER_HOLDS)->distinct()->pluck('customer_profile_id') as $customerId) {
+            $this->guardedItem(function () use ($customerId): void {
+                $customer = CustomerProfile::query()->whereKey($customerId)->lockForUpdate()->first();
+                if ($customer !== null && $customer->operational_status !== CustomerStatus::Restricted) {
+                    $this->applyCustomerStatus($customer, $customer->operational_status);
+                }
+            });
+        }
+        $count = 0;
+        foreach (WithdrawalRequest::query()->whereIn('state', self::HOLDABLE_STATES)
+            ->where(fn ($query) => $query->where('held', false)->orWhereIn('hold_reason', self::NON_PAUSING_HOLDS))
+            ->where('deadline_at', '<=', now())->orderBy('id')->pluck('id') as $id) {
+            $expired = $this->guardedItem(function () use ($id): bool {
+                $reference = WithdrawalRequest::query()->whereKey($id)->first();
+                if ($reference === null) {
+                    return false;
+                }
+                CustomerProfile::query()->whereKey($reference->customer_profile_id)->lockForUpdate()->firstOrFail();
+                $withdrawal = WithdrawalRequest::query()->whereKey($id)->lockForUpdate()->firstOrFail();
+                if (($withdrawal->held && ! in_array($withdrawal->hold_reason, self::NON_PAUSING_HOLDS, true))
+                    || ! in_array($withdrawal->state, self::HOLDABLE_STATES, true) || $withdrawal->deadline_at->isFuture()) {
+                    return false;
+                }
+                $before = $withdrawal->state;
+                $this->releaseReservation($withdrawal);
+                $withdrawal->state = 'expired';
+                $withdrawal->live_thrift_plan_id = null;
+                $withdrawal->terminal_at = now();
+                $withdrawal->version++;
+                $withdrawal->save();
+                $this->event($withdrawal, 'expired', $before, null, null, 'The request expired before payout.');
+
+                return true;
+            });
+            $count += $expired === true ? 1 : 0;
+        }
+
+        return $count;
+    }
+
+    /**
+     * Runs one independently committed expiry item. A conflict in one item must not roll back or block the others.
+     *
+     * @template T
+     *
+     * @param  \Closure(): T  $callback
+     * @return T|null
+     */
+    private function guardedItem(\Closure $callback): mixed
+    {
+        try {
+            return app(PlatformGuard::class)->transaction('financial', $callback, attempts: 3);
+        } catch (PlatformBlocked) {
+            return null;
+        } catch (ConflictHttpException|\RuntimeException $exception) {
+            report($exception);
+
+            return null;
+        }
+    }
+
+    /**
+     * Applies the terms of a definitive failed attempt: the review window restarts and an active restriction holds the request.
+     * The caller saves the request. Returns true when a new hold overlay was applied.
+     */
+    public function applyFailureTerms(WithdrawalRequest $withdrawal, CustomerProfile $customer): bool
+    {
+        $withdrawal->deadline_at = now()->addDays((int) config('withdrawals.review_days'));
+        if ($customer->operational_status !== CustomerStatus::Restricted || $withdrawal->held) {
+            return false;
+        }
+        $withdrawal->held = true;
+        $withdrawal->hold_reason = 'customer_restricted';
+        $withdrawal->held_at = now();
+
+        return true;
+    }
+
+    public function recordHoldApplied(WithdrawalRequest $withdrawal): void
+    {
+        $withdrawal->version++;
+        $withdrawal->save();
+        $this->event($withdrawal, 'hold_applied', $withdrawal->state, null, null, null);
+    }
+
+    /** @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int, cycle_liability_kobo: int, cycle_reservations_kobo: int, cycle_available_kobo: int} */
+    private function position(CustomerProfile $customer, ThriftPlan $plan, bool $forUpdate): array
+    {
+        try {
+            return $this->balances->position($customer, $plan, $forUpdate);
+        } catch (\RuntimeException $exception) {
+            throw new ServiceUnavailableHttpException(null, $exception->getMessage(), $exception);
         }
     }
 
@@ -514,12 +589,13 @@ class WithdrawalService
             || $this->feeQuote($snapshot, $withdrawal->gross_amount_kobo, $withdrawal->type, $plan)['amount_kobo'] !== $withdrawal->fee_amount_kobo) {
             throw new ConflictHttpException('The agreed fee quote no longer matches the source cycle.');
         }
+        app(WithdrawalDeductionContract::class)->assertUnchanged($withdrawal, true);
         $reservation = DB::table('withdrawal_reservations')->where('id', $withdrawal->withdrawal_reservation_id)->lockForUpdate()->first();
         if ($reservation === null || $reservation->status !== 'live' || $reservation->owner_reference !== $withdrawal->withdrawal_id
             || (int) $reservation->gross_amount_kobo !== $withdrawal->gross_amount_kobo) {
             throw new ConflictHttpException('The withdrawal reservation is unavailable.');
         }
-        $position = $this->balances->position($customer, $plan, true);
+        $position = $this->position($customer, $plan, true);
         if ($position['liability_kobo'] < $position['reservations_kobo']
             || $position['cycle_liability_kobo'] < $position['cycle_reservations_kobo']) {
             throw new ConflictHttpException('Savings no longer cover the withdrawal reservation.');
@@ -547,7 +623,8 @@ class WithdrawalService
         AuditEvent::record('withdrawal.'.$eventType, WithdrawalRequest::class, $withdrawal->id, $withdrawal->withdrawal_id,
             ['state' => $withdrawal->state, 'version' => $withdrawal->version,
                 'gross_kobo' => $withdrawal->gross_amount_kobo, 'fee_kobo' => $withdrawal->fee_amount_kobo,
-                'net_kobo' => $withdrawal->net_amount_kobo, 'customer_profile_id' => $withdrawal->customer_profile_id], $actor,
+                'net_kobo' => $withdrawal->net_amount_kobo, 'deduction_kobo' => $withdrawal->deduction_amount_kobo,
+                'customer_profile_id' => $withdrawal->customer_profile_id], $actor,
             context: ['executor' => self::class, 'approver_id' => $withdrawal->reviewed_by_user_id, 'required_permission' => $actor?->user_type === UserType::Admin ? 'withdrawals.review' : null]
         );
         $this->notices->queue($withdrawal, $event);
@@ -557,7 +634,7 @@ class WithdrawalService
     {
         foreach (WithdrawalRequest::query()->where('customer_profile_id', $customer->id)->get() as $request) {
             if (! in_array($request->state, ['rejected', 'cancelled', 'revoked', 'expired'], true)) {
-                return in_array($request->state, ['pending_review', 'approved', 'payment_failed'], true) ? 'blocked' : 'unavailable';
+                return in_array($request->state, self::LIVE_STATES, true) ? 'blocked' : 'unavailable';
             }
             $reservation = DB::table('withdrawal_reservations')->where('id', $request->withdrawal_reservation_id)->first();
             if ($reservation === null || (int) $reservation->customer_profile_id !== $customer->id

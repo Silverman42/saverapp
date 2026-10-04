@@ -28,6 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(EnforcePlatformMode::class);
 
+        $middleware->validateCsrfTokens(except: ['payout-callbacks/*']);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'saver_resume_destination', 'agent_trusted_device']);
 
         $middleware->web(append: [
@@ -47,7 +49,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->dontFlash(['token', 'preview_token', 'password', 'password_confirmation']);
+        $exceptions->dontFlash(['token', 'preview_token', 'password', 'password_confirmation', 'account_number']);
         $exceptions->render(fn (PlatformBlocked $exception, Request $request) => $exception->response($request));
         $exceptions->render(function (AuditIdentityConflict $exception, Request $request) {
             app(AuditCapture::class)->reportConflict($exception);

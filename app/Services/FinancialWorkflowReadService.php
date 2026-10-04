@@ -45,7 +45,7 @@ class FinancialWorkflowReadService
         $patterns = $this->patterns();
         $totals = array_fill_keys(array_keys($patterns), 0);
         foreach ($patterns as $code => [$title, $event, $account, $side]) {
-            $value = (clone $query)->where('groups.event_type', $event)->where('accounts.code', $account->value)->where('lines.side', $side)->sum('lines.amount_kobo');
+            $value = (clone $query)->whereIn('groups.event_type', (array) $event)->where('accounts.code', $account->value)->where('lines.side', $side)->sum('lines.amount_kobo');
             $integer = filter_var($value, FILTER_VALIDATE_INT);
             if ($integer === false || $integer < 0) {
                 throw new RuntimeException('Financial workflow control totals exceed the supported range.');
@@ -93,13 +93,15 @@ class FinancialWorkflowReadService
         return $metrics;
     }
 
-    /** @return array<string, array{string, string, LedgerAccountCode, string}> */
+    /** @return array<string, array{string, string|list<string>, LedgerAccountCode, string}> */
     private function patterns(): array
     {
         return [
-            'gross_withdrawals' => ['Gross savings debits for paid withdrawals', 'cash_withdrawal', LedgerAccountCode::CustomerSavingsLiability, 'debit'],
+            'gross_withdrawals' => ['Gross savings debits for paid withdrawals', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::CustomerSavingsLiability, 'debit'],
             'net_cash_payouts' => ['Cash delivered for paid withdrawals', 'cash_withdrawal', LedgerAccountCode::BusinessCash, 'credit'],
-            'withdrawal_fees' => ['Fees in original withdrawal postings', 'cash_withdrawal', LedgerAccountCode::FeeIncome, 'credit'],
+            'net_bank_payouts' => ['Bank transfers sent for paid withdrawals', 'bank_withdrawal', LedgerAccountCode::PayoutClearing, 'credit'],
+            'withdrawal_fees' => ['Fees in original withdrawal postings', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::FeeIncome, 'credit'],
+            'withdrawal_deductions' => ['Deductions in original withdrawal postings', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::OtherDeductionDestination, 'credit'],
             'withdrawal_compensation' => ['Savings restored by full payout compensation', 'withdrawal_compensation', LedgerAccountCode::CustomerSavingsLiability, 'credit'],
             'savings_fee_applications' => ['Fees applied from savings', 'savings_fee_application', LedgerAccountCode::FeeIncome, 'credit'],
             'savings_fee_compensation' => ['Savings restored by fee payment compensation', 'fee_application_compensation', LedgerAccountCode::CustomerSavingsLiability, 'credit'],
@@ -152,11 +154,14 @@ class FinancialWorkflowReadService
             $totals = array_fill_keys(array_keys($this->patterns()), 0);
             $valid = true;
             foreach ($this->patterns() as $code => [$title, $event, $account, $side]) {
-                $row = $rows->get($planId, collect())->first(fn ($row): bool => $row->event_type === $event && $row->code === $account->value && $row->side === $side);
-                $amount = filter_var($row->amount ?? 0, FILTER_VALIDATE_INT);
-                if ($amount === false || $amount < 0) {
-                    $valid = false;
-                    break;
+                $amount = 0;
+                foreach ($rows->get($planId, collect())->filter(fn ($row): bool => in_array($row->event_type, (array) $event, true) && $row->code === $account->value && $row->side === $side) as $row) {
+                    $part = filter_var($row->amount ?? 0, FILTER_VALIDATE_INT);
+                    if ($part === false || $part < 0) {
+                        $valid = false;
+                        break 2;
+                    }
+                    $amount += $part;
                 }
                 $totals[$code] = $amount;
             }
@@ -185,7 +190,7 @@ class FinancialWorkflowReadService
         }
         $state = app(LedgerTransactionReadService::class)->state();
         $patterns = array_intersect_key($this->patterns(), array_flip([
-            'gross_withdrawals', 'net_cash_payouts', 'withdrawal_fees', 'withdrawal_compensation',
+            'gross_withdrawals', 'net_cash_payouts', 'net_bank_payouts', 'withdrawal_fees', 'withdrawal_deductions', 'withdrawal_compensation',
             'other_deductions', 'deduction_compensation', 'confirmed_cash_returns',
         ]));
         $query = DB::table('ledger_entries as lines')
@@ -199,7 +204,7 @@ class FinancialWorkflowReadService
             ->where(function (QueryBuilder $query) use ($patterns): void {
                 foreach ($patterns as [$title, $event, $account, $side]) {
                     $query->orWhere(function (QueryBuilder $query) use ($event, $account, $side): void {
-                        $query->where('groups.event_type', $event)->where('accounts.code', $account->value)->where('lines.side', $side);
+                        $query->whereIn('groups.event_type', (array) $event)->where('accounts.code', $account->value)->where('lines.side', $side);
                     });
                 }
             });
@@ -213,7 +218,7 @@ class FinancialWorkflowReadService
                 throw new RuntimeException('Verified cycle posting amount is unavailable.');
             }
             foreach ($patterns as $code => [$title, $event, $account, $side]) {
-                if ($row->event_type === $event && $row->code === $account->value && $row->side === $side) {
+                if (in_array($row->event_type, (array) $event, true) && $row->code === $account->value && $row->side === $side) {
                     $data[] = ['key' => $row->posting_reference.':'.$row->line_number, 'reference' => $row->posting_reference,
                         'component' => $code, 'title' => $title, 'amount' => MoneyFormatter::formatNaira($amount),
                         'occurred_on' => $row->occurred_on, 'committed_at' => $row->committed_at, 'timezone' => $row->business_timezone];

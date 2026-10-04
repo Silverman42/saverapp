@@ -37,14 +37,22 @@ const props = defineProps<{
         opening_kobo?: number;
         activity_kobo?: number;
         closing_kobo?: number;
-        current_reserved_kobo?: number;
-        current_available_kobo?: number;
+        current_reserved_kobo?: number | null;
+        current_available_kobo?: number | null;
+        unpaid_fees_kobo?: number | null;
+        type_totals?: Array<{
+            type: string;
+            count: number;
+            savings_effect_kobo: number;
+            fee_amount_kobo: number;
+        }>;
         lines?: StatementLine[];
     };
     issued_statements: Array<{
         artifact_reference: string;
         status: string;
         issued_at: string | null;
+        superseded: boolean;
     }>;
     from: string;
     to: string;
@@ -120,7 +128,9 @@ function money(kobo: number): string {
             <label
                 v-if="
                     issued_statements.some(
-                        (statement) => statement.status === 'ready',
+                        (statement) =>
+                            statement.status === 'ready' &&
+                            !statement.superseded,
                     )
                 "
                 class="grid gap-1 text-sm"
@@ -132,7 +142,9 @@ function money(kobo: number): string {
                     <option value="">Issue a new statement</option>
                     <option
                         v-for="statement in issued_statements.filter(
-                            (statement) => statement.status === 'ready',
+                            (statement) =>
+                                statement.status === 'ready' &&
+                                !statement.superseded,
                         )"
                         :key="statement.artifact_reference"
                         :value="statement.artifact_reference"
@@ -165,7 +177,9 @@ function money(kobo: number): string {
                 :href="showArtifact(statement.artifact_reference)"
                 class="text-primary text-sm underline"
                 >{{ statement.artifact_reference }} ·
-                {{ statement.status }}</Link
+                {{
+                    statement.superseded ? 'superseded' : statement.status
+                }}</Link
             >
         </div>
         <Card v-if="preview.status === 'unavailable'">
@@ -207,19 +221,54 @@ function money(kobo: number): string {
                 </CardContent>
             </Card>
             <Card>
-                <CardContent class="grid gap-4 pt-6 text-sm sm:grid-cols-2">
+                <CardContent class="grid gap-4 pt-6 text-sm sm:grid-cols-3">
                     <div>
                         <p class="text-muted-foreground">
                             Current live withdrawal reservations
                         </p>
-                        <p>{{ money(preview.current_reserved_kobo ?? 0) }}</p>
+                        <p>
+                            {{
+                                preview.current_reserved_kobo == null
+                                    ? 'Unavailable'
+                                    : money(preview.current_reserved_kobo)
+                            }}
+                        </p>
                     </div>
                     <div>
                         <p class="text-muted-foreground">
                             Current available savings
                         </p>
-                        <p>{{ money(preview.current_available_kobo ?? 0) }}</p>
+                        <p>
+                            {{
+                                preview.current_available_kobo == null
+                                    ? 'Unavailable'
+                                    : money(preview.current_available_kobo)
+                            }}
+                        </p>
                     </div>
+                    <div>
+                        <p class="text-muted-foreground">
+                            Unpaid fees (separate from savings)
+                        </p>
+                        <p>
+                            {{
+                                preview.unpaid_fees_kobo == null
+                                    ? 'Unavailable'
+                                    : money(preview.unpaid_fees_kobo)
+                            }}
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+            <Card v-if="preview.type_totals?.length">
+                <CardContent class="grid gap-2 pt-6 text-sm">
+                    <p class="font-medium">Activity by type</p>
+                    <p v-for="total in preview.type_totals" :key="total.type">
+                        {{ total.type.replaceAll('_', ' ') }} ·
+                        {{ total.count }} · savings effect
+                        {{ money(total.savings_effect_kobo) }} · fees
+                        {{ money(total.fee_amount_kobo) }}
+                    </p>
                 </CardContent>
             </Card>
             <Card>

@@ -437,7 +437,8 @@ class LedgerPostingService
             LedgerAccountCode::FeeIncome,
             LedgerAccountCode::RefundPayable,
             LedgerAccountCode::OtherDeductionDestination,
-            LedgerAccountCode::UnappliedFunds, LedgerAccountCode::CashRecoveryClearing => LedgerEntrySide::Credit,
+            LedgerAccountCode::UnappliedFunds, LedgerAccountCode::CashRecoveryClearing,
+            LedgerAccountCode::PayoutClearing => LedgerEntrySide::Credit,
         };
     }
 

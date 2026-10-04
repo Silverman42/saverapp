@@ -2,22 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminPermission;
+use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\LedgerPostingGroup;
+use App\Services\AuthorizationService;
+use App\Services\LedgerIntegrityIncidentService;
 use App\Services\LedgerTransactionReadService;
 use App\Services\ResourceScopeService;
 use App\Services\ReversalCapabilityRegistry;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class LedgerTransactionController extends Controller
 {
@@ -50,16 +56,35 @@ class LedgerTransactionController extends Controller
             context: ['executor' => self::class]
         );
 
+        $canResolve = $request->user()->user_type === UserType::Admin && app(AuthorizationService::class)->allows($request->user(), AdminPermission::ReconciliationManage);
+
         return Inertia::render('ledger/Index', [
             'result' => $result,
             'filters' => $filters,
             'timezone' => $timezone,
+            'incidents' => $canResolve ? app(LedgerIntegrityIncidentService::class)->open() : [],
+            'can_resolve_incidents' => $canResolve,
         ]);
+    }
+
+    public function resolveIncident(string $reference, Request $request, LedgerIntegrityIncidentService $incidents): RedirectResponse
+    {
+        $data = $request->validate(['note' => ['required', 'string', 'min:1', 'max:500', 'not_regex:/[<>\x00-\x08\x0B\x0C\x0E-\x1F]/'], 'confirmed' => ['required', 'accepted']]);
+        $incidents->resolve($request->user(), $reference, $data['note'], $request);
+
+        return redirect()->route('transactions.index');
     }
 
     public function show(string $transaction, Request $request, LedgerTransactionReadService $transactions): Response
     {
-        $detail = $transactions->detail($request->user(), $transaction);
+        try {
+            $detail = $transactions->detail($request->user(), $transaction);
+        } catch (NotFoundHttpException $exception) {
+            AuditEvent::record('ledger.transaction_viewed', 'ledger_transaction', null, $transaction, ['customer_id' => null, 'status' => 'denied'],
+                $request->user(), context: ['executor' => self::class, 'outcome' => 'Denied']);
+
+            throw $exception;
+        }
         AuditEvent::record('ledger.transaction_viewed', 'ledger_transaction', null, $transaction, [
             'customer_id' => $detail['customer_id'], 'status' => $detail['status'],
         ], $request->user(),
@@ -80,14 +105,14 @@ class LedgerTransactionController extends Controller
             return null;
         }
         $root = DB::table('ledger_transaction_references')->where('transaction_reference', $reference)->first();
-        if ($root === null || ! in_array($root->root_type, ['withdrawal', 'collection_receipt', 'manual_charge'], true)) {
+        if ($root === null || ! in_array($root->root_type, ['withdrawal', 'collection_receipt', 'manual_charge', 'fee_savings_application'], true)) {
             return null;
         }
         $id = $root->root_type === 'collection_receipt' ? CollectionReceipt::query()->where('id', $root->root_id)->value('savings_posting_group_id') : null;
         if ($root->root_type === 'collection_receipt' && $id === null) {
             $id = DB::table('collection_fee_components')->where('collection_receipt_id', $root->root_id)->orderBy('id')->value('ledger_posting_group_id');
         }
-        $group = in_array($root->root_type, ['withdrawal', 'manual_charge'], true)
+        $group = in_array($root->root_type, ['withdrawal', 'manual_charge', 'fee_savings_application'], true)
             ? LedgerPostingGroup::query()->where('source_type', $root->root_type)->where('source_id', $root->root_id)->first()
             : LedgerPostingGroup::query()->where('id', $id)->first();
 

@@ -46,7 +46,8 @@ class CustomerStatementController extends Controller
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
             'preview' => $preview,
             'from' => $from, 'to' => $to,
-            'issued_statements' => FinancialArtifact::query()->where('kind', 'statement')->where('customer_profile_id', $profile->id)->latest('id')->limit(25)->get()->map(fn ($artifact): array => $artifact->only(['artifact_reference', 'status', 'issued_at'])),
+            'issued_statements' => FinancialArtifact::query()->where('kind', 'statement')->where('customer_profile_id', $profile->id)->latest('id')->limit(25)->get()->map(fn ($artifact): array => [...$artifact->only(['artifact_reference', 'status', 'issued_at']),
+                'superseded' => FinancialArtifact::query()->where('supersedes_artifact_id', $artifact->id)->exists()]),
         ]);
     }
 }

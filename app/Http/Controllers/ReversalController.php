@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\CollectionReceipt;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalAttempt;
+use App\Models\ReversalEvidenceFile;
 use App\Models\ReversalRequest;
 use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
@@ -16,10 +18,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReversalController extends Controller
 {
@@ -63,6 +68,11 @@ class ReversalController extends Controller
                 'dependency_snapshot' => $isCustomer || ($request->user()->user_type === UserType::Admin && ! $canReview)
                     ? null : $reversal->dependency_snapshot,
             ],
+            'evidence_files' => $isCustomer ? [] : $reversal->evidenceFiles()->orderBy('id')->get()
+                ->map(fn (ReversalEvidenceFile $file): array => ['id' => $file->id, 'type' => $file->mime_type, 'bytes' => $file->byte_size,
+                    'added_at' => $file->created_at->toIso8601String()])->all(),
+            'can_add_evidence' => $reversal->state === 'pending_review' && ! $isCustomer
+                && Gate::forUser($request->user())->allows('initiateReversal', $reversal->customerProfile) && $reversal->evidenceFiles()->count() < 3,
             'can_replace' => $reversal->state === 'approved_posted'
                 && LedgerPostingGroup::query()->find($reversal->compensation_posting_group_id)?->event_type === 'receipt_reclassification'
                 && ! CollectionReceipt::query()->where('replacement_reversal_id', $reversal->id)->exists()
@@ -86,9 +96,10 @@ class ReversalController extends Controller
         $original = $this->scopedOriginal($posting, $request, $scope);
         $this->rejectUnexpected($request, [
             'attempt_reference', 'preview_fingerprint', 'customer_version', 'assignment_version',
-            'reason_category', 'internal_reason', 'customer_explanation', 'evidence_text', 'confirmed',
+            'reason_category', 'internal_reason', 'customer_explanation', 'evidence_text', 'confirmed', 'files',
         ]);
         $data = $request->validate([
+            'files' => ['sometimes', 'array', 'max:3'], 'files.*' => ['file'],
             'attempt_reference' => ['required', 'uuid'], 'preview_fingerprint' => ['required', 'string', 'size:64'],
             'customer_version' => ['required', 'integer', 'min:1'],
             'assignment_version' => ['required', 'integer', 'min:1'],
@@ -101,9 +112,48 @@ class ReversalController extends Controller
             'evidence_text' => ['required', 'string', 'min:1', 'max:1000'],
             'confirmed' => ['required', 'accepted'],
         ]);
-        $reversal = $service->submit($request->user(), $original, $data);
+        $uploads = array_values($request->file('files', []));
+        unset($data['files']);
+        $reversal = $service->submit($request->user(), $original, $data, $uploads);
 
         return redirect()->route('reversals.show', $reversal);
+    }
+
+    public function evidenceStore(ReversalRequest $reversal, Request $request, ResourceScopeService $scope, ReversalService $service): RedirectResponse
+    {
+        $this->authorizeScope($request, $scope, $reversal);
+        $this->rejectUnexpected($request, ['files']);
+        $request->validate(['files' => ['required', 'array', 'min:1', 'max:3'], 'files.*' => ['file']]);
+        $service->addEvidence($request->user(), $reversal, array_values($request->file('files', [])));
+
+        return redirect()->route('reversals.show', $reversal);
+    }
+
+    public function evidenceLink(ReversalRequest $reversal, int $file, Request $request, ResourceScopeService $scope, ReversalService $service): JsonResponse
+    {
+        $this->authorizeScope($request, $scope, $reversal);
+        $service->evidenceFile($request->user(), $reversal, $file);
+
+        return response()->json(['url' => URL::temporarySignedRoute('reversals.evidence.download', now()->addMinutes(2),
+            ['reversal' => $reversal->reversal_id, 'file' => $file])]);
+    }
+
+    public function evidenceDownload(ReversalRequest $reversal, int $file, Request $request, ResourceScopeService $scope, ReversalService $service): StreamedResponse
+    {
+        $this->authorizeScope($request, $scope, $reversal);
+        $record = $service->evidenceFile($request->user(), $reversal, $file);
+        $bytes = $service->evidenceBytes($record);
+        AuditEvent::record('reversal.evidence_downloaded', ReversalRequest::class, $reversal->id, $reversal->reversal_id,
+            ['customer_profile_id' => $reversal->customer_profile_id, 'file_id' => $record->id], $request->user(),
+            context: ['executor' => self::class, 'operation_id' => 'evidence-download:'.$record->id.':'.Str::uuid()]);
+        $extension = match ($record->mime_type) {
+            'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', default => 'pdf',
+        };
+
+        return response()->streamDownload(static function () use ($bytes): void {
+            echo $bytes;
+        }, 'reversal-evidence-'.$record->id.'.'.$extension, ['Content-Type' => 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, no-store']);
     }
 
     public function attempt(string $reference, Request $request, ResourceScopeService $scope): JsonResponse

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
+use App\Models\BankPayoutAttempt;
 use App\Models\CashDisbursement;
 use App\Models\CashExecution;
 use App\Models\LedgerAccount;
@@ -25,6 +26,7 @@ class FinancialCashPosition
             LedgerAccountCode::CustomerSavingsLiability => [LedgerAccountClass::CustomerSavingsLiability, LedgerEntrySide::Credit],
             LedgerAccountCode::RefundPayable => [LedgerAccountClass::RefundPayable, LedgerEntrySide::Credit],
             LedgerAccountCode::CashRecoveryClearing => [LedgerAccountClass::CashRecoveryClearing, LedgerEntrySide::Credit],
+            LedgerAccountCode::PayoutClearing => [LedgerAccountClass::PayoutClearing, LedgerEntrySide::Credit],
             LedgerAccountCode::UnappliedFunds => [LedgerAccountClass::UnappliedFunds, LedgerEntrySide::Credit],
             default => throw new RuntimeException('Unsupported financial liquidity account.'),
         };
@@ -109,6 +111,17 @@ class FinancialCashPosition
         }
 
         return $withdrawals + $disbursements;
+    }
+
+    /** Bank money committed to an attempt that has not yet posted: in flight, or succeeded and awaiting its balanced posting. */
+    public function reservedBankPayoutKobo(bool $forUpdate = false): int
+    {
+        $this->assertCurrentTransaction($forUpdate);
+
+        return $this->reservationSum(BankPayoutAttempt::query()->where(function ($query): void {
+            $query->whereIn('status', ['prepared', 'submitted', 'unknown'])
+                ->orWhere(fn ($query) => $query->where('status', 'succeeded')->whereNull('ledger_posting_group_id'));
+        })->toBase(), $forUpdate);
     }
 
     private function assertCurrentTransaction(bool $forUpdate): void

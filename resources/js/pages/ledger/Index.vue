@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { dashboard } from '@/routes';
+import { resolve as resolveIncident } from '@/routes/ledger/incidents';
 import {
     index as transactionsIndex,
     show as showTransaction,
@@ -24,9 +25,20 @@ type Transaction = {
     fee_amount_kobo: number;
 };
 
+type Incident = {
+    reference: string;
+    category: string;
+    status: string;
+    summary: string;
+    detected_at: string;
+    recovered_at: string | null;
+};
 const props = defineProps<{
+    incidents: Incident[];
+    can_resolve_incidents: boolean;
     result: {
         status: 'ready' | 'unavailable';
+        stale?: boolean;
         data: Transaction[];
         total: number | null;
         savings_effect_kobo: number | null;
@@ -65,6 +77,13 @@ const from = ref(props.filters.from);
 const to = ref(props.filters.to);
 const pageSize = ref(props.filters.page_size ?? 25);
 
+const resolution = useForm({ note: '', confirmed: true });
+function resolve(reference: string): void {
+    resolution.post(resolveIncident.url(reference), {
+        preserveScroll: true,
+        onSuccess: () => resolution.reset('note'),
+    });
+}
 function query(cursor?: string): void {
     router.get(
         transactionsIndex.url({
@@ -148,6 +167,49 @@ function money(kobo: number): string {
             <Button type="submit">Apply filters</Button>
         </form>
 
+        <Card v-if="can_resolve_incidents && incidents.length > 0">
+            <CardContent class="grid gap-4 pt-6">
+                <p class="font-medium">Ledger integrity incidents</p>
+                <div
+                    v-for="incident in incidents"
+                    :key="incident.reference"
+                    class="grid gap-2 rounded-md border p-3 text-sm"
+                >
+                    <p>
+                        {{ incident.category.replaceAll('_', ' ') }} ·
+                        {{ incident.status }} · detected
+                        {{ incident.detected_at }}
+                    </p>
+                    <p class="text-muted-foreground">{{ incident.summary }}</p>
+                    <form
+                        v-if="incident.status === 'recovered'"
+                        class="flex flex-wrap items-end gap-3"
+                        @submit.prevent="resolve(incident.reference)"
+                    >
+                        <div class="grid gap-1">
+                            <label
+                                :for="`resolve-${incident.reference}`"
+                                class="text-sm font-medium"
+                                >Resolution note</label
+                            >
+                            <Input
+                                :id="`resolve-${incident.reference}`"
+                                v-model="resolution.note"
+                                maxlength="500"
+                                required
+                            />
+                        </div>
+                        <Button type="submit" :disabled="resolution.processing"
+                            >Resolve incident</Button
+                        >
+                    </form>
+                    <p v-else class="text-muted-foreground">
+                        The ledger must verify cleanly before this can be
+                        resolved.
+                    </p>
+                </div>
+            </CardContent>
+        </Card>
         <Card v-if="result.status === 'unavailable'">
             <CardContent class="pt-6">
                 <p class="font-medium">Transaction history is unavailable</p>
@@ -158,6 +220,19 @@ function money(kobo: number): string {
             </CardContent>
         </Card>
         <template v-else>
+            <Card v-if="result.stale" role="status">
+                <CardContent class="pt-6">
+                    <p class="font-medium">
+                        Showing the last verified history, which may be behind
+                    </p>
+                    <p class="text-muted-foreground mt-1 text-sm">
+                        Entries after ledger watermark
+                        {{ result.state.watermark }} are not shown. Balances and
+                        balance-dependent actions are unavailable until the
+                        ledger verifies again.
+                    </p>
+                </CardContent>
+            </Card>
             <p class="text-muted-foreground text-sm">
                 {{ result.total }} matching transactions · savings effect
                 {{ money(result.savings_effect_kobo ?? 0) }}

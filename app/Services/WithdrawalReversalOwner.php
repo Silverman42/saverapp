@@ -6,6 +6,8 @@ use App\Enums\FeeObligationEntryType;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
+use App\Models\BankPayoutAttempt;
+use App\Models\BankPayoutReturn;
 use App\Models\BusinessProfile;
 use App\Models\CashExecution;
 use App\Models\CashRecovery;
@@ -81,21 +83,13 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
     {
         $withdrawal = WithdrawalRequest::query()->where('id', $original->source_id)->where('customer_profile_id', $customer->id)
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->firstOrFail();
-        $execution = CashExecution::query()->where('ledger_posting_group_id', $original->id)->where('status', 'posted')
-            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
-        $return = CashRecovery::query()->where('cash_execution_id', $execution->id)->where('event_type', 'return')->where('status', 'confirmed')
-            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
-        $returns = $return;
-        $return = $returns->first();
-        if ($return === null || $return->confirmed_at === null || $returns->sum('amount_kobo') !== $withdrawal->net_amount_kobo || $returns->contains(fn ($item): bool => $item->confirmed_at === null || $item->customer_acknowledgement === null)
-            || $return->recipient_user_id !== $execution->recipient_user_id || $return->customer_acknowledgement === null) {
-            throw new ConflictHttpException('A proven full return is required; partial or uncertain recovery cannot restore savings.');
-        }
-        app(CashRecoveryLedger::class)->assertConfirmedReturns($execution, $returns);
-        $original->load('entries.account');
-        $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
-        if ($cash->mapping_status !== 'mapped' || $cash->currency !== 'NGN' || $cash->normal_balance !== LedgerEntrySide::Debit || $cash->account_class !== LedgerAccountClass::Asset) {
-            throw new ConflictHttpException('The verified returned-cash destination is unavailable.');
+        $attempt = BankPayoutAttempt::query()->where('ledger_posting_group_id', $original->id)->where('status', 'succeeded')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
+        if ($attempt !== null) {
+            [$payoutCode, $proofSummary, $dependencies] = $this->bankProof($withdrawal, $attempt, $forUpdate);
+            $original->load('entries.account');
+        } else {
+            [$payoutCode, $proofSummary, $dependencies] = $this->cashProof($original, $withdrawal, $forUpdate);
         }
         $feeEntry = $original->entries->firstWhere('fee_obligation_id', '!=', null);
         $obligation = $feeEntry === null ? null : FeeObligation::query()->whereKey($feeEntry->fee_obligation_id)
@@ -111,9 +105,12 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
             throw new ConflictHttpException('Drawn or encumbered fee earnings require recovery before compensation.');
         }
         $expected = [LedgerAccountCode::CustomerSavingsLiability->value => ['debit', $withdrawal->gross_amount_kobo],
-            LedgerAccountCode::BusinessCash->value => ['credit', $withdrawal->net_amount_kobo]];
+            $payoutCode->value => ['credit', $withdrawal->net_amount_kobo]];
         if ($withdrawal->fee_amount_kobo > 0) {
             $expected[LedgerAccountCode::FeeIncome->value] = ['credit', $withdrawal->fee_amount_kobo];
+        }
+        if ($withdrawal->deduction_amount_kobo > 0) {
+            $expected[LedgerAccountCode::OtherDeductionDestination->value] = ['credit', $withdrawal->deduction_amount_kobo];
         }
         if ($original->entries->count() !== count($expected) || $original->entries->pluck('ledger_account_id')->unique()->count() !== count($expected)) {
             throw new ConflictHttpException('The full original payout bundle is unavailable.');
@@ -123,21 +120,18 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
                 throw new ConflictHttpException('The original payout does not reconcile to gross, net and fee.');
             }
         }
-        $summary = ['withdrawal_request_id' => $withdrawal->id, 'cash_recovery_id' => $return->id, 'cash_recovery_ids' => $returns->pluck('id')->all(), 'cash_account_id' => $cash->id,
-            'cash_mapping_version' => $cash->version, 'fee_obligation_id' => $obligation?->id, 'fee_kobo' => $withdrawal->fee_amount_kobo,
+        $summary = ['withdrawal_request_id' => $withdrawal->id, ...$proofSummary, 'fee_obligation_id' => $obligation?->id, 'fee_kobo' => $withdrawal->fee_amount_kobo,
             'consumed_savings_concession_kobo' => $concession, 'retained_fee_kobo' => $retainedFee];
-        $dependencies = [['kind' => 'cash_return', 'classification' => 'compensable', 'reference' => $return->recovery_reference,
-            'amount_kobo' => $return->amount_kobo, 'custodian_user_id' => $return->custodian_user_id]];
 
         return ['gross_kobo' => $withdrawal->gross_amount_kobo, 'summary' => $summary, 'dependencies' => $dependencies,
             'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies, $withdrawal->version,
-                $obligation?->entries()->pluck('id')->all(), LedgerPostingGroup::query()->max('id')], JSON_THROW_ON_ERROR))];
+                $obligation?->entries()->pluck('id')->all(), app(ReversalWatermark::class)->forCustomer($original->customer_profile_id, [LedgerAccountCode::FeeIncome, LedgerAccountCode::BusinessDistributions, LedgerAccountCode::CashRecoveryClearing])], JSON_THROW_ON_ERROR))];
     }
 
     public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup
     {
         $original = $request->originalPostingGroup->load('entries.account');
-        $recovery = CashRecovery::query()->where('id', $preview['summary']['cash_recovery_id'])->firstOrFail();
+        $bank = array_key_exists('bank_payout_attempt_id', $preview['summary']);
         $business = BusinessProfile::current();
         $date = now($business->timezone)->toDateString();
         app(FinancialPeriodService::class)->assertOpen($date, $business->timezone, true);
@@ -146,7 +140,8 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
             'event_type' => 'withdrawal_compensation', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id,
             'customer_profile_id' => $original->customer_profile_id, 'thrift_plan_id' => $original->thrift_plan_id,
             'occurred_at' => now(), 'occurred_on' => $date, 'business_timezone' => $business->timezone, 'schema_version' => 1,
-            'committed_at' => now(), 'metadata' => ['original_posting_group_id' => $original->id, 'cash_recovery_id' => $recovery->id,
+            'committed_at' => now(), 'metadata' => ['original_posting_group_id' => $original->id,
+                ...($bank ? ['bank_payout_attempt_id' => $preview['summary']['bank_payout_attempt_id']] : ['cash_recovery_id' => $preview['summary']['cash_recovery_id']]),
                 'fee_concession_effect' => ['fee_obligation_id' => $preview['summary']['fee_obligation_id'],
                     'consumed_savings_concession_kobo' => $preview['summary']['consumed_savings_concession_kobo'],
                     'consumed_external_concession_kobo' => 0]]]);
@@ -163,7 +158,7 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
                 continue;
             }
             LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $index + 1,
-                'ledger_account_id' => $line->account->code === LedgerAccountCode::BusinessCash ? $clearing->id : $line->ledger_account_id,
+                'ledger_account_id' => in_array($line->account->code, [LedgerAccountCode::BusinessCash, LedgerAccountCode::PayoutClearing], true) ? $clearing->id : $line->ledger_account_id,
                 'side' => $line->side === LedgerEntrySide::Debit ? LedgerEntrySide::Credit : LedgerEntrySide::Debit,
                 'amount_kobo' => $amount, 'customer_profile_id' => $line->customer_profile_id,
                 'thrift_plan_id' => $line->thrift_plan_id, 'fee_obligation_id' => $line->fee_obligation_id]);
@@ -181,11 +176,89 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
                     'ledger_posting_reference' => $group->posting_reference]);
             }
         }
-        $recovery->update(['ledger_posting_group_id' => $group->id]);
+        if ($bank) {
+            foreach (BankPayoutReturn::query()->whereIn('id', $preview['summary']['bank_return_ids'])->get() as $returned) {
+                $returned->update(['status' => 'consumed', 'consumed_at' => now(), 'ledger_posting_group_id' => $group->id]);
+            }
+
+            return $group;
+        }
+        CashRecovery::query()->where('id', $preview['summary']['cash_recovery_id'])->firstOrFail()->update(['ledger_posting_group_id' => $group->id]);
         foreach (CashRecovery::query()->whereIn('id', $preview['summary']['cash_recovery_ids'])->get() as $returned) {
             $returned->update(['status' => 'consumed', 'consumed_at' => now()]);
         }
 
         return $group;
+    }
+
+    /**
+     * @return array{LedgerAccountCode, array<string, mixed>, list<array<string, mixed>>}
+     */
+    private function cashProof(LedgerPostingGroup $original, WithdrawalRequest $withdrawal, bool $forUpdate): array
+    {
+        $execution = CashExecution::query()->where('ledger_posting_group_id', $original->id)->where('status', 'posted')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
+        $returns = CashRecovery::query()->where('cash_execution_id', $execution->id)->where('event_type', 'return')->where('status', 'confirmed')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        $return = $returns->first();
+        if ($return === null || $return->confirmed_at === null || $returns->sum('amount_kobo') !== $withdrawal->net_amount_kobo || $returns->contains(fn ($item): bool => $item->confirmed_at === null || $item->customer_acknowledgement === null)
+            || $return->recipient_user_id !== $execution->recipient_user_id || $return->customer_acknowledgement === null) {
+            throw new ConflictHttpException('A proven full return is required; partial or uncertain recovery cannot restore savings.');
+        }
+        app(CashRecoveryLedger::class)->assertConfirmedReturns($execution, $returns);
+        $original->load('entries.account');
+        $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
+        if ($cash->mapping_status !== 'mapped' || $cash->currency !== 'NGN' || $cash->normal_balance !== LedgerEntrySide::Debit || $cash->account_class !== LedgerAccountClass::Asset) {
+            throw new ConflictHttpException('The verified returned-cash destination is unavailable.');
+        }
+
+        return [LedgerAccountCode::BusinessCash, ['cash_recovery_id' => $return->id, 'cash_recovery_ids' => $returns->pluck('id')->all(),
+            'cash_account_id' => $cash->id, 'cash_mapping_version' => $cash->version],
+            [['kind' => 'cash_return', 'classification' => 'compensable', 'reference' => $return->recovery_reference,
+                'amount_kobo' => $return->amount_kobo, 'custodian_user_id' => $return->custodian_user_id]]];
+    }
+
+    /**
+     * A bank payout is compensable only after provider returns that sum to the whole transfer, each posted to recovery clearing,
+     * with no unresolved provider exception on the attempt.
+     *
+     * @return array{LedgerAccountCode, array<string, mixed>, list<array<string, mixed>>}
+     */
+    private function bankProof(WithdrawalRequest $withdrawal, BankPayoutAttempt $attempt, bool $forUpdate): array
+    {
+        $returns = BankPayoutReturn::query()->where('bank_payout_attempt_id', $attempt->id)->orderBy('id')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
+        $posted = $returns->where('status', 'posted');
+        if ($returns->contains('status', 'exception') || $returns->contains('status', 'recorded') || $returns->contains('status', 'consumed')
+            || $posted->isEmpty() || $posted->sum('amount_kobo') !== $withdrawal->net_amount_kobo || $attempt->amount_kobo !== $withdrawal->net_amount_kobo) {
+            throw new ConflictHttpException('A proven full provider return is required; partial, disputed or uncertain returns cannot restore savings.');
+        }
+        foreach ($posted as $return) {
+            $this->assertBankReturnPosting($attempt, $return, $forUpdate);
+        }
+        $clearing = LedgerAccount::query()->where('code', LedgerAccountCode::CashRecoveryClearing->value)->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
+        if ($clearing->mapping_status !== 'mapped' || $clearing->currency !== 'NGN' || $clearing->normal_balance !== LedgerEntrySide::Credit
+            || app(FinancialCashPosition::class)->balance(LedgerAccountCode::CashRecoveryClearing, $forUpdate) < $withdrawal->net_amount_kobo) {
+            throw new ConflictHttpException('Returned bank funds are not held in verified recovery clearing.');
+        }
+
+        return [LedgerAccountCode::PayoutClearing, ['bank_payout_attempt_id' => $attempt->id, 'bank_return_ids' => $posted->pluck('id')->all(),
+            'clearing_mapping_version' => $clearing->version],
+            array_values($posted->map(fn (BankPayoutReturn $return): array => ['kind' => 'bank_return', 'classification' => 'compensable',
+                'reference' => $return->return_reference, 'amount_kobo' => $return->amount_kobo])->all())];
+    }
+
+    public function assertBankReturnPosting(BankPayoutAttempt $attempt, BankPayoutReturn $return, bool $forUpdate = false): void
+    {
+        $posting = LedgerPostingGroup::query()->whereKey($return->return_posting_group_id)->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
+        $lines = $posting?->entries()->with('account')->get();
+        $source = ($posting?->metadata['settled'] ?? false) === true ? LedgerAccountCode::BusinessBank : LedgerAccountCode::PayoutClearing;
+        if ($return->bank_payout_attempt_id !== $attempt->id || $posting === null || $posting->source_type !== 'bank_payout_return'
+            || $posting->source_id !== (string) $return->id || $posting->event_type !== 'bank_payout_return'
+            || ! hash_equals($posting->payload_hash, $return->payload_hash) || $lines === null || $lines->count() !== 2
+            || ! $lines->contains(fn ($line): bool => $line->account?->code === $source && $line->side === LedgerEntrySide::Debit && $line->amount_kobo === $return->amount_kobo)
+            || ! $lines->contains(fn ($line): bool => $line->account?->code === LedgerAccountCode::CashRecoveryClearing && $line->side === LedgerEntrySide::Credit && $line->amount_kobo === $return->amount_kobo)) {
+            throw new ConflictHttpException('The provider return posting is not authoritative.');
+        }
     }
 }

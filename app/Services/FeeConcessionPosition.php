@@ -106,7 +106,7 @@ class FeeConcessionPosition
                     throw new ConflictHttpException('The original paid-fee source is unavailable.');
                 }
                 $key = match ($group->event_type) {
-                    'savings_fee_application', 'cash_withdrawal' => 'savings_kobo',
+                    'savings_fee_application', 'cash_withdrawal', 'bank_withdrawal' => 'savings_kobo',
                     'external_fee_receipt', 'unapplied_fee_application' => 'external_kobo',
                     default => throw new ConflictHttpException('The fee settlement source is unsupported.'),
                 };

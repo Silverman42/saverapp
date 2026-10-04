@@ -19,7 +19,8 @@ class CollectionEvidenceFiles
     public function isReferenced(string $path): bool
     {
         return DB::table('collection_evidence_files')->where('storage_path', $path)->exists()
-            || DB::table('collection_settlement_files')->where('storage_path', $path)->exists();
+            || DB::table('collection_settlement_files')->where('storage_path', $path)->exists()
+            || DB::table('reversal_evidence_files')->where('storage_path', $path)->exists();
     }
 
     public function fileBytes(\stdClass $file): string

@@ -16,7 +16,7 @@ test('cash contract validates durable historical versions independently of curre
 });
 
 test('published cash method contracts cannot be edited or removed', function (): void {
-    $method = CashMethodVersion::query()->where('version', 1)->sole();
+    $method = CashMethodVersion::query()->where('method_key', 'cash')->where('version', 1)->sole();
     expect(fn () => $method->update(['contract_hash' => str_repeat('a', 64)]))->toThrow(RuntimeException::class);
     expect(fn () => $method->delete())->toThrow(RuntimeException::class);
 });
@@ -24,7 +24,7 @@ test('published cash method contracts cannot be edited or removed', function ():
 test('cash contract integrity rejects changed recipient rules even with a matching replacement hash', function (): void {
     $contract = CashMethodCatalogue::VERSION_ONE;
     $contract['recipient']['withdrawal'] = 'third_party';
-    DB::table('cash_method_versions')->where('version', 1)->update(['contract' => json_encode($contract, JSON_THROW_ON_ERROR),
+    DB::table('cash_method_versions')->where('method_key', 'cash')->where('version', 1)->update(['contract' => json_encode($contract, JSON_THROW_ON_ERROR),
         'contract_hash' => AuditProjection::digest($contract)]);
     expect(fn () => app(CashMethodCatalogue::class)->version('withdrawal', 1))->toThrow(ConflictHttpException::class);
 });

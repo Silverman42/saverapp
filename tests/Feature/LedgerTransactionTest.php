@@ -45,5 +45,6 @@ test('an unsupported posting cannot promote a transaction projection', function 
     expect($result['groups'])->toBe(0)
         ->and(DB::table('ledger_projection_state')->value('status'))->toBe('ready')
         ->and(DB::table('ledger_integrity_incidents')->where('status', 'open')->count())->toBe(0)
-        ->and(DB::table('ledger_integrity_incidents')->where('status', 'resolved')->count())->toBe(1);
+        ->and(DB::table('ledger_integrity_incidents')->where('status', 'recovered')->count())->toBe(1)
+        ->and(DB::table('ledger_integrity_incidents')->where('status', 'resolved')->count())->toBe(0);
 });

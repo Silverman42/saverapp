@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\UserType;
 use App\Models\CustomerProfile;
+use App\Models\ReversalRequest;
 use App\Models\User;
+use App\Models\WithdrawalRequest;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -19,18 +21,28 @@ class LedgerTransactionReadService
         private CollectionReadService $balances,
     ) {}
 
-    /** @return array{status: string, version: int, watermark: int, verified_at: ?string} */
+    /**
+     * ready: verified and current. stale: an earlier verified projection is intact but the ledger is ahead of it or the latest rebuild failed;
+     * history stays readable up to its own watermark, while balances and every balance-sensitive action fail closed.
+     * unavailable: nothing has ever been verified.
+     *
+     * @return array{status: string, version: int, watermark: int, verified_at: ?string}
+     */
     public function state(): array
     {
         $state = DB::table('ledger_projection_state')->where('id', 1)->first();
         $actualWatermark = (int) (DB::table('ledger_posting_groups')->max('id') ?? 0);
-        if ($state === null || $state->status !== 'ready' || (int) $state->ledger_group_watermark !== $actualWatermark) {
-            return ['status' => 'unavailable', 'version' => (int) ($state->active_version ?? 0),
-                'watermark' => (int) ($state->ledger_group_watermark ?? 0), 'verified_at' => null];
+        if ($state !== null && $state->status === 'ready' && (int) $state->ledger_group_watermark === $actualWatermark) {
+            return ['status' => 'ready', 'version' => (int) $state->active_version,
+                'watermark' => $actualWatermark, 'verified_at' => (string) $state->verified_at];
+        }
+        if ($state !== null && $state->verified_at !== null) {
+            return ['status' => 'stale', 'version' => (int) $state->active_version,
+                'watermark' => (int) $state->ledger_group_watermark, 'verified_at' => (string) $state->verified_at];
         }
 
-        return ['status' => 'ready', 'version' => (int) $state->active_version,
-            'watermark' => $actualWatermark, 'verified_at' => (string) $state->verified_at];
+        return ['status' => 'unavailable', 'version' => (int) ($state->active_version ?? 0),
+            'watermark' => (int) ($state->ledger_group_watermark ?? 0), 'verified_at' => null];
     }
 
     /** @param array<string, mixed> $filters
@@ -39,7 +51,7 @@ class LedgerTransactionReadService
     public function search(User $viewer, array $filters): array
     {
         $state = $this->state();
-        if ($state['status'] !== 'ready') {
+        if (! in_array($state['status'], ['ready', 'stale'], true)) {
             return ['status' => 'unavailable', 'state' => $state, 'data' => [], 'total' => null,
                 'savings_effect_kobo' => null, 'next_cursor' => null];
         }
@@ -64,7 +76,10 @@ class LedgerTransactionReadService
         }
 
         $total = (clone $query)->count();
-        $effect = (int) (clone $query)->sum('transactions.savings_effect_kobo');
+        $effect = filter_var((clone $query)->sum('transactions.savings_effect_kobo'), FILTER_VALIDATE_INT);
+        if ($effect === false) {
+            return ['status' => 'unavailable', 'state' => $state, 'data' => [], 'total' => null, 'savings_effect_kobo' => null, 'next_cursor' => null];
+        }
         $cursor = $this->decodeCursor($filters['cursor'] ?? null, $viewer, $filters, $state);
         if ($cursor !== null) {
             $query->where(function (Builder $query) use ($cursor): void {
@@ -82,7 +97,7 @@ class LedgerTransactionReadService
         $last = $rows->last();
 
         return [
-            'status' => 'ready', 'state' => $state, 'data' => $rows->map(fn ($row): array => $this->serialize($row))->all(),
+            'status' => 'ready', 'stale' => $state['status'] === 'stale', 'state' => $state, 'data' => $rows->map(fn ($row): array => $this->serialize($row))->all(),
             'total' => $total, 'savings_effect_kobo' => $effect,
             'next_cursor' => $hasMore && $last !== null
                 ? $this->encodeCursor($viewer, $filters, $state, (string) $last->committed_at, (int) $last->id)
@@ -94,7 +109,7 @@ class LedgerTransactionReadService
     public function detail(User $viewer, string $reference): array
     {
         $state = $this->state();
-        if ($state['status'] !== 'ready') {
+        if (! in_array($state['status'], ['ready', 'stale'], true)) {
             throw new UnprocessableEntityHttpException('Transaction history is unavailable pending ledger verification.');
         }
         $row = $this->scopedQuery($viewer, $state['version'])
@@ -103,7 +118,52 @@ class LedgerTransactionReadService
             throw new NotFoundHttpException('Record unavailable.');
         }
 
-        return [...$this->serialize($row), 'state' => $state];
+        return [...$this->serialize($row), ...$this->enrich($viewer, $row), 'state' => $state];
+    }
+
+    /**
+     * Signed components, dated timeline, linked correction and (for staff only) the responsible actors of one transaction.
+     *
+     * @return array<string, mixed>
+     */
+    private function enrich(User $viewer, \stdClass $row): array
+    {
+        $staff = $viewer->user_type !== UserType::Customer;
+        $compensation = $row->compensating_reference_id === null ? null
+            : DB::table('ledger_transaction_references')->where('id', $row->compensating_reference_id)->value('transaction_reference');
+        $original = $row->type === 'reversal'
+            ? DB::table('ledger_transaction_projections as originals')->join('ledger_transaction_references as refs', 'refs.id', '=', 'originals.ledger_transaction_reference_id')
+                ->where('originals.compensating_reference_id', $row->ledger_transaction_reference_id)->where('originals.projection_version', $row->projection_version)
+                ->value('refs.transaction_reference') : null;
+        $components = null;
+        $timeline = [['label' => 'Occurred', 'on' => (string) $row->occurred_on], ['label' => 'Committed', 'at' => (string) $row->committed_at]];
+        $actors = [];
+        if ($row->root_type === 'withdrawal') {
+            $withdrawal = WithdrawalRequest::query()->whereKey((int) $row->root_id)->first();
+            if ($withdrawal !== null) {
+                $components = ['gross_kobo' => $withdrawal->gross_amount_kobo, 'net_kobo' => $withdrawal->net_amount_kobo,
+                    'fee_kobo' => $withdrawal->fee_amount_kobo, 'deduction_kobo' => $withdrawal->deduction_amount_kobo];
+                $timeline = [['label' => 'Requested', 'at' => $withdrawal->submitted_at->toIso8601String()],
+                    ['label' => 'Approved', 'at' => $withdrawal->approved_at?->toIso8601String()], ...$timeline];
+                if ($staff) {
+                    $actors = ['requested_by' => User::query()->whereKey($withdrawal->submitted_by_user_id)->value('name'),
+                        'reviewed_by' => $withdrawal->reviewed_by_user_id === null ? null : User::query()->whereKey($withdrawal->reviewed_by_user_id)->value('name')];
+                }
+            }
+        } elseif ($row->root_type === 'reversal_request') {
+            $reversal = ReversalRequest::query()->whereKey((int) $row->root_id)->first();
+            if ($reversal !== null) {
+                $timeline = [['label' => 'Requested', 'at' => $reversal->created_at->toIso8601String()],
+                    ['label' => 'Decided', 'at' => $reversal->reviewed_at?->toIso8601String()], ...$timeline];
+                if ($staff) {
+                    $actors = ['requested_by' => User::query()->whereKey($reversal->requested_by_user_id)->value('name'),
+                        'reviewed_by' => $reversal->reviewed_by_user_id === null ? null : User::query()->whereKey($reversal->reviewed_by_user_id)->value('name')];
+                }
+            }
+        }
+
+        return ['compensation_reference' => $compensation, 'original_reference' => $original, 'components' => $components,
+            'timeline' => $timeline, 'actors' => $actors];
     }
 
     /** @return array{status: 'unavailable'}|array{status: 'ready', liability_kobo: int, reservations_kobo: int, available_kobo: int} */

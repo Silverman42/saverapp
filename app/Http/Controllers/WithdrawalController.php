@@ -6,8 +6,12 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Http\Requests\PreviewWithdrawalRequest;
 use App\Http\Requests\StoreWithdrawalRequest;
+use App\Models\BankPayoutAttempt;
+use App\Models\BankPayoutReturn;
+use App\Models\BusinessProfile;
 use App\Models\CashExecution;
 use App\Models\CashRecovery;
+use App\Models\CustomerPayoutDestination;
 use App\Models\CustomerProfile;
 use App\Models\WithdrawalAttempt;
 use App\Models\WithdrawalRequest;
@@ -27,12 +31,15 @@ use RuntimeException;
 
 class WithdrawalController extends Controller
 {
-    public function index(Request $request, ResourceScopeService $scope, AuthorizationService $authorization): Response
+    public function index(Request $request, ResourceScopeService $scope, AuthorizationService $authorization, WithdrawalMethodRegistry $methods): Response
     {
         $query = WithdrawalRequest::query()
             ->whereIn('customer_profile_id', $scope->forCustomers($request->user())->select('id'))
             ->with(['customerProfile.user', 'plan']);
-        if (is_string($request->query('state')) && $request->query('state') !== '') {
+        if ($request->query('state') === 'needs_reconciliation') {
+            $query->where(fn ($query) => $query->where('state', 'outcome_unknown')->orWhereIn('id', BankPayoutAttempt::query()
+                ->where('status', 'succeeded')->whereNull('ledger_posting_group_id')->select('withdrawal_request_id')));
+        } elseif (is_string($request->query('state')) && $request->query('state') !== '') {
             $query->where('state', $request->query('state'));
         }
         if ($request->user()->user_type === UserType::Admin) {
@@ -48,6 +55,7 @@ class WithdrawalController extends Controller
             'requests' => $requests, 'state_filter' => $request->query('state', ''),
             'can_review' => $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
             'role' => $request->user()->user_type->value,
+            'new_requests_available' => $methods->availableMethods() !== [],
         ]);
     }
 
@@ -60,8 +68,11 @@ class WithdrawalController extends Controller
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
             'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])
                 ->get()->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value]),
-            'method_available' => $methods->available(),
+            'methods' => $methods->availableMethods(),
             'cash_destination_reference' => 'customer:'.$profile->id,
+            'bank_destinations' => CustomerPayoutDestination::query()->where('customer_profile_id', $profile->id)->where('status', 'verified')->get()
+                ->map(fn (CustomerPayoutDestination $destination): array => ['reference' => $destination->destination_reference,
+                    'label' => $destination->bank_name.' '.$destination->account_mask])->all(),
         ]);
     }
 
@@ -108,7 +119,15 @@ class WithdrawalController extends Controller
                 'version' => $withdrawal->version, 'destination_mask' => $withdrawal->destination_mask,
                 'deadline_at' => $withdrawal->deadline_at->toIso8601String(),
             ],
-            'can_execute' => $authorization->allows($request->user(), AdminPermission::CashExecute),
+            'can_execute' => $withdrawal->method === 'cash' && $authorization->allows($request->user(), AdminPermission::CashExecute),
+            'can_execute_bank' => $withdrawal->method === 'bank_transfer' && $request->user()->user_type === UserType::Admin
+                && $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
+            'timezone' => BusinessProfile::current()->timezone,
+            'bank_attempts' => $request->user()->user_type === UserType::Customer ? [] : $this->bankAttempts($withdrawal),
+            'bank_returns' => $request->user()->user_type === UserType::Customer ? [] : BankPayoutReturn::query()
+                ->whereIn('bank_payout_attempt_id', $withdrawal->bankPayoutAttempts()->select('id'))->orderBy('id')->get()
+                ->map(fn (BankPayoutReturn $return): array => ['reference' => $return->return_reference, 'status' => $return->status,
+                    'amount_kobo' => $return->amount_kobo, 'recorded_at' => $return->created_at?->toIso8601String()])->all(),
             'cash_execution' => CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->latest('id')->first()?->only(['execution_reference', 'status', 'amount_kobo']),
             'cash_recovery' => CashRecovery::query()->whereIn('cash_execution_id', CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->select('id'))->latest('id')->first()?->only(['recovery_reference', 'status', 'amount_kobo']),
             'cash_recoveries' => CashRecovery::query()->whereIn('cash_execution_id', CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->select('id'))->get(['recovery_reference', 'event_type', 'status', 'amount_kobo']),
@@ -161,6 +180,20 @@ class WithdrawalController extends Controller
         return redirect()->route('withdrawals.show', $withdrawal);
     }
 
+    /** @return list<array<string, mixed>> */
+    private function bankAttempts(WithdrawalRequest $withdrawal): array
+    {
+        return array_values($withdrawal->bankPayoutAttempts()->orderBy('attempt_number')->get()->map(function (BankPayoutAttempt $attempt): array {
+            $posted = $attempt->ledgerPostingGroup;
+
+            return ['reference' => $attempt->attempt_reference, 'number' => $attempt->attempt_number, 'status' => $attempt->status,
+                'provider_outcome' => $attempt->provider_outcome, 'failure_code' => $attempt->failure_code, 'amount_kobo' => $attempt->amount_kobo,
+                'initiated_at' => $attempt->initiated_at?->toIso8601String(), 'provider_occurred_at' => $attempt->provider_occurred_at?->toIso8601String(),
+                'finalized_at' => $attempt->finalized_at?->toIso8601String(), 'posted_at' => $posted?->committed_at->toIso8601String(),
+                'occurred_on' => $posted?->occurred_on->toDateString(), 'settled_at' => $attempt->settled_at?->toIso8601String()];
+        })->all());
+    }
+
     /** @return array<string, mixed> */
     private function summary(WithdrawalRequest $withdrawal): array
     {
@@ -169,8 +202,8 @@ class WithdrawalController extends Controller
             'customer_name' => $withdrawal->customerProfile->user?->name,
             'plan_id' => $withdrawal->plan->plan_id, 'type' => $withdrawal->type,
             'gross_kobo' => $withdrawal->gross_amount_kobo, 'fee_kobo' => $withdrawal->fee_amount_kobo,
-            'net_kobo' => $withdrawal->net_amount_kobo, 'method' => $withdrawal->method,
-            'state' => $withdrawal->state, 'held' => $withdrawal->held,
+            'net_kobo' => $withdrawal->net_amount_kobo, 'deduction_kobo' => $withdrawal->deduction_amount_kobo, 'method' => $withdrawal->method,
+            'state' => $withdrawal->state, 'held' => $withdrawal->held, 'hold_reason' => $withdrawal->hold_reason,
             'submitted_at' => $withdrawal->submitted_at->toIso8601String(),
         ];
     }

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
+use App\Models\FeeObligation;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -18,14 +19,26 @@ class StatementPreviewService
     ) {}
 
     /** @return array<string, mixed> */
-    public function preview(User $viewer, CustomerProfile $customer, string $from, string $to, string $timezone): array
+    public function preview(User $viewer, CustomerProfile $customer, string $from, string $to, string $timezone, bool $forUpdate = false): array
     {
         if (! $this->scope->forCustomers($viewer)->whereKey($customer->id)->exists()) {
             throw new NotFoundHttpException('Record unavailable.');
         }
 
-        return DB::transaction(function () use ($customer, $from, $to, $timezone): array {
-            CustomerProfile::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
+        try {
+            return $this->build($customer, $from, $to, $timezone, $forUpdate);
+        } catch (RuntimeException) {
+            return ['status' => 'unavailable', 'message' => 'Statement totals exceed the supported range.'];
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function build(CustomerProfile $customer, string $from, string $to, string $timezone, bool $forUpdate): array
+    {
+        return DB::transaction(function () use ($customer, $from, $to, $timezone, $forUpdate): array {
+            if ($forUpdate) {
+                CustomerProfile::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
+            }
             $state = $this->transactions->state();
             if ($state['status'] !== 'ready') {
                 return ['status' => 'unavailable'];
@@ -63,14 +76,35 @@ class StatementPreviewService
                 }
             }
             try {
-                $position = $this->balances->position($customer, true);
+                $liability = $this->balances->liability($customer, $forUpdate);
             } catch (RuntimeException) {
                 return ['status' => 'unavailable'];
             }
-            if ($allTime !== $position['liability_kobo']) {
+            if ($allTime !== $liability) {
                 return ['status' => 'unavailable'];
             }
             $closing = $this->checkedAdd($opening, $activity);
+            $typeTotals = [];
+            foreach ($lines as $line) {
+                $typeTotals[$line['type']]['type'] = $line['type'];
+                $typeTotals[$line['type']]['count'] = ($typeTotals[$line['type']]['count'] ?? 0) + 1;
+                $typeTotals[$line['type']]['savings_effect_kobo'] = $this->checkedAdd($typeTotals[$line['type']]['savings_effect_kobo'] ?? 0, $line['savings_effect_kobo']);
+                $typeTotals[$line['type']]['fee_amount_kobo'] = $this->checkedAdd($typeTotals[$line['type']]['fee_amount_kobo'] ?? 0, $line['fee_amount_kobo']);
+            }
+            ksort($typeTotals);
+            if ($this->sumEffects($typeTotals) !== $activity) {
+                return ['status' => 'unavailable'];
+            }
+            $reserved = null;
+            $available = null;
+            try {
+                $position = $this->balances->position($customer, $forUpdate);
+                $reserved = $position['reservations_kobo'];
+                $available = $position['available_kobo'];
+            } catch (RuntimeException) {
+                // Only the availability figure is withheld. It is never shown as zero.
+            }
+            $unpaidFees = $this->unpaidFees($customer);
 
             $preview = [
                 'status' => 'ready', 'customer_id' => $customer->customer_id,
@@ -78,8 +112,10 @@ class StatementPreviewService
                 'cutoff_at' => now()->utc()->toIso8601String(),
                 'ledger_watermark' => $state['watermark'], 'projection_version' => $state['version'],
                 'opening_kobo' => $opening, 'activity_kobo' => $activity, 'closing_kobo' => $closing,
-                'current_reserved_kobo' => $position['reservations_kobo'],
-                'current_available_kobo' => $position['available_kobo'],
+                'current_reserved_kobo' => $reserved,
+                'current_available_kobo' => $available,
+                'unpaid_fees_kobo' => $unpaidFees,
+                'type_totals' => array_values($typeTotals),
                 'lines' => $lines,
             ];
             $confirmed = $preview;
@@ -88,6 +124,32 @@ class StatementPreviewService
 
             return $preview;
         }, attempts: 3);
+    }
+
+    /** @param array<string, array<string, mixed>> $typeTotals */
+    private function sumEffects(array $typeTotals): int
+    {
+        $sum = 0;
+        foreach ($typeTotals as $total) {
+            $sum = $this->checkedAdd($sum, (int) $total['savings_effect_kobo']);
+        }
+
+        return $sum;
+    }
+
+    /** Outstanding fee obligations are a separate position and never part of savings. Null means the figure is unavailable. */
+    private function unpaidFees(CustomerProfile $customer): ?int
+    {
+        try {
+            $total = 0;
+            foreach (FeeObligation::query()->where('customer_profile_id', $customer->id)->with('entries')->get() as $obligation) {
+                $total = $this->checkedAdd($total, $obligation->outstandingAmountKobo());
+            }
+
+            return $total;
+        } catch (RuntimeException) {
+            return null;
+        }
     }
 
     private function checkedAdd(int $left, int $right): int

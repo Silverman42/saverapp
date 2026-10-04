@@ -20,6 +20,14 @@ Schedule::command('withdrawals:expire')
     ->everyMinute()
     ->withoutOverlapping();
 
+Schedule::command('withdrawals:reconcile-bank-payouts')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+Schedule::command('ledger:rebuild-transactions --if-stale')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 Schedule::command('notifications:drain')->everyMinute()->withoutOverlapping();
 
 Schedule::command('audit:drain')->everyMinute()->withoutOverlapping();

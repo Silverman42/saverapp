@@ -125,6 +125,8 @@ class ReportReadService
                 }
                 if ($code === 'fees') {
                     $feeSections = $this->feeSections($viewer, $customers, $filters, $cursor, $binding, $manifest, $state, $cutoff);
+                } elseif ($code === 'plans' && isset($filters['_funding_plan_ids'])) {
+                    $result = $this->unavailable('The plan directory reads only verified funding progress for its bounded page.');
                 } else {
                     $spec = $this->query($viewer, $code, $customers, $filters, $agentId, $state, $cutoff);
                     if ($spec !== null) {
@@ -346,7 +348,7 @@ class ReportReadService
                 OR receipts.tender_amount_kobo <> receipts.savings_amount_kobo + receipts.fee_amount_kobo
                 OR receipts.fee_amount_kobo <> COALESCE(components.total, 0)
                 OR receipts.recorded_at > ? OR receipt_projection.id IS NULL
-                OR receipt_projection.status <> 'posted' OR receipt_projection.type <> 'contribution'
+                OR receipt_projection.status NOT IN ('posted', 'reversed') OR receipt_projection.type <> 'contribution'
                 OR receipt_projection.currency <> 'NGN' OR receipt_projection.customer_profile_id <> receipts.customer_profile_id
                 OR receipt_projection.occurred_on <> receipts.received_date
                 OR receipt_projection.gross_amount_kobo <> receipts.tender_amount_kobo
@@ -533,7 +535,7 @@ class ReportReadService
                     ->orWhereRaw('COALESCE(receipt_allocations.allocated_savings, 0) <> receipts.savings_amount_kobo')
                     ->orWhereRaw('receipts.savings_amount_kobo + receipts.fee_amount_kobo <> receipts.tender_amount_kobo')
                     ->orWhere('receipts.recorded_at', '>', $cutoff)
-                    ->orWhereNull('projection.id')->orWhere('projection.status', '<>', 'posted')
+                    ->orWhereNull('projection.id')->orWhereNotIn('projection.status', ['posted', 'reversed'])
                     ->orWhereRaw("projection.type <> CASE WHEN receipts.replacement_reversal_id IS NULL THEN 'contribution' ELSE 'replacement' END")
                     ->orWhere('projection.currency', '<>', 'NGN')
                     ->orWhereColumn('projection.customer_profile_id', '<>', 'receipts.customer_profile_id')
@@ -1121,7 +1123,7 @@ class ReportReadService
                     || $row['_posting_customer'] !== $row['_receipt_customer']
                     || $row['_posting_type'] !== 'external_fee_receipt' || $row['_posting_source_type'] !== 'collection_receipt'
                     || $row['_posting_source_id'] !== $row['_receipt_id'].'-'.$row['_obligation_id']
-                    || $row['_projection_status'] !== 'posted' || $this->integer($row['_projection_fees']) !== $this->integer($row['_receipt_fees'])
+                    || ! in_array($row['_projection_status'], ['posted', 'reversed'], true) || $this->integer($row['_projection_fees']) !== $this->integer($row['_receipt_fees'])
                     || $this->integer($row['_projection_tender']) !== $this->integer($row['_receipt_tender'])
                     || $this->add($this->integer($row['_receipt_savings']), $this->integer($row['_receipt_fees'])) !== $this->integer($row['_receipt_tender'])
                     || $this->integer($row['_settlement_amount']) !== $amount || $this->integer($row['_line_count']) !== 2

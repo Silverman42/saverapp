@@ -27,6 +27,9 @@ use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
+use App\Http\Controllers\BankPayoutCallbackController;
+use App\Http\Controllers\BankPayoutController;
+use App\Http\Controllers\BankPayoutDestinationController;
 use App\Http\Controllers\CashDisbursementController;
 use App\Http\Controllers\CashExecutionController;
 use App\Http\Controllers\CashRecoveryController;
@@ -134,8 +137,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('customers/{customer}/name-corrections/{correction}/accept', [ProfileIdentityController::class, 'acceptNameCorrection'])->middleware('fresh')->name('customers.name-corrections.accept');
     Route::post('customers/{customer}/name-corrections/{correction}/reject', [ProfileIdentityController::class, 'rejectNameCorrection'])->middleware('fresh')->name('customers.name-corrections.reject');
     Route::post('customers/{customer}/name-corrections/{correction}/cancel', [ProfileIdentityController::class, 'cancelNameCorrection'])->name('customers.name-corrections.cancel');
-    Route::get('customers/{customer}/ledger-balance', [LedgerTransactionController::class, 'balance'])->name('customers.ledger-balance');
-    Route::get('customers/{customer}/statements/preview', [CustomerStatementController::class, 'preview'])->name('customers.statements.preview');
+    Route::get('customers/{customer}/ledger-balance', [LedgerTransactionController::class, 'balance'])->middleware('throttle:120,1,ledger-read')->name('customers.ledger-balance');
+    Route::get('customers/{customer}/statements/preview', [CustomerStatementController::class, 'preview'])->middleware('throttle:60,1,statement-preview')->name('customers.statements.preview');
     Route::get('customers/{customer}/access', [CustomerProfileController::class, 'access'])->name('customers.access');
     Route::get('customers/{customer}', [CustomerProfileController::class, 'show'])->name('customers.show');
     Route::get('customers/{customer}/photo', [CustomerPhotoController::class, 'show'])->name('customers.photo');
@@ -171,8 +174,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('financial-artifacts/{artifact}/hold', [FinancialArtifactController::class, 'hold'])->middleware('fresh')->name('financial-artifacts.hold');
 
     Route::get('reports/{report}', [ReportController::class, 'show'])->name('reports.show');
-    Route::get('transactions', [LedgerTransactionController::class, 'index'])->name('transactions.index');
-    Route::get('transactions/{transaction}', [LedgerTransactionController::class, 'show'])->name('transactions.show');
+    Route::get('transactions', [LedgerTransactionController::class, 'index'])->middleware('throttle:120,1,ledger-read')->name('transactions.index');
+    Route::get('transactions/{transaction}', [LedgerTransactionController::class, 'show'])->middleware('throttle:120,1,ledger-read')->name('transactions.show');
+    Route::post('ledger/incidents/{reference}/resolve', [LedgerTransactionController::class, 'resolveIncident'])->whereUuid('reference')->middleware('fresh')->name('ledger.incidents.resolve');
     Route::get('customers/{customer}/withdrawals/create', [WithdrawalController::class, 'create'])->name('customers.withdrawals.create');
     Route::post('customers/{customer}/withdrawals/preview', [WithdrawalController::class, 'preview'])->name('customers.withdrawals.preview');
     Route::post('customers/{customer}/withdrawals', [WithdrawalController::class, 'store'])->name('customers.withdrawals.store');
@@ -195,6 +199,15 @@ Route::middleware(['auth'])->group(function () {
     Route::post('cash-executions/{execution}/not-delivered', [CashExecutionController::class, 'notDelivered'])->middleware('fresh')->name('cash-executions.not-delivered');
     Route::post('cash-executions/{execution}/acknowledge', [CashExecutionController::class, 'acknowledge'])->name('cash-executions.acknowledge');
 
+    // Simulated bank-transfer rail (Module 08)
+    Route::get('customers/{customer}/payout-destinations', [BankPayoutDestinationController::class, 'index'])->name('customers.payout-destinations.index');
+    Route::post('customers/{customer}/payout-destinations', [BankPayoutDestinationController::class, 'store'])->middleware('throttle:10,1,payout-destination-register')->name('customers.payout-destinations.store');
+    Route::post('payout-destinations/{destination}/verify', [BankPayoutDestinationController::class, 'verify'])->middleware('fresh')->name('payout-destinations.verify');
+    Route::post('payout-destinations/{destination}/reject', [BankPayoutDestinationController::class, 'reject'])->middleware('fresh')->name('payout-destinations.reject');
+    Route::post('payout-destinations/{destination}/revoke', [BankPayoutDestinationController::class, 'revoke'])->middleware('fresh')->name('payout-destinations.revoke');
+    Route::post('withdrawals/{withdrawal}/bank/start', [BankPayoutController::class, 'start'])->middleware('fresh')->name('withdrawals.bank.start');
+    Route::post('bank-payout-attempts/{attempt}/check', [BankPayoutController::class, 'check'])->middleware('throttle:30,1,bank-payout-check')->name('bank-payout-attempts.check');
+
     // Gated financial corrections (Module 09)
     Route::get('reversals', [ReversalController::class, 'index'])->name('reversals.index');
     Route::post('ledger-postings/{posting}/reversals/preview', [ReversalController::class, 'preview'])->name('reversals.preview');
@@ -205,6 +218,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reversals/{reversal}/approve', [ReversalController::class, 'approve'])->middleware('fresh')->name('reversals.approve');
     Route::post('reversals/{reversal}/reject', [ReversalController::class, 'reject'])->middleware('fresh')->name('reversals.reject');
     Route::post('reversals/{reversal}/cancel', [ReversalController::class, 'cancel'])->name('reversals.cancel');
+    Route::post('reversals/{reversal}/evidence', [ReversalController::class, 'evidenceStore'])->middleware('throttle:20,1,reversal-evidence')->name('reversals.evidence.store');
+    Route::get('reversals/{reversal}/evidence/{file}/link', [ReversalController::class, 'evidenceLink'])->whereNumber('file')->name('reversals.evidence.link');
+    Route::get('reversals/{reversal}/evidence/{file}/download', [ReversalController::class, 'evidenceDownload'])->whereNumber('file')->middleware('signed')->name('reversals.evidence.download');
 
     // Cash collections, thrift cards, and reconciliation (Module 07)
     Route::middleware('collections.enabled')->group(function (): void {
@@ -401,5 +417,8 @@ Route::post('device-eviction/cancel', [DeviceEvictionController::class, 'cancel'
 
 Route::get('assisted-recovery', AssistedRecoveryHandoffController::class)
     ->name('auth.assisted-recovery');
+
+// Signed provider callbacks authenticate by signature, not by session.
+Route::post('payout-callbacks/{provider}', BankPayoutCallbackController::class)->middleware('throttle:240,1,payout-callbacks')->name('payout-callbacks.store');
 
 require __DIR__.'/settings.php';

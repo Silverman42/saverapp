@@ -31,6 +31,7 @@ use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Support\FeePercentageCalculator;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -254,9 +255,10 @@ class CollectionService
     {
         $submittedHash = hash('sha256', json_encode([$actor->id, $customer->id, $data], JSON_THROW_ON_ERROR));
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $submittedHash, $replacement): CollectionReceipt {
-            $existing = CollectionReceipt::query()->where('attempt_reference', $data['attempt_reference'])->lockForUpdate()->first();
+        $attempt = fn (): CollectionReceipt => app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $submittedHash, $replacement): CollectionReceipt {
+            $existing = CollectionReceipt::query()->where('attempt_reference', $data['attempt_reference'])->first();
             if ($existing !== null) {
+                $existing = CollectionReceipt::query()->whereKey($existing->id)->lockForUpdate()->firstOrFail();
                 if ($existing->recorded_by_user_id !== $actor->id || ! hash_equals($existing->payload_hash, $submittedHash)) {
                     throw new ConflictHttpException('This receipt attempt belongs to a different request.');
                 }
@@ -404,6 +406,12 @@ class CollectionService
 
             return $receipt;
         }, attempts: 3);
+
+        try {
+            return $attempt();
+        } catch (UniqueConstraintViolationException) {
+            return $attempt();
+        }
     }
 
     /** @param array<string, mixed> $method */

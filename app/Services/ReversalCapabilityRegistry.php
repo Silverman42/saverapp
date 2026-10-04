@@ -17,7 +17,9 @@ class ReversalCapabilityRegistry
         if (config('fees.deduction_corrections_enabled', false) && $original->source_type === 'manual_charge' && $original->event_type === 'other_deduction') {
             return app(DeductionReversalOwner::class);
         }
-        if (config('withdrawals.cash_compensation_enabled', false) && $original->source_type === 'withdrawal') {
+        if ($original->source_type === 'withdrawal' && (
+            (config('withdrawals.cash_compensation_enabled', false) && $original->event_type === 'cash_withdrawal')
+            || (config('withdrawals.bank_compensation_enabled', false) && $original->event_type === 'bank_withdrawal'))) {
             return app(WithdrawalReversalOwner::class);
         }
 

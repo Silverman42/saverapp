@@ -20,6 +20,7 @@ type Row = {
     method: string;
     state: string;
     held: boolean;
+    hold_reason: string | null;
     submitted_at: string;
 };
 const props = defineProps<{
@@ -31,6 +32,7 @@ const props = defineProps<{
     state_filter: string;
     can_review: boolean;
     role: string;
+    new_requests_available: boolean;
 }>();
 defineOptions({
     layout: {
@@ -58,7 +60,7 @@ function applyFilter(): void {
                 Approval does not mean payment.
             </p>
         </div>
-        <Card
+        <Card v-if="!new_requests_available"
             ><CardContent class="pt-6"
                 ><p class="text-sm">
                     Payout methods are awaiting approved executor, custody, and
@@ -78,6 +80,16 @@ function applyFilter(): void {
                     <option value="">All states</option>
                     <option value="pending_review">Pending review</option>
                     <option value="approved">Approved, awaiting payout</option>
+                    <option value="payout_processing">Payout processing</option>
+                    <option value="outcome_unknown">Outcome unknown</option>
+                    <option value="payment_failed">Payment failed</option>
+                    <option value="posted">Posted</option>
+                    <option
+                        v-if="role !== 'customer'"
+                        value="needs_reconciliation"
+                    >
+                        Needs reconciliation
+                    </option>
                     <option value="rejected">Rejected</option>
                     <option value="cancelled">Cancelled</option>
                     <option value="expired">Expired</option>
@@ -108,10 +120,21 @@ function applyFilter(): void {
                                 >{{ item.id }}</Link
                             ><span class="text-muted-foreground text-sm"
                                 >{{ item.customer_name }} · {{ item.plan_id }} ·
-                                {{ item.type }}</span
+                                {{ item.type }} ·
+                                {{ item.method.replaceAll('_', ' ') }}</span
                             ><span class="text-sm"
                                 >{{ item.state.replaceAll('_', ' ')
-                                }}<span v-if="item.held"> · On hold</span></span
+                                }}<span v-if="item.held">
+                                    · On hold<span v-if="item.hold_reason"
+                                        >:
+                                        {{
+                                            item.hold_reason.replaceAll(
+                                                '_',
+                                                ' ',
+                                            )
+                                        }}</span
+                                    ></span
+                                ></span
                             >
                         </div>
                         <div class="grid gap-1 text-sm">

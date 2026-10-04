@@ -177,7 +177,7 @@ test('plan savings detail reads actual reservations without changing owner rows 
             ->where('plan.savings_summary.cycle.available', $damage === 'none' ? '₦700.00' : null)
             ->where('plan.posted_activity.status', $customerReady ? 'available' : 'unavailable')
             ->where('plan.posted_activity.metrics', fn ($metrics): bool => $customerReady
-                ? count($metrics) === 10 && collect($metrics)->every(fn ($metric): bool => $metric['value'] === 0)
+                ? count($metrics) === 12 && collect($metrics)->every(fn ($metric): bool => $metric['value'] === 0)
                 : count($metrics) === 0)
             ->where('plan.estimate.estimated_payout', '₦6,000.00'));
     }

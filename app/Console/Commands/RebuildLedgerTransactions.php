@@ -2,36 +2,48 @@
 
 namespace App\Console\Commands;
 
+use App\Models\LedgerPostingGroup;
 use App\Services\LedgerTransactionProjectionService;
-use App\Services\PlatformGuard;
 use App\Support\PlatformBlocked;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
-#[Signature('ledger:rebuild-transactions')]
+#[Signature('ledger:rebuild-transactions {--if-stale : Rebuild only when the projection is unavailable or behind the ledger}')]
 #[Description('Verify ledger posting groups and atomically promote a rebuilt transaction projection')]
 class RebuildLedgerTransactions extends Command
 {
     /**
-     * Execute the console command.
+     * The rebuild owns its transactions: a failure must keep its integrity incident, so it never runs inside an outer one.
      */
     public function handle(LedgerTransactionProjectionService $projections): int
     {
-        try {
-            return app(PlatformGuard::class)->transaction('derived', function () use ($projections) {
-                return $this->handleAllowed($projections);
-            });
-        } catch (PlatformBlocked) {
-            return 0;
-        }
-    }
+        if ($this->option('if-stale') && ! $this->stale()) {
+            $this->info('The transaction projection is current.');
 
-    private function handleAllowed(LedgerTransactionProjectionService $projections): int
-    {
-        $result = $projections->rebuild();
+            return self::SUCCESS;
+        }
+        try {
+            $result = $projections->rebuild();
+        } catch (PlatformBlocked) {
+            return self::SUCCESS;
+        } catch (RuntimeException $exception) {
+            $this->error('The ledger did not verify: '.$exception->getMessage());
+
+            return self::FAILURE;
+        }
         $this->info("Verified version {$result['version']}: {$result['transactions']} transactions from {$result['groups']} posting groups.");
 
         return self::SUCCESS;
+    }
+
+    private function stale(): bool
+    {
+        $state = DB::table('ledger_projection_state')->where('id', 1)->first();
+
+        return $state === null || $state->status !== 'ready'
+            || (int) $state->ledger_group_watermark < (int) (LedgerPostingGroup::query()->max('id') ?? 0);
     }
 }

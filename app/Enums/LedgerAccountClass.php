@@ -13,4 +13,5 @@ enum LedgerAccountClass: string
     case OtherDeductionDestination = 'other_deduction_destination';
     case UnappliedFunds = 'unapplied_funds';
     case BusinessDistributions = 'business_distributions';
+    case PayoutClearing = 'payout_clearing';
 }

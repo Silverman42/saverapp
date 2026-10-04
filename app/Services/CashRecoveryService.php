@@ -113,11 +113,15 @@ class CashRecoveryService
             if ($execution->status === 'outcome_unknown' && $total === $execution->amount_kobo) {
                 $execution->update(['status' => 'payment_failed', 'resolved_at' => now(), 'live_withdrawal_request_id' => null]);
                 $withdrawal->state = 'payment_failed';
+                $held = app(WithdrawalService::class)->applyFailureTerms($withdrawal, $withdrawal->customerProfile);
                 foreach (CashRecovery::query()->where('cash_execution_id', $execution->id)->where('event_type', 'return')->where('status', 'confirmed')->get() as $returned) {
                     $returned->update(['status' => 'consumed', 'consumed_at' => now()]);
                 }
             }
             $this->event($withdrawal, $recovery, $actor, 'cash_return_confirmed');
+            if ($held ?? false) {
+                app(WithdrawalService::class)->recordHoldApplied($withdrawal);
+            }
             if ($execution->status === 'posted') {
                 app(LedgerTransactionProjectionService::class)->rebuild();
             }

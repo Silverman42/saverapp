@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
+use App\Data\PostedPayout;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\AuditEvent;
 use App\Models\CashDisbursement;
-use App\Models\CashExecution;
 use App\Models\CashRecovery;
 use App\Models\CashRemittance;
 use App\Models\ChargeCategoryVersion;
@@ -104,10 +104,10 @@ class LedgerTransactionProjectionService
                 $transactions++;
             }
 
-            foreach (CashExecution::query()->where('status', 'posted')->lazyById(100) as $execution) {
-                $withdrawal = WithdrawalRequest::query()->findOrFail($execution->withdrawal_request_id);
-                $group = LedgerPostingGroup::query()->findOrFail($execution->ledger_posting_group_id);
-                $this->writeWithdrawal($withdrawal, $group, $version);
+            foreach (WithdrawalRequest::query()->where('state', 'posted')->lazyById(100) as $withdrawal) {
+                $payout = app(WithdrawalPayoutSource::class)->posted($withdrawal);
+                $group = LedgerPostingGroup::query()->findOrFail($payout->groupId);
+                $this->writeWithdrawal($withdrawal, $group, $version, $payout);
                 $covered[$group->id] = true;
                 $transactions++;
             }
@@ -152,7 +152,7 @@ class LedgerTransactionProjectionService
                 $transactions++;
             }
 
-            foreach (LedgerPostingGroup::query()->whereIn('source_type', ['cash_recovery', 'disbursement_recovery'])->lazyById(100) as $group) {
+            foreach (LedgerPostingGroup::query()->whereIn('source_type', ['cash_recovery', 'disbursement_recovery', 'bank_payout_attempt', 'bank_payout_return'])->lazyById(100) as $group) {
                 $this->assertBalanced($group);
                 $recovery = $group->source_type === 'cash_recovery' ? CashRecovery::query()->findOrFail($group->source_id) : null;
                 if ($recovery !== null && $recovery->return_posting_group_id !== $group->id) {
@@ -173,7 +173,7 @@ class LedgerTransactionProjectionService
                 'verified_at' => now(), 'status' => 'ready', 'updated_at' => now(),
             ]);
             DB::table('ledger_integrity_incidents')->where('category', 'projection_rebuild')->where('status', 'open')->update([
-                'status' => 'resolved', 'updated_at' => now(),
+                'status' => 'recovered', 'recovered_at' => now(), 'updated_at' => now(),
             ]);
             AuditEvent::record('ledger.projection_promoted', LedgerPostingGroup::class, null, (string) $version, [
                 'projection_version' => $version, 'transaction_count' => $transactions,
@@ -357,34 +357,38 @@ class LedgerTransactionProjectionService
             if ($state === null || $state->status !== 'ready') {
                 return;
             }
-            $execution = CashExecution::query()->where('withdrawal_request_id', $withdrawal->id)->where('status', 'posted')->sole();
-            $this->writeWithdrawal($withdrawal, LedgerPostingGroup::query()->findOrFail($execution->ledger_posting_group_id), (int) $state->active_version);
+            $payout = app(WithdrawalPayoutSource::class)->posted($withdrawal);
+            $this->writeWithdrawal($withdrawal, LedgerPostingGroup::query()->findOrFail($payout->groupId), (int) $state->active_version, $payout);
             $this->advanceWatermark();
         });
     }
 
-    private function writeWithdrawal(WithdrawalRequest $withdrawal, LedgerPostingGroup $group, int $version): void
+    private function writeWithdrawal(WithdrawalRequest $withdrawal, LedgerPostingGroup $group, int $version, PostedPayout $payout): void
     {
         $this->assertBalanced($group);
-        if ($withdrawal->state !== 'posted' || $group->source_type !== 'withdrawal' || $group->source_id !== (string) $withdrawal->id
+        if ($withdrawal->state !== 'posted' || $group->event_type !== $payout->eventType || $group->source_type !== 'withdrawal' || $group->source_id !== (string) $withdrawal->id
             || $group->customer_profile_id !== $withdrawal->customer_profile_id || $group->thrift_plan_id !== $withdrawal->thrift_plan_id) {
             throw new RuntimeException('Withdrawal source and posting do not reconcile.');
         }
         $savings = 0;
         $cash = 0;
         $fee = 0;
+        $deduction = 0;
         foreach ($group->entries as $entry) {
             if ($entry->account->code === LedgerAccountCode::CustomerSavingsLiability && $entry->side->value === 'debit') {
                 $savings += $entry->amount_kobo;
-            } elseif ($entry->account->code === LedgerAccountCode::BusinessCash && $entry->side->value === 'credit') {
+            } elseif ($entry->account->code === $payout->payoutAccount && $entry->side->value === 'credit') {
                 $cash += $entry->amount_kobo;
             } elseif ($entry->account->code === LedgerAccountCode::FeeIncome && $entry->side->value === 'credit') {
                 $fee += $entry->amount_kobo;
+            } elseif ($entry->account->code === LedgerAccountCode::OtherDeductionDestination && $entry->side->value === 'credit') {
+                $deduction += $entry->amount_kobo;
             } else {
                 throw new RuntimeException('Withdrawal posting contains an unsupported line.');
             }
         }
-        if ($savings !== $withdrawal->gross_amount_kobo || $cash !== $withdrawal->net_amount_kobo || $fee !== $withdrawal->fee_amount_kobo) {
+        if ($savings !== $withdrawal->gross_amount_kobo || $cash !== $withdrawal->net_amount_kobo || $fee !== $withdrawal->fee_amount_kobo
+            || $deduction !== $withdrawal->deduction_amount_kobo) {
             throw new RuntimeException('Withdrawal amounts and entries do not reconcile.');
         }
         $date = $group->occurred_on->toDateString();
@@ -425,6 +429,16 @@ class LedgerTransactionProjectionService
     public function projectDisbursement(CashDisbursement $disbursement): void
     {
         $this->projectAdditionalOwner(fn (int $version) => $this->writeDisbursement($disbursement, LedgerPostingGroup::query()->findOrFail($disbursement->ledger_posting_group_id), $version));
+    }
+
+    /** Project a bank payout settlement or return movement. */
+    public function projectBankPayoutMovement(LedgerPostingGroup $group): void
+    {
+        $this->projectAdditionalOwner(function (int $version) use ($group): void {
+            $group->load('entries.account');
+            $this->assertBalanced($group);
+            $this->writeOwnedMovement($group->event_type, $group->source_id, $group, $version, (int) $group->entries->where('side', LedgerEntrySide::Debit)->sum('amount_kobo'), 0, 0, $group->source_type);
+        });
     }
 
     /** @param \Closure(int): void $project */
@@ -568,19 +582,42 @@ class LedgerTransactionProjectionService
             }
         }
         $date = $group->occurred_on->toDateString();
-        $this->upsertProjection($this->reference('reversal_request', (string) $reversal->id, $date), $version, [
+        $referenceId = $this->reference('reversal_request', (string) $reversal->id, $date);
+        $this->upsertProjection($referenceId, $version, [
             'customer_profile_id' => $reversal->customer_profile_id, 'type' => 'reversal', 'status' => 'posted',
             'occurred_on' => $date, 'committed_at' => $group->committed_at, 'timezone' => $group->business_timezone,
             'currency' => 'NGN', 'gross_amount_kobo' => $reversal->original_amount_kobo, 'savings_effect_kobo' => $effect,
             'fee_amount_kobo' => 0, 'posting_group_count' => 1, 'source_hash' => $this->sourceHash([$group]), 'source_max_group_id' => $group->id,
         ]);
+        $this->markOriginalReversed($reversal, $referenceId, $version);
+    }
+
+    /** A full posted reversal turns its original into Reversed and links the compensation; the original rows are never edited. */
+    private function markOriginalReversed(ReversalRequest $reversal, int $compensationReferenceId, int $version): void
+    {
+        $original = LedgerPostingGroup::query()->find($reversal->original_posting_group_id);
+        $root = $original === null ? null : match ($original->source_type) {
+            'collection_receipt', 'fee_application' => ['collection_receipt', (string) (int) Str::before($original->source_id, '-')],
+            'withdrawal', 'manual_charge', 'fee_savings_application' => [$original->source_type, $original->source_id],
+            default => null,
+        };
+        if ($root === null) {
+            return;
+        }
+        $referenceId = DB::table('ledger_transaction_references')->where('root_type', $root[0])->where('root_id', $root[1])->value('id');
+        if ($referenceId === null) {
+            return;
+        }
+        DB::table('ledger_transaction_projections')->where('ledger_transaction_reference_id', $referenceId)->where('projection_version', $version)
+            ->update(['status' => 'reversed', 'compensating_reference_id' => $compensationReferenceId, 'updated_at' => now()]);
     }
 
     private function writeNoMoneyCorrection(ReversalRequest $reversal, int $version): void
     {
         $proof = app(CollectionNoMoneyCorrection::class)->assertOutcome($reversal);
         $date = $proof->facts['occurred_on'];
-        $this->upsertProjection($this->reference('reversal_request', (string) $reversal->id, $date), $version, [
+        $referenceId = $this->reference('reversal_request', (string) $reversal->id, $date);
+        $this->upsertProjection($referenceId, $version, [
             'customer_profile_id' => $reversal->customer_profile_id, 'type' => 'reversal', 'status' => 'approved_no_money',
             'occurred_on' => $date, 'committed_at' => $proof->created_at, 'timezone' => $proof->facts['timezone'],
             'currency' => 'NGN', 'gross_amount_kobo' => $reversal->original_amount_kobo, 'savings_effect_kobo' => 0,
@@ -588,6 +625,7 @@ class LedgerTransactionProjectionService
             'source_hash' => hash('sha256', json_encode([$proof->id, $proof->payload_hash, $proof->facts], JSON_THROW_ON_ERROR)),
             'source_max_group_id' => $proof->facts['source_group_watermark'],
         ]);
+        $this->markOriginalReversed($reversal, $referenceId, $version);
     }
 
     private function assertBalanced(LedgerPostingGroup $group): void
@@ -642,6 +680,12 @@ class LedgerTransactionProjectionService
     /** @param array<string, mixed> $data */
     private function upsertProjection(int $referenceId, int $version, array $data): void
     {
+        $existing = DB::table('ledger_transaction_projections')->where('ledger_transaction_reference_id', $referenceId)
+            ->where('projection_version', $version)->first(['status', 'compensating_reference_id']);
+        if ($existing !== null && $existing->status === 'reversed' && ($data['status'] ?? null) === 'posted') {
+            $data['status'] = 'reversed';
+            $data['compensating_reference_id'] = $existing->compensating_reference_id;
+        }
         DB::table('ledger_transaction_projections')->updateOrInsert(
             ['ledger_transaction_reference_id' => $referenceId, 'projection_version' => $version],
             [...$data, 'updated_at' => now(), 'created_at' => now()],

@@ -1985,6 +1985,10 @@ test('mysql warmed closure snapshot rejects independently damaged consumed payou
         }
     }
     unset($row);
+    if ($wrongCustomer) {
+        // The scenario deliberately damages a posted ledger row; the production-engine immutability trigger is lifted for this isolated database only.
+        DB::unprepared('DROP TRIGGER IF EXISTS ledger_posting_groups_no_update');
+    }
     DB::beginTransaction();
     try {
         expect(DB::table('reversal_requests')->where('id', $reversalId)->value('state'))->toBe('approved_posted');

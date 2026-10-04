@@ -38,7 +38,7 @@ class FinancialArtifactService
                 return $existing;
             }
             app(BusinessSettings::class)->ensureFeature('statement_pdf');
-            $snapshot = app(StatementPreviewService::class)->preview($actor, $customer, $from, $to, BusinessProfile::current()->timezone);
+            $snapshot = app(StatementPreviewService::class)->preview($actor, $customer, $from, $to, BusinessProfile::current()->timezone, true);
             if ($snapshot['status'] !== 'ready') {
                 throw new ConflictHttpException('The statement source is unavailable.');
             }

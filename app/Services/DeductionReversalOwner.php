@@ -53,7 +53,7 @@ class DeductionReversalOwner implements ReversalOwnerContract
         $dependencies = [['kind' => 'deduction_destination', 'classification' => 'compensable', 'retained_kobo' => $amount]];
 
         return ['gross_kobo' => $charge->amount_kobo, 'summary' => $summary, 'dependencies' => $dependencies,
-            'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies, LedgerPostingGroup::query()->max('id')], JSON_THROW_ON_ERROR))];
+            'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies, app(ReversalWatermark::class)->forCustomer($original->customer_profile_id)], JSON_THROW_ON_ERROR))];
     }
 
     public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup

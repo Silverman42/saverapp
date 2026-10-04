@@ -5,7 +5,7 @@ import {
 } from '@/lib/operation-reference';
 import { HttpResponseError } from '@inertiajs/core';
 import { Link, useHttp } from '@inertiajs/vue3';
-import { onMounted, ref } from 'vue';
+import { nextTick, onMounted, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -46,6 +46,7 @@ const lookup = useHttp<Record<string, never>, PaymentEvidence>({});
 const reference = ref('');
 const proof = ref<PaymentEvidence | null>(null);
 const uncertain = ref(false);
+const errorSummary = ref<HTMLElement | null>(null);
 const notice = ref('');
 const key = `collection-evidence-attempt:${props.customer.id}`;
 const money = (amount: number) =>
@@ -129,11 +130,17 @@ async function upload(): Promise<void> {
     remember();
     notice.value = '';
     try {
-        accept(
-            (await form.post(
-                store.url(props.customer.resource_id),
-            )) as PaymentEvidence,
-        );
+        const result = (await form.post(
+            store.url(props.customer.resource_id),
+        )) as PaymentEvidence | undefined;
+        if (result === undefined) {
+            notice.value =
+                'Evidence was not accepted. Check the errors, current assignment, method availability and scanner status before retrying.';
+            await nextTick();
+            errorSummary.value?.focus();
+            return;
+        }
+        accept(result);
     } catch (error) {
         uncertain.value = !(
             error instanceof HttpResponseError &&
@@ -297,7 +304,9 @@ function filesChanged(event: Event): void {
                 </fieldset>
                 <div
                     v-if="form.hasErrors"
+                    ref="errorSummary"
                     role="alert"
+                    tabindex="-1"
                     class="text-destructive text-sm"
                 >
                     <p v-for="(error, field) in form.errors" :key="field">

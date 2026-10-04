@@ -30,6 +30,15 @@ class WithdrawalNoticeService
             'expired' => 'A withdrawal request expired and its savings reservation was released.',
             'hold_applied' => 'A withdrawal request is on hold. No payout can proceed.',
             'hold_lifted' => 'A withdrawal hold was lifted. The request still needs its normal next step.',
+            'hold_revalidation_required' => 'A withdrawal hold was lifted but the request must be revalidated before it can proceed.',
+            'bank_started' => 'A bank transfer was started for an approved withdrawal. Savings stay reserved until the provider confirms.',
+            'bank_submitted' => 'The bank transfer was accepted by the provider. The final result is not known yet.',
+            'bank_unknown' => 'The bank transfer result is not yet known. Savings stay reserved and no second payment will be sent.',
+            'bank_failed' => 'The bank transfer did not go through. Savings remain reserved.',
+            'bank_posted' => 'The bank transfer was confirmed and the withdrawal was posted.',
+            'bank_settled' => 'The provider settled the bank transfer. Your savings balance did not change again.',
+            'bank_returned' => 'The bank returned the transfer. It is being reviewed; your savings balance has not changed yet.',
+            'provider_conflict' => 'The provider reported conflicting results for a withdrawal. It is on hold for review.',
             default => 'A withdrawal request was updated.',
         };
         foreach ([[$customerUser, 'subject_customer', 'database'], [$customerUser, 'subject_customer', 'mail'], [$agentUser, 'current_agent', 'database']] as [$recipient, $audience, $channel]) {

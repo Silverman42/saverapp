@@ -86,7 +86,7 @@ class FeeSavingsApplicationReversalOwner implements ReversalOwnerContract
 
         return ['gross_kobo' => $amount, 'summary' => $summary, 'dependencies' => $dependencies,
             'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies,
-                $fee->entries->pluck('id')->all(), LedgerPostingGroup::query()->max('id')], JSON_THROW_ON_ERROR))];
+                $fee->entries->pluck('id')->all(), app(ReversalWatermark::class)->forCustomer($original->customer_profile_id, [LedgerAccountCode::FeeIncome, LedgerAccountCode::BusinessDistributions])], JSON_THROW_ON_ERROR))];
     }
 
     public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup
