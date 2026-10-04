@@ -137,7 +137,7 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
         app(FinancialPeriodService::class)->assertOpen($date, $business->timezone, true);
         $group = LedgerPostingGroup::create(['posting_reference' => 'REV-'.Str::uuid(), 'idempotency_key' => 'payout-compensation-'.$request->id,
             'payload_hash' => $preview['fingerprint'], 'source_type' => 'reversal_request', 'source_id' => (string) $request->id,
-            'event_type' => 'withdrawal_compensation', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id,
+            'event_type' => 'withdrawal_compensation', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id, 'approver_user_id' => $reviewer->id,
             'customer_profile_id' => $original->customer_profile_id, 'thrift_plan_id' => $original->thrift_plan_id,
             'occurred_at' => now(), 'occurred_on' => $date, 'business_timezone' => $business->timezone, 'schema_version' => 1,
             'committed_at' => now(), 'metadata' => ['original_posting_group_id' => $original->id,

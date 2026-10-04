@@ -203,12 +203,21 @@ class FinancialArtifactService
     {
         DB::table('financial_artifact_events')->insertOrIgnore(['financial_artifact_id' => $artifact->id, 'source_version' => $artifact->render_generation, 'event_type' => $event, 'created_at' => now()]);
         $source = DB::table('financial_artifact_events')->where('financial_artifact_id', $artifact->id)->where('source_version', $artifact->render_generation)->where('event_type', $event)->sole();
-        DB::table('financial_artifact_notification_intents')->insertOrIgnore(['notification_id' => (string) Str::uuid(),
-            'financial_artifact_event_id' => $source->id, 'recipient_user_id' => $artifact->requester_user_id,
-            'customer_profile_id' => $artifact->customer_profile_id, 'audience_type' => 'artifact_requester', 'channel' => 'database', 'status' => 'pending',
-            'created_at' => now(), 'updated_at' => now()]);
-        $intent = DB::table('financial_artifact_notification_intents')->where('financial_artifact_event_id', $source->id)->sole();
-        app(NotificationPipeline::class)->capture('financial_artifact', (int) $intent->id);
+        $recipients = [[$artifact->requester_user_id, 'artifact_requester']];
+        $customerUserId = $artifact->customer_profile_id === null ? null : CustomerProfile::query()->whereKey($artifact->customer_profile_id)->value('user_id');
+        if ($event === 'ready' && $artifact->kind === 'statement' && $artifact->supersedes_artifact_id !== null
+            && $customerUserId !== null && $customerUserId !== $artifact->requester_user_id) {
+            $recipients[] = [$customerUserId, 'subject_customer'];
+        }
+        foreach ($recipients as [$recipientId, $audience]) {
+            DB::table('financial_artifact_notification_intents')->insertOrIgnore(['notification_id' => (string) Str::uuid(),
+                'financial_artifact_event_id' => $source->id, 'recipient_user_id' => $recipientId,
+                'customer_profile_id' => $artifact->customer_profile_id, 'audience_type' => $audience, 'channel' => 'database', 'status' => 'pending',
+                'created_at' => now(), 'updated_at' => now()]);
+            $intent = DB::table('financial_artifact_notification_intents')->where('financial_artifact_event_id', $source->id)
+                ->where('recipient_user_id', $recipientId)->sole();
+            app(NotificationPipeline::class)->capture('financial_artifact', (int) $intent->id);
+        }
     }
 
     public function download(User $actor, FinancialArtifact $artifact): string

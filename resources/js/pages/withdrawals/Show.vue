@@ -36,6 +36,7 @@ type Withdrawal = {
     held: boolean;
     hold_reason: string | null;
     submitted_at: string;
+    approved_at: string | null;
     deadline_at: string;
     reason: string;
     customer_explanation: string | null;
@@ -225,8 +226,11 @@ function submit(): void {
                     >
                 </p>
                 <p>
-                    Submitted {{ withdrawal.submitted_at }} · review deadline
-                    {{ withdrawal.deadline_at }}
+                    Submitted {{ withdrawal.submitted_at }}
+                    <template v-if="withdrawal.approved_at">
+                        · approved {{ when(withdrawal.approved_at) }}
+                    </template>
+                    · review deadline {{ withdrawal.deadline_at }}
                 </p>
                 <p v-if="withdrawal.customer_explanation">
                     {{ withdrawal.customer_explanation }}

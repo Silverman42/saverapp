@@ -92,7 +92,10 @@ test('REV-AC-010: an Archived Customer blocks approval until restored to Inactiv
 
     revGapDecision($this, $admin, $request, 'approve')->assertConflict()
         ->assertJsonPath('message', 'Restore the Archived Customer before correction.');
-    expect($request->fresh()->state)->toBe('pending_review')->and(revGapEffectCounts())->toBe($before);
+    $after = revGapEffectCounts();
+    expect($request->fresh()->state)->toBe('pending_review')
+        ->and(collect($after)->except('canonical_audit_events')->all())->toBe(collect($before)->except('canonical_audit_events')->all())
+        ->and($after['canonical_audit_events'])->toBe($before['canonical_audit_events'] + 1);
 
     revGapSetCustomerStatus($customer, CustomerStatus::Inactive->value);
     revGapDecision($this, $admin, $request, 'approve')->assertRedirect();

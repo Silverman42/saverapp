@@ -320,11 +320,20 @@ class NotificationCatalogue
                 $destination = ['route' => 'collections.show', 'parameters' => [$reference]];
                 break;
             case 'financial_artifact':
-                $this->audience($audience, ['artifact_requester']);
+                $this->audience($audience, ['artifact_requester', 'subject_customer']);
                 $artifact = DB::table('financial_artifacts')->where('id', $source->financial_artifact_id)->firstOrFail();
-                $this->matchSubject($owner->recipient_user_id, $artifact->requester_user_id);
-                $title = $eventType === 'ready' ? 'Financial document ready' : 'Financial document needs attention';
-                $summary = $eventType === 'ready' ? 'Your requested document is ready. Access is checked when you open it.' : 'Your requested document could not be rendered. Review its status before retrying.';
+                if ($audience === 'subject_customer') {
+                    if ($eventType !== 'ready' || $artifact->kind !== 'statement' || $artifact->supersedes_artifact_id === null) {
+                        throw new InvalidArgumentException('Only a corrected statement notifies its Customer.');
+                    }
+                    $this->matchSubject((int) $owner->recipient_user_id, (int) DB::table('customer_profiles')->where('id', $artifact->customer_profile_id)->value('user_id'));
+                    $title = 'Corrected statement issued';
+                    $summary = 'A corrected statement replaced an earlier one for the same period. The earlier statement is kept unchanged.';
+                } else {
+                    $this->matchSubject($owner->recipient_user_id, $artifact->requester_user_id);
+                    $title = $eventType === 'ready' ? 'Financial document ready' : 'Financial document needs attention';
+                    $summary = $eventType === 'ready' ? 'Your requested document is ready. Access is checked when you open it.' : 'Your requested document could not be rendered. Review its status before retrying.';
+                }
                 $reference = $artifact->artifact_reference;
                 $source->operation_reference = $reference;
                 $category = 'financial';
@@ -539,7 +548,7 @@ class NotificationCatalogue
             'financial_cash' => ['subject_customer', 'current_agent', 'fee_manager', 'refund_cash_operator', 'refund_correction_operator', 'cash_executor'],
             'fee_obligation' => ['subject_customer', 'current_agent', 'fee_manager'],
             'fee_issue' => ['current_agent', 'fee_manager', 'deduction_manager', 'refund_cash_operator', 'refund_correction_operator'],
-            'financial_artifact' => ['artifact_requester'],
+            'financial_artifact' => ['artifact_requester', 'subject_customer'],
             default => ['subject_customer', 'current_agent'],
         };
         if (! is_array($audiences) || $audiences === [] || ! array_is_list($audiences) || array_diff($audiences, $allowedAudiences) !== []) {

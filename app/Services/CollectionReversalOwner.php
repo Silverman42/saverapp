@@ -192,7 +192,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
         $group = LedgerPostingGroup::create([
             'posting_reference' => 'REV-'.Str::uuid(), 'idempotency_key' => 'receipt-compensation-'.$request->id,
             'payload_hash' => $preview['fingerprint'], 'source_type' => 'reversal_request', 'source_id' => (string) $request->id,
-            'event_type' => 'receipt_reclassification', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id,
+            'event_type' => 'receipt_reclassification', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id, 'approver_user_id' => $reviewer->id,
             'customer_profile_id' => $receipt->customer_profile_id, 'occurred_at' => now(), 'occurred_on' => $date,
             'business_timezone' => $business->timezone, 'schema_version' => 1, 'correlation_id' => 'reversal-'.$request->id,
             'thrift_plan_id' => $receipt->thrift_plan_id, 'committed_at' => now(),

@@ -28,7 +28,7 @@ class LedgerTransactionProjectionService
 {
     public function __construct(private PublicIdGenerator $ids) {}
 
-    /** @return array{version: int, transactions: int, groups: int} */
+    /** @return array{version: int, transactions: int, groups: int, frozen_customers: int} */
     public function rebuild(): array
     {
         try {
@@ -66,7 +66,7 @@ class LedgerTransactionProjectionService
         }
     }
 
-    /** @return array{version: int, transactions: int, groups: int} */
+    /** @return array{version: int, transactions: int, groups: int, frozen_customers: int} */
     private function rebuildVerified(): array
     {
         return app(PlatformGuard::class)->transaction('derived', function (): array {
@@ -164,17 +164,18 @@ class LedgerTransactionProjectionService
             }
 
             $groups = LedgerPostingGroup::query()->count();
-            if (count($covered) !== $groups) {
-                throw new RuntimeException('An unsupported or unlinked posting group prevents projection promotion.');
-            }
+            $frozen = count($covered) === $groups ? [] : $this->uncoveredCustomerScopes($covered);
             DB::table('ledger_projection_state')->where('id', 1)->update([
                 'active_version' => $version,
                 'ledger_group_watermark' => (int) (LedgerPostingGroup::query()->max('id') ?? 0),
                 'verified_at' => now(), 'status' => 'ready', 'updated_at' => now(),
             ]);
-            DB::table('ledger_integrity_incidents')->where('category', 'projection_rebuild')->where('status', 'open')->update([
-                'status' => 'recovered', 'recovered_at' => now(), 'updated_at' => now(),
-            ]);
+            DB::table('ledger_integrity_incidents')->where('category', 'projection_rebuild')->where('status', 'open')
+                ->where(fn ($query) => $query->whereNull('customer_profile_id')->orWhereNotIn('customer_profile_id', $frozen))
+                ->update(['status' => 'recovered', 'recovered_at' => now(), 'updated_at' => now()]);
+            foreach ($frozen as $customerId) {
+                $this->recordScopedIncident($customerId, $version);
+            }
             AuditEvent::record('ledger.projection_promoted', LedgerPostingGroup::class, null, (string) $version, [
                 'projection_version' => $version, 'transaction_count' => $transactions,
                 'posting_group_count' => $groups,
@@ -182,8 +183,49 @@ class LedgerTransactionProjectionService
                 context: ['executor' => self::class]
             );
 
-            return ['version' => $version, 'transactions' => $transactions, 'groups' => $groups];
+            return ['version' => $version, 'transactions' => $transactions, 'groups' => $groups, 'frozen_customers' => count($frozen)];
         }, attempts: 3);
+    }
+
+    /**
+     * Customers whose posting groups the projection cannot own. An unattributable group cannot be scoped and freezes everything.
+     *
+     * @param  array<int, true>  $covered
+     * @return list<int>
+     */
+    private function uncoveredCustomerScopes(array $covered): array
+    {
+        $customers = [];
+        foreach (LedgerPostingGroup::query()->select(['id', 'customer_profile_id'])->lazyById(1000) as $group) {
+            if (isset($covered[$group->id])) {
+                continue;
+            }
+            if ($group->customer_profile_id === null) {
+                throw new RuntimeException('An unsupported or unlinked posting group prevents projection promotion.');
+            }
+            $customers[(int) $group->customer_profile_id] = true;
+        }
+
+        return array_keys($customers);
+    }
+
+    /** Freezes one Customer's derived reads under a durable incident, once per open scope. */
+    private function recordScopedIncident(int $customerId, int $version): void
+    {
+        $open = DB::table('ledger_integrity_incidents')->where('category', 'projection_rebuild')
+            ->where('customer_profile_id', $customerId)->where('status', 'open')->exists();
+        if ($open) {
+            return;
+        }
+        $reference = (string) Str::uuid();
+        DB::table('ledger_integrity_incidents')->insert([
+            'incident_reference' => $reference, 'category' => 'projection_rebuild', 'customer_profile_id' => $customerId,
+            'status' => 'open', 'summary' => 'An unsupported or unlinked posting group affects this Customer.',
+            'projection_version' => $version, 'ledger_group_watermark' => (int) (LedgerPostingGroup::query()->max('id') ?? 0),
+            'detected_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        AuditEvent::record('ledger.integrity_incident', LedgerPostingGroup::class, null, $reference,
+            ['category' => 'projection_rebuild', 'projection_version' => $version, 'customer_profile_id' => $customerId], context: ['executor' => self::class]);
     }
 
     public function projectReceipt(CollectionReceipt $receipt): void

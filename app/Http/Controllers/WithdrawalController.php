@@ -117,6 +117,7 @@ class WithdrawalController extends Controller
                     ->orderByDesc('id')->value('customer_explanation'),
                 'internal_notes' => $request->user()->user_type === UserType::Customer ? null : $withdrawal->internal_notes,
                 'version' => $withdrawal->version, 'destination_mask' => $withdrawal->destination_mask,
+                'approved_at' => $withdrawal->approved_at?->toIso8601String(),
                 'deadline_at' => $withdrawal->deadline_at->toIso8601String(),
             ],
             'can_execute' => $withdrawal->method === 'cash' && $authorization->allows($request->user(), AdminPermission::CashExecute),

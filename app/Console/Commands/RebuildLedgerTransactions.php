@@ -35,6 +35,9 @@ class RebuildLedgerTransactions extends Command
             return self::FAILURE;
         }
         $this->info("Verified version {$result['version']}: {$result['transactions']} transactions from {$result['groups']} posting groups.");
+        if ($result['frozen_customers'] > 0) {
+            $this->warn("{$result['frozen_customers']} Customer scope(s) remain frozen under open integrity incidents.");
+        }
 
         return self::SUCCESS;
     }

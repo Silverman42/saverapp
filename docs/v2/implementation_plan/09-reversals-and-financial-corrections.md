@@ -97,8 +97,8 @@ All reversal types remain behind default-off flags (`collections.receipt_correct
 
 | Scenario   | Status                                       | Evidence                                                                                              | Open clause or blocker                                             |
 | ---------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| REV-AC-001 | Partial                                      | `CollectionCompensationTest`; unexpected `amount` rejected in `ReversalAcceptanceGapsInitiationTest`  | Ledger edit and delete guards under an Admin with every permission |
-| REV-AC-002 | Partial                                      | Business draw and concession tests                                                                    | Remittance, waiver and new-deduction refusals                      |
+| REV-AC-001 | Passed | `CollectionCompensationTest`; unexpected `amount` rejected in `ReversalAcceptanceGapsInitiationTest`; `ReversalAcceptanceClosureTest` |  |
+| REV-AC-002 | Passed | Business draw and concession tests; `ReversalAcceptanceClosureTest` |  |
 | REV-AC-003 | Passed                                       | `ReversalAcceptanceGapsInitiationTest` (Inactive, Restricted, inactive and suspended Agent, Archived) |                                                                    |
 | REV-AC-004 | Passed                                       | `CollectionCompensationTest` roles and maximum value                                                  |                                                                    |
 | REV-AC-005 | Passed                                       | `CollectionCompensationTest` expired fresh authentication and ungranted Admin                         |                                                                    |
@@ -108,22 +108,22 @@ All reversal types remain behind default-off flags (`collections.receipt_correct
 | REV-AC-009 | Passed                                       | `ReversalAcceptanceGapsInitiationTest`                                                                |                                                                    |
 | REV-AC-010 | Passed                                       | `ReversalAcceptanceGapsDecisionTest`                                                                  |                                                                    |
 | REV-AC-011 | Passed                                       | `CollectionCompensationTest`; `FeeSavingsApplicationReversalTest`; `CashExecutionTest`                |                                                                    |
-| REV-AC-012 | Partial                                      | Sequential conflicts; MySQL concurrent approval                                                       | Concurrent submissions on MySQL                                    |
-| REV-AC-013 | Partial                                      | `PlanFundingWorkspaceTest`; `CollectionCompensationTest`                                              | One test combining multi-slot and fee                              |
+| REV-AC-012 | Passed | Sequential conflicts; MySQL concurrent approval; `ReversalMySqlConcurrencyTest` (isolated MySQL; submit now retries deadlocks) |  |
+| REV-AC-013 | Passed | `PlanFundingWorkspaceTest`; `CollectionCompensationTest`; `ReversalAcceptanceClosureTest` |  |
 | REV-AC-014 | Blocked                                      | Controlled-custody disposition only                                                                   | Never-received and returned dispositions need owner policy         |
 | REV-AC-015 | Passed                                       | `CashExecutionTest`; MySQL reservation boundary                                                       |                                                                    |
 | REV-AC-016 | Passed                                       | `FinancialWorkflowCompletionTest`; `CashExecutionTest`                                                |                                                                    |
 | REV-AC-017 | Passed                                       | `FeeSavingsApplicationReversalTest`                                                                   |                                                                    |
-| REV-AC-018 | Partial                                      | `ManualChargeTest`                                                                                    | Destination-changed blocks; separate replacement grant             |
+| REV-AC-018 | Passed | `ManualChargeTest`; `ReversalAcceptanceClosureTest` |  |
 | REV-AC-019 | Partial                                      | `CashRecoveryTest`; `BankPayoutIntegrationTest` full and partial returns                              | Never-delivered posted payout is Blocked                           |
-| REV-AC-020 | Partial                                      | `ReversalAcceptanceGapsWorkflowTest` (no posting group, no reversal, cancel and revoke work)          | The Module 08 hold path is not exercised                           |
+| REV-AC-020 | Passed | `ReversalAcceptanceGapsWorkflowTest` (no posting group, no reversal, cancel and revoke work); `ReversalAcceptanceClosureTest` |  |
 | REV-AC-021 | Passed                                       | `ReversalAcceptanceGapsWorkflowTest` (reviews unchanged, supplement linked)                           |                                                                    |
-| REV-AC-022 | Partial                                      | Settlement, audit, notice, projection and replacement faults                                          | Ledger, allocation, plan, reservation and custody faults           |
+| REV-AC-022 | Passed | Settlement, audit, notice, projection and replacement faults; `ReversalAcceptanceClosureTest` (every approval write) |  |
 | REV-AC-023 | Passed (receipts)                            | `CollectionCompensationTest`                                                                          | Other owners' replacement is a separate action                     |
-| REV-AC-024 | Partial                                      | `ReversalAcceptanceGapsDecisionTest`                                                                  | Cash liability stays original                                      |
-| REV-AC-025 | Partial                                      | Archive-blocking test                                                                                 | Later discovery of an Archived Customer                            |
+| REV-AC-024 | Passed | `ReversalAcceptanceGapsDecisionTest`; `ReversalAcceptanceClosureTest` |  |
+| REV-AC-025 | Passed | Archive-blocking test; `ReversalAcceptanceClosureTest`; Archived discovery records `reversal.archived_discovery` |  |
 | REV-AC-026 | Passed                                       | `ReversalAcceptanceGapsDecisionTest`                                                                  |                                                                    |
-| REV-AC-027 | Partial                                      | MySQL races; stale-dependency tests; `ReversalReviewFlowTest`                                         | Race against a remittance                                          |
+| REV-AC-027 | Passed | MySQL races; stale-dependency tests; `ReversalReviewFlowTest`; `ReversalMySqlConcurrencyTest` (isolated MySQL; submit now retries deadlocks) |  |
 | REV-AC-028 | Partial                                      | `ReversalAcceptanceGapsVisibilityTest` scoping and pagination                                         | Live assistive technology (Blocked)                                |
 | REV-AC-029 | Passed                                       | `ReversalAcceptanceGapsVisibilityTest`                                                                |                                                                    |
 | REV-AC-030 | Passed                                       | `CollectionCompensationTest`; `ReversalTest`                                                          |                                                                    |

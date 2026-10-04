@@ -94,7 +94,7 @@ class FeeSavingsApplicationReversalOwner implements ReversalOwnerContract
         $original = app(FeeSavingsApplicationService::class)->assertPosted($preview['summary']['application_reference'], true);
         $group = LedgerPostingGroup::create(['posting_reference' => 'REV-'.Str::uuid(), 'idempotency_key' => 'fee-application-compensation-'.$request->id,
             'payload_hash' => $preview['fingerprint'], 'source_type' => 'reversal_request', 'source_id' => (string) $request->id,
-            'event_type' => 'fee_application_compensation', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id,
+            'event_type' => 'fee_application_compensation', 'currency' => 'NGN', 'actor_user_id' => $reviewer->id, 'approver_user_id' => $reviewer->id,
             'customer_profile_id' => $request->customer_profile_id, 'thrift_plan_id' => $original->thrift_plan_id,
             'occurred_at' => now(), 'occurred_on' => $preview['summary']['occurred_on'], 'business_timezone' => $preview['summary']['business_timezone'],
             'schema_version' => 1, 'committed_at' => now(), 'metadata' => ['original_posting_group_id' => $original->id,

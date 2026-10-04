@@ -40,7 +40,7 @@ class StatementPreviewService
                 CustomerProfile::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
             }
             $state = $this->transactions->state();
-            if ($state['status'] !== 'ready') {
+            if ($state['status'] !== 'ready' || $this->transactions->frozenCustomers([$customer->id]) !== []) {
                 return ['status' => 'unavailable'];
             }
             $query = DB::table('ledger_transaction_projections as transactions')

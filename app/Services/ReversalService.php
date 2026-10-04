@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\CustomerStatus;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
@@ -177,7 +178,7 @@ class ReversalService
             $this->attachEvidence($reversal, $actor, $files);
 
             return $reversal;
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -283,86 +284,95 @@ class ReversalService
         }
         $payloadHash = $this->payloadHash($action, $actor, $reversal->id, $data);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $reversal, $action, $data, $httpRequest, $payloadHash): ReversalRequest {
-            $replay = $this->replay($data['attempt_reference'], $action, $actor, $payloadHash);
-            if ($replay !== null) {
-                Gate::forUser($actor)->authorize('view', $replay->customerProfile);
+        try {
+            return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $reversal, $action, $data, $httpRequest, $payloadHash): ReversalRequest {
+                $replay = $this->replay($data['attempt_reference'], $action, $actor, $payloadHash);
+                if ($replay !== null) {
+                    Gate::forUser($actor)->authorize('view', $replay->customerProfile);
 
-                return $replay;
-            }
-            $customer = CustomerProfile::query()->whereKey($reversal->customer_profile_id)->lockForUpdate()->firstOrFail();
-            $locked = ReversalRequest::query()->whereKey($reversal->id)->lockForUpdate()->firstOrFail();
-            if ($action === 'cancel') {
-                Gate::forUser($actor)->authorize('initiateReversal', $customer);
-                if ($locked->requested_by_user_id !== $actor->id) {
-                    throw new ConflictHttpException('Only the requesting Agent may cancel this request.');
+                    return $replay;
                 }
-            } elseif (! $this->authorization->allows($actor, AdminPermission::ReversalsReview)
-                || ! $this->freshAuthentication->isFresh($actor, $httpRequest)) {
-                throw new AuthorizationException('Fresh authorized Admin review is required.');
-            } else {
-                Gate::forUser($actor)->authorize('view', $customer);
-            }
-            if ($locked->state !== 'pending_review' || $locked->version !== (int) $data['version']) {
-                throw new ConflictHttpException('The reversal request changed. Reload it before deciding.');
-            }
-
-            $compensation = null;
-            if ($action === 'approve') {
-                $original = LedgerPostingGroup::query()->whereKey($locked->original_posting_group_id)->lockForUpdate()->firstOrFail();
-                $owner = $this->capabilities->resolve($original);
-                if ($owner === null) {
-                    abort(503, 'Reversal posting is unavailable until its owner contract is approved.');
-                }
-                if ($customer->operational_status->value === 'archived') {
-                    throw new ConflictHttpException('Restore the Archived Customer before correction.');
-                }
-                $current = $owner->preview($original, $customer, true);
-                $fingerprint = $data['preview_fingerprint'] ?? '';
-                if (! is_string($fingerprint) || ! hash_equals($current['fingerprint'], $fingerprint)) {
-                    throw new ConflictHttpException('The dependency preview changed. Review it again.');
-                }
-                $compensation = $owner->compensate($locked, $current, $actor);
-                if ($compensation instanceof LedgerPostingGroup) {
-                    $this->assertCompensation($locked, $compensation);
-                    if ($compensation->id < 1) {
-                        throw new ConflictHttpException('The compensation posting was not persisted.');
+                $customer = CustomerProfile::query()->whereKey($reversal->customer_profile_id)->lockForUpdate()->firstOrFail();
+                $locked = ReversalRequest::query()->whereKey($reversal->id)->lockForUpdate()->firstOrFail();
+                if ($action === 'cancel') {
+                    Gate::forUser($actor)->authorize('initiateReversal', $customer);
+                    if ($locked->requested_by_user_id !== $actor->id) {
+                        throw new ConflictHttpException('Only the requesting Agent may cancel this request.');
                     }
-                    $locked->state = 'approved_posted';
-                    $locked->compensation_posting_group_id = $compensation->id;
+                } elseif (! $this->authorization->allows($actor, AdminPermission::ReversalsReview)
+                    || ! $this->freshAuthentication->isFresh($actor, $httpRequest)) {
+                    throw new AuthorizationException('Fresh authorized Admin review is required.');
                 } else {
-                    $proof = app(CollectionNoMoneyCorrection::class)->assertOutcome($locked, false);
-                    if ($proof->id !== $compensation->id) {
-                        throw new ConflictHttpException('The no-money correction proof was not persisted.');
-                    }
-                    $locked->state = 'approved_no_money';
+                    Gate::forUser($actor)->authorize('view', $customer);
                 }
-                $locked->posted_original_posting_group_id = $locked->original_posting_group_id;
-            } else {
-                $locked->state = $action === 'reject' ? 'rejected' : 'cancelled';
-            }
-            $locked->live_original_posting_group_id = null;
-            $reviewerId = $actor->id;
-            if ($reviewerId < 1) {
-                throw new ConflictHttpException('The reviewer identity is invalid.');
-            }
-            $locked->reviewed_by_user_id = $action === 'cancel' ? null : $reviewerId;
-            $locked->reviewed_at = now();
-            $locked->decision_reason = trim($data['decision_reason'] ?? '');
-            $locked->version++;
-            $locked->save();
-            ReversalAttempt::create([
-                'attempt_reference' => $data['attempt_reference'], 'reversal_request_id' => $locked->id,
-                'actor_user_id' => $actor->id, 'operation' => $action, 'payload_hash' => $payloadHash,
-            ]);
-            $this->recordEvent($locked, $actor, $locked->state, $compensation);
-            if ($locked->state === 'approved_no_money' || ($compensation instanceof LedgerPostingGroup
-                && $locked->state === 'approved_posted' && in_array($compensation->event_type, ['receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_application_compensation'], true))) {
-                app(LedgerTransactionProjectionService::class)->projectReversal($locked);
-            }
+                if ($locked->state !== 'pending_review' || $locked->version !== (int) $data['version']) {
+                    throw new ConflictHttpException('The reversal request changed. Reload it before deciding.');
+                }
 
-            return $locked;
-        }, attempts: 3);
+                $compensation = null;
+                if ($action === 'approve') {
+                    $original = LedgerPostingGroup::query()->whereKey($locked->original_posting_group_id)->lockForUpdate()->firstOrFail();
+                    $owner = $this->capabilities->resolve($original);
+                    if ($owner === null) {
+                        abort(503, 'Reversal posting is unavailable until its owner contract is approved.');
+                    }
+                    if ($customer->operational_status->value === 'archived') {
+                        throw new ConflictHttpException('Restore the Archived Customer before correction.');
+                    }
+                    $current = $owner->preview($original, $customer, true);
+                    $fingerprint = $data['preview_fingerprint'] ?? '';
+                    if (! is_string($fingerprint) || ! hash_equals($current['fingerprint'], $fingerprint)) {
+                        throw new ConflictHttpException('The dependency preview changed. Review it again.');
+                    }
+                    $compensation = $owner->compensate($locked, $current, $actor);
+                    if ($compensation instanceof LedgerPostingGroup) {
+                        $this->assertCompensation($locked, $compensation);
+                        if ($compensation->id < 1) {
+                            throw new ConflictHttpException('The compensation posting was not persisted.');
+                        }
+                        $locked->state = 'approved_posted';
+                        $locked->compensation_posting_group_id = $compensation->id;
+                    } else {
+                        $proof = app(CollectionNoMoneyCorrection::class)->assertOutcome($locked, false);
+                        if ($proof->id !== $compensation->id) {
+                            throw new ConflictHttpException('The no-money correction proof was not persisted.');
+                        }
+                        $locked->state = 'approved_no_money';
+                    }
+                    $locked->posted_original_posting_group_id = $locked->original_posting_group_id;
+                } else {
+                    $locked->state = $action === 'reject' ? 'rejected' : 'cancelled';
+                }
+                $locked->live_original_posting_group_id = null;
+                $reviewerId = $actor->id;
+                if ($reviewerId < 1) {
+                    throw new ConflictHttpException('The reviewer identity is invalid.');
+                }
+                $locked->reviewed_by_user_id = $action === 'cancel' ? null : $reviewerId;
+                $locked->reviewed_at = now();
+                $locked->decision_reason = trim($data['decision_reason'] ?? '');
+                $locked->version++;
+                $locked->save();
+                ReversalAttempt::create([
+                    'attempt_reference' => $data['attempt_reference'], 'reversal_request_id' => $locked->id,
+                    'actor_user_id' => $actor->id, 'operation' => $action, 'payload_hash' => $payloadHash,
+                ]);
+                $this->recordEvent($locked, $actor, $locked->state, $compensation);
+                if ($locked->state === 'approved_no_money' || ($compensation instanceof LedgerPostingGroup
+                    && $locked->state === 'approved_posted' && in_array($compensation->event_type, ['receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_application_compensation'], true))) {
+                    app(LedgerTransactionProjectionService::class)->projectReversal($locked);
+                }
+
+                return $locked;
+            }, attempts: 3);
+        } catch (ConflictHttpException $exception) {
+            if ($action === 'approve' && CustomerProfile::query()->whereKey($reversal->customer_profile_id)->value('operational_status') === CustomerStatus::Archived) {
+                AuditEvent::record('reversal.archived_discovery', ReversalRequest::class, $reversal->id, $reversal->reversal_id,
+                    ['customer_profile_id' => $reversal->customer_profile_id, 'original_posting_group_id' => $reversal->original_posting_group_id,
+                        'state' => $reversal->state, 'version' => $reversal->version], $actor, ['executor' => self::class]);
+            }
+            throw $exception;
+        }
     }
 
     public function assertApprovedReceiptCorrection(ReversalRequest $request, CollectionReceipt $receipt): void

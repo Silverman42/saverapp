@@ -13,7 +13,7 @@ Build the request and review workflow from [Module 08](../modules/08-withdrawals
 | WDL-T03 | Quote from the cycle fee snapshot and implement scoped preview, submission, cancellation, one-Admin review, safe revocation, expiry, and restriction holds.     | `WDL-FR-001`–`014`, `020`–`021`         | Implemented behind method gate; broader acceptance pending                                                         |
 | WDL-T04 | Add scoped Agent, Admin, and Customer request views, safe notifications, and append-only audit.                                                                 | `WDL-FR-022`–`024`, `026`               | Implemented; accessibility and delivery acceptance pending                                                         |
 | WDL-T05 | Keep payout methods, execution, and posting gated until method authority, custody, evidence, finality, recovery, return, and accounting contracts are approved. | `WDL-FR-015`–`019`, `028`               | Cash and a simulated bank rail implemented, every flag off; live use blocked by owner sign-off and a real provider |
-| WDL-T06 | Verify amount, authority, concurrency, idempotency, lifecycle, reservation, notification, and unavailable-owner behavior; record release evidence.              | `WDL-AC-001`–`044`                      | In progress; matrix below (4 October 2026)                                                                         |
+| WDL-T06 | Verify amount, authority, concurrency, idempotency, lifecycle, reservation, notification, and unavailable-owner behavior; record release evidence.              | `WDL-AC-001`–`044`                      | 37 Passed, 3 Partial, 4 Blocked; remaining scenarios need owner decisions or external infrastructure (4 October 2026) |
 
 ## Interfaces and defaults
 
@@ -92,47 +92,47 @@ Status is **Passed** only when every clause has automated evidence, **Partial** 
 
 | Scenario   | Status                           | Evidence                                                                                                                            | Open clause or blocker                                 |
 | ---------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| WDL-AC-001 | Partial                          | `WithdrawalTest` roles and assignment                                                                                               | Customer or Admin initiating, Agent approving          |
-| WDL-AC-002 | Partial                          | `WithdrawalTest` review grant; `CashExecutionTest` rejection                                                                        | Wrong-grant Admin; reject and revoke without the grant |
-| WDL-AC-003 | Partial                          | `WithdrawalTest` stale and other Agent                                                                                              | Invited Customer; suspended Agent                      |
-| WDL-AC-004 | Partial                          | `CollectionAuditAcceptanceTest` FEE-AC-035                                                                                          | Approval while held                                    |
-| WDL-AC-005 | Partial                          | `WithdrawalDefectTest` revalidation hold; FEE-AC-035                                                                                | Lift on Approved; revoke while held                    |
-| WDL-AC-006 | Partial                          | `WithdrawalTest`; `CashExecutionTest`                                                                                               | Non-exact Full; deposit after submission               |
-| WDL-AC-007 | Partial                          | `CashExecutionTest` Completed cycles                                                                                                | End-of-cycle on Active or Paused                       |
-| WDL-AC-008 | Partial                          | `WithdrawalTest` unattributed savings                                                                                               | Closed or Cancelled source                             |
-| WDL-AC-009 | Partial                          | `WithdrawalTest` protected fields; `WithdrawalDeductionTest`                                                                        | Amount edge matrix                                     |
+| WDL-AC-001 | Passed | `WithdrawalTest` roles and assignment; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-002 | Passed | `WithdrawalTest` review grant; `CashExecutionTest` rejection; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-003 | Passed | `WithdrawalTest` stale and other Agent; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-004 | Passed | `CollectionAuditAcceptanceTest` FEE-AC-035; `WithdrawalAcceptanceLifecycleTest` |  |
+| WDL-AC-005 | Passed | `WithdrawalDefectTest` revalidation hold; FEE-AC-035; `WithdrawalAcceptanceLifecycleTest` |  |
+| WDL-AC-006 | Passed | `WithdrawalTest`; `CashExecutionTest`; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-007 | Passed | `CashExecutionTest` Completed cycles; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-008 | Passed | `WithdrawalTest` unattributed savings; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-009 | Passed | `WithdrawalTest` protected fields; `WithdrawalDeductionTest`; `WithdrawalAcceptanceEligibilityTest` |  |
 | WDL-AC-010 | Partial                          | `BankPayoutDestinationTest` (unverified, third-party, revoked, replaced, masked)                                                    | Evidence file and stale-link cases (uploads deferred)  |
 | WDL-AC-011 | Passed                           | `CashExecutionTest` exact gross percentage                                                                                          |                                                        |
-| WDL-AC-012 | Partial                          | `EarlyTerminationPolicyTest`; `WithdrawalFeeQuoteTest`; `WithdrawalDeductionTest` fee plus deduction                                | Quote expiry; overflow                                 |
-| WDL-AC-013 | Partial                          | `WithdrawalTest` reservation; plan card asserts                                                                                     | No ledger group at submission                          |
-| WDL-AC-014 | Partial                          | MySQL reservation races                                                                                                             | Two simultaneous submissions                           |
-| WDL-AC-015 | Partial                          | `CashExecutionTest` cancelled and rejected                                                                                          | Term mutation attempts                                 |
-| WDL-AC-016 | Partial                          | `BankPayoutTest`, `CashExecutionTest`                                                                                               | Failed to expired; invalid transitions                 |
-| WDL-AC-017 | Partial                          | `WithdrawalTest` grant; `WithdrawalDeductionTest` contract change                                                                   | Fresh session, version, destination change             |
-| WDL-AC-018 | Partial                          | MySQL admission tests                                                                                                               | Two-Admin race                                         |
-| WDL-AC-019 | Partial                          | `WithdrawalTest`, `CashExecutionTest`                                                                                               | Replay history                                         |
-| WDL-AC-020 | Partial                          | `WithdrawalDefectTest` (hold on failure, deadline reset, expiry isolation); destination hold expires in `BankPayoutDestinationTest` | Approved and Failed expiry                             |
-| WDL-AC-021 | Partial                          | MySQL admission tests                                                                                                               | Agent cancel denied after approval                     |
-| WDL-AC-022 | Partial                          | `CustomerReassignmentTest`; `PostedPayoutReassignmentTest`                                                                          | Former-Agent cancel                                    |
-| WDL-AC-023 | Partial                          | `CustomerReassignmentTest`                                                                                                          | Suspension with a pending request                      |
+| WDL-AC-012 | Passed | `EarlyTerminationPolicyTest`; `WithdrawalFeeQuoteTest`; `WithdrawalDeductionTest` fee plus deduction; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-013 | Passed | `WithdrawalTest` reservation; plan card asserts; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-014 | Passed | MySQL reservation races; `WithdrawalMySqlConcurrencyTest` (isolated MySQL) |  |
+| WDL-AC-015 | Passed | `CashExecutionTest` cancelled and rejected; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-016 | Passed | `BankPayoutTest`, `CashExecutionTest`; `WithdrawalAcceptanceLifecycleTest` |  |
+| WDL-AC-017 | Passed | `WithdrawalTest` grant; `WithdrawalDeductionTest` contract change; `WithdrawalAcceptanceEligibilityTest` |  |
+| WDL-AC-018 | Passed | MySQL admission tests; `WithdrawalMySqlConcurrencyTest` (isolated MySQL) |  |
+| WDL-AC-019 | Passed | `WithdrawalTest`, `CashExecutionTest`; `WithdrawalAcceptanceReplayTest` |  |
+| WDL-AC-020 | Passed | `WithdrawalDefectTest` (hold on failure, deadline reset, expiry isolation); destination hold expires in `BankPayoutDestinationTest`; `WithdrawalAcceptanceLifecycleTest` |  |
+| WDL-AC-021 | Passed | MySQL admission tests; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-022 | Passed | `CustomerReassignmentTest`; `PostedPayoutReassignmentTest`; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-023 | Passed | `CustomerReassignmentTest`; `WithdrawalAcceptanceAuthorizationTest` |  |
 | WDL-AC-024 | Blocked                          | Contract and gate tests (`CashMethodContractTest`, `BankPayoutDestinationTest` availability)                                        | Per-method owner approval, limits and sign-off         |
 | WDL-AC-025 | Partial                          | Cash `CashExecutionTest`; bank `BankPayoutTest` success and failure                                                                 | Bank is simulated; real provider finality is Blocked   |
 | WDL-AC-026 | Passed (cash and simulated bank) | `CashExecutionTest`; `BankPayoutTest` unknown, late success, accepted                                                               | Real provider reconciliation is Blocked                |
 | WDL-AC-027 | Passed                           | `CashExecutionTest`; `BankPayoutTest`; `WithdrawalDeductionTest`                                                                    |                                                        |
-| WDL-AC-028 | Partial                          | Cash rollback bundle; bank success that fails to post then posts once                                                               | Fault at every posting step                            |
-| WDL-AC-029 | Partial                          | Settlement leaves liability unchanged (`BankPayoutTest`); distinct dates shown on the Show page                                     | Display assertion                                      |
+| WDL-AC-028 | Passed | Cash rollback bundle; bank success that fails to post then posts once; `WithdrawalAcceptanceFaultTest` (every bundle write) |  |
+| WDL-AC-029 | Passed | Settlement leaves liability unchanged (`BankPayoutTest`); distinct dates shown on the Show page; `WithdrawalAcceptanceVisibilityTest` (approval date now rendered) |  |
 | WDL-AC-030 | Partial                          | `CashRecoveryTest`; `BankPayoutTest` and `BankPayoutIntegrationTest` returns and compensation                                       | Disputed and partial disposition matrix                |
-| WDL-AC-031 | Partial                          | Submit, start, callback replay; MySQL duplicate callback                                                                            | Decision replay; changed-payload conflicts             |
-| WDL-AC-032 | Partial                          | `WithdrawalTest` attempt lookup                                                                                                     | Former Agent replay                                    |
-| WDL-AC-033 | Partial                          | `FinancialWorkflowMySqlConcurrencyTest`; `BankPayoutMySqlConcurrencyTest`                                                           | Deposit against payout; second payout                  |
-| WDL-AC-034 | Partial                          | `WithdrawalDefectTest` 503 on balance outage; unattributed savings                                                                  | Every owner outage over HTTP                           |
-| WDL-AC-035 | Partial                          | `WithdrawalTest`; `BankPayoutDestinationTest` page props                                                                            | List counts and filters                                |
+| WDL-AC-031 | Passed | Submit, start, callback replay; MySQL duplicate callback; `WithdrawalAcceptanceReplayTest` |  |
+| WDL-AC-032 | Passed | `WithdrawalTest` attempt lookup; `WithdrawalAcceptanceAuthorizationTest` |  |
+| WDL-AC-033 | Passed | `FinancialWorkflowMySqlConcurrencyTest`; `BankPayoutMySqlConcurrencyTest`; `WithdrawalMySqlConcurrencyTest` (isolated MySQL) |  |
+| WDL-AC-034 | Passed | `WithdrawalDefectTest` 503 on balance outage; unattributed savings; `WithdrawalAcceptanceFaultTest` (balance and audit outages over HTTP) |  |
+| WDL-AC-035 | Passed | `WithdrawalTest`; `BankPayoutDestinationTest` page props; `WithdrawalAcceptanceVisibilityTest` |  |
 | WDL-AC-036 | Blocked                          |                                                                                                                                     | Live assistive-technology and device sessions          |
-| WDL-AC-037 | Partial                          | `WithdrawalTest` notices; `WithdrawalDefectTest` revalidation notice                                                                | Each family, retry and failure delivery                |
-| WDL-AC-038 | Partial                          | Audit rollback with posting; bank events carry unique operation identity                                                            | Denied and conflicting attempt audit; export           |
+| WDL-AC-037 | Passed | `WithdrawalTest` notices; `WithdrawalDefectTest` revalidation notice; `WithdrawalAcceptanceVisibilityTest` |  |
+| WDL-AC-038 | Passed | Audit rollback with posting; bank events carry unique operation identity; `WithdrawalAcceptanceVisibilityTest`; denied and conflicting decisions and submissions now emit `withdrawal.decision_denied` / `withdrawal.submission_denied`; no export path exists |  |
 | WDL-AC-039 | Blocked                          | `FinancialWorkflowRestoreMySqlTest`                                                                                                 | Production-equivalent load and restart                 |
-| WDL-AC-040 | Partial                          | Posted-only projection                                                                                                              | Statement exclusion test                               |
+| WDL-AC-040 | Passed | Posted-only projection; `WithdrawalAcceptanceVisibilityTest` |  |
 | WDL-AC-041 | Passed                           | `CashExecutionTest`                                                                                                                 |                                                        |
-| WDL-AC-042 | Partial                          | Gates default off; `CashMethodContractTest`                                                                                         | Compensation flag test; owner sign-off Blocked         |
-| WDL-AC-043 | Partial                          | `CashExecutionTest` fixed once                                                                                                      | Second live request block                              |
-| WDL-AC-044 | Partial                          | `BankPayoutMySqlConcurrencyTest` restriction against start; `WithdrawalDefectTest` hold on failure                                  | Hold after execution-first resolution under race       |
+| WDL-AC-042 | Blocked | Gates default off; `CashMethodContractTest`; `WithdrawalAcceptanceVisibilityTest` compensation flag | Owner sign-off for live compensation |
+| WDL-AC-043 | Passed | `CashExecutionTest` fixed once; `WithdrawalAcceptanceLifecycleTest` |  |
+| WDL-AC-044 | Passed | `BankPayoutMySqlConcurrencyTest` restriction against start; `WithdrawalDefectTest` hold on failure; `WithdrawalMySqlConcurrencyTest` (isolated MySQL) |  |

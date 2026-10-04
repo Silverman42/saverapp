@@ -164,7 +164,7 @@ test('LED-AC-026: a failed rebuild leaves the verified projection untouched, lab
     $verified = DB::table('ledger_projection_state')->first();
     $rows = ledgerGapProjectionContent();
     $reads = app(LedgerTransactionReadService::class);
-    ledgerGapUnsupportedGroup($agent, $customer->id);
+    ledgerGapUnsupportedGroup($agent);
 
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class, 'unsupported or unlinked');
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class);
@@ -370,19 +370,30 @@ test('LED-AC-030: invalid or overwide ranges, bad cursors and filters never leak
     expect($reads->search($agent, ['reference' => 'TXN-'])['total'])->toBe(1);
 });
 
-/*
- * Production gap: any projection incident marks the single global projection state stale, so every Customer balance and statement
- * read fails closed. LED-AC-028 expects an incident to freeze only the dependent scope. Enable this once incidents carry a scope.
- */
-test('LED-AC-028: an incident on one Customer group leaves other Customers balances and statements readable', function (): void {
+test('LED-AC-028: an incident on one Customer group freezes only that Customer and recovers once the group is owned', function (): void {
     [$agent, $customer] = ledgerGapReceipt();
     [, $other] = ledgerGapSecondCustomer();
     app(LedgerTransactionProjectionService::class)->rebuild();
-    ledgerGapUnsupportedGroup($agent, $customer->id);
-    expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class);
+    $unsupported = ledgerGapUnsupportedGroup($agent, $customer->id);
+    $today = now('Africa/Lagos')->toDateString();
 
+    expect(app(LedgerTransactionProjectionService::class)->rebuild()['frozen_customers'])->toBe(1);
+    $incident = DB::table('ledger_integrity_incidents')->sole();
     $admin = ledgerGapAdmin();
+    $reads = app(LedgerTransactionReadService::class);
+    expect($incident->customer_profile_id)->toBe($customer->id)->and($incident->status)->toBe('open')
+        ->and($reads->balance($admin, $customer))->toBe(['status' => 'unavailable'])
+        ->and(app(StatementPreviewService::class)->preview($admin, $customer, $today, $today, 'Africa/Lagos'))->toBe(['status' => 'unavailable'])
+        ->and($reads->balance($admin, $other)['status'])->toBe('ready')
+        ->and(app(StatementPreviewService::class)->preview($admin, $other, $today, $today, 'Africa/Lagos')['status'])->toBe('ready')
+        ->and($reads->balances($admin, [$customer, $other])[$customer->id])->toBe(['status' => 'unavailable'])
+        ->and($reads->balances($admin, [$customer, $other])[$other->id]['status'])->toBe('ready');
 
-    expect(app(LedgerTransactionReadService::class)->balance($admin, $customer))->toBe(['status' => 'unavailable'])
-        ->and(app(LedgerTransactionReadService::class)->balance($admin, $other)['status'])->toBe('ready');
-})->todo();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    expect(DB::table('ledger_integrity_incidents')->count())->toBe(1);
+
+    DB::table('ledger_posting_groups')->where('id', $unsupported->id)->delete();
+    expect(app(LedgerTransactionProjectionService::class)->rebuild()['frozen_customers'])->toBe(0)
+        ->and(DB::table('ledger_integrity_incidents')->value('status'))->toBe('recovered')
+        ->and($reads->balance($admin, $customer)['status'])->toBe('ready');
+});

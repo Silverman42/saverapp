@@ -172,7 +172,7 @@ class LedgerTransactionReadService
         if (! $this->scope->forCustomers($viewer)->whereKey($customer->id)->exists()) {
             throw new NotFoundHttpException('Record unavailable.');
         }
-        if ($this->state()['status'] !== 'ready') {
+        if ($this->state()['status'] !== 'ready' || $this->frozenCustomers([$customer->id]) !== []) {
             return ['status' => 'unavailable'];
         }
         try {
@@ -207,7 +207,11 @@ class LedgerTransactionReadService
                     return $unavailable;
                 }
                 $result = $unavailable;
-                foreach ($this->balances->positions(array_values($allowed)) as $customerId => $position) {
+                $allowed = array_values(array_diff($allowed, $this->frozenCustomers($allowed)));
+                if ($allowed === []) {
+                    return $unavailable;
+                }
+                foreach ($this->balances->positions($allowed) as $customerId => $position) {
                     if ($position !== null) {
                         $result[$customerId] = ['status' => 'ready', ...$position];
                     }
@@ -218,6 +222,18 @@ class LedgerTransactionReadService
         } catch (\RuntimeException|QueryException) {
             return $unavailable;
         }
+    }
+
+    /**
+     * Customers frozen by an open scoped integrity incident; their derived reads fail closed while others stay readable.
+     *
+     * @param  array<int, int>  $customerIds
+     * @return list<int>
+     */
+    public function frozenCustomers(array $customerIds): array
+    {
+        return array_values(array_map(intval(...), DB::table('ledger_integrity_incidents')->whereIn('customer_profile_id', $customerIds)
+            ->where('status', 'open')->distinct()->pluck('customer_profile_id')->all()));
     }
 
     private function scopedQuery(User $viewer, int $version): Builder

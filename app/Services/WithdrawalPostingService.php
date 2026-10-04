@@ -55,7 +55,7 @@ class WithdrawalPostingService
         $group = LedgerPostingGroup::create([
             'posting_reference' => $postingReference, 'idempotency_key' => $idempotencyKey,
             'payload_hash' => $payloadHash, 'source_type' => 'withdrawal', 'source_id' => (string) $withdrawal->id,
-            'event_type' => $eventType, 'currency' => 'NGN', 'actor_user_id' => $executorUserId,
+            'event_type' => $eventType, 'currency' => 'NGN', 'actor_user_id' => $executorUserId, 'approver_user_id' => $withdrawal->reviewed_by_user_id,
             'customer_profile_id' => $withdrawal->customer_profile_id, 'thrift_plan_id' => $withdrawal->thrift_plan_id,
             'occurred_at' => $occurredAt, 'occurred_on' => $occurredAt->setTimezone($timezone)->toDateString(),
             'business_timezone' => $timezone, 'schema_version' => 1, 'correlation_id' => $correlationId,

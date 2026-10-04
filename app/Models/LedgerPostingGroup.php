@@ -19,6 +19,7 @@ use RuntimeException;
  * @property string $event_type
  * @property string $currency
  * @property int|null $actor_user_id
+ * @property int|null $approver_user_id
  * @property int|null $customer_profile_id
  * @property CarbonImmutable|null $occurred_at
  * @property CarbonImmutable|null $occurred_on
@@ -38,6 +39,7 @@ use RuntimeException;
     'event_type',
     'currency',
     'actor_user_id',
+    'approver_user_id',
     'customer_profile_id',
     'occurred_at',
     'occurred_on',

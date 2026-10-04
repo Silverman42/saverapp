@@ -60,7 +60,7 @@ test('a lagging ledger keeps verified history readable but blocks balances', fun
     $reference = $reads->search($agent, [])['data'][0]['reference'];
     expect($reads->balance($agent, $customer)['status'])->toBe('ready');
 
-    unsupportedLedgerGroup($agent, $customer->id);
+    unsupportedLedgerGroup($agent);
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class);
 
     $result = $reads->search($agent, []);

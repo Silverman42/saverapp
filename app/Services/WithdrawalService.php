@@ -159,54 +159,62 @@ class WithdrawalService
     {
         $hash = $this->attemptHash('submit', $actor->id, $customer->id, $data);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $hash): WithdrawalRequest {
-            if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], 'submit', $hash)) {
-                return $existing;
-            }
-            $context = $this->authorizationGuard->lockAndAuthorize(
-                $actor, $customer->id, 'initiateWithdrawal',
-                (int) $data['customer_version'], (int) $data['assignment_version'],
-            );
-            $lockedCustomer = $context->customerProfile->load('currentAssignment');
-            $this->activityGate->assertAllowed($lockedCustomer, CustomerActivity::InitiateWithdrawal);
-            $quote = $this->preview($context->actor, $lockedCustomer, $data, true);
-            if (! hash_equals($quote['preview_fingerprint'], $data['preview_fingerprint'])
-                || $quote['plan_version'] !== (int) $data['plan_version']
-                || $quote['business_version'] !== (int) $data['business_version']) {
-                throw new ConflictHttpException('Withdrawal terms changed. Review the current quote before submitting.');
-            }
-            $plan = ThriftPlan::query()->where('plan_id', $quote['plan_id'])->firstOrFail();
-            $reference = $this->references->generate('withdrawal');
-            $reservationId = DB::table('withdrawal_reservations')->insertGetId([
-                'customer_profile_id' => $lockedCustomer->id, 'thrift_plan_id' => $plan->id,
-                'owner_reference' => $reference, 'gross_amount_kobo' => $quote['gross_kobo'],
-                'status' => 'live', 'version' => 1, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            $withdrawal = WithdrawalRequest::create([
-                'withdrawal_id' => $reference, 'customer_profile_id' => $lockedCustomer->id,
-                'thrift_plan_id' => $plan->id, 'live_thrift_plan_id' => $plan->id,
-                'initiating_agent_profile_id' => $context->currentAgentProfile->id,
-                'assignment_id' => $context->currentAssignment->id, 'submitted_by_user_id' => $context->actor->id,
-                'fee_snapshot_id' => $quote['fee_snapshot_id'], 'withdrawal_reservation_id' => $reservationId,
-                'type' => $quote['type'], 'state' => 'pending_review', 'held' => false,
-                'gross_amount_kobo' => $quote['gross_kobo'], 'fee_amount_kobo' => $quote['fee_kobo'],
-                'deduction_amount_kobo' => $quote['deduction_kobo'], 'deduction_category_version_id' => $quote['deduction_category_version_id'],
-                'net_amount_kobo' => $quote['net_kobo'], 'currency' => 'NGN',
-                'method' => $quote['method'], 'destination_reference' => $quote['destination_reference'],
-                'destination_mask' => $quote['destination_mask'], 'customer_payout_destination_id' => $quote['payout_destination_id'],
-                'reason' => $quote['reason'],
-                'internal_notes' => trim((string) ($data['internal_notes'] ?? '')) ?: null,
-                'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
-                'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'],
-                'method_version' => $quote['method_version'], 'version' => 1,
-                'submitted_at' => now(), 'deadline_at' => now()->addDays((int) config('withdrawals.review_days')),
-            ]);
-            WithdrawalAttempt::create(['attempt_reference' => $data['attempt_reference'], 'actor_user_id' => $actor->id,
-                'withdrawal_request_id' => $withdrawal->id, 'operation' => 'submit', 'payload_hash' => $hash]);
-            $this->event($withdrawal, 'submitted', null, $context->actor, null, null);
+        try {
+            return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $customer, $data, $hash): WithdrawalRequest {
+                if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], 'submit', $hash)) {
+                    return $existing;
+                }
+                $context = $this->authorizationGuard->lockAndAuthorize(
+                    $actor, $customer->id, 'initiateWithdrawal',
+                    (int) $data['customer_version'], (int) $data['assignment_version'],
+                );
+                $lockedCustomer = $context->customerProfile->load('currentAssignment');
+                $this->activityGate->assertAllowed($lockedCustomer, CustomerActivity::InitiateWithdrawal);
+                $quote = $this->preview($context->actor, $lockedCustomer, $data, true);
+                if (! hash_equals($quote['preview_fingerprint'], $data['preview_fingerprint'])
+                    || $quote['plan_version'] !== (int) $data['plan_version']
+                    || $quote['business_version'] !== (int) $data['business_version']) {
+                    throw new ConflictHttpException('Withdrawal terms changed. Review the current quote before submitting.');
+                }
+                $plan = ThriftPlan::query()->where('plan_id', $quote['plan_id'])->firstOrFail();
+                $reference = $this->references->generate('withdrawal');
+                $reservationId = DB::table('withdrawal_reservations')->insertGetId([
+                    'customer_profile_id' => $lockedCustomer->id, 'thrift_plan_id' => $plan->id,
+                    'owner_reference' => $reference, 'gross_amount_kobo' => $quote['gross_kobo'],
+                    'status' => 'live', 'version' => 1, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $withdrawal = WithdrawalRequest::create([
+                    'withdrawal_id' => $reference, 'customer_profile_id' => $lockedCustomer->id,
+                    'thrift_plan_id' => $plan->id, 'live_thrift_plan_id' => $plan->id,
+                    'initiating_agent_profile_id' => $context->currentAgentProfile->id,
+                    'assignment_id' => $context->currentAssignment->id, 'submitted_by_user_id' => $context->actor->id,
+                    'fee_snapshot_id' => $quote['fee_snapshot_id'], 'withdrawal_reservation_id' => $reservationId,
+                    'type' => $quote['type'], 'state' => 'pending_review', 'held' => false,
+                    'gross_amount_kobo' => $quote['gross_kobo'], 'fee_amount_kobo' => $quote['fee_kobo'],
+                    'deduction_amount_kobo' => $quote['deduction_kobo'], 'deduction_category_version_id' => $quote['deduction_category_version_id'],
+                    'net_amount_kobo' => $quote['net_kobo'], 'currency' => 'NGN',
+                    'method' => $quote['method'], 'destination_reference' => $quote['destination_reference'],
+                    'destination_mask' => $quote['destination_mask'], 'customer_payout_destination_id' => $quote['payout_destination_id'],
+                    'reason' => $quote['reason'],
+                    'internal_notes' => trim((string) ($data['internal_notes'] ?? '')) ?: null,
+                    'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
+                    'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'],
+                    'method_version' => $quote['method_version'], 'version' => 1,
+                    'submitted_at' => now(), 'deadline_at' => now()->addDays((int) config('withdrawals.review_days')),
+                ]);
+                WithdrawalAttempt::create(['attempt_reference' => $data['attempt_reference'], 'actor_user_id' => $actor->id,
+                    'withdrawal_request_id' => $withdrawal->id, 'operation' => 'submit', 'payload_hash' => $hash]);
+                $this->event($withdrawal, 'submitted', null, $context->actor, null, null);
 
-            return $withdrawal;
-        }, attempts: 3);
+                return $withdrawal;
+            }, attempts: 3);
+        } catch (AuthorizationException|ConflictHttpException $exception) {
+            AuditEvent::record('withdrawal.submission_denied', CustomerProfile::class, $customer->id, $customer->customer_id,
+                ['attempt_reference' => $data['attempt_reference'], 'customer_profile_id' => $customer->id,
+                    'outcome' => $exception instanceof AuthorizationException ? 'denied' : 'conflict'], $actor,
+                ['executor' => self::class]);
+            throw $exception;
+        }
     }
 
     /** @param array<string, mixed> $data */
@@ -214,77 +222,86 @@ class WithdrawalService
     {
         $hash = $this->attemptHash($action, $actor->id, $request->id, $data);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $request, $action, $data, $hash, $httpRequest): WithdrawalRequest {
-            if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], $action, $hash)) {
-                return $existing;
-            }
-            $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
-            $customer = CustomerProfile::query()->whereKey($request->customer_profile_id)->lockForUpdate()->firstOrFail();
-            $withdrawal = WithdrawalRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
-            if ($withdrawal->version !== (int) $data['version']) {
-                throw new ConflictHttpException('This withdrawal changed. Reload it before deciding.');
-            }
-            Gate::forUser($lockedActor)->authorize('view', $customer);
-            $isAdminAction = in_array($action, ['approve', 'reject', 'revoke'], true);
-            if ($isAdminAction) {
-                if (! $this->authorization->allows($lockedActor, AdminPermission::WithdrawalsReview)
-                    || ! $this->freshAuthentication->isFresh($lockedActor, $httpRequest)) {
-                    throw new AuthorizationException('Fresh withdrawal-review authority is required.');
+        try {
+            return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $request, $action, $data, $hash, $httpRequest): WithdrawalRequest {
+                if ($existing = $this->replayedAttempt($actor, $data['attempt_reference'], $action, $hash)) {
+                    return $existing;
                 }
-            } elseif ($action === 'cancel') {
-                Gate::forUser($lockedActor)->authorize('managePlan', $customer);
-            } else {
-                throw new ConflictHttpException('Unsupported withdrawal decision.');
-            }
-            if (($action === 'approve' || $action === 'reject' || $action === 'cancel') && $withdrawal->state !== 'pending_review') {
-                throw new ConflictHttpException('This request is no longer pending review.');
-            }
-            if ($action === 'revoke' && ! in_array($withdrawal->state, ['approved', 'payment_failed'], true)) {
-                throw new ConflictHttpException('Only an unexecuted approval can be revoked.');
-            }
-            if ($withdrawal->deadline_at->isPast() && $action === 'approve') {
-                throw new ConflictHttpException('This request expired before approval.');
-            }
+                $lockedActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
+                $customer = CustomerProfile::query()->whereKey($request->customer_profile_id)->lockForUpdate()->firstOrFail();
+                $withdrawal = WithdrawalRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
+                if ($withdrawal->version !== (int) $data['version']) {
+                    throw new ConflictHttpException('This withdrawal changed. Reload it before deciding.');
+                }
+                Gate::forUser($lockedActor)->authorize('view', $customer);
+                $isAdminAction = in_array($action, ['approve', 'reject', 'revoke'], true);
+                if ($isAdminAction) {
+                    if (! $this->authorization->allows($lockedActor, AdminPermission::WithdrawalsReview)
+                        || ! $this->freshAuthentication->isFresh($lockedActor, $httpRequest)) {
+                        throw new AuthorizationException('Fresh withdrawal-review authority is required.');
+                    }
+                } elseif ($action === 'cancel') {
+                    Gate::forUser($lockedActor)->authorize('managePlan', $customer);
+                } else {
+                    throw new ConflictHttpException('Unsupported withdrawal decision.');
+                }
+                if (($action === 'approve' || $action === 'reject' || $action === 'cancel') && $withdrawal->state !== 'pending_review') {
+                    throw new ConflictHttpException('This request is no longer pending review.');
+                }
+                if ($action === 'revoke' && ! in_array($withdrawal->state, ['approved', 'payment_failed'], true)) {
+                    throw new ConflictHttpException('Only an unexecuted approval can be revoked.');
+                }
+                if ($withdrawal->deadline_at->isPast() && $action === 'approve') {
+                    throw new ConflictHttpException('This request expired before approval.');
+                }
 
-            $before = $withdrawal->state;
-            if ($action === 'approve') {
-                if ($withdrawal->held || ! $customer->operational_status->allowsWithdrawalOfExistingFunds()) {
-                    throw new ConflictHttpException('This request is held from approval.');
-                }
-                $this->activityGate->assertAllowed($customer, CustomerActivity::ApproveWithdrawal);
-                $this->assertReservationAndBalance($withdrawal, $customer);
-                $method = $this->methods->resolve($customer->id, $withdrawal->method, $withdrawal->destination_reference);
-                if ($method['version'] !== $withdrawal->method_version
-                    || $method['destination_reference'] !== $withdrawal->destination_reference
-                    || $method['destination_mask'] !== $withdrawal->destination_mask
-                    || ($method['payout_destination_id'] ?? null) !== $withdrawal->customer_payout_destination_id) {
-                    throw new ConflictHttpException('Payout method or destination changed. Reject and request a new quote.');
-                }
-                $withdrawal->state = 'approved';
-                $withdrawal->reviewed_by_user_id = $lockedActor->id;
-                $withdrawal->approved_at = now();
-                $withdrawal->deadline_at = now()->addDays((int) config('withdrawals.review_days'));
-            } else {
-                $withdrawal->state = match ($action) {
-                    'reject' => 'rejected', 'cancel', 'revoke' => 'cancelled',
-                };
-                $withdrawal->live_thrift_plan_id = null;
-                $withdrawal->terminal_at = now();
-                if ($action !== 'cancel') {
+                $before = $withdrawal->state;
+                if ($action === 'approve') {
+                    if ($withdrawal->held || ! $customer->operational_status->allowsWithdrawalOfExistingFunds()) {
+                        throw new ConflictHttpException('This request is held from approval.');
+                    }
+                    $this->activityGate->assertAllowed($customer, CustomerActivity::ApproveWithdrawal);
+                    $this->assertReservationAndBalance($withdrawal, $customer);
+                    $method = $this->methods->resolve($customer->id, $withdrawal->method, $withdrawal->destination_reference);
+                    if ($method['version'] !== $withdrawal->method_version
+                        || $method['destination_reference'] !== $withdrawal->destination_reference
+                        || $method['destination_mask'] !== $withdrawal->destination_mask
+                        || ($method['payout_destination_id'] ?? null) !== $withdrawal->customer_payout_destination_id) {
+                        throw new ConflictHttpException('Payout method or destination changed. Reject and request a new quote.');
+                    }
+                    $withdrawal->state = 'approved';
                     $withdrawal->reviewed_by_user_id = $lockedActor->id;
+                    $withdrawal->approved_at = now();
+                    $withdrawal->deadline_at = now()->addDays((int) config('withdrawals.review_days'));
+                } else {
+                    $withdrawal->state = match ($action) {
+                        'reject' => 'rejected', 'cancel', 'revoke' => 'cancelled',
+                    };
+                    $withdrawal->live_thrift_plan_id = null;
+                    $withdrawal->terminal_at = now();
+                    if ($action !== 'cancel') {
+                        $withdrawal->reviewed_by_user_id = $lockedActor->id;
+                    }
+                    $this->releaseReservation($withdrawal);
                 }
-                $this->releaseReservation($withdrawal);
-            }
-            $withdrawal->version++;
-            $withdrawal->save();
-            WithdrawalAttempt::create(['attempt_reference' => $data['attempt_reference'], 'actor_user_id' => $actor->id,
-                'withdrawal_request_id' => $withdrawal->id, 'operation' => $action, 'payload_hash' => $hash]);
-            $this->event($withdrawal, $action, $before, $lockedActor,
-                trim((string) ($data['internal_reason'] ?? $data['decision_note'] ?? '')),
-                trim((string) ($data['customer_explanation'] ?? '')) ?: null);
+                $withdrawal->version++;
+                $withdrawal->save();
+                WithdrawalAttempt::create(['attempt_reference' => $data['attempt_reference'], 'actor_user_id' => $actor->id,
+                    'withdrawal_request_id' => $withdrawal->id, 'operation' => $action, 'payload_hash' => $hash]);
+                $this->event($withdrawal, $action, $before, $lockedActor,
+                    trim((string) ($data['internal_reason'] ?? $data['decision_note'] ?? '')),
+                    trim((string) ($data['customer_explanation'] ?? '')) ?: null);
 
-            return $withdrawal;
-        }, attempts: 3);
+                return $withdrawal;
+            }, attempts: 3);
+        } catch (AuthorizationException|ConflictHttpException $exception) {
+            AuditEvent::record('withdrawal.decision_denied', WithdrawalRequest::class, $request->id, $request->withdrawal_id,
+                ['attempt_reference' => $data['attempt_reference'], 'source' => $action, 'state' => $request->state,
+                    'version' => $request->version, 'customer_profile_id' => $request->customer_profile_id,
+                    'outcome' => $exception instanceof AuthorizationException ? 'denied' : 'conflict'], $actor,
+                ['executor' => self::class, 'required_permission' => $action === 'cancel' ? null : 'withdrawals.review']);
+            throw $exception;
+        }
     }
 
     public function applyCustomerStatus(CustomerProfile $customer, CustomerStatus $status): void

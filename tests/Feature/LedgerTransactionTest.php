@@ -23,14 +23,13 @@ test('an empty authoritative ledger can be verified without inventing money', fu
 
 test('an unsupported posting cannot promote a transaction projection', function (): void {
     $agent = User::factory()->agent()->create();
-    $customer = CustomerProfile::factory()->create();
     LedgerPostingGroup::create([
         'posting_reference' => 'COL-UNVERIFIED-001',
         'idempotency_key' => 'unverified-'.Str::uuid(),
         'payload_hash' => str_repeat('a', 64),
         'source_type' => 'unsupported_event', 'source_id' => '1',
         'event_type' => 'unsupported_event', 'currency' => 'NGN',
-        'actor_user_id' => $agent->id, 'customer_profile_id' => $customer->id,
+        'actor_user_id' => $agent->id, 'customer_profile_id' => null,
         'occurred_at' => now(), 'committed_at' => now(),
     ]);
 
