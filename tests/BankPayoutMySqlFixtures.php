@@ -11,6 +11,7 @@ use App\Models\WithdrawalRequest;
 use App\Services\BankPayoutService;
 use App\Services\FakePayoutProvider;
 use App\Services\ManualChargeService;
+use App\Services\ReportReadService;
 use App\Services\WithdrawalService;
 use App\Support\PayoutProvider;
 use Illuminate\Http\Request;
@@ -155,4 +156,17 @@ function bankMysqlSubmitted(object $test, string $digit): array
 function bankMysqlPostings(): int
 {
     return LedgerPostingGroup::query()->where('event_type', 'bank_withdrawal')->count();
+}
+
+/** Read the withdrawals report's posted-payout section in a worker process. */
+function bankMysqlPostedPayoutsReader(int $adminId): Closure
+{
+    return bankMysqlWorker(static function () use ($adminId): array {
+        $section = app(ReportReadService::class)->read(User::findOrFail($adminId), 'withdrawals', [
+            'page_size' => 25, 'group' => '', 'from' => now('Africa/Lagos')->startOfMonth()->toDateString(), 'to' => now('Africa/Lagos')->toDateString(),
+        ])['sections']['posted_payouts'];
+
+        return ['status' => $section['status'], 'total' => $section['total'] ?? null,
+            'paid' => collect($section['metrics'])->firstWhere('code', 'amount_paid')['value'] ?? null];
+    });
 }

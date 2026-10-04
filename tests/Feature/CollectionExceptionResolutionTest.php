@@ -383,3 +383,27 @@ test('reopened POS payment matches retain both resolutions and cannot replace ba
     $this->assertDatabaseCount('collection_batch_reviews', 0);
     $this->get(route('collection-batches.show', $receipt->batch))->assertInertia(fn (Assert $page) => $page->has('resolution_records.data', 2));
 });
+
+test('exception transitions notify the original Agent and other reconciliation managers but not the actor', function (): void {
+    [, $admin, $receipt, $exception, , $agent] = matchedTransferExceptionFixture($this);
+    $peer = User::factory()->admin()->create();
+    $peer->givePermissionTo(AdminPermission::ReconciliationManage);
+    $outsider = User::factory()->admin()->create();
+    $this->actingAs($admin)->post(route('collection-batches.exceptions.progress', [$receipt->batch, $exception]), [
+        'batch_version' => $receipt->batch->fresh()->version, 'status' => 'investigating',
+        'reason' => 'Matching the bank statement line.', 'confirmed' => true,
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    $this->actingAs($agent)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page
+        ->has('inbox.items', 2)->where('inbox.items', fn ($items) => collect($items)->pluck('title')->sort()->values()->all()
+            === ['Reconciliation exception opened', 'Reconciliation exception updated']));
+    $this->actingAs($peer)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page->has('inbox.items', 1)
+        ->where('inbox.items.0.title', 'Reconciliation exception updated'));
+    $this->actingAs($admin)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page->has('inbox.items', 0));
+    $this->actingAs($outsider)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page->has('inbox.items', 0));
+
+    $peer->revokePermissionTo(AdminPermission::ReconciliationManage);
+    $this->actingAs($peer->fresh())->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page->has('inbox.items', 0));
+    expect(DB::table('notifications')->where('notifiable_id', $agent->id)->pluck('data')->implode(' '))
+        ->not->toContain('statement line', 'Matching');
+});

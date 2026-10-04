@@ -1191,3 +1191,31 @@ test('FEE-AC-043: actual filtered fee CSV retains its ledger snapshot and denies
     $this->assertDatabaseCount('financial_artifacts', 1);
     expect($artifact->fresh()->snapshot)->toBe($snapshot)->and($artifact->fresh()->artifact_hash)->toBe(hash('sha256', $bytes));
 });
+
+test('every report accepts exactly its catalogued filters for each role', function (string $role): void {
+    $fixture = reportFixture();
+    $viewer = match ($role) {
+        'admin' => User::factory()->admin()->create(),
+        'agent' => $fixture[0],
+        default => $fixture[1]->user,
+    };
+    $values = ['customer' => $fixture[1]->customer_id, 'plan' => $fixture[3]->plan_id, 'customer_status' => 'active',
+        'plan_status' => 'active', 'state' => 'posted'];
+    $all = ['customer', 'plan', 'customer_status', 'plan_status', 'state', 'agent'];
+
+    foreach (app(ReportCatalogue::class)->forViewer($viewer) as $report) {
+        $allowed = array_values(array_diff($report['filters'], $role === 'admin' ? ['agent_basis', 'agent'] : ['agent', 'agent_basis']));
+        foreach ($allowed as $filter) {
+            $this->actingAs($viewer)->get(route('reports.show', ['report' => $report['code'], $filter => $values[$filter]]))
+                ->assertSessionDoesntHaveErrors();
+        }
+        foreach (array_diff($all, $report['filters']) as $filter) {
+            $this->actingAs($viewer)->get(route('reports.show', ['report' => $report['code'], $filter => $values[$filter] ?? 'X']))
+                ->assertSessionHasErrors($filter);
+        }
+        if ($role !== 'admin' && in_array('agent', $report['filters'], true)) {
+            $this->actingAs($viewer)->get(route('reports.show', ['report' => $report['code'], 'agent' => 'AGT-1', 'agent_basis' => 'current']))
+                ->assertSessionHasErrors('agent');
+        }
+    }
+})->with(['admin', 'agent', 'customer']);

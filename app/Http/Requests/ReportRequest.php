@@ -7,6 +7,7 @@ use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
 use App\Services\BusinessSettings;
+use App\Services\MetricDefinitionService;
 use App\Services\ReportCatalogue;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -30,6 +31,8 @@ class ReportRequest extends FormRequest
             'page_size' => ['nullable', 'integer', Rule::in([25, 50, 100])],
             'cursor' => ['nullable', 'string', 'max:4096'],
             'group' => ['nullable', Rule::in($definition['groups'])],
+            'metric' => ['nullable', 'required_with:basis_watermark', Rule::in(array_keys(MetricDefinitionService::DRILL_DOWN_REPORTS))],
+            'basis_watermark' => ['nullable', 'required_with:metric', 'integer', 'min:0'],
         ];
         if ($definition['activity']) {
             $rules += ['from' => ['nullable', 'required_with:to', 'date_format:Y-m-d'],
@@ -83,7 +86,7 @@ class ReportRequest extends FormRequest
     /** @return array<string, mixed> */
     public function filters(string $timezone): array
     {
-        $filters = array_filter($this->validated(), fn (mixed $value): bool => $value !== null && $value !== '');
+        $filters = array_filter(array_diff_key($this->validated(), ['metric' => true, 'basis_watermark' => true]), fn (mixed $value): bool => $value !== null && $value !== '');
         $today = CarbonImmutable::now($timezone);
         $defaults = app(BusinessSettings::class)->resolve()['values'];
         $filters['page_size'] ??= $defaults['page_size'];
@@ -99,5 +102,15 @@ class ReportRequest extends FormRequest
         ksort($filters);
 
         return $filters;
+    }
+
+    /** @return array{metric: string, basis_watermark: int}|null */
+    public function drillDownBasis(): ?array
+    {
+        if (! $this->filled('metric')) {
+            return null;
+        }
+
+        return ['metric' => $this->string('metric')->toString(), 'basis_watermark' => $this->integer('basis_watermark')];
     }
 }

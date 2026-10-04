@@ -101,7 +101,7 @@ class PlatformCatalogue
     public const COMMANDS = [
         'collections:clean-evidence' => 'mutation',
         'financial:release-evidence' => 'mutation', 'financial-artifacts:drain' => 'derived', 'customers:expire-recovery' => 'mutation',
-        'platform:replay' => 'mutation',
+        'platform:replay' => 'mutation', 'platform:verify-integrity' => 'read', 'platform:promote-projection' => 'derived',
         'collections:freeze-batches' => 'financial', 'withdrawals:expire' => 'financial', 'withdrawals:reconcile-bank-payouts' => 'financial', 'payouts:fake-event' => 'financial',
         'notifications:drain' => 'external', 'audit:drain' => 'derived', 'audit:rebuild' => 'derived',
         'ledger:rebuild-transactions' => 'derived', 'business:activate-settings' => 'mutation', 'authz:expire-restrictions' => 'mutation',

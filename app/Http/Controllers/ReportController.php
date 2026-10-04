@@ -31,7 +31,7 @@ class ReportController extends Controller
             'definition' => $catalogue->get($request->user(), $report),
             'filters' => $filters,
             'scopeSummary' => fn (): array => $reports->scopeSummary($request->user()),
-            'report' => fn (): array => $reports->read($request->user(), $report, $filters),
+            'report' => fn (): array => $reports->read($request->user(), $report, $filters, $request->drillDownBasis()),
         ]);
     }
 }

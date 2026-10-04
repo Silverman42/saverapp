@@ -522,6 +522,15 @@ class NotificationPipeline
             if ($canManageSecurity) {
                 $audiences->orWhereJsonContains('i.audiences', 'security_operations_admin');
             }
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::ReconciliationManage)) {
+                $audiences->orWhereJsonContains('i.audiences', 'reconciliation_manager');
+            }
+            $audiences->orWhereJsonContains('i.audiences', 'subject_user');
+            if ($user->user_type === UserType::Admin && $user->account_state === AccountState::Active
+                && $this->authorization->allows($user, AdminPermission::AdminsManage)) {
+                $audiences->orWhereJsonContains('i.audiences', 'admin_manager');
+            }
         });
     }
 

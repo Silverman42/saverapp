@@ -6,7 +6,20 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 8;
+    public const VERSION = 9;
+
+    /** @var array<string, string> Dashboard metric codes whose report section reproduces the same total at the same scope. */
+    public const DRILL_DOWN_REPORTS = [
+        'customer_liability' => 'customer-summary',
+        'live_payout_reservations' => 'customer-summary',
+        'available_savings' => 'customer-summary',
+        'received_savings' => 'contributions',
+        'received_fees' => 'contributions',
+        'cash_received' => 'contributions',
+        'posted_receipt_count' => 'contributions',
+        'agent_receivable' => 'reconciliation',
+        'business_cash' => 'reconciliation',
+    ];
 
     /** @var array<string, array{title: string, source: string, date_basis: string, definition: string}> */
     private const DEFINITIONS = [
@@ -37,6 +50,15 @@ class MetricDefinitionService
         'external_fees_received' => ['title' => 'External fees received', 'source' => 'verified collection fee components', 'date_basis' => 'receipt received date', 'definition' => 'Posted external fee component only; excludes savings principal and does not count gross tender again.'],
         'outstanding_fee_obligations' => ['title' => 'Outstanding fee obligations', 'source' => 'fee obligation entries', 'date_basis' => 'current entry-derived balance', 'definition' => 'Distinct scoped obligations with a positive unpaid balance; not cash received or recognized income.'],
         'outstanding_fees' => ['title' => 'Outstanding fees', 'source' => 'fee obligation entries', 'date_basis' => 'current entry-derived balance', 'definition' => 'Assessed fees plus increases, less reductions, net settlement and waivers. Does not debit Customer savings by itself.'],
+        'gross_withdrawal' => ['title' => 'Gross savings debit', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Customer savings debited by posted payouts; equals amount paid plus withdrawal fees and deductions.'],
+        'amount_paid' => ['title' => 'Amount paid', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Cash delivered or bank transfer sent by posted payouts; returns and compensation are linked separately.'],
+        'withdrawal_fee' => ['title' => 'Withdrawal fees', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Fees recognized in original payout postings.'],
+        'withdrawal_deduction' => ['title' => 'Withdrawal deductions', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Non-fee deductions in original payout postings.'],
+        'fee_activity_amount' => ['title' => 'Posted amount', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Amounts of the posted fee activity in this section, by business occurrence date; compensation is linked, not netted.'],
+        'fee_activity_count' => ['title' => 'Posted records', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Distinct posted records in this section.'],
+        'posted_payouts' => ['title' => 'Posted payouts', 'source' => 'ledger', 'date_basis' => 'business occurrence date', 'definition' => 'Distinct posted payout postings, including those later compensated.'],
+        'refund_payable' => ['title' => 'Refund payable', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Posted refund amounts owed to Customers and not yet paid; not cash and not fee income.'],
+        'customers_with_refund_payable' => ['title' => 'Customers owed refunds', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Distinct scoped Customers with a positive posted refund payable.'],
         'unreconciled_batches' => ['title' => 'Cash batches needing reconciliation', 'source' => 'verified collection batches', 'date_basis' => 'current batch state', 'definition' => 'Distinct original-Agent batch revisions that are not reconciled, including unresolved supplements.'],
         'required_slots' => ['title' => 'Agreed contribution slots', 'source' => 'current plan terms and slots', 'date_basis' => 'current plan revision', 'definition' => 'Agreed slots across the selected plans; a target, not received money.'],
         'fully_funded_slots' => ['title' => 'Fully funded slots', 'source' => 'verified collection allocations', 'date_basis' => 'current allocation state', 'definition' => 'Active slots whose net allocated principal equals the agreed slot amount.'],

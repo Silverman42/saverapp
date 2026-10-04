@@ -159,10 +159,62 @@ class DashboardReadService
                     return app(FinancialWorkflowReadService::class)->businessPosition($viewer);
                 });
             }
+            if ($viewer->user_type === UserType::Admin && empty($filters['agent'])
+                && ($this->authorization->allows($viewer, AdminPermission::WithdrawalsReview) || $this->authorization->allows($viewer, AdminPermission::ReconciliationManage))) {
+                $sections['incidents'] = $this->section('incidents', $manifest, fn (): array => $this->incidentQueues($viewer, 5));
+            }
             $sections['gated'] = [...$manifest, 'status' => 'Unavailable', 'metrics' => [], 'reason' => 'Historical eligibility and complete financial operational certification remain outstanding.'];
+
+            foreach ($sections as $code => $section) {
+                foreach ($section['metrics'] as $index => $metric) {
+                    $sections[$code]['metrics'][$index] = [...$metric, ...$this->drillDown($viewer, $metric['code'], $filters, $manifest)];
+                }
+            }
 
             return ['role' => $viewer->user_type->value, 'manifest' => $manifest, 'sections' => $sections];
         });
+    }
+
+    /**
+     * Link a metric to the report section that reproduces it at the same scope, filters and date basis.
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>  $manifest
+     * @return array{drill_down: string|null, drill_down_reason: string}
+     */
+    private function drillDown(User $viewer, string $metric, array $filters, array $manifest): array
+    {
+        $report = MetricDefinitionService::DRILL_DOWN_REPORTS[$metric] ?? null;
+        $unavailable = fn (string $reason): array => ['drill_down' => null, 'drill_down_reason' => $reason];
+        if ($report === null) {
+            return $unavailable('No report reproduces this metric at the same scope; owner links reauthorize at their current cutoff.');
+        }
+        $query = [];
+        if ($report === 'contributions') {
+            if ($viewer->user_type === UserType::Agent) {
+                return $unavailable('Agent receipt totals use the immutable recording actor; the contributions report uses current assignment scope.');
+            }
+            if (filled($filters['plan_status'] ?? null)) {
+                return $unavailable('The contributions report has no plan lifecycle filter. Clear the plan status filter to drill down.');
+            }
+            if ($viewer->user_type === UserType::Admin && blank($filters['customer_status'] ?? null)) {
+                return $unavailable('The dashboard excludes archived Customers by default. Choose a Customer status to drill down to a matching report.');
+            }
+            $query = ['from' => $filters['from'], 'to' => $filters['to'], 'customer_status' => $filters['customer_status'] ?? null,
+                'agent' => $filters['agent'] ?? null, 'agent_basis' => $filters['agent_basis'] ?? null];
+        } elseif ($report === 'reconciliation') {
+            if ($viewer->user_type === UserType::Customer) {
+                return $unavailable('Custody reports are not available to Customers.');
+            }
+            if ($viewer->user_type === UserType::Admin && filled($filters['agent'] ?? null)) {
+                $query = ['agent' => $filters['agent'], 'agent_basis' => 'custody'];
+            }
+        }
+        $query = array_filter([...$query, 'metric' => $metric, 'basis_watermark' => $manifest['ledger_watermark']],
+            fn (mixed $value): bool => $value !== null && $value !== '');
+
+        return ['drill_down' => route('reports.show', ['report' => $report, ...$query]),
+            'drill_down_reason' => 'Opens the '.$report.' report with the same scope and filters. It reads at its own cutoff and states whether its ledger watermark matches this card.'];
     }
 
     /** @param Builder<CustomerProfile> $scope
@@ -364,6 +416,53 @@ class DashboardReadService
             $this->metric('pending_withdrawal_reviews', 'Pending withdrawal reviews', (clone $withdrawals)->count(), 'count', 'withdrawals', 'current state', 'Distinct pending-review requests; not posted payouts.'),
             $this->metric('pending_reversal_reviews', 'Pending reversal reviews', (clone $reversals)->count(), 'count', 'reversals', 'current state', 'Distinct pending-review requests; no financial effect until the owning workflow posts.'),
         ], 'rows' => $tasks, 'note' => 'Current owner states. Admin detail links require the relevant review permission. Other operational queues remain dependency-gated.'];
+    }
+
+    /**
+     * Unresolved payout, recovery and ledger integrity work for an authorized Admin, newest owner state only.
+     *
+     * @return array{metrics: list<array<string, mixed>>, rows: list<array<string, mixed>>, note: string}
+     */
+    public function incidentQueues(User $viewer, int $limit): array
+    {
+        abort_unless($viewer->user_type === UserType::Admin, 403);
+        $payouts = $this->authorization->allows($viewer, AdminPermission::WithdrawalsReview);
+        $ledger = $this->authorization->allows($viewer, AdminPermission::ReconciliationManage);
+        $queues = [
+            'bank_outcome_unknown' => [$payouts, 'Bank payouts with unknown outcome', 'Bank payout attempts awaiting an authoritative provider outcome; the reservation stays live.',
+                DB::table('bank_payout_attempts as items')->join('withdrawal_requests as requests', 'requests.id', '=', 'items.withdrawal_request_id')
+                    ->where('items.status', 'unknown')->select('items.attempt_reference as reference', 'items.status as state', 'items.updated_at as date', 'requests.withdrawal_id as _withdrawal')],
+            'bank_return_exceptions' => [$payouts, 'Bank return exceptions', 'Provider returns that are unposted or could not be matched to their payout amount.',
+                DB::table('bank_payout_returns as items')->join('bank_payout_attempts as attempts', 'attempts.id', '=', 'items.bank_payout_attempt_id')
+                    ->join('withdrawal_requests as requests', 'requests.id', '=', 'attempts.withdrawal_request_id')
+                    ->whereIn('items.status', ['recorded', 'exception'])->select('items.return_reference as reference', 'items.status as state', 'items.created_at as date', 'requests.withdrawal_id as _withdrawal')],
+            'unmatched_bank_callbacks' => [$payouts, 'Unmatched bank callbacks', 'Signed provider callbacks that identify no payout attempt; no financial effect was applied.',
+                DB::table('bank_payout_callbacks as items')->where('items.disposition', 'unmatched')
+                    ->select('items.event_id as reference', 'items.disposition as state', 'items.received_at as date', DB::raw('NULL as _withdrawal'))],
+            'open_cash_recoveries' => [$payouts, 'Open cash recoveries', 'Returned or disputed cash awaiting Customer acknowledgement or exception resolution.',
+                DB::table('cash_recoveries as items')->join('cash_executions as executions', 'executions.id', '=', 'items.cash_execution_id')
+                    ->join('withdrawal_requests as requests', 'requests.id', '=', 'executions.withdrawal_request_id')
+                    ->whereIn('items.status', ['awaiting_customer', 'open_exception'])->select('items.recovery_reference as reference', 'items.status as state', 'items.created_at as date', 'requests.withdrawal_id as _withdrawal')],
+            'open_ledger_incidents' => [$ledger, 'Open ledger integrity incidents', 'Detected ledger integrity incidents; financial sections stay unavailable until they are resolved.',
+                DB::table('ledger_integrity_incidents as items')->where('items.status', 'open')
+                    ->select('items.incident_reference as reference', 'items.category as state', 'items.detected_at as date', DB::raw('NULL as _withdrawal'))],
+        ];
+        $metrics = [];
+        $rows = [];
+        foreach ($queues as $code => [$allowed, $title, $definition, $query]) {
+            if (! $allowed) {
+                continue;
+            }
+            $metrics[] = $this->metric($code, $title, (clone $query)->count(), 'count', 'payout and ledger owners', 'current state', $definition);
+            foreach ((clone $query)->orderBy('date')->orderBy('reference')->limit($limit)->get() as $row) {
+                $rows[] = ['type' => $code, 'reference' => $row->reference, 'state' => $row->state, 'created_at' => $row->date,
+                    'href' => $row->_withdrawal === null ? null : route('withdrawals.show', $row->_withdrawal)];
+            }
+        }
+        usort($rows, fn (array $left, array $right): int => [$left['created_at'], $left['reference']] <=> [$right['created_at'], $right['reference']]);
+
+        return ['metrics' => $metrics, 'rows' => array_slice($rows, 0, $limit),
+            'note' => 'Current owner states. Resolution happens in the owning payout, recovery or ledger workflow; these counts never change balances.'];
     }
 
     /** @param array<string, mixed> $filters

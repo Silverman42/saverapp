@@ -9,6 +9,7 @@ use App\Services\LedgerTransactionProjectionService;
 use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -157,4 +158,28 @@ test('failed artifact retry keeps its snapshot and checks revoked access and can
     $service->recordFailure($artifact->id);
     $this->post(route('financial-artifacts.retry', $artifact), ['confirmed' => true])->assertConflict();
     expect($artifact->fresh()->status)->toBe('cancelled');
+});
+
+test('report and statement artifacts both raise ready and failed inbox notices for their requester only', function (): void {
+    [, $customer] = withdrawalFixture();
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $service = app(FinancialArtifactService::class);
+    $payload = ['operation_reference' => (string) Str::uuid(), 'from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString(), 'confirmed' => true];
+    $payload['preview_fingerprint'] = app(StatementPreviewService::class)->preview($customer->user, $customer, $payload['from'], $payload['to'], 'Africa/Lagos')['preview_fingerprint'];
+    $this->actingAs($customer->user)->post(route('customers.statements.issue', $customer->customer_id), $payload)->assertRedirect();
+    $service->render(FinancialArtifact::query()->where('kind', 'statement')->sole()->id);
+
+    $admin = User::factory()->admin()->create();
+    $admin->givePermissionTo(AdminPermission::ReportsExport);
+    $this->actingAs($admin)->post(route('reports.export', 'withdrawals'), ['operation_reference' => (string) Str::uuid(), 'format' => 'csv', 'confirmed' => true])->assertRedirect();
+    $report = FinancialArtifact::query()->where('kind', 'report')->sole();
+    $service->recordFailure($report->id);
+    $service->render($report->id);
+
+    $templates = fn (User $user): array => DB::table('notification_inbox_intents')->where('recipient_user_id', $user->id)
+        ->where('template_id', 'like', 'financial_artifact.%')->pluck('template_id')->all();
+    expect($templates($customer->user))->toBe(['financial_artifact.ready'])
+        ->and($templates($admin))->toBe(['financial_artifact.failed'])
+        ->and($templates(User::factory()->admin()->create()))->toBe([]);
 });

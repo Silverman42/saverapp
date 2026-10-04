@@ -11,6 +11,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\CollectionService;
 use App\Services\CustomerReassignmentService;
+use App\Services\LedgerTransactionProjectionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -261,6 +262,19 @@ test('actual external fee custody progresses through batch filters and recorded 
         ->assertRedirect()->assertSessionHasNoErrors();
     $this->get(route('admin.fees.index', ['refund_status' => 'external_entitlement']))->assertInertia(fn (Assert $page) => $page
         ->where('obligations.total', 1)->where('summary.refund_payable.amount_kobo', 2000));
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $this->get(route('reports.show', 'exceptions'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.refund_payables.status', 'Partial')
+        ->where('report.sections.refund_payables.total', 1)
+        ->where('report.sections.refund_payables.rows.0.customer', $customer->customer_id)
+        ->where('report.sections.refund_payables.metrics', fn ($metrics) => collect($metrics)->firstWhere('code', 'refund_payable')['value'] === 2000));
+    $this->get(route('reports.show', 'fees'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.fee_refunds.total', 1)
+        ->where('report.sections.fee_refunds.rows.0.kind', 'external')
+        ->where('report.sections.fee_refunds.metrics', fn ($metrics) => collect($metrics)->firstWhere('code', 'fee_activity_amount')['value'] === 2000));
+    $this->actingAs(CustomerProfile::factory()->create()->user)->get(route('reports.show', 'exceptions'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.refund_payables.total', 0));
+    $this->actingAs($admin);
     $this->get(route('admin.fees.index', ['refund_status' => 'none']))->assertInertia(fn (Assert $page) => $page
         ->where('obligations.total', 0));
     $this->assertDatabaseCount('cash_disbursements', 0);

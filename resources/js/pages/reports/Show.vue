@@ -61,6 +61,11 @@ const secondaryTitles: Record<string, string> = {
     fee_obligations: 'Outstanding fee obligations',
     custody_batches: 'Cash batches needing reconciliation',
     refund_payables: 'Refund payables',
+    payout_incidents: 'Payout and ledger incidents',
+    posted_payouts: 'Posted payouts',
+    fee_applications: 'Fees paid from savings',
+    fee_refunds: 'Fee refunds',
+    other_deductions: 'Other savings deductions',
     funding_progress: 'Current plan funding progress',
 };
 const statuses = ['active', 'inactive', 'restricted', 'archived'];
@@ -391,7 +396,15 @@ function cell(value: string | number | boolean | null | undefined): string {
                             visible.manifest.owner_watermarks.ledger?.watermark
                         }}
                     </p>
-                    <p class="text-muted-foreground">
+                    <p
+                        :class="
+                            visible.manifest.drill_down &&
+                            !visible.manifest.drill_down.reconciled
+                                ? 'font-medium text-amber-700 dark:text-amber-400'
+                                : 'text-muted-foreground'
+                        "
+                        role="status"
+                    >
                         {{ visible.manifest.drill_down_note }}
                     </p>
                 </CardContent>

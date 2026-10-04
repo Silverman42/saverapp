@@ -6,6 +6,7 @@ use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerStatus;
 use App\Enums\FeeObligationEntryType;
+use App\Enums\LedgerAccountCode;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
@@ -48,16 +49,17 @@ class ReportReadService
     }
 
     /** @param array<string, mixed> $filters
+     * @param  array{metric: string, basis_watermark: int}|null  $drillDown
      * @return array<string, mixed>
      */
-    public function read(User $viewer, string $code, array $filters): array
+    public function read(User $viewer, string $code, array $filters, ?array $drillDown = null): array
     {
         $definition = $this->catalogue->get($viewer, $code);
         if (DB::transactionLevel() === 0 && DB::connection()->getDriverName() === 'mysql') {
             DB::statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         }
 
-        return DB::transaction(function () use ($viewer, $code, $filters, $definition): array {
+        return DB::transaction(function () use ($viewer, $code, $filters, $definition, $drillDown): array {
             $scopeSummary = $this->scopeSummary($viewer);
             $business = BusinessProfile::current();
             $customers = $this->scope->forCustomers($viewer);
@@ -87,10 +89,11 @@ class ReportReadService
                 self::SCHEMA_VERSION, MetricDefinitionService::VERSION, $business->version], JSON_THROW_ON_ERROR));
             $cursor = $this->decodeCursor($filters['cursor'] ?? null, $binding);
             $allowedSections = match ($code) {
-                'fees' => ['primary', 'external_receipts'],
+                'fees' => ['primary', 'external_receipts', 'fee_applications', 'fee_refunds', 'other_deductions'],
                 'reconciliation' => ['primary', 'batch_reconciliation'],
-                'exceptions' => ['primary', 'fee_obligations', 'custody_batches'],
+                'exceptions' => ['primary', 'fee_obligations', 'custody_batches', 'refund_payables'],
                 'plans' => ['primary', 'funding_progress'],
+                'withdrawals' => ['primary', 'posted_payouts'],
                 default => ['primary'],
             };
             if ($cursor !== null && ! in_array($cursor['section'] ?? 'primary', $allowedSections, true)) {
@@ -114,6 +117,13 @@ class ReportReadService
                 $state = ['status' => 'unavailable', 'version' => 0, 'watermark' => 0, 'verified_at' => null];
             }
             $manifest['owner_watermarks']['ledger'] = $state;
+            if ($drillDown !== null) {
+                $reconciled = $state['status'] === 'ready' && (int) $state['watermark'] === $drillDown['basis_watermark'];
+                $manifest['drill_down'] = [...$drillDown, 'report_watermark' => (int) $state['watermark'], 'reconciled' => $reconciled];
+                $manifest['drill_down_note'] = $reconciled
+                    ? 'Opened from the dashboard '.$drillDown['metric'].' metric. Both read verified ledger watermark '.$drillDown['basis_watermark'].' with the same scope and filters, so the totals match.'
+                    : 'Exact reconciliation with the dashboard '.$drillDown['metric'].' metric is unavailable: the card read ledger watermark '.$drillDown['basis_watermark'].' and this report reads watermark '.$state['watermark'].'. Refresh the dashboard to compare at one watermark.';
+            }
             $result = $this->unavailable($definition['reason']);
             $feeSections = null;
             try {
@@ -141,6 +151,20 @@ class ReportReadService
                 }
             }
             $sections = $feeSections ?? ['primary' => $result];
+            if ($code === 'fees') {
+                foreach (['fee_applications' => 'Fees paid from savings, one row per posted application.',
+                    'fee_refunds' => 'Posted fee concessions restored to savings or owed as external refunds; not cash paid.',
+                    'other_deductions' => 'Posted non-fee savings deductions from manual charges.'] as $section => $reason) {
+                    try {
+                        $this->requireLedger($state);
+                        $spec = $this->feeActivitySpec($viewer, $customers, $section, $filters, $state, $cutoff);
+                        $sections[$section] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                            $reason.' Linked compensation is shown, not netted.', $state, $section);
+                    } catch (RuntimeException|QueryException) {
+                        $sections[$section] = $this->unavailable('Verified posted fee activity is unavailable or disagrees with its ledger posting.');
+                    }
+                }
+            }
             if ($code === 'fees' && $feeSections === null) {
                 $sections['external_receipts'] = $this->unavailable('Verified external fee receipts are unavailable.');
             }
@@ -219,9 +243,34 @@ class ReportReadService
                         $sections['custody_batches'] = $this->unavailable($reason);
                     }
                 }
-                $sections['refund_payables'] = $this->unavailable(
-                    'Refund payable exceptions require an approved mapped ledger account and owner contract. No zero balance is inferred.'
-                );
+                if ($viewer->user_type === UserType::Admin) {
+                    try {
+                        if (filled($filters['customer'] ?? null) || filled($filters['customer_status'] ?? null)) {
+                            throw new RuntimeException('Customer filters do not identify business-wide payout incidents.');
+                        }
+                        $incidents = $this->dashboard->incidentQueues($viewer, $filters['page_size']);
+                        $sections['payout_incidents'] = ['status' => 'Current', 'metrics' => $incidents['metrics'],
+                            'columns' => ['type' => 'Queue', 'reference' => 'Reference', 'state' => 'Current state', 'created_at' => 'Opened (UTC)'],
+                            'rows' => array_map(fn (array $row): array => ['key' => $row['type'].':'.$row['reference'], ...$row], $incidents['rows']),
+                            'groups' => [], 'total' => array_sum(array_column($incidents['metrics'], 'value')), 'next_cursor' => null,
+                            'reason' => $incidents['note'].' Only the oldest items of each queue are listed.'];
+                    } catch (RuntimeException|QueryException $exception) {
+                        $sections['payout_incidents'] = $this->unavailable($exception->getMessage() === 'Customer filters do not identify business-wide payout incidents.'
+                            ? 'Clear the Customer filters to view business-wide payout and ledger incidents.'
+                            : 'Verified payout and ledger incident queues are unavailable.');
+                    }
+                }
+                try {
+                    $this->requireLedger($state);
+                    $spec = $this->refundPayableSpec($viewer, $customers, $state, $cutoff);
+                    $sections['refund_payables'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                        'Current posted refund payables owed to Customers. A payable is not cash paid and blocks fee-dependent lifecycle actions until settled.',
+                        $state, 'refund_payables');
+                } catch (RuntimeException|QueryException) {
+                    $sections['refund_payables'] = $this->unavailable(
+                        'Refund payables require the mapped refund payable ledger account and a verified ledger. No zero balance is inferred.'
+                    );
+                }
             }
             if ($code === 'agent-performance') {
                 try {
@@ -269,6 +318,22 @@ class ReportReadService
                     $sections['posted_financial_movements'] = app(FinancialWorkflowReadService::class)->activity($viewer, $customers, $filters, $cutoff->toDateTimeString());
                 } catch (RuntimeException|QueryException) {
                     $sections['posted_financial_movements'] = $this->unavailable('Verified financial movements for this scope and basis are unavailable.');
+                }
+            }
+            if ($code === 'withdrawals') {
+                try {
+                    if (filled($filters['state'] ?? null) && $filters['state'] !== 'posted') {
+                        throw new RuntimeException('Only posted withdrawals have payouts.');
+                    }
+                    $this->requireLedger($state);
+                    $spec = $this->postedPayoutSpec($viewer, $customers, $filters, $state, $cutoff);
+                    $sections['posted_payouts'] = $this->consume($spec, $filters, $cursor, $binding, $manifest,
+                        'One row per posted payout by business occurrence date. Gross savings debit equals the amount paid plus fees and deductions; compensation and confirmed returns are linked, not netted.',
+                        $state, 'posted_payouts');
+                } catch (RuntimeException|QueryException $exception) {
+                    $sections['posted_payouts'] = $this->unavailable($exception->getMessage() === 'Only posted withdrawals have payouts.'
+                        ? 'Choose the Posted state or clear the state filter to view posted payouts.'
+                        : 'Verified posted payouts are unavailable or disagree with their ledger postings.');
                 }
             }
             if ($code === 'reconciliation' && $viewer->user_type === UserType::Admin && empty($filters['agent'])) {
@@ -636,6 +701,146 @@ class ReportReadService
             'counts' => ['required_slots' => 'required_slots', 'fully_funded_slots' => 'fully_funded_slots',
                 'partially_funded_slots' => 'partially_funded_slots', 'unfunded_slots' => 'unfunded_slots'],
             'link' => 'plans.show', 'reference' => 'reference'];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function feeActivitySpec(User $viewer, EloquentBuilder $customers, string $section, array $filters, array $state, CarbonImmutable $cutoff): array
+    {
+        [$table, $reference] = match ($section) {
+            'fee_applications' => ['fee_savings_applications', 'operation_reference'],
+            'fee_refunds' => ['fee_refunds', 'refund_reference'],
+            default => ['manual_charges', 'operation_reference'],
+        };
+        $query = $this->customerQuery($customers)->join($table.' as records', 'records.customer_profile_id', '=', 'customers.id');
+        if ($section === 'fee_applications') {
+            $query->join('ledger_posting_groups as groups', function (JoinClause $join): void {
+                $join->on('groups.source_id', '=', 'records.operation_reference')->where('groups.source_type', 'fee_savings_application');
+            });
+        } else {
+            $query->join('ledger_posting_groups as groups', 'groups.id', '=', 'records.ledger_posting_group_id');
+        }
+        if ($section === 'other_deductions') {
+            $query->where('groups.event_type', 'other_deduction');
+        }
+        $query->leftJoin('reversal_requests as reversals', function (JoinClause $join): void {
+            $join->on('reversals.posted_original_posting_group_id', '=', 'groups.id')->whereNotNull('reversals.compensation_posting_group_id');
+        })->where('groups.id', '<=', $state['watermark'])->where('groups.committed_at', '<=', $cutoff)
+            ->whereBetween(DB::raw('DATE(groups.occurred_on)'), [$filters['from'], $filters['to']])
+            ->select('records.'.$reference.' as reference', 'groups.id as _key', 'customers.customer_id as customer', 'customer_users.name as name',
+                'records.amount_kobo as fee_activity_amount', 'groups.currency as _currency', 'groups.customer_profile_id as _posting_customer',
+                'records.customer_profile_id as _record_customer', 'reversals.reversal_id as compensation')
+            ->selectRaw('DATE(groups.occurred_on) AS occurred_on')
+            ->orderBy('groups.occurred_on')->orderBy('groups.id');
+        $columns = ['reference' => 'Reference', 'customer' => 'Customer ID', 'name' => 'Customer', 'occurred_on' => 'Occurred on'];
+        if ($section === 'fee_refunds') {
+            $query->addSelect('records.kind');
+            $columns['kind'] = 'Refund kind';
+        }
+
+        return ['code' => $section, 'query' => $query,
+            'columns' => [...$columns, 'fee_activity_amount' => 'Amount', 'compensation' => 'Compensation'],
+            'money' => ['fee_activity_amount'], 'counts' => ['fee_activity_count' => null],
+            'link' => 'customers.show', 'reference' => 'customer', 'viewer' => $viewer];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function postedPayoutSpec(User $viewer, EloquentBuilder $customers, array $filters, array $state, CarbonImmutable $cutoff): array
+    {
+        foreach ([LedgerAccountCode::CustomerSavingsLiability, LedgerAccountCode::BusinessCash, LedgerAccountCode::PayoutClearing,
+            LedgerAccountCode::FeeIncome, LedgerAccountCode::OtherDeductionDestination] as $account) {
+            if (! DB::table('ledger_accounts')->where('code', $account->value)->where('mapping_status', 'mapped')->where('currency', 'NGN')->exists()) {
+                throw new RuntimeException('Payout account mapping unavailable.');
+            }
+        }
+        $lines = DB::table('ledger_entries as entries')->join('ledger_accounts as accounts', 'accounts.id', '=', 'entries.ledger_account_id')
+            ->selectRaw("entries.ledger_posting_group_id,
+                SUM(CASE WHEN accounts.code = 'customer_savings_liability_ngn' AND entries.side = 'debit' THEN entries.amount_kobo ELSE 0 END) AS gross,
+                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn') AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS paid,
+                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn') AND entries.side = 'credit' THEN 1 ELSE 0 END) AS paid_lines,
+                SUM(CASE WHEN accounts.code = 'fee_income_ngn' AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS fees,
+                SUM(CASE WHEN accounts.code = 'other_deduction_destination_ngn' AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS deductions")
+            ->groupBy('entries.ledger_posting_group_id');
+        $query = $this->customerQuery($customers)
+            ->join('ledger_posting_groups as groups', 'groups.customer_profile_id', '=', 'customers.id')
+            ->joinSub($lines, 'lines', 'lines.ledger_posting_group_id', '=', 'groups.id')
+            ->leftJoin('withdrawal_requests as requests', function (JoinClause $join): void {
+                $join->on('requests.id', '=', 'groups.source_id')->where('groups.source_type', 'withdrawal');
+            })
+            ->leftJoin('reversal_requests as reversals', function (JoinClause $join): void {
+                $join->on('reversals.posted_original_posting_group_id', '=', 'groups.id')->whereNotNull('reversals.compensation_posting_group_id');
+            })
+            ->leftJoin('cash_executions as executions', 'executions.ledger_posting_group_id', '=', 'groups.id')
+            ->leftJoin('cash_recoveries as recoveries', function (JoinClause $join): void {
+                $join->on('recoveries.cash_execution_id', '=', 'executions.id')->whereIn('recoveries.status', ['confirmed', 'consumed']);
+            })
+            ->leftJoin('bank_payout_attempts as attempts', 'attempts.ledger_posting_group_id', '=', 'groups.id')
+            ->leftJoin('bank_payout_returns as returns', function (JoinClause $join): void {
+                $join->on('returns.bank_payout_attempt_id', '=', 'attempts.id')->whereIn('returns.status', ['posted', 'consumed']);
+            })
+            ->whereIn('groups.event_type', WithdrawalPayoutSource::EVENT_TYPES)
+            ->where('groups.id', '<=', $state['watermark'])->where('groups.committed_at', '<=', $cutoff)
+            ->whereBetween(DB::raw('DATE(groups.occurred_on)'), [$filters['from'], $filters['to']])
+            ->select('requests.withdrawal_id as reference', 'groups.id as _key', 'customers.customer_id as customer', 'customer_users.name as name',
+                'groups.event_type as rail', 'groups.currency as _currency', 'reversals.reversal_id as _reversal',
+                'returns.return_reference as _return', 'recoveries.recovery_reference as _recovery')
+            ->selectRaw('DATE(groups.occurred_on) AS occurred_on, lines.gross AS gross_withdrawal, lines.paid AS amount_paid,
+                lines.paid_lines AS _paid_lines, lines.fees AS withdrawal_fee, lines.deductions AS withdrawal_deduction')
+            ->orderBy('groups.occurred_on')->orderBy('groups.id');
+        if (filled($filters['plan'] ?? null)) {
+            $query->whereIn('groups.thrift_plan_id', DB::table('thrift_plans')->where('plan_id', $filters['plan'])->select('id'));
+        }
+
+        return ['code' => 'posted_payouts', 'query' => $query,
+            'columns' => ['reference' => 'Withdrawal', 'customer' => 'Customer ID', 'name' => 'Customer', 'rail' => 'Rail',
+                'occurred_on' => 'Occurred on', 'gross_withdrawal' => 'Gross savings debit', 'amount_paid' => 'Amount paid',
+                'withdrawal_fee' => 'Withdrawal fee', 'withdrawal_deduction' => 'Deduction', 'compensation' => 'Compensation or return'],
+            'money' => ['gross_withdrawal', 'amount_paid', 'withdrawal_fee', 'withdrawal_deduction'], 'counts' => ['posted_payouts' => null],
+            'link' => $viewer->user_type !== UserType::Admin || $this->authorization->allows($viewer, AdminPermission::WithdrawalsReview) ? 'withdrawals.show' : null,
+            'reference' => 'reference', 'viewer' => $viewer];
+    }
+
+    /** @param EloquentBuilder<CustomerProfile> $customers
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function refundPayableSpec(User $viewer, EloquentBuilder $customers, array $state, CarbonImmutable $cutoff): array
+    {
+        $account = DB::table('ledger_accounts')->where('code', 'refund_payable_ngn')->where('mapping_status', 'mapped')
+            ->where('account_class', 'refund_payable')->where('normal_balance', 'credit')->where('currency', 'NGN')->first();
+        if ($account === null) {
+            throw new RuntimeException('Refund payable mapping unavailable.');
+        }
+        $balances = DB::table('ledger_entries as entries')
+            ->join('ledger_posting_groups as postings', 'postings.id', '=', 'entries.ledger_posting_group_id')
+            ->where('entries.ledger_account_id', $account->id)->whereNotNull('entries.customer_profile_id')
+            ->where('postings.id', '<=', $state['watermark'])->where('postings.committed_at', '<=', $cutoff)
+            ->selectRaw("entries.customer_profile_id,
+                COALESCE(SUM(CASE WHEN entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END), 0) AS credits,
+                COALESCE(SUM(CASE WHEN entries.side = 'debit' THEN entries.amount_kobo ELSE 0 END), 0) AS debits,
+                MAX(postings.committed_at) AS last_posted_at")
+            ->groupBy('entries.customer_profile_id');
+        if (DB::table('ledger_entries')->where('ledger_account_id', $account->id)->whereNull('customer_profile_id')->exists()) {
+            throw new RuntimeException('Refund payable entries lack Customer attribution.');
+        }
+        $query = $this->customerQuery($customers)->joinSub($balances, 'balances', 'balances.customer_profile_id', '=', 'customers.id')
+            ->select('customers.customer_id as customer', 'customers.customer_id as _key', 'customer_users.name as name',
+                'current_agents.agent_id as current_agent', 'balances.last_posted_at')
+            ->selectRaw('balances.credits AS _credits, balances.debits AS _debits')
+            ->orderBy('customers.customer_id');
+
+        return ['code' => 'refund_payables', 'query' => $query,
+            'columns' => ['customer' => 'Customer ID', 'name' => 'Customer', 'current_agent' => 'Current Agent',
+                'last_posted_at' => 'Last posted (UTC)', 'refund_payable' => 'Refund payable'],
+            'money' => ['refund_payable'], 'counts' => ['customers_with_refund_payable' => null],
+            'link' => 'customers.show', 'reference' => 'customer', 'viewer' => $viewer];
     }
 
     /** @param EloquentBuilder<CustomerProfile> $customers
@@ -1028,6 +1233,11 @@ class ReportReadService
                 'collection_receipts', 'ledger_transaction_references', 'ledger_transaction_projections'],
             'exceptions' => ['withdrawal_requests', 'reversal_requests'],
             'fee_exceptions' => ['fee_obligations', 'fee_obligation_entries', 'fee_snapshots'],
+            'refund_payables' => ['ledger_entries', 'ledger_posting_groups', 'ledger_accounts'],
+            'posted_payouts' => ['ledger_entries', 'ledger_posting_groups', 'reversal_requests', 'cash_recoveries', 'bank_payout_returns'],
+            'fee_applications' => ['ledger_posting_groups', 'reversal_requests'],
+            'fee_refunds' => ['fee_refunds', 'ledger_posting_groups', 'reversal_requests'],
+            'other_deductions' => ['manual_charges', 'ledger_posting_groups', 'reversal_requests'],
             'batch_reconciliation' => ['collection_batches', 'collection_receipts', 'collection_fee_components',
                 'cash_remittances', 'collection_batch_reviews', 'collection_exceptions', 'ledger_posting_groups',
                 'ledger_entries', 'ledger_accounts', 'ledger_transaction_references', 'ledger_transaction_projections'],
@@ -1036,6 +1246,9 @@ class ReportReadService
         $ownerVersions = [];
         foreach ($tables as $table) {
             $ownerVersions[$table] = DB::table($table)->selectRaw('COUNT(*) AS rows_count, MAX(id) AS watermark, MAX(updated_at) AS updated_at')->first();
+        }
+        if ($spec['code'] === 'fee_applications') {
+            $ownerVersions['fee_savings_applications'] = DB::table('fee_savings_applications')->selectRaw('COUNT(*) AS rows_count, MAX(id) AS watermark, MAX(created_at) AS created_at')->first();
         }
         if ($spec['code'] === 'batch_reconciliation') {
             foreach (['collection_settlements', 'collection_settlement_files', 'collection_bank_reference_claims', 'collection_method_versions', 'collection_evidence_reviews', 'collection_evidence_files', 'collection_payment_evidence'] as $table) {
@@ -1111,6 +1324,35 @@ class ReportReadService
                 }
                 $row['outstanding_fees'] = $netAssessed - $netSettled - $waived;
                 if ($row['outstanding_fees'] === 0) {
+                    continue;
+                }
+            }
+            if ($spec['code'] === 'posted_payouts') {
+                $gross = $this->integer($row['gross_withdrawal']);
+                $paid = $this->integer($row['amount_paid']);
+                $fees = $this->integer($row['withdrawal_fee']);
+                $deductions = $this->integer($row['withdrawal_deduction']);
+                if ($paid < 1 || $this->integer($row['_paid_lines']) !== 1 || $this->add($paid, $this->add($fees, $deductions)) !== $gross
+                    || $row['_currency'] !== 'NGN' || $row['reference'] === null) {
+                    throw new RuntimeException('Posted payout disagrees with its ledger posting.');
+                }
+                $row['compensation'] = $row['_reversal'] ?? $row['_return'] ?? $row['_recovery'] ?? 'None';
+            }
+            if (in_array($spec['code'], ['fee_applications', 'fee_refunds', 'other_deductions'], true)) {
+                if ($this->integer($row['fee_activity_amount']) < 1 || $row['_currency'] !== 'NGN'
+                    || (int) $row['_posting_customer'] !== (int) $row['_record_customer']) {
+                    throw new RuntimeException('Posted fee activity disagrees with its ledger posting.');
+                }
+                $row['compensation'] ??= 'None';
+            }
+            if ($spec['code'] === 'refund_payables') {
+                $credits = $this->integer($row['_credits']);
+                $debits = $this->integer($row['_debits']);
+                if ($debits > $credits) {
+                    throw new RuntimeException('Refund payable entries disagree with their owner.');
+                }
+                $row['refund_payable'] = $credits - $debits;
+                if ($row['refund_payable'] === 0) {
                     continue;
                 }
             }

@@ -44,6 +44,10 @@ class NotificationCatalogue
         'fee_obligation' => ['waived', 'assessment_corrected'],
         'fee_issue' => ['trigger_unapplied', 'delivery_issue', 'posting_issue'],
         'reversal' => ['submitted', 'approved_posted', 'approved_no_money', 'rejected', 'cancelled'],
+        'collection_exception' => ['opened', 'investigating', 'awaiting_action', 'resolved', 'reopened'],
+        'account_security' => ['auth.password_changed', 'auth.password_reset', 'auth.mfa_changed', 'auth.session_revoked', 'auth.recovery_codes_regenerated', 'auth.lock_created'],
+        'authorization' => ['authorization.permissions_changed', 'authorization.restriction_applied', 'authorization.restriction_cleared', 'authorization.restriction_expired'],
+        'ledger_incident' => ['ledger.integrity_incident', 'ledger.integrity_incident_resolved'],
     ];
 
     /** @var array<string, array{table: string, source: string, key: string}> */
@@ -67,6 +71,10 @@ class NotificationCatalogue
         'fee_obligation' => ['table' => 'fee_obligation_notification_intents', 'source' => 'fee_obligation_events', 'key' => 'fee_obligation_event_id'],
         'fee_issue' => ['table' => 'fee_issue_notification_intents', 'source' => 'fee_operational_issues', 'key' => 'fee_operational_issue_id'],
         'reversal' => ['table' => 'reversal_notification_intents', 'source' => 'reversal_events', 'key' => 'reversal_event_id'],
+        'collection_exception' => ['table' => 'collection_exception_notification_intents', 'source' => 'collection_exception_events', 'key' => 'collection_exception_event_id'],
+        'account_security' => ['table' => 'audit_notification_intents', 'source' => 'audit_events', 'key' => 'audit_event_id'],
+        'authorization' => ['table' => 'audit_notification_intents', 'source' => 'audit_events', 'key' => 'audit_event_id'],
+        'ledger_incident' => ['table' => 'audit_notification_intents', 'source' => 'audit_events', 'key' => 'audit_event_id'],
     ];
 
     /** @return array<string, mixed> */
@@ -466,6 +474,84 @@ class NotificationCatalogue
                 $reference = $request->reversal_id;
                 $destination = ['route' => 'reversals.show', 'parameters' => [$reference]];
                 break;
+            case 'collection_exception':
+                $this->audience($audience, ['reconciliation_manager', 'subject_agent']);
+                $exception = DB::table('collection_exceptions')->where('id', $source->collection_exception_id)->first();
+                $batch = $exception === null ? null : DB::table('collection_batches')->where('id', $exception->collection_batch_id)->first();
+                if ($batch === null || ! in_array($eventType, self::EVENTS['collection_exception'], true)) {
+                    throw new InvalidArgumentException('Collection exception notification source is unavailable.');
+                }
+                if ($audience === 'subject_agent') {
+                    $this->matchSubject((int) $batch->agent_profile_id, (int) $owner->agent_profile_id);
+                    $agentId = (int) $batch->agent_profile_id;
+                } elseif ($owner->agent_profile_id !== null) {
+                    throw new InvalidArgumentException('Invalid collection exception audience.');
+                }
+                $sourceVersion = (int) $source->batch_version;
+                $title = match ($eventType) {
+                    'opened' => 'Reconciliation exception opened',
+                    'resolved' => 'Reconciliation exception resolved',
+                    'reopened' => 'Reconciliation exception reopened',
+                    default => 'Reconciliation exception updated',
+                };
+                $summary = 'A cash batch reconciliation exception is now '.str_replace('_', ' ', $eventType === 'opened' ? 'open' : $eventType)
+                    .'. Open the batch to review its current state. Exceptions never change Customer credit or forgive Agent responsibility.';
+                $reference = 'BATCH-'.$batch->id;
+                $destination = ['route' => 'collection-batches.show', 'parameters' => [(int) $batch->id]];
+                $category = 'financial';
+                $actionRequired = in_array($eventType, ['opened', 'reopened', 'awaiting_action'], true);
+                break;
+            case 'account_security':
+            case 'authorization':
+            case 'ledger_incident':
+                if (($owner->family ?? null) !== $family || (AuditNoticeService::FAMILIES[$eventType] ?? null) !== $family) {
+                    throw new InvalidArgumentException('Audit notice family changed.');
+                }
+                $auditEventId = (int) $source->id;
+                $sourceVersion = 1;
+                $category = 'account';
+                if ($family === 'ledger_incident') {
+                    $this->audience($audience, ['reconciliation_manager']);
+                    $resolved = $eventType === 'ledger.integrity_incident_resolved';
+                    $title = $resolved ? 'Ledger integrity incident resolved' : 'Ledger integrity incident detected';
+                    $summary = $resolved
+                        ? 'A ledger integrity incident was resolved after the ledger verified cleanly.'
+                        : 'A ledger integrity incident was detected. Affected financial reads stay unavailable until it is recovered and resolved.';
+                    $reference = $source->target_reference;
+                    $destination = ['route' => 'transactions.index', 'parameters' => []];
+                    $category = 'financial';
+                    $actionRequired = ! $resolved;
+                    break;
+                }
+                $subject = app(AuditNoticeService::class)->subjectUserId($eventType, $source->target_type, $source->target_id === null ? null : (int) $source->target_id);
+                if ($subject === null) {
+                    throw new InvalidArgumentException('Audit notice subject is unavailable.');
+                }
+                if ($family === 'account_security') {
+                    $this->audience($audience, ['subject_user']);
+                    $this->matchSubject($subject, (int) $owner->recipient_user_id);
+                    $title = match ($eventType) {
+                        'auth.password_changed', 'auth.password_reset' => 'Your password was changed',
+                        'auth.mfa_changed' => 'Your two-factor authentication changed',
+                        'auth.session_revoked' => 'A session was signed out',
+                        'auth.recovery_codes_regenerated' => 'New recovery codes were created',
+                        default => 'Sign-in was temporarily locked',
+                    };
+                    $summary = 'This security change was recorded on your account. If you did not expect it, contact your administrator immediately.';
+                    $destination = ['route' => 'security.edit', 'parameters' => []];
+                    break;
+                }
+                $this->audience($audience, ['subject_user', 'admin_manager']);
+                $title = $eventType === 'authorization.permissions_changed' ? 'Access permissions changed' : 'Access restriction updated';
+                if ($audience === 'subject_user') {
+                    $this->matchSubject($subject, (int) $owner->recipient_user_id);
+                    $summary = 'Your access was changed. Some actions may now be available or unavailable; sign in again if a page does not reflect it.';
+                    $destination = ['route' => 'dashboard', 'parameters' => []];
+                } else {
+                    $summary = 'Another Admin\'s access was changed. Open their access record to review current permissions and restrictions.';
+                    $destination = ['route' => 'admin.access.show', 'parameters' => [$subject]];
+                }
+                break;
             default:
                 throw new InvalidArgumentException('Unknown notification family.');
         }
@@ -549,6 +635,10 @@ class NotificationCatalogue
             'fee_obligation' => ['subject_customer', 'current_agent', 'fee_manager'],
             'fee_issue' => ['current_agent', 'fee_manager', 'deduction_manager', 'refund_cash_operator', 'refund_correction_operator'],
             'financial_artifact' => ['artifact_requester', 'subject_customer'],
+            'collection_exception' => ['reconciliation_manager', 'subject_agent'],
+            'account_security' => ['subject_user'],
+            'authorization' => ['subject_user', 'admin_manager'],
+            'ledger_incident' => ['reconciliation_manager'],
             default => ['subject_customer', 'current_agent'],
         };
         if (! is_array($audiences) || $audiences === [] || ! array_is_list($audiences) || array_diff($audiences, $allowedAudiences) !== []) {

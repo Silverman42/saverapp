@@ -6,6 +6,7 @@ use App\Models\BankPayoutAttempt;
 use App\Models\BankPayoutReturn;
 use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
+use App\Services\LedgerTransactionProjectionService;
 use App\Services\ManualChargeService;
 use App\Services\WithdrawalReversalOwner;
 use Illuminate\Support\Facades\DB;
@@ -124,4 +125,18 @@ test('mysql a settlement racing a provider return leaves one consistent custody 
     expect(LedgerPostingGroup::query()->whereKey($return->return_posting_group_id)->value('metadata'))->toBeArray()
         ->and(LedgerPostingGroup::query()->whereKey($return->return_posting_group_id)->first()->metadata['settled'])->toBe($settledFirst)
         ->and($settlements)->toBeLessThanOrEqual(1);
+});
+
+test('mysql a posted-payouts report read racing the posting callback sees all or none of the payout', function (): void {
+    [$admin, , , $withdrawal, $attempt] = bankMysqlSubmitted($this, '3');
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $signed = bankMysqlCallbackFor($attempt, 'succeeded', 'evt-report-race');
+    [$read, $applied] = bankMysqlRun([bankMysqlPostedPayoutsReader($admin->id), bankMysqlCallback($signed)]);
+
+    expect($applied)->toBe('applied')->and($withdrawal->fresh()->state)->toBe('posted')
+        ->and($read['status'])->toBeIn(['Partial', 'Unavailable']);
+    if ($read['status'] === 'Partial') {
+        expect([$read['total'], $read['paid']])->toBeIn([[0, 0], [1, 30000]]);
+    }
 });

@@ -471,3 +471,40 @@ test('plan notices use their immutable lifecycle event and retain Invited Custom
     expect($notice['summary'])->toBe('Your daily thrift plan was paused.');
     expect(DB::table('notification_events')->where('family', 'plan')->value('source_version'))->toBe(2);
 });
+
+test('any changed stored contract blocks delivery instead of rendering', function (string $table, array $changes): void {
+    $customer = CustomerProfile::factory()->create();
+    [, $id] = inboxStatusNotice($customer, deliver: false);
+    $eventId = DB::table('notification_inbox_intents')->where('id', $id)->value('event_id');
+    DB::table($table)->where('id', $table === 'notification_events' ? $eventId : $id)->update($changes);
+
+    app(NotificationPipeline::class)->materialize($id);
+
+    expect(DB::table('notification_inbox_intents')->where('id', $id)->value('status'))->toBe('blocked')
+        ->and(DB::table('notifications')->count())->toBe(0);
+})->with([
+    'unknown event type' => ['notification_events', ['event_type' => 'made_up']],
+    'unknown family' => ['notification_events', ['family' => 'unregistered']],
+    'future schema' => ['notification_events', ['schema_version' => 2]],
+    'zero source version' => ['notification_events', ['source_version' => 0]],
+    'unexpected facts' => ['notification_events', ['facts' => json_encode(['status' => 'restricted', 'reason' => 'leak'])]],
+    'mismatched template' => ['notification_inbox_intents', ['template_id' => 'customer_status.other']],
+    'changed locale' => ['notification_inbox_intents', ['locale' => 'fr-FR']],
+    'optional notice' => ['notification_inbox_intents', ['mandatory' => false]],
+    'broadened audience' => ['notification_inbox_intents', ['audiences' => json_encode(['subject_customer', 'security_operations_admin'])]],
+    'edited summary' => ['notification_inbox_intents', ['summary' => 'Click https://evil.test now']],
+]);
+
+test('only the supported template version renders', function (int $version, string $status): void {
+    $customer = CustomerProfile::factory()->create();
+    [, $id] = inboxStatusNotice($customer, deliver: false);
+    DB::table('notification_inbox_intents')->where('id', $id)->update(['template_version' => $version]);
+
+    app(NotificationPipeline::class)->materialize($id);
+
+    expect(DB::table('notification_inbox_intents')->where('id', $id)->value('status'))->toBe($status);
+})->with([
+    'current' => [1, 'delivered'],
+    'older' => [0, 'blocked'],
+    'next' => [2, 'blocked'],
+]);

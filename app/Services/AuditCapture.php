@@ -47,6 +47,7 @@ class AuditCapture
                 if (in_array($eventType, ['auth.lock_created', 'auth.compromise_sessions_revoked', 'ledger.integrity_incident', 'audit.content_mismatch'], true)) {
                     app(SecurityCaseService::class)->signal($legacy->id, in_array($eventType, ['ledger.integrity_incident', 'audit.content_mismatch'], true) ? null : $targetId, in_array($eventType, ['ledger.integrity_incident', 'audit.content_mismatch'], true) ? 'Critical' : 'High');
                 }
+                app(AuditNoticeService::class)->queue($legacy);
                 DB::afterCommit(static function () use ($canonicalId): void {
                     try {
                         ProjectAuditEvent::dispatch($canonicalId)->afterCommit();

@@ -103,3 +103,14 @@ test('cycle posting history rejects unsupported pagination before reading source
     expect(fn () => $reader->history(User::factory()->customer()->make(), new ThriftPlan, $page, $size))
         ->toThrow(InvalidArgumentException::class);
 })->with([[0, 25], [1000001, 25], [1, 10], [1, 101]]);
+
+test('the fees report lists every posted manual deduction with the same full total as cycle history', function (): void {
+    [, $customer, , $admin] = postingHistoryFixture($this, 3);
+    config()->set('collections.enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+
+    $this->actingAs($admin)->get(route('reports.show', 'fees'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.other_deductions.total', 3)
+        ->where('report.sections.other_deductions.rows.0.customer', $customer->customer_id)
+        ->where('report.sections.other_deductions.metrics', fn ($metrics) => collect($metrics)->firstWhere('code', 'fee_activity_amount')['value'] === 300));
+});

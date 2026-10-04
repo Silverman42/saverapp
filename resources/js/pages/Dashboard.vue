@@ -38,6 +38,8 @@ type Metric = {
     source: string;
     date_basis: string;
     definition: string;
+    drill_down: string | null;
+    drill_down_reason: string;
 };
 type Row = {
     reference?: string;
@@ -112,6 +114,7 @@ const titles: Record<string, string> = {
     custody: 'Cash custody and reconciliation',
     financial_movements: 'Posted financial movements',
     financial_cash_position: 'Business cash and encumbrances',
+    incidents: 'Payout and ledger incidents',
     gated: 'Additional metrics',
 };
 const heading = computed(
@@ -458,6 +461,19 @@ function resetFilters(): void {
                                 <p class="text-muted-foreground mt-2 text-xs">
                                     {{ metric.source }} ·
                                     {{ metric.date_basis }}
+                                </p>
+                                <Link
+                                    v-if="metric.drill_down"
+                                    :href="metric.drill_down"
+                                    class="mt-3 inline-block text-sm font-medium underline-offset-4 hover:underline"
+                                    :aria-label="`View report for ${metric.title}`"
+                                    >View report</Link
+                                >
+                                <p
+                                    v-else
+                                    class="text-muted-foreground mt-3 text-xs"
+                                >
+                                    {{ metric.drill_down_reason }}
                                 </p>
                             </div>
                         </div>

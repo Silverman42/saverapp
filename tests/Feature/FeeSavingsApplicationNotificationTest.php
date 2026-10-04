@@ -6,12 +6,14 @@ use App\Jobs\DeliverFeeApplicationNotificationIntent;
 use App\Jobs\MaterializeNotificationIntent;
 use App\Models\AgentProfile;
 use App\Models\AuditEvent;
+use App\Models\CustomerProfile;
 use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Notifications\FeeSavingsApplicationMailNotification;
 use App\Services\CustomerReassignmentService;
 use App\Services\FeeSavingsApplicationService;
+use App\Services\LedgerTransactionProjectionService;
 use App\Services\ManagementMailDelivery;
 use App\Services\NotificationPipeline;
 use App\Services\WithdrawalBalanceService;
@@ -27,6 +29,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 
 require_once __DIR__.'/../WithdrawalFixtures.php';
 require_once __DIR__.'/../FeeFixtures.php';
@@ -366,3 +369,20 @@ test('application mail cannot claim accepted delivery after a silent veto or an 
     expect(DB::table('canonical_audit_events')->where('legacy_audit_event_id', $audit->id)->value('outcome'))->toBe('Failed');
     expect(feeApplicationNoticeFinancialRows())->toEqual($financial);
 })->with(['silent veto' => true, 'failure after acceptance' => false]);
+
+test('the fees report lists each posted savings application with its amount and no compensation', function (): void {
+    config()->set('collections.enabled', true);
+    [$admin, $customer] = feeApplicationNoticeFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $value = fn ($metrics, string $code): ?int => collect($metrics)->firstWhere('code', $code)['value'] ?? null;
+
+    $this->actingAs($admin)->get(route('reports.show', 'fees'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.fee_applications.total', 1)
+        ->where('report.sections.fee_applications.rows.0.customer', $customer->customer_id)
+        ->where('report.sections.fee_applications.rows.0.compensation', 'None')
+        ->where('report.sections.fee_applications.metrics', fn ($metrics) => $value($metrics, 'fee_activity_amount') === 20000)
+        ->where('report.sections.fee_refunds.total', 0)
+        ->where('report.sections.other_deductions.total', 0));
+    $this->actingAs(CustomerProfile::factory()->create()->user)->get(route('reports.show', 'fees'))
+        ->assertInertia(fn (Assert $page) => $page->where('report.sections.fee_applications.total', 0));
+});

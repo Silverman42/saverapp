@@ -17,6 +17,7 @@ use App\Models\ReversalRequest;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\CollectionBatchPosition;
+use App\Services\CollectionExceptionNoticeService;
 use App\Services\CollectionExceptionResolution;
 use App\Services\CollectionLedgerService;
 use App\Services\CollectionReadService;
@@ -238,11 +239,12 @@ class ReconciliationController extends Controller
                     'collection_batch_id' => $current->id, 'opened_by_user_id' => $request->user()->id,
                     'kind' => 'cash_shortage', 'amount_kobo' => $outstanding, 'reason' => trim($data['reason']),
                 ]);
-                DB::table('collection_exception_events')->insert([
+                $exceptionEventId = DB::table('collection_exception_events')->insertGetId([
                     'collection_exception_id' => $exception->id, 'actor_user_id' => $request->user()->id,
                     'batch_version' => $current->version, 'event_type' => 'opened',
                     'reason' => trim($data['reason']), 'created_at' => now(), 'updated_at' => now(),
                 ]);
+                app(CollectionExceptionNoticeService::class)->queue($exceptionEventId);
             }
             $current->status = $outcome;
             $current->version++;
@@ -282,11 +284,12 @@ class ReconciliationController extends Controller
                 'collection_batch_id' => $current->id, 'opened_by_user_id' => $request->user()->id,
                 'kind' => $data['kind'], 'amount_kobo' => $amount, 'reason' => trim($data['reason']),
             ]);
-            DB::table('collection_exception_events')->insert([
+            $exceptionEventId = DB::table('collection_exception_events')->insertGetId([
                 'collection_exception_id' => $exception->id, 'actor_user_id' => $request->user()->id,
                 'batch_version' => $current->version, 'event_type' => 'opened',
                 'reason' => trim($data['reason']), 'created_at' => now(), 'updated_at' => now(),
             ]);
+            app(CollectionExceptionNoticeService::class)->queue($exceptionEventId);
             $current->status = 'exception';
             $current->version++;
             $current->save();
@@ -328,11 +331,12 @@ class ReconciliationController extends Controller
             $previous = $currentException->status;
             $currentException->status = $data['status'];
             $currentException->save();
-            DB::table('collection_exception_events')->insert([
+            $exceptionEventId = DB::table('collection_exception_events')->insertGetId([
                 'collection_exception_id' => $currentException->id, 'actor_user_id' => $request->user()->id,
                 'batch_version' => $current->version, 'event_type' => $data['status'],
                 'reason' => trim($data['reason']), 'created_at' => now(), 'updated_at' => now(),
             ]);
+            app(CollectionExceptionNoticeService::class)->queue($exceptionEventId);
             $current->status = 'exception';
             $current->version++;
             $current->save();
@@ -381,11 +385,12 @@ class ReconciliationController extends Controller
             }
             $currentException->status = 'resolved';
             $currentException->save();
-            DB::table('collection_exception_events')->insert([
+            $exceptionEventId = DB::table('collection_exception_events')->insertGetId([
                 'collection_exception_id' => $currentException->id, 'actor_user_id' => $request->user()->id,
                 'batch_version' => $current->version, 'event_type' => 'resolved',
                 'reason' => trim($data['reason']), 'created_at' => now(), 'updated_at' => now(),
             ]);
+            app(CollectionExceptionNoticeService::class)->queue($exceptionEventId);
             $current->version++;
             $current->save();
             AuditEvent::record('collection.exception_resolved', CollectionException::class, $currentException->id,
@@ -418,11 +423,12 @@ class ReconciliationController extends Controller
             }
             $currentException->status = 'reopened';
             $currentException->save();
-            DB::table('collection_exception_events')->insert([
+            $exceptionEventId = DB::table('collection_exception_events')->insertGetId([
                 'collection_exception_id' => $currentException->id, 'actor_user_id' => $request->user()->id,
                 'batch_version' => $current->version, 'event_type' => 'reopened',
                 'reason' => trim($data['reason']), 'created_at' => now(), 'updated_at' => now(),
             ]);
+            app(CollectionExceptionNoticeService::class)->queue($exceptionEventId);
             $current->status = 'exception';
             $current->version++;
             $current->save();

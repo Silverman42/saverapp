@@ -96,7 +96,9 @@ test('REV-AC-013: a multi-slot receipt with a fee releases every allocation and 
         ->and(app(CollectionReadService::class)->position($customer)['liability_kobo'])->toBe(0)
         ->and((int) $compensation->entries()->where('side', 'debit')->sum('amount_kobo'))->toBe((int) $compensation->entries()->where('side', 'credit')->sum('amount_kobo'))
         ->and(LedgerPostingGroup::query()->where('source_type', $compensation->source_type)->where('source_id', $compensation->source_id)->count())->toBe(1)
-        ->and(DB::table('collection_allocations')->where('collection_receipt_id', $receipt->id)->count())->toBe($allocations);
+        ->and(DB::table('collection_allocations')->where('collection_receipt_id', $receipt->id)->count())->toBe($allocations)
+        ->and(DB::table('notification_inbox_intents')->where('recipient_user_id', $customer->user_id)
+            ->where('template_id', 'reversal.approved_posted')->count())->toBe(1);
 });
 
 test('REV-AC-020: an unpaid withdrawal stays on the Module 08 cancellation and hold path with no reversal', function (): void {

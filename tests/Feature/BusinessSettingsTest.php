@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\AuditCapture;
 use App\Services\BusinessSettings;
 use App\Services\BusinessSettingsReadiness;
+use App\Services\CollectionService;
 use App\Services\FinancialReleaseEvidenceService;
 use App\Services\NotificationPipeline;
 use Carbon\CarbonImmutable;
@@ -20,6 +21,9 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+
+require_once __DIR__.'/../WithdrawalFixtures.php';
+require_once __DIR__.'/../CollectionFixtures.php';
 
 function configurationManager(): User
 {
@@ -335,4 +339,22 @@ test('presentation defaults change new queries while explicit filters still win'
     publishConfiguration($actor, configurationDraft($actor, ['dashboard_activity_range' => 'week', 'page_size' => 50, 'week_start' => 'Sunday']));
     $this->actingAs($actor)->get(route('admin.dashboard'))->assertOk()->assertInertia(fn (Assert $page) => $page->where('filters.from', '2026-09-20')->where('filters.page_size', 50));
     $this->get(route('admin.dashboard', ['period' => 'today', 'page_size' => 25]))->assertOk()->assertInertia(fn (Assert $page) => $page->where('filters.from', '2026-09-26')->where('filters.page_size', '25'));
+});
+test('disabling collections blocks new entry while posted receipt history and reconciliation stay available', function () {
+    config(['collections.enabled' => true]);
+    [$agent, $customer, $assignment, $plan, $date] = collectionFixture(1, slotAmountKobo: 200000);
+    $collection = app(CollectionService::class);
+    $payload = collectionPayload($customer, $assignment, $plan, $date, '2000.00');
+    $payload['preview_fingerprint'] = $collection->preview($agent, $customer, $payload)['preview_fingerprint'];
+    $receipt = $collection->record($agent, $customer, $payload);
+    $ledger = [DB::table('ledger_posting_groups')->count(), DB::table('ledger_entries')->count()];
+
+    app(BusinessSettings::class)->import();
+
+    $this->actingAs($agent)->get(route('customers.collections.create', $customer))->assertStatus(503);
+    $this->actingAs($agent)->post(route('customers.collections.store', $customer), collectionPayload($customer, $assignment, $plan, $date, '2000.00'))->assertStatus(503);
+    $this->actingAs($agent)->get(route('collections.show', $receipt))->assertOk();
+    $this->actingAs($agent)->get(route('collection-batches.show', $receipt->collection_batch_id))->assertOk();
+    $this->assertDatabaseCount('collection_receipts', 1);
+    expect([DB::table('ledger_posting_groups')->count(), DB::table('ledger_entries')->count()])->toBe($ledger);
 });

@@ -1,14 +1,20 @@
 <?php
 
+use App\Enums\AdminPermission;
 use App\Models\BankPayoutAttempt;
 use App\Models\BankPayoutReturn;
+use App\Models\CustomerProfile;
+use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
+use App\Models\User;
 use App\Models\WithdrawalEvent;
 use App\Services\FakePayoutProvider;
+use App\Services\LedgerTransactionProjectionService;
 use App\Services\UnavailablePayoutProvider;
 use App\Support\PayoutProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 
 require_once __DIR__.'/../BankPayoutFixtures.php';
 
@@ -233,4 +239,72 @@ test('the local fake-event command drives the real callback path and refuses oth
     $this->artisan('payouts:fake-event', ['attempt' => $reference, 'event' => 'settled'])->assertFailed();
     app()->detectEnvironment(fn (): string => 'testing');
     expect(LedgerPostingGroup::query()->where('event_type', 'bank_payout_settlement')->count())->toBe(0);
+});
+
+test('unknown payouts, unmatched callbacks and ledger incidents surface as permission-scoped incident queues', function (): void {
+    [$admin, , , , $withdrawal] = bankPayoutFixture($this, '4');
+    $reference = startBankPayout($this, $admin, $withdrawal);
+    $attempt = bankAttempt($reference);
+    sendPayoutCallback($this, callbackEvent($attempt, 'succeeded', 'evt-orphan', ['idempotency_key' => str_repeat('b', 64)]))->assertJson(['disposition' => 'unmatched']);
+    $incident = (string) Str::uuid();
+    DB::table('ledger_integrity_incidents')->insert(['incident_reference' => $incident, 'category' => 'projection_mismatch', 'status' => 'open',
+        'summary' => 'Detected in test.', 'projection_version' => 1, 'ledger_group_watermark' => 1, 'detected_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+    $admin->revokePermissionTo(AdminPermission::ReconciliationManage);
+    $admin = $admin->fresh();
+    $value = fn (array $metrics, string $code): ?int => collect($metrics)->firstWhere('code', $code)['value'] ?? null;
+
+    $this->actingAs($admin)->get(route('admin.dashboard'))->assertInertia(fn (Assert $page) => $page
+        ->where('dashboard.sections.incidents.status', 'Current')
+        ->where('dashboard.sections.incidents.metrics', fn ($metrics) => $value($metrics->all(), 'bank_outcome_unknown') === 1
+            && $value($metrics->all(), 'unmatched_bank_callbacks') === 1 && $value($metrics->all(), 'open_ledger_incidents') === null)
+        ->where('dashboard.sections.incidents.rows', fn ($rows) => collect($rows)->firstWhere('reference', $reference)['href'] === route('withdrawals.show', $withdrawal->withdrawal_id)));
+
+    $admin->givePermissionTo(AdminPermission::ReconciliationManage);
+    $this->actingAs($admin->fresh())->get(route('reports.show', 'exceptions'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.payout_incidents.status', 'Current')
+        ->where('report.sections.payout_incidents.total', 3)
+        ->where('report.sections.payout_incidents.metrics', fn ($metrics) => $value($metrics->all(), 'open_ledger_incidents') === 1));
+    $this->get(route('reports.show', ['report' => 'exceptions', 'customer_status' => 'active']))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.payout_incidents.status', 'Unavailable'));
+
+    $reader = User::factory()->admin()->create();
+    $this->actingAs($reader)->get(route('admin.dashboard'))->assertInertia(fn (Assert $page) => $page->missing('dashboard.sections.incidents'));
+});
+
+test('the withdrawals report lists each posted payout with its gross, paid, fee and deduction components', function (): void {
+    [$admin, , $customer, , $withdrawal] = bankPayoutFixture($this, '1');
+    startBankPayout($this, $admin, $withdrawal);
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $value = fn ($metrics, string $code): ?int => collect($metrics)->firstWhere('code', $code)['value'] ?? null;
+
+    $this->actingAs($admin)->get(route('reports.show', 'withdrawals'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.posted_payouts.total', 1)
+        ->where('report.sections.posted_payouts.rows.0.reference', $withdrawal->withdrawal_id)
+        ->where('report.sections.posted_payouts.rows.0.rail', 'bank_withdrawal')
+        ->where('report.sections.posted_payouts.rows.0.compensation', 'None')
+        ->where('report.sections.posted_payouts.rows.0.href', route('withdrawals.show', $withdrawal->withdrawal_id))
+        ->where('report.sections.posted_payouts.metrics', fn ($metrics) => $value($metrics, 'gross_withdrawal') === 30000
+            && $value($metrics, 'amount_paid') === 30000 && $value($metrics, 'withdrawal_fee') === 0));
+
+    $this->actingAs($customer->user)->get(route('reports.show', 'withdrawals'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.posted_payouts.total', 1));
+    $this->actingAs(CustomerProfile::factory()->create()->user)->get(route('reports.show', 'withdrawals'))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.posted_payouts.total', 0));
+    $this->actingAs($admin)->get(route('reports.show', ['report' => 'withdrawals', 'state' => 'pending_review']))->assertInertia(fn (Assert $page) => $page
+        ->where('report.sections.posted_payouts.status', 'Unavailable'));
+});
+
+test('a posted bank payout notifies the Customer and current Agent once, never other Customers', function (): void {
+    [$admin, $agent, $customer, , $withdrawal] = bankPayoutFixture($this, '1');
+    $other = CustomerProfile::factory()->create();
+    $version = $withdrawal->version;
+    $reference = startBankPayout($this, $admin, $withdrawal);
+    $this->actingAs($admin)->withSession(bankSession())->post(route('withdrawals.bank.start', $withdrawal), [
+        'attempt_reference' => $reference, 'version' => $version, 'confirmed' => true])->assertRedirect();
+    $posted = fn (int $userId): int => DB::table('notification_inbox_intents')->where('recipient_user_id', $userId)
+        ->where('template_id', 'withdrawal.bank_posted')->count();
+
+    expect($posted($agent->id))->toBe(1)->and($posted($customer->user_id))->toBe(1)
+        ->and($posted($other->user_id))->toBe(0);
 });

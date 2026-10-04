@@ -1,47 +1,47 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm, useHttp } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
-import type { FormDataConvertible } from '@inertiajs/core';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
-import { dashboard } from '@/routes';
-import { index } from '@/routes/admin/business-settings';
-import * as drafts from '@/routes/admin/business-settings/drafts';
-import * as versions from '@/routes/admin/business-settings/versions';
-import * as operations from '@/routes/admin/business-settings/operations';
-import { show as freshAuthentication } from '@/actions/App/Http/Controllers/Auth/FreshAuthenticationController';
+import { Head, Link, router, useForm, useHttp } from "@inertiajs/vue3";
+import { computed, ref, watch } from "vue";
+import type { FormDataConvertible } from "@inertiajs/core";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useProtectedWorkspace } from "@/composables/useProtectedWorkspace";
+import { dashboard } from "@/routes";
+import { index } from "@/routes/admin/business-settings";
+import * as drafts from "@/routes/admin/business-settings/drafts";
+import * as versions from "@/routes/admin/business-settings/versions";
+import * as operations from "@/routes/admin/business-settings/operations";
+import { show as freshAuthentication } from "@/actions/App/Http/Controllers/Auth/FreshAuthenticationController";
 import type {
     SettingValue,
     SettingsWorkspace,
-} from '@/types/business-settings';
+} from "@/types/business-settings";
 const props = defineProps<{ settings: SettingsWorkspace; scope: string }>();
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Business settings', href: index() },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Business settings", href: index() },
         ],
     },
 });
 const { visible, notice, refresh } = useProtectedWorkspace(() => props.scope);
-const selectedCode = ref('display_name');
+const selectedCode = ref("display_name");
 const selectedDraft = ref<number | null>(null);
-const value = ref('');
+const value = ref("");
 const unknown = ref(false);
 const operationId = ref<string | null>(null);
-const mutationNotice = ref('');
+const mutationNotice = ref("");
 const lookup = useHttp({});
 let pendingRequest: {
     url: string;
-    method: 'post' | 'patch';
+    method: "post" | "patch";
     data: Record<string, FormDataConvertible>;
 } | null = null;
 function remember(
     url: string,
-    method: 'post' | 'patch',
+    method: "post" | "patch",
     data: Record<string, FormDataConvertible>,
 ): void {
     pendingRequest = { url, method, data: JSON.parse(JSON.stringify(data)) };
@@ -57,35 +57,50 @@ const editable = computed(() =>
         ([, item]) => item.editable,
     ),
 );
+const stateLabels: Record<string, string> = {
+    scheduled: "Scheduled",
+    propagation_pending: "Activation pending",
+    blocked: "Blocked — activation degraded",
+    effective: "Effective",
+    superseded: "Superseded",
+    cancelled: "Cancelled",
+};
+
+function stateLabel(state: string | null): string {
+    return state === null
+        ? "Imported"
+        : (stateLabels[state] ?? "Unknown state");
+}
+
 const groups = computed(() => [
     ...new Set(
         Object.values(props.settings.definitions).map((item) => item.group),
     ),
 ]);
 const save = useForm({
-    operation_id: '',
+    operation_id: "",
     base_version: props.settings.version,
     revision: 1,
     proposed_values: {} as Record<string, SettingValue>,
 });
-const preview = useForm({ revision: 1, effective_at: '' });
+const preview = useForm({ revision: 1, effective_at: "" });
 const publication = useForm({
-    operation_id: '',
+    operation_id: "",
     revision: 1,
-    preview_reference: '',
-    reason: '',
+    preview_reference: "",
+    reason: "",
     confirmation: false,
 });
 const lifecycle = useForm({
-    operation_id: '',
-    reason: '',
+    operation_id: "",
+    reason: "",
     confirmation: false,
     revision: 1,
 });
 watch(
     selectedCode,
     () => {
-        value.value = String(props.settings.values[selectedCode.value] ?? '');
+        value.value = String(props.settings.values[selectedCode.value] ?? "");
     },
     { immediate: true },
 );
@@ -99,14 +114,14 @@ watch(
 watch(
     () => props.scope,
     () => {
-        value.value = '';
+        value.value = "";
         publication.reset();
         save.reset();
     },
 );
 function begin(): string {
     unknown.value = false;
-    mutationNotice.value = '';
+    mutationNotice.value = "";
     const id = crypto.randomUUID();
     operationId.value = id;
     return id;
@@ -116,23 +131,23 @@ const outcomes = {
     onNetworkError: () => {
         unknown.value = true;
         mutationNotice.value =
-            'The result is unknown. Resolve this operation before starting another change.';
+            "The result is unknown. Resolve this operation before starting another change.";
     },
     onHttpException: () => {
         mutationNotice.value =
-            'The server rejected the change. Refresh and review its current state.';
+            "The server rejected the change. Refresh and review its current state.";
     },
     onSuccess: () => {
         unknown.value = false;
         mutationNotice.value =
-            'The server confirmed the operation. Review its current state below.';
+            "The server confirmed the operation. Review its current state below.";
     },
 };
 function saveDraft(): void {
     if (unknown.value) return;
     const raw =
-        typeof definition.value.default === 'number'
-            ? value.value.trim() === ''
+        typeof definition.value.default === "number"
+            ? value.value.trim() === ""
                 ? null
                 : Number(value.value)
             : value.value || null;
@@ -150,7 +165,7 @@ function saveDraft(): void {
     const { proposed_values, ...saveData } = save.data();
     remember(
         draft.value ? drafts.update.url(draft.value.id) : drafts.store.url(),
-        draft.value ? 'patch' : 'post',
+        draft.value ? "patch" : "post",
         { ...saveData, patch: proposed_values },
     );
     if (draft.value) save.submit(drafts.update(draft.value.id), outcomes);
@@ -170,13 +185,13 @@ function publishDraft(): void {
     publication.operation_id = begin();
     publication.revision = draft.value.revision;
     publication.preview_reference = draft.value.preview.reference;
-    remember(drafts.publish.url(draft.value.id), 'post', publication.data());
+    remember(drafts.publish.url(draft.value.id), "post", publication.data());
     publication.submit(drafts.publish(draft.value.id), outcomes);
 }
 function discardDraft(): void {
     if (!draft.value || unknown.value) return;
     const payload = { operation_id: begin(), revision: draft.value.revision };
-    remember(drafts.discard.url(draft.value.id), 'post', payload);
+    remember(drafts.discard.url(draft.value.id), "post", payload);
     router.post(drafts.discard.url(draft.value.id), payload, {
         ...outcomes,
         onSuccess: () => {
@@ -188,7 +203,7 @@ function discardDraft(): void {
 function cancelVersion(id: number): void {
     if (unknown.value) return;
     lifecycle.operation_id = begin();
-    remember(versions.cancel.url(id), 'post', {
+    remember(versions.cancel.url(id), "post", {
         operation_id: lifecycle.operation_id,
         reason: lifecycle.reason,
         confirmation: lifecycle.confirmation,
@@ -200,7 +215,7 @@ function cancelVersion(id: number): void {
 function rollbackVersion(id: number): void {
     if (unknown.value) return;
     const payload = { operation_id: begin() };
-    remember(versions.rollback.url(id), 'post', payload);
+    remember(versions.rollback.url(id), "post", payload);
     router.post(versions.rollback.url(id), payload, outcomes);
 }
 function resolveOperation(): void {
@@ -208,7 +223,7 @@ function resolveOperation(): void {
     lookup.get(operations.show.url(operationId.value), {
         onSuccess: () => {
             unknown.value = false;
-            mutationNotice.value = 'The original operation was confirmed.';
+            mutationNotice.value = "The original operation was confirmed.";
             refresh();
         },
     });
@@ -230,7 +245,12 @@ function retryOriginal(): void {
             <p>{{ notice }}</p>
             <Button class="mt-4" @click="refresh">Refresh access</Button>
         </div>
-        <p v-if="mutationNotice" role="status" class="rounded-xl border p-4">
+        <p
+            v-if="mutationNotice"
+            role="status"
+            aria-live="polite"
+            class="rounded-xl border p-4"
+        >
             {{ mutationNotice }}
             <Button v-if="unknown" variant="outline" @click="resolveOperation"
                 >Look up operation result</Button
@@ -251,8 +271,8 @@ function retryOriginal(): void {
                     {{ settings.version }} ·
                     {{
                         settings.can_manage
-                            ? 'Configuration manager'
-                            : 'Read-only oversight'
+                            ? "Configuration manager"
+                            : "Read-only oversight"
                     }}
                 </p>
             </header>
@@ -288,7 +308,7 @@ function retryOriginal(): void {
                             <dd class="mt-2 font-medium break-words">
                                 {{
                                     settings.values[code] === null
-                                        ? 'Not configured'
+                                        ? "Not configured"
                                         : String(settings.values[code])
                                 }}
                             </dd>
@@ -379,7 +399,7 @@ function retryOriginal(): void {
                                 {{ settings.definitions[code]?.label }}
                             </dt>
                             <dd class="font-medium">
-                                {{ proposed ?? 'Remove value' }}
+                                {{ proposed ?? "Remove value" }}
                             </dd>
                         </div>
                     </dl>
@@ -449,12 +469,12 @@ function retryOriginal(): void {
                                         <td class="p-2">
                                             {{
                                                 change.before ??
-                                                'Not configured'
+                                                "Not configured"
                                             }}
                                         </td>
                                         <td class="p-2">
                                             {{
-                                                change.after ?? 'Not configured'
+                                                change.after ?? "Not configured"
                                             }}
                                         </td>
                                     </tr>
@@ -473,7 +493,7 @@ function retryOriginal(): void {
                             Requested effect:
                             {{
                                 draft.preview.effective_at ??
-                                'Immediate after acknowledgement'
+                                "Immediate after acknowledgement"
                             }}
                         </p>
                         <Link
@@ -529,7 +549,7 @@ function retryOriginal(): void {
                         <h3 class="font-medium">
                             {{
                                 settings.definitions[code]?.label ??
-                                code.replaceAll('_', ' ')
+                                code.replaceAll("_", " ")
                             }}
                         </h3>
                         <Badge variant="outline">{{ check.state }}</Badge>
@@ -539,7 +559,7 @@ function retryOriginal(): void {
                         <p class="text-sm">
                             {{
                                 check.blocker ||
-                                'Supported prospective configuration consumer.'
+                                "Supported prospective configuration consumer."
                             }}
                         </p>
                     </div>
@@ -572,7 +592,7 @@ function retryOriginal(): void {
                                 </th>
                                 <td class="p-3">
                                     <Badge variant="outline">{{
-                                        item.state
+                                        stateLabel(item.state)
                                     }}</Badge>
                                     <p v-if="item.failure_code">
                                         {{ item.failure_code }}
@@ -582,7 +602,7 @@ function retryOriginal(): void {
                                     {{ item.requested_effective_at }}
                                     <p class="text-muted-foreground">
                                         {{
-                                            item.effective_at ?? 'Not effective'
+                                            item.effective_at ?? "Not effective"
                                         }}
                                     </p>
                                 </td>
@@ -602,6 +622,7 @@ function retryOriginal(): void {
                                                 !lifecycle.confirmation ||
                                                 !lifecycle.reason
                                             "
+                                            :aria-label="`Cancel pending version ${item.version}`"
                                             @click="cancelVersion(item.id)"
                                             >Cancel pending version</Button
                                         ><Button
@@ -613,6 +634,7 @@ function retryOriginal(): void {
                                             "
                                             variant="outline"
                                             :disabled="unknown"
+                                            :aria-label="`Draft rollback to version ${item.version}`"
                                             @click="rollbackVersion(item.id)"
                                             >Draft rollback</Button
                                         ></template

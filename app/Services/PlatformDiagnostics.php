@@ -38,7 +38,7 @@ class PlatformDiagnostics
         $checks['schema'] = $this->inspect(function (): array {
             $tables = ['platform_state', 'platform_transitions', 'platform_operations', 'platform_heartbeats', 'canonical_audit_events',
                 'audit_projection_work', 'audit_projection_state', 'ledger_posting_groups', 'ledger_projection_state',
-                'notification_inbox_intents', 'platform_recovery_work', 'platform_recovery_attempts', 'platform_replay_manifests', 'platform_replay_approvals', 'platform_replay_runs', 'platform_replay_progress', 'platform_recovery_operations', 'platform_recovery_adoption', 'business_configuration_work', 'business_configuration_versions', 'jobs', 'failed_jobs'];
+                'notification_inbox_intents', 'platform_recovery_work', 'platform_recovery_attempts', 'platform_replay_manifests', 'platform_replay_approvals', 'platform_replay_runs', 'platform_replay_progress', 'platform_recovery_operations', 'platform_recovery_adoption', 'business_configuration_work', 'business_configuration_versions', 'platform_integrity_runs', 'jobs', 'failed_jobs'];
             $missing = array_values(array_filter($tables, fn (string $table): bool => ! Schema::hasTable($table)));
 
             return ['state' => $missing === [] ? 'Ready' : 'Unavailable', 'missing' => $missing];
@@ -86,6 +86,12 @@ class PlatformDiagnostics
                 'audit_status' => $audit->status ?? 'unknown', 'ledger_status' => $ledger->status ?? 'unknown',
                 'audit_lag_events' => $audit === null ? null : DB::table('canonical_audit_events')->where('id', '>', $audit->watermark)->count(),
                 'ledger_lag_groups' => $ledger === null ? null : DB::table('ledger_posting_groups')->where('id', '>', $ledger->ledger_group_watermark)->count()];
+        });
+        $checks['integrity'] = $this->inspect(function (): array {
+            $run = DB::table('platform_integrity_runs')->where('scope', 'live')->orderByDesc('id')->first(['status', 'failed_domains', 'created_at']);
+
+            return $run === null ? ['state' => 'Unverified'] : ['state' => $run->status === 'passed' ? 'Ready' : 'Failed',
+                'failed_domains' => json_decode($run->failed_domains, true), 'verified_at' => $run->created_at];
         });
         foreach (['provider', 'backup', 'key_custody', 'clock_synchronization', 'restore', 'external_fencing'] as $dependency) {
             $checks[$dependency] = ['state' => 'Unverified'];

@@ -69,6 +69,12 @@ export type ReportResult = {
             { status: string; version: number; watermark: number }
         >;
         drill_down_note: string;
+        drill_down?: {
+            metric: string;
+            basis_watermark: number;
+            report_watermark: number;
+            reconciled: boolean;
+        };
     };
     sections: Record<string, ReportSection>;
 };

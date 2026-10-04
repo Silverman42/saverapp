@@ -427,3 +427,102 @@ test('agent scope refresh denies an account without confirmed MFA even when it h
         'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/')),
     ])->get(route('agent.dashboard'))->assertForbidden();
 });
+
+test('metric drill-downs open the matching report section with the same total and watermark', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture, '3000.00');
+    $customer = $fixture[1]->user;
+    $data = app(DashboardReadService::class)->read($customer, ['from' => $fixture[4], 'to' => $fixture[4], 'page_size' => 25]);
+    $metrics = collect($data['sections'])->flatMap(fn (array $section): array => $section['metrics'])->keyBy('code');
+
+    foreach (['customer_liability' => 'customer-summary', 'received_savings' => 'contributions'] as $code => $report) {
+        $link = $metrics[$code]['drill_down'];
+        expect($link)->toContain('reports/'.$report)->toContain('metric='.$code)
+            ->toContain('basis_watermark='.$data['manifest']['ledger_watermark']);
+
+        $this->actingAs($customer)->get($link)->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('reports/Show')
+            ->where('report.manifest.drill_down.metric', $code)
+            ->where('report.manifest.drill_down.reconciled', true)
+            ->where('report.sections.primary.metrics', fn ($reportMetrics) => collect($reportMetrics)
+                ->firstWhere('code', $code)['value'] === $metrics[$code]['value']));
+    }
+});
+
+test('a drill-down states the differing watermark when the card was read at another ledger watermark', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture, '1000.00');
+    $customer = $fixture[1]->user;
+    $data = app(DashboardReadService::class)->read($customer, ['from' => $fixture[4], 'to' => $fixture[4], 'page_size' => 25]);
+    $earlier = $data['manifest']['ledger_watermark'] - 1;
+
+    $this->actingAs($customer)->get(route('reports.show', ['report' => 'customer-summary', 'metric' => 'customer_liability', 'basis_watermark' => $earlier]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('report.manifest.drill_down.reconciled', false)
+            ->where('report.manifest.drill_down.basis_watermark', $earlier)
+            ->where('report.manifest.drill_down.report_watermark', $data['manifest']['ledger_watermark'])
+            ->where('report.manifest.drill_down_note', fn (string $note) => str_contains($note, 'Exact reconciliation')
+                && str_contains($note, 'watermark '.$earlier)));
+});
+
+test('metrics without an equivalent report scope explain why no drill-down is offered', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture);
+    $admin = User::factory()->admin()->create();
+    $filters = ['from' => $fixture[4], 'to' => $fixture[4], 'page_size' => 25];
+
+    $metric = fn (array $data, string $section, string $code): array => collect($data['sections'][$section]['metrics'])->firstWhere('code', $code);
+    $unfiltered = app(DashboardReadService::class)->read($admin, $filters);
+    expect($metric($unfiltered, 'collections', 'received_savings')['drill_down'])->toBeNull()
+        ->and($metric($unfiltered, 'collections', 'received_savings')['drill_down_reason'])->toContain('archived')
+        ->and($metric($unfiltered, 'portfolio', 'customers_total')['drill_down'])->toBeNull()
+        ->and($metric($unfiltered, 'custody', 'business_cash')['drill_down'])->toContain('reports/reconciliation');
+
+    $filtered = app(DashboardReadService::class)->read($admin, [...$filters, 'customer_status' => 'active']);
+    expect($metric($filtered, 'collections', 'received_savings')['drill_down'])->toContain('customer_status=active');
+
+    $agent = app(DashboardReadService::class)->read($fixture[0], $filters);
+    expect($metric($agent, 'collections', 'received_savings')['drill_down'])->toBeNull()
+        ->and($metric($agent, 'custody', 'agent_receivable')['drill_down'])->toContain('reports/reconciliation');
+});
+
+test('report drill-down parameters must be supplied together and name a known metric', function (array $query): void {
+    $customer = CustomerProfile::factory()->create();
+
+    $this->actingAs($customer->user)->get(route('reports.show', ['report' => 'customer-summary', ...$query]))->assertSessionHasErrors();
+})->with([
+    'metric only' => [['metric' => 'customer_liability']],
+    'watermark only' => [['basis_watermark' => 3]],
+    'unknown metric' => [['metric' => 'made_up', 'basis_watermark' => 3]],
+]);
+
+test('each failed or disabled owner fails only its own sections', function (Closure $damage, array $unavailable, array $current): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture);
+    DB::table('ledger_accounts')->whereIn('code', ['agent_receivable_ngn', 'business_cash_ngn'])->update(['mapping_status' => 'mapped']);
+    $admin = User::factory()->admin()->create();
+    $damage($fixture);
+
+    $sections = app(DashboardReadService::class)->read($admin, ['from' => $fixture[4], 'to' => $fixture[4], 'page_size' => 25])['sections'];
+
+    foreach ($unavailable as $section) {
+        expect($sections[$section]['status'])->toBe('Unavailable', $section.' should fail closed');
+    }
+    foreach ($current as $section) {
+        expect($sections[$section]['status'])->not->toBe('Unavailable', $section.' should stay readable');
+    }
+})->with([
+    'plan lifecycle integrity' => [fn (array $fixture) => DB::table('thrift_plans')->where('id', $fixture[3]->id)->update(['status' => 'bogus']),
+        ['portfolio'], ['savings', 'collections', 'requests', 'custody']],
+    'custody mapping disabled' => [fn () => DB::table('ledger_accounts')->where('code', 'agent_receivable_ngn')->update(['mapping_status' => 'unmapped']),
+        ['custody'], ['portfolio', 'savings', 'collections', 'requests']],
+    'open ledger incident' => [fn () => DB::table('ledger_integrity_incidents')->insert(['incident_reference' => (string) Str::uuid(), 'category' => 'projection_rebuild',
+        'status' => 'open', 'summary' => 'Test.', 'projection_version' => 1, 'ledger_group_watermark' => 1, 'detected_at' => now(), 'created_at' => now(), 'updated_at' => now()]),
+        ['savings', 'collections', 'schedule', 'activity', 'custody'], ['portfolio', 'requests']],
+    'projection unavailable' => [fn () => DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']),
+        ['savings', 'collections', 'schedule', 'activity', 'custody'], ['portfolio', 'requests']],
+]);
