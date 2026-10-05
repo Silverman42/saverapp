@@ -9,8 +9,24 @@ use Throwable;
 
 class CollectionEvidenceScanner
 {
+    public const LOCAL_FAKE_VERSION = 'local-unscanned';
+
+    /**
+     * Whether evidence can be scanned: a configured binary, or the local/testing-only fake.
+     */
+    public function isConfigured(): bool
+    {
+        $binary = config('collections.evidence_scanner_binary');
+        $version = config('collections.evidence_scanner_version');
+
+        return $this->usesLocalFake() || (is_string($binary) && str_starts_with($binary, '/') && is_string($version) && trim($version) !== '' && strlen($version) <= 100);
+    }
+
     public function scan(string $absolutePath): string
     {
+        if ($this->usesLocalFake()) {
+            return self::LOCAL_FAKE_VERSION;
+        }
         $binary = config('collections.evidence_scanner_binary');
         $version = config('collections.evidence_scanner_version');
         if (! is_string($binary) || ! str_starts_with($binary, '/') || ! is_string($version) || trim($version) === '' || strlen($version) > 100) {
@@ -30,5 +46,10 @@ class CollectionEvidenceScanner
         }
 
         return $version;
+    }
+
+    private function usesLocalFake(): bool
+    {
+        return config('collections.evidence_scanner_fake') === true && app()->environment(['local', 'testing']);
     }
 }

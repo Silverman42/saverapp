@@ -5,6 +5,7 @@ import type { FormDataConvertible } from "@inertiajs/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
     Select,
     SelectContent,
@@ -47,6 +48,9 @@ const logoUpload = useHttp<{ logo: File | null }, { reference: string }>({
     logo: null,
 });
 const isLogoSetting = computed(() => selectedCode.value === "logo_reference");
+const isBooleanSetting = computed(
+    () => typeof definition.value.default === "boolean",
+);
 function isLogoReference(code: string, item: SettingValue): item is string {
     return code === "logo_reference" && typeof item === "string";
 }
@@ -171,8 +175,9 @@ const outcomes = {
 };
 function saveDraft(): void {
     if (unknown.value) return;
-    const raw =
-        typeof definition.value.default === "number"
+    const raw = isBooleanSetting.value
+        ? value.value === "true"
+        : typeof definition.value.default === "number"
             ? value.value.trim() === ""
                 ? null
                 : Number(value.value)
@@ -450,6 +455,23 @@ function retryOriginal(): void {
                             class="size-16 rounded-md border object-contain"
                         />
                     </template>
+                    <div
+                        v-else-if="isBooleanSetting"
+                        class="flex items-center gap-3"
+                    >
+                        <Switch
+                            id="setting-value"
+                            :model-value="value === 'true'"
+                            :disabled="unknown"
+                            @update:model-value="
+                                (checked: boolean) =>
+                                    (value = checked ? 'true' : 'false')
+                            "
+                        />
+                        <span class="text-muted-foreground text-sm">{{
+                            value === "true" ? "Enabled" : "Disabled"
+                        }}</span>
+                    </div>
                     <Input
                         v-else
                         id="setting-value"

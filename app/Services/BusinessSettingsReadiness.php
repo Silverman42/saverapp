@@ -10,9 +10,6 @@ class BusinessSettingsReadiness
         $blocked = [
             'timezone' => ['Modules 06/07/11/12', 'Timezone boundary and cross-zone receipt certification is unavailable. Africa/Lagos remains supported.'],
             'collection_cash' => ['Modules 07/10', 'Approved custody mapping, evidence, period and reconciliation release certification is unavailable.'],
-            'collection_transfer' => ['Modules 07/10', 'Approved bank mapping and actual-receipt/finality evidence contract is unavailable.'],
-            'collection_pos' => ['Modules 07/10', 'Approved terminal clearing and settlement contract is unavailable.'],
-            'collection_other' => ['Modules 07/10', 'Configured custody, receipt verification and reconciliation release certification is unavailable.'],
             'withdrawal_cash' => ['Modules 08/10', 'Certified executor, funding, evidence, finality and recovery contracts are unavailable.'],
             'withdrawal_transfer' => ['Modules 08/10', 'Certified bank executor, destination, idempotency and unknown-outcome recovery are unavailable.'],
             'customer_registration' => ['Modules 04/05/13', 'End-to-end registration fee and verified sender release certification remains outstanding.'],

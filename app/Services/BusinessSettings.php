@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use LogicException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class BusinessSettings
 {
@@ -100,6 +101,20 @@ class BusinessSettings
         $this->assertNoPending([$code]);
         abort_unless(($snapshot['values'][$code] ?? false) === true
             && ($this->readiness->checks()[$code]['state'] ?? '') === 'Ready to enable', 503, 'This capability is unavailable until its owner release gates pass.');
+    }
+
+    /**
+     * Whether a feature passes ensureFeature, without aborting.
+     */
+    public function featureEnabled(string $code): bool
+    {
+        try {
+            $this->ensureFeature($code);
+        } catch (HttpException) {
+            return false;
+        }
+
+        return true;
     }
 
     /** @param list<string> $codes */

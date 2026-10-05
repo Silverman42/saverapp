@@ -1,42 +1,42 @@
 <script setup lang="ts">
-import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { HttpResponseError } from '@inertiajs/core';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { newOperationReference } from '@/lib/operation-reference';
-import CollectionEvidencePanel from '@/components/CollectionEvidencePanel.vue';
-import InputError from '@/components/InputError.vue';
+import { Head, Link, useForm, useHttp } from "@inertiajs/vue3";
+import { HttpResponseError } from "@inertiajs/core";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { newOperationReference } from "@/lib/operation-reference";
+import CollectionEvidencePanel from "@/components/CollectionEvidencePanel.vue";
+import InputError from "@/components/InputError.vue";
 import type {
     CollectionMethod,
     PaymentEvidence,
-} from '@/types/collection-evidence';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/types/collection-evidence";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
 import {
     index as collectionsIndex,
     show as showReceipt,
-} from '@/routes/collections';
-import { show as showAttempt } from '@/routes/collections/attempts';
+} from "@/routes/collections";
+import { show as showAttempt } from "@/routes/collections/attempts";
 import {
     preview as previewCollection,
     store as storeCollection,
-} from '@/routes/customers/collections';
+} from "@/routes/customers/collections";
 import {
     preview as previewReplacement,
     store as storeReplacement,
-} from '@/routes/reversals/replacement';
-import { timeOptions } from '@/routes/customers/collections';
+} from "@/routes/reversals/replacement";
+import { timeOptions } from "@/routes/customers/collections";
 
 type Preview = {
     replacement_fingerprint?: string;
@@ -75,6 +75,7 @@ const props = withDefaults(
             assignment_version?: number | null;
         };
         collection_methods?: CollectionMethod[];
+        cash_enabled?: boolean;
         initial_evidence?: string | null;
         plans: Array<{ id: string; name: string; timezone: string | null }>;
         fee_obligations: Array<{
@@ -87,12 +88,18 @@ const props = withDefaults(
         replacement_reversal?: string;
         replacement_controlled_kobo?: number;
     }>(),
-    { collection_methods: () => [], initial_evidence: null },
+    {
+        collection_methods: () => [],
+        cash_enabled: true,
+        initial_evidence: null,
+    },
 );
-const FEE_ONLY = '__fee_only';
-const paymentChoice = ref(props.initial_evidence ? 'evidence' : 'cash');
+const FEE_ONLY = "__fee_only";
+const paymentChoice = ref(
+    props.initial_evidence || !props.cash_enabled ? "evidence" : "cash",
+);
 const selectedEvidence = ref<PaymentEvidence | null>(null);
-const evidenceNotice = ref('');
+const evidenceNotice = ref("");
 const evidenceCustomer = computed(() => ({
     id: props.customer.id,
     resource_id: props.customer.resource_id ?? 0,
@@ -103,74 +110,74 @@ function selectEvidence(proof: PaymentEvidence | null): void {
     selectedEvidence.value = proof;
     form.method =
         proof?.method_key ??
-        (paymentChoice.value === 'evidence'
-            ? (props.collection_methods[0]?.method_key ?? 'transfer')
-            : 'cash');
+        (paymentChoice.value === "evidence"
+            ? (props.collection_methods[0]?.method_key ?? "transfer")
+            : "cash");
     form.collection_method_version_id =
         proof?.collection_method_version_id ?? null;
     form.evidence_reference = proof?.evidence_reference ?? null;
-    evidenceNotice.value = '';
+    evidenceNotice.value = "";
     if (proof) form.received_date = proof.received_date;
 }
 watch(paymentChoice, () => selectEvidence(null));
 const crossZone = computed(
     () =>
         props.plans.find((plan) => plan.id === form.plan_id)?.timezone !==
-            props.business_timezone && form.plan_id !== '',
+            props.business_timezone && form.plan_id !== "",
 );
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Collections', href: collectionsIndex() },
-            { title: 'Record collection', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Collections", href: collectionsIndex() },
+            { title: "Record collection", href: "#" },
         ],
     },
 });
 
 const form = useForm({
     attempt_reference: newOperationReference(),
-    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
+    method: "cash" as "cash" | "transfer" | "pos" | "other",
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    preview_fingerprint: '',
-    replacement_fingerprint: '',
+    preview_fingerprint: "",
+    replacement_fingerprint: "",
     customer_version: 0,
     assignment_version: 0,
     business_version: 0,
-    plan_id: props.plans[0]?.id ?? '',
+    plan_id: props.plans[0]?.id ?? "",
     plan_version: null as number | null,
     received_date: props.today,
-    received_local_time: '',
-    received_utc_offset: '',
-    savings_ngn: '',
+    received_local_time: "",
+    received_utc_offset: "",
+    savings_ngn: "",
     fees: props.fee_obligations.map((fee) => ({
         obligation_id: fee.id,
-        amount_ngn: '',
+        amount_ngn: "",
     })),
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: '',
-    notes: '',
+    late_reason: "",
+    notes: "",
     confirmed: false,
 });
 const previewHttp = useHttp({
-    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
+    method: "cash" as "cash" | "transfer" | "pos" | "other",
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    plan_id: '',
-    received_date: '',
-    received_local_time: '',
-    received_utc_offset: '',
-    savings_ngn: '',
+    plan_id: "",
+    received_date: "",
+    received_local_time: "",
+    received_utc_offset: "",
+    savings_ngn: "",
     fees: [] as Array<{ obligation_id: number; amount_ngn: string }>,
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: '',
-    notes: '',
+    late_reason: "",
+    notes: "",
 });
 const preview = ref<Preview | null>(null);
 const accessUnavailable = ref(false);
-const reviewMessage = ref('');
+const reviewMessage = ref("");
 const reviewNotice = ref<HTMLElement | null>(null);
 const timeOptionsHttp = useHttp({});
 const reviewBusy = computed(
@@ -178,8 +185,8 @@ const reviewBusy = computed(
 );
 const reviewBusyLabel = computed(() =>
     timeOptionsHttp.processing
-        ? 'Checking received time…'
-        : 'Reviewing allocation and tender…',
+        ? "Checking received time…"
+        : "Reviewing allocation and tender…",
 );
 function validationError(field: string): string | undefined {
     return (
@@ -192,7 +199,7 @@ function feeValidationError(obligationId: number): string | undefined {
         (fee) => fee.obligation_id === obligationId,
     );
     const submittedIndex = form.fees
-        .filter((fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0')
+        .filter((fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0")
         .findIndex((fee) => fee.obligation_id === obligationId);
     return (
         (previewHttp.errors as Record<string, string | undefined>)[
@@ -201,14 +208,14 @@ function feeValidationError(obligationId: number): string | undefined {
         (form.errors as Record<string, string | undefined>)[
             `fees.${submittedIndex}.amount_ngn`
         ] ??
-        validationError('fees') ??
-        validationError('amount')
+        validationError("fees") ??
+        validationError("amount")
     );
 }
 const validOffsets = ref<Array<{ offset: string; received_at_utc: string }>>(
     [],
 );
-const timeNotice = ref('');
+const timeNotice = ref("");
 const customSlots = ref<
     Array<{ slot_id: number; due_date: string; capacity_kobo: number }>
 >([]);
@@ -216,16 +223,16 @@ const submissionPending = ref(false);
 const outcomeUnknown = ref(false);
 const attemptLookup = useHttp({});
 const recoveredReceipt = ref<string | null>(null);
-const lookupNotice = ref('');
+const lookupNotice = ref("");
 const retryAllowed = ref(false);
 const pendingAttemptStorageKey = `collection-pending-attempt:${props.customer.id}`;
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function reportReviewFailure(error: unknown): void {
     preview.value = null;
-    form.preview_fingerprint = '';
-    form.replacement_fingerprint = '';
+    form.preview_fingerprint = "";
+    form.replacement_fingerprint = "";
     form.confirmed = false;
     if (
         error instanceof HttpResponseError &&
@@ -233,23 +240,23 @@ function reportReviewFailure(error: unknown): void {
     ) {
         accessUnavailable.value = true;
         selectedEvidence.value = null;
-        evidenceNotice.value = '';
+        evidenceNotice.value = "";
         customSlots.value = [];
         validOffsets.value = [];
-        timeNotice.value = '';
+        timeNotice.value = "";
         previewHttp.defaults({
-            method: 'cash',
+            method: "cash",
             collection_method_version_id: null,
             evidence_reference: null,
-            plan_id: '',
-            received_date: '',
-            received_local_time: '',
-            received_utc_offset: '',
-            savings_ngn: '',
+            plan_id: "",
+            received_date: "",
+            received_local_time: "",
+            received_utc_offset: "",
+            savings_ngn: "",
             fees: [],
             allocations: [],
-            late_reason: '',
-            notes: '',
+            late_reason: "",
+            notes: "",
         });
         previewHttp.reset();
         previewHttp.response = null;
@@ -258,33 +265,33 @@ function reportReviewFailure(error: unknown): void {
         timeOptionsHttp.clearErrors();
         form.clearErrors();
         if (!outcomeUnknown.value && !submissionPending.value) {
-            form.method = 'cash';
+            form.method = "cash";
             form.collection_method_version_id = null;
             form.evidence_reference = null;
             form.customer_version = 0;
             form.assignment_version = 0;
             form.business_version = 0;
-            form.plan_id = '';
+            form.plan_id = "";
             form.plan_version = null;
-            form.received_date = '';
-            form.received_local_time = '';
-            form.received_utc_offset = '';
-            form.savings_ngn = '';
+            form.received_date = "";
+            form.received_local_time = "";
+            form.received_utc_offset = "";
+            form.savings_ngn = "";
             form.fees = [];
             form.allocations = [];
-            form.late_reason = '';
-            form.notes = '';
+            form.late_reason = "";
+            form.notes = "";
         }
         retryAllowed.value = false;
         recoveredReceipt.value = null;
-        lookupNotice.value = '';
+        lookupNotice.value = "";
         reviewMessage.value =
-            'This receipt form is no longer available with your current access. Return to Collections to open an available record. No money was submitted by this review.';
+            "This receipt form is no longer available with your current access. Return to Collections to open an available record. No money was submitted by this review.";
     } else {
         reviewMessage.value =
             error instanceof HttpResponseError
-                ? 'Receipt review could not be completed. Your draft is retained. No money was submitted by this review. Try reviewing again before recording the receipt.'
-                : 'Receipt review could not reach the server. Your draft is retained. No money was submitted by this review. Check your connection and review again.';
+                ? "Receipt review could not be completed. Your draft is retained. No money was submitted by this review. Try reviewing again before recording the receipt."
+                : "Receipt review could not reach the server. Your draft is retained. No money was submitted by this review. Check your connection and review again.";
     }
     void nextTick(() => reviewNotice.value?.focus());
 }
@@ -320,7 +327,7 @@ onMounted(() => {
             form.attempt_reference = reference;
             outcomeUnknown.value = true;
             lookupNotice.value =
-                'This attempt needs a result check before any money is recorded again.';
+                "This attempt needs a result check before any money is recorded again.";
         }
     } catch {
         // A fresh form remains usable when tab storage is unavailable.
@@ -331,8 +338,8 @@ watch(
     () => [form.plan_id, form.received_date, form.received_local_time],
     () => {
         validOffsets.value = [];
-        form.received_utc_offset = '';
-        timeNotice.value = '';
+        form.received_utc_offset = "";
+        timeNotice.value = "";
     },
 );
 
@@ -353,7 +360,7 @@ watch(
     ],
     () => {
         preview.value = null;
-        form.preview_fingerprint = '';
+        form.preview_fingerprint = "";
         form.confirmed = false;
     },
 );
@@ -363,7 +370,7 @@ async function resolveTime(): Promise<boolean> {
     if (!crossZone.value) return true;
     if (!form.received_local_time) {
         timeNotice.value =
-            'Enter the actual business-local time when this payment was received.';
+            "Enter the actual business-local time when this payment was received.";
         return false;
     }
     try {
@@ -381,9 +388,9 @@ async function resolveTime(): Promise<boolean> {
         if (!result) return false;
         validOffsets.value = result.options;
         if (result.options.length === 0) {
-            form.received_utc_offset = '';
+            form.received_utc_offset = "";
             timeNotice.value =
-                'This local time did not occur in the business timezone. Choose another time.';
+                "This local time did not occur in the business timezone. Choose another time.";
             return false;
         }
         if (
@@ -392,13 +399,13 @@ async function resolveTime(): Promise<boolean> {
             )
         ) {
             form.received_utc_offset =
-                result.options.length === 1 ? result.options[0]!.offset : '';
+                result.options.length === 1 ? result.options[0]!.offset : "";
         }
         timeNotice.value =
             result.options.length > 1 && !form.received_utc_offset
-                ? 'This local time occurred twice. Choose the offset that matches when the payment was received.'
-                : '';
-        return form.received_utc_offset !== '';
+                ? "This local time occurred twice. Choose the offset that matches when the payment was received."
+                : "";
+        return form.received_utc_offset !== "";
     } catch (error) {
         reportReviewFailure(error);
         return false;
@@ -413,18 +420,18 @@ async function review(): Promise<void> {
         form.processing
     )
         return;
-    reviewMessage.value = '';
+    reviewMessage.value = "";
     preview.value = null;
-    form.preview_fingerprint = '';
-    form.replacement_fingerprint = '';
+    form.preview_fingerprint = "";
+    form.replacement_fingerprint = "";
     form.confirmed = false;
     if (
         !props.replacement_reversal &&
-        paymentChoice.value === 'evidence' &&
+        paymentChoice.value === "evidence" &&
         !selectedEvidence.value
     ) {
         evidenceNotice.value =
-            'Select matching, independently verified evidence before reviewing this receipt.';
+            "Select matching, independently verified evidence before reviewing this receipt.";
         return;
     }
     if (!(await resolveTime())) return;
@@ -436,16 +443,16 @@ async function review(): Promise<void> {
     previewHttp.received_date = form.received_date;
     previewHttp.received_local_time = crossZone.value
         ? form.received_local_time
-        : '';
+        : "";
     previewHttp.received_utc_offset = crossZone.value
         ? form.received_utc_offset
-        : '';
-    previewHttp.savings_ngn = form.savings_ngn || '0';
+        : "";
+    previewHttp.savings_ngn = form.savings_ngn || "0";
     previewHttp.fees = form.fees.filter(
-        (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
+        (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
     );
     previewHttp.allocations = form.allocations.filter(
-        (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
+        (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
     );
     previewHttp.late_reason = form.late_reason;
     previewHttp.notes = form.notes;
@@ -457,7 +464,7 @@ async function review(): Promise<void> {
         )) as Preview | undefined;
         if (!result) return;
         preview.value = result;
-        form.replacement_fingerprint = result.replacement_fingerprint ?? '';
+        form.replacement_fingerprint = result.replacement_fingerprint ?? "";
         form.preview_fingerprint = result.preview_fingerprint;
         form.customer_version = result.customer_version;
         form.assignment_version = result.assignment_version;
@@ -478,7 +485,7 @@ function customizeAllocation(): void {
                 preview.value?.allocations.find(
                     (item) => item.slot_id === slot.slot_id,
                 )?.amount_kobo ?? 0;
-            return amount > 0 ? (amount / 100).toFixed(2) : '';
+            return amount > 0 ? (amount / 100).toFixed(2) : "";
         })(),
     }));
 }
@@ -493,7 +500,7 @@ function submit(retryOriginal = false): void {
     )
         return;
     submissionPending.value = true;
-    lookupNotice.value = '';
+    lookupNotice.value = "";
     retryAllowed.value = false;
     rememberAttempt();
     form.transform((data) => ({
@@ -501,15 +508,15 @@ function submit(retryOriginal = false): void {
             Object.entries(data).filter(
                 ([key]) =>
                     props.replacement_reversal ||
-                    key !== 'replacement_fingerprint',
+                    key !== "replacement_fingerprint",
             ),
         ),
-        savings_ngn: data.savings_ngn || '0',
+        savings_ngn: data.savings_ngn || "0",
         fees: data.fees.filter(
-            (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
+            (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
         ),
         allocations: data.allocations.filter(
-            (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
+            (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
         ),
     })).post(
         props.replacement_reversal
@@ -549,10 +556,10 @@ async function lookupAttempt(): Promise<void> {
             }),
         )) as { status: string; receipt_reference: string };
         recoveredReceipt.value =
-            result.status === 'posted' ? result.receipt_reference : null;
+            result.status === "posted" ? result.receipt_reference : null;
         lookupNotice.value = recoveredReceipt.value
-            ? 'The original receipt was posted.'
-            : 'The lookup did not confirm a result. Check again before retrying.';
+            ? "The original receipt was posted."
+            : "The lookup did not confirm a result. Check again before retrying.";
     } catch (error) {
         recoveredReceipt.value = null;
         if (
@@ -561,14 +568,14 @@ async function lookupAttempt(): Promise<void> {
         ) {
             try {
                 retryAllowed.value =
-                    JSON.parse(error.response.data)?.status === 'unresolved';
+                    JSON.parse(error.response.data)?.status === "unresolved";
             } catch {
                 retryAllowed.value = false;
             }
         }
         lookupNotice.value = retryAllowed.value
-            ? 'No posted receipt was found for this reference. You can retry the original details.'
-            : 'The lookup could not confirm the result. Keep this reference and check again.';
+            ? "No posted receipt was found for this reference. You can retry the original details."
+            : "The lookup could not confirm the result. Keep this reference and check again.";
     }
 }
 </script>
@@ -580,8 +587,8 @@ async function lookupAttempt(): Promise<void> {
             <h1 class="text-[25px] font-medium tracking-tight">
                 {{
                     replacement_reversal && !accessUnavailable
-                        ? 'Apply controlled receipt replacement'
-                        : 'Record collection'
+                        ? "Apply controlled receipt replacement"
+                        : "Record collection"
                 }}
             </h1>
             <p
@@ -610,8 +617,8 @@ async function lookupAttempt(): Promise<void> {
                 <template v-else>
                     {{
                         replacement_reversal
-                            ? 'Review the replacement allocation for'
-                            : 'Confirm money actually received from'
+                            ? "Review the replacement allocation for"
+                            : "Confirm money actually received from"
                     }}
                     {{ customer.name }}.
                 </template>
@@ -628,8 +635,8 @@ async function lookupAttempt(): Promise<void> {
             <Alert variant="destructive" role="presentation">
                 <AlertTitle>{{
                     accessUnavailable
-                        ? 'Receipt form unavailable'
-                        : 'Receipt review unavailable'
+                        ? "Receipt form unavailable"
+                        : "Receipt review unavailable"
                 }}</AlertTitle>
                 <AlertDescription class="grid gap-2">
                     <p>{{ reviewMessage }}</p>
@@ -654,8 +661,8 @@ async function lookupAttempt(): Promise<void> {
         >
             {{
                 timeOptionsHttp.processing
-                    ? 'Checking the received time before reviewing this receipt. Wait for the result.'
-                    : 'Reviewing the allocation and tender. Wait for the preview before recording this receipt.'
+                    ? "Checking the received time before reviewing this receipt. Wait for the result."
+                    : "Reviewing the allocation and tender. Wait for the preview before recording this receipt."
             }}
         </p>
         <p
@@ -720,7 +727,9 @@ async function lookupAttempt(): Promise<void> {
                     ><SelectValue
                 /></SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem v-if="cash_enabled" value="cash"
+                        >Cash</SelectItem
+                    >
                     <SelectItem
                         v-if="collection_methods.length || initial_evidence"
                         value="evidence"
@@ -1008,7 +1017,7 @@ async function lookupAttempt(): Promise<void> {
                             >{{
                                 reviewBusy
                                     ? reviewBusyLabel
-                                    : 'Review allocation and tender'
+                                    : "Review allocation and tender"
                             }}</Button
                         >
                         <p
@@ -1047,9 +1056,9 @@ async function lookupAttempt(): Promise<void> {
                     {{ preview.method_context.method_label }} custody.
                     {{
                         preview.method_context.custody_account_code ===
-                        'payment_clearing_ngn'
-                            ? 'Clearing stays pending until an independent bank settlement.'
-                            : ''
+                        "payment_clearing_ngn"
+                            ? "Clearing stays pending until an independent bank settlement."
+                            : ""
                     }}
                 </p>
                 <p
@@ -1165,7 +1174,7 @@ async function lookupAttempt(): Promise<void> {
                     >{{
                         reviewBusy
                             ? reviewBusyLabel
-                            : 'Review custom allocation'
+                            : "Review custom allocation"
                     }}</Button
                 ></CardContent
             ></Card

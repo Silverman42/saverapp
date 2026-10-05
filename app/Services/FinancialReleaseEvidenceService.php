@@ -14,7 +14,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FinancialReleaseEvidenceService
 {
-    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore'];
+    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other'];
 
     public const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 
@@ -83,10 +83,41 @@ class FinancialReleaseEvidenceService
         }
         $checks = [];
         foreach (self::CAPABILITIES as $capability) {
-            $checks[$capability] = $this->evaluate($rows->get($capability, collect())->keyBy('owner_role')->all(), $hash, $mappingUnavailable, $methodUnavailable);
+            $checks[$capability] = $this->evaluate($rows->get($capability, collect())->keyBy('owner_role')->all(), $hash, $mappingUnavailable, $methodUnavailable, $this->noncashBlockers($capability));
         }
 
         return $checks;
+    }
+
+    /**
+     * Method-specific custody, scanning and switch prerequisites for non-cash collection capabilities.
+     *
+     * @return list<string>
+     */
+    private function noncashBlockers(string $capability): array
+    {
+        $required = match ($capability) {
+            'collection_transfer' => ['business_bank_ngn'],
+            'collection_pos' => ['payment_clearing_ngn', 'business_bank_ngn'],
+            'collection_other' => [],
+            default => null,
+        };
+        if ($required === null) {
+            return [];
+        }
+        $blockers = [];
+        $mapped = LedgerAccount::query()->whereIn('code', $required)->where('mapping_status', 'mapped')->count();
+        if ($mapped !== count($required)) {
+            $blockers[] = 'verified '.implode(' and ', $required).' mapping';
+        }
+        if (config('collections.noncash_enabled') !== true) {
+            $blockers[] = 'non-cash collection switch';
+        }
+        if (! app(CollectionEvidenceScanner::class)->isConfigured()) {
+            $blockers[] = 'evidence scanner';
+        }
+
+        return $blockers;
     }
 
     private function hasValidEvidence(\stdClass $row): bool
@@ -105,9 +136,10 @@ class FinancialReleaseEvidenceService
     }
 
     /** @param array<string, \stdClass> $rows
+     * @param  list<string>  $additionalBlockers
      * @return array{state: string, owner: string, blocker: string, version: int}
      */
-    private function evaluate(array $rows, string $hash, bool $mappingUnavailable, bool $methodUnavailable): array
+    private function evaluate(array $rows, string $hash, bool $mappingUnavailable, bool $methodUnavailable, array $additionalBlockers = []): array
     {
         $missing = [];
         $version = 1;
@@ -125,6 +157,7 @@ class FinancialReleaseEvidenceService
         if ($methodUnavailable) {
             $missing[] = 'accepted immutable cash method';
         }
+        array_push($missing, ...$additionalBlockers);
 
         return ['state' => $missing === [] ? 'Ready to enable' : 'Unavailable', 'owner' => 'Versioned financial release owners',
             'blocker' => $missing === [] ? '' : 'Current owner evidence required: '.implode(', ', $missing).'.', 'version' => $version];

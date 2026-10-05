@@ -14,6 +14,7 @@ use App\Models\ContributionSlot;
 use App\Models\CustomerProfile;
 use App\Models\ThriftPlan;
 use App\Services\AuthorizationService;
+use App\Services\BusinessSettings;
 use App\Services\CollectionMethodCatalogue;
 use App\Services\CollectionReadService;
 use App\Services\CollectionReceivedTime;
@@ -103,6 +104,7 @@ class CollectionController extends Controller
             'customer' => ['id' => $profile->customer_id, 'resource_id' => $profile->id, 'name' => $profile->user?->name,
                 'version' => $profile->version, 'assignment_version' => $profile->currentAssignment?->version],
             'collection_methods' => app(CollectionMethodCatalogue::class)->available(),
+            'cash_enabled' => app(BusinessSettings::class)->featureEnabled('collection_cash'),
             'initial_evidence' => $request->validate(['evidence' => ['nullable', 'uuid']])['evidence'] ?? null,
             'plans' => $plans->map(fn (ThriftPlan $plan): array => [
                 'id' => $plan->plan_id, 'name' => $plan->currentTermsRevision()?->name,

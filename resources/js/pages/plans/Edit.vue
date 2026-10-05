@@ -632,7 +632,7 @@ const submit = (): void => {
                 <div class="flex items-start gap-3 rounded-xl border p-4">
                     <Checkbox
                         id="revision-agreement"
-                        v-model:checked="form.customer_agreement_attested"
+                        v-model="form.customer_agreement_attested"
                         :disabled="busy || !previewIsCurrent"
                     />
                     <div class="grid gap-1">
