@@ -135,6 +135,7 @@ class PlatformCatalogue
         'admin.business-settings.drafts.publish' => 'mutation',
         'admin.business-settings.drafts.store' => 'mutation',
         'admin.business-settings.drafts.update' => 'mutation',
+        'admin.business-settings.logo.store' => 'mutation',
         'admin.business-settings.versions.cancel' => 'mutation',
         'admin.business-settings.versions.rollback' => 'mutation',
         'admin.fees.obligations.attempts.prepare' => 'mutation',

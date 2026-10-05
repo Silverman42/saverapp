@@ -19,6 +19,8 @@ import { index } from "@/routes/admin/business-settings";
 import * as drafts from "@/routes/admin/business-settings/drafts";
 import * as versions from "@/routes/admin/business-settings/versions";
 import * as operations from "@/routes/admin/business-settings/operations";
+import * as logo from "@/routes/admin/business-settings/logo";
+import { show as logoAsset } from "@/routes/business-logo";
 import { show as freshAuthentication } from "@/actions/App/Http/Controllers/Auth/FreshAuthenticationController";
 import type {
     SettingValue,
@@ -41,6 +43,23 @@ const unknown = ref(false);
 const operationId = ref<string | null>(null);
 const mutationNotice = ref("");
 const lookup = useHttp({});
+const logoUpload = useHttp<{ logo: File | null }, { reference: string }>({
+    logo: null,
+});
+const isLogoSetting = computed(() => selectedCode.value === "logo_reference");
+function isLogoReference(code: string, item: SettingValue): item is string {
+    return code === "logo_reference" && typeof item === "string";
+}
+function uploadLogo(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+    if (!file) return;
+    logoUpload.logo = file;
+    logoUpload.post(logo.store.url(), {
+        onSuccess: (response) => {
+            value.value = response.reference;
+        },
+    });
+}
 let pendingRequest: {
     url: string;
     method: "post" | "patch";
@@ -312,7 +331,19 @@ function retryOriginal(): void {
                             <dt class="text-muted-foreground text-sm">
                                 {{ item.label }}
                             </dt>
-                            <dd class="mt-2 font-medium break-words">
+                            <dd
+                                v-if="
+                                    isLogoReference(code, settings.values[code])
+                                "
+                                class="mt-2"
+                            >
+                                <img
+                                    :src="logoAsset.url(settings.values[code])"
+                                    alt="Current business logo"
+                                    class="size-16 rounded-md border object-contain"
+                                />
+                            </dd>
+                            <dd v-else class="mt-2 font-medium break-words">
                                 {{
                                     settings.values[code] === null
                                         ? "Not configured"
@@ -390,7 +421,37 @@ function retryOriginal(): void {
                 <form class="space-y-3" @submit.prevent="saveDraft">
                     <Label for="setting-value"
                         >Proposed {{ definition.label }}</Label
-                    ><Input
+                    >
+                    <template v-if="isLogoSetting">
+                        <Input
+                            id="setting-value"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            aria-describedby="logo-help"
+                            :disabled="unknown || logoUpload.processing"
+                            @change="uploadLogo"
+                        />
+                        <p id="logo-help" class="text-muted-foreground text-sm">
+                            JPEG, PNG or WebP, up to 2 MB, 128–2,048 pixels per
+                            side. Metadata is removed. Leave empty and save to
+                            remove the logo.
+                        </p>
+                        <p
+                            v-if="logoUpload.errors.logo"
+                            role="alert"
+                            class="text-destructive text-sm"
+                        >
+                            {{ logoUpload.errors.logo }}
+                        </p>
+                        <img
+                            v-if="value"
+                            :src="logoAsset.url(value)"
+                            alt="Proposed business logo"
+                            class="size-16 rounded-md border object-contain"
+                        />
+                    </template>
+                    <Input
+                        v-else
                         id="setting-value"
                         v-model="value"
                         :disabled="unknown"
@@ -404,7 +465,10 @@ function retryOriginal(): void {
                             {{ error }}
                         </li>
                     </ul>
-                    <Button :disabled="save.processing || unknown"
+                    <Button
+                        :disabled="
+                            save.processing || unknown || logoUpload.processing
+                        "
                         >Save draft</Button
                     >
                 </form>

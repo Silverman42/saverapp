@@ -35,6 +35,7 @@ use App\Http\Controllers\Auth\TwoFactorManagementController;
 use App\Http\Controllers\BankPayoutCallbackController;
 use App\Http\Controllers\BankPayoutController;
 use App\Http\Controllers\BankPayoutDestinationController;
+use App\Http\Controllers\BusinessLogoController;
 use App\Http\Controllers\CashDisbursementController;
 use App\Http\Controllers\CashExecutionController;
 use App\Http\Controllers\CashRecoveryController;
@@ -302,6 +303,10 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:agent')
         ->name('agent.dashboard');
 
+    Route::get('business-logo/{reference}', [BusinessLogoController::class, 'show'])
+        ->where('reference', '[0-9a-f]{64}')
+        ->name('business-logo.show');
+
     Route::get('admin/dashboard', [DashboardController::class, 'index'])
         ->middleware('role:admin')
         ->name('admin.dashboard');
@@ -326,6 +331,7 @@ Route::middleware(['auth'])->group(function () {
             Route::post('versions/{configuration}/cancel', [BusinessSettingsController::class, 'cancel'])->whereNumber('configuration')->middleware('fresh')->name('versions.cancel');
             Route::post('versions/{configuration}/rollback', [BusinessSettingsController::class, 'rollback'])->whereNumber('configuration')->name('versions.rollback');
             Route::get('operations/{operation}', [BusinessSettingsController::class, 'operation'])->whereUuid('operation')->name('operations.show');
+            Route::post('logo', [BusinessLogoController::class, 'store'])->middleware('throttle:10,1')->name('logo.store');
         });
         Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
         Route::get('audit/{event}', [AuditController::class, 'show'])->whereUlid('event')->name('audit.show');

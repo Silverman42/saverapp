@@ -22,7 +22,7 @@ class BusinessSettingsCatalogue
             'address' => ['Private business address', 'Business profile', null, ['nullable', 'string', 'max:500']],
             'brand_accent' => ['Brand accent', 'Business profile', null, ['nullable', 'regex:/\A#[0-9A-Fa-f]{6}\z/']],
             'brand_foreground' => ['Brand foreground', 'Business profile', null, ['nullable', 'regex:/\A#[0-9A-Fa-f]{6}\z/']],
-            'logo_reference' => ['Logo asset', 'Business profile', null, ['nullable', 'string']],
+            'logo_reference' => ['Logo asset', 'Business profile', null, ['nullable', 'string', 'regex:/\A[0-9a-f]{64}\z/']],
             'website' => ['Website', 'Business profile', null, ['nullable', 'url:https', 'max:500']],
             'timezone' => ['Business timezone', 'Locale & calendar', 'Africa/Lagos', ['required', 'timezone']],
             'day_boundary' => ['Operational boundary', 'Locale & calendar', '00:00', ['required', 'in:00:00']],
@@ -57,7 +57,7 @@ class BusinessSettingsCatalogue
             'fee_refunds' => ['Fee refund entitlements', 'Features & readiness', false, ['required', 'boolean']],
             'cash_disbursements' => ['Cash refunds and earnings draws', 'Features & readiness', false, ['required', 'boolean']],
         ];
-        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'logo_reference', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
+        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
         if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
             $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
         }
@@ -127,6 +127,9 @@ class BusinessSettingsCatalogue
             $validator = Validator::make(['value' => $value], ['value' => $definition['rules']]);
             if ($validator->fails()) {
                 $errors[$code] = $validator->errors()->first('value');
+            }
+            if ($code === 'logo_reference' && is_string($value) && ! isset($errors[$code]) && ! app(BusinessLogoService::class)->exists($value)) {
+                $errors[$code] = 'Upload the logo again; this asset is unavailable.';
             }
             if ($code === 'website' && $value !== null) {
                 $host = parse_url($value, PHP_URL_HOST);

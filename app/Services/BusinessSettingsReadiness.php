@@ -26,7 +26,6 @@ class BusinessSettingsReadiness
             'fee_refunds' => ['Module 05', 'Retained-fee and cash-backed entitlement integrated acceptance remains outstanding.'],
             'cash_disbursements' => ['Modules 05/08/10', 'Cash refund and earnings draw integrated acceptance remains outstanding.'],
             'transactional_email' => ['Module 13', 'Sender changes and global channel policy require verified provider authority. Existing mandatory email remains owner-controlled.'],
-            'logo' => ['Asset owner', 'Approved image decoding, scanning, metadata removal and protected storage are unavailable.'],
             'emergency_recovery' => ['Authentication', 'Business emergency-key issuance and assisted recovery remain blocked. TOTP recovery codes are separate.'],
             'retention_restore' => ['Modules 14/16', 'Approved legal retention, key custody and isolated recovery certification are unavailable.'],
         ];
@@ -43,6 +42,7 @@ class BusinessSettingsReadiness
                     'blocker' => 'Local cash certification only; production release remains unavailable.', 'version' => 2];
             }
         }
+        $checks['logo'] = ['state' => 'Ready to enable', 'owner' => 'Module 15', 'blocker' => 'Uploads are decoded and re-encoded to strip metadata and payloads, then stored privately; no external malware scanner is integrated.', 'version' => 2];
         $checks['profile'] = ['state' => 'Ready to enable', 'owner' => 'Module 15', 'blocker' => '', 'version' => 1];
         $checks['presentation'] = ['state' => 'Ready to enable', 'owner' => 'Modules 11/12', 'blocker' => '', 'version' => 1];
         $checks['collection_limits'] = ['state' => 'Ready to enable', 'owner' => 'Module 07', 'blocker' => 'Limits do not certify or enable collection methods.', 'version' => 1];

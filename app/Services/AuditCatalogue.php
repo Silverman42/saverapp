@@ -14,7 +14,7 @@ class AuditCatalogue
         'charge' => ['delivery_state_recorded', 'delivery_attempt', 'management_attempt', 'category_published', 'assessed'],
         'financial_artifact' => ['requested', 'ready', 'downloaded', 'expired', 'cancelled', 'failed', 'retried', 'hold_applied', 'hold_released'],
         'platform' => ['mode_changed', 'integrity_verified', 'projection_promoted', 'replay_plan', 'replay_approve', 'replay_execute', 'replay_stop', 'replay_resume'],
-        'business_settings' => ['imported', 'draft_saved', 'draft_discarded', 'previewed', 'published', 'effective', 'cancelled', 'activation_failed', 'bootstrap', 'denied'],
+        'business_settings' => ['imported', 'draft_saved', 'draft_discarded', 'previewed', 'published', 'effective', 'cancelled', 'activation_failed', 'bootstrap', 'denied', 'logo_uploaded'],
         'invitation' => ['sent', 'delivery_failed', 'resent', 'email_corrected', 'cancelled', 'opened'],
         'customer' => ['delivery_state_recorded', 'delivery_attempt', 'management_attempt', 'reassigned', 'handover_denied', 'registered', 'activated', 'invitation_resent', 'invited_email_corrected', 'invitation_cancelled', 'status_changed', 'profile_updated', 'phone_changed', 'name_changed', 'name_corrected_pre_activation', 'name_correction_proposed', 'name_correction_replaced', 'name_correction_accepted', 'name_correction_rejected', 'name_correction_cancelled', 'name_correction_expired', 'name_correction_invalidated'],
         'agent' => ['delivery_state_recorded', 'delivery_attempt', 'management_attempt', 'registered', 'activated', 'status_changed', 'profile_updated', 'phone_changed', 'suspend', 'restore',
