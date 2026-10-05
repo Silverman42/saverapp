@@ -3,6 +3,7 @@
 namespace App\Auth\Passwords;
 
 use App\Enums\AccountState;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Support\IdentityNormalizer;
 use Closure;
@@ -76,6 +77,11 @@ class PasswordResetBroker extends BasePasswordBroker
             // Section 7.6 & AC 15: Password reset must not activate or send reset link to Invited accounts
             if ($user instanceof User && ($user->account_state === AccountState::Invited || $user->recovery_pending)) {
                 return static::RESET_LINK_SENT;
+            }
+
+            if ($user instanceof User) {
+                AuditEvent::record('auth.password_reset_requested', User::class, $user->id, null,
+                    ['outcome' => 'link_issued'], null, ['executor' => self::class]);
             }
 
             // Generate token (automatically removes any existing tokens for this user)

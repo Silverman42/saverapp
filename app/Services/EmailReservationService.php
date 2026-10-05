@@ -24,7 +24,9 @@ class EmailReservationService
         $recovery = DB::table('customer_recoveries as r')->join('customer_profiles as c', 'c.id', '=', 'r.customer_profile_id')
             ->where('r.proposed_email_normalized', $normalized)
             ->when($userId !== null, fn ($q) => $q->where('c.user_id', '!=', $userId))->exists();
-        if ($occupied || $pending || $recovery) {
+        $staffRecovery = DB::table('staff_recoveries')->where('proposed_email_normalized', $normalized)
+            ->when($userId !== null, fn ($q) => $q->where('user_id', '!=', $userId))->exists();
+        if ($occupied || $pending || $recovery || $staffRecovery) {
             throw ValidationException::withMessages(['email' => ['The email address is reserved or already in use.']]);
         }
     }

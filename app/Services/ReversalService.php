@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\CustomerActivity;
 use App\Enums\CustomerStatus;
 use App\Enums\LedgerAccountClass;
 use App\Enums\LedgerAccountCode;
@@ -20,6 +21,7 @@ use App\Models\ReversalEvidenceFile;
 use App\Models\ReversalRequest;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -124,6 +126,8 @@ class ReversalService
 
         try {
             return $this->submitWithEvidence($actor, $original, $data, $files, $payloadHash);
+        } catch (UniqueConstraintViolationException) {
+            throw new ConflictHttpException('A reversal for this posting is already pending review.');
         } finally {
             foreach ($files as $file) {
                 app(CollectionEvidenceFiles::class)->removeUnreferencedFile($file['storage_path']);
@@ -144,7 +148,8 @@ class ReversalService
 
                 return $replay;
             }
-            $customer = CustomerProfile::query()->whereKey($original->customer_profile_id)->lockForUpdate()->firstOrFail();
+            $context = app(CustomerActionAuthorizationGuard::class)->lockAndAuthorize($actor, $original->customer_profile_id, 'initiateReversal');
+            $customer = app(CustomerActivityGate::class)->assertAllowed($context->customerProfile, CustomerActivity::PostCorrectiveReversal);
             $lockedOriginal = LedgerPostingGroup::query()->whereKey($original->id)->lockForUpdate()->firstOrFail();
             $quote = $this->preview($actor, $lockedOriginal, true);
             if (! hash_equals($quote['preview_fingerprint'], $data['preview_fingerprint'])
@@ -152,7 +157,7 @@ class ReversalService
                 || (int) $data['assignment_version'] !== $quote['assignment_version']) {
                 throw new ConflictHttpException('The reversal preview changed. Review it again.');
             }
-            $assignment = $customer->currentAssignment;
+            $assignment = $context->currentAssignment;
             $reversal = ReversalRequest::create([
                 'reversal_id' => (string) Str::uuid(),
                 'customer_profile_id' => $customer->id,

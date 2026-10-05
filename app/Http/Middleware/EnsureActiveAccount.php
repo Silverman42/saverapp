@@ -28,6 +28,7 @@ class EnsureActiveAccount
                 $request->session()->forget(['two_factor_replacement_required', 'url.intended']);
                 Cookie::queue(app(ResumeCookieService::class)->clearResumeCookie());
                 Cookie::queue(Cookie::forget(AgentTrustedDeviceService::COOKIE_NAME));
+                $request->attributes->set('auth.forced_logout', true);
                 Auth::guard('web')->logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
@@ -35,7 +36,7 @@ class EnsureActiveAccount
                 return redirect()->route('login');
             }
             if ($user->account_state === AccountState::MfaSetupRequired || $request->session()->get('two_factor_replacement_required', false)) {
-                if ($request->routeIs('two-factor.*') || $request->routeIs('logout')) {
+                if ($request->routeIs('two-factor.*') || $request->routeIs('logout') || $request->routeIs('emergency-recovery.replacement')) {
                     return $next($request);
                 }
 
@@ -43,6 +44,7 @@ class EnsureActiveAccount
             }
 
             if ($user->account_state !== AccountState::Active) {
+                $request->attributes->set('auth.forced_logout', true);
                 Auth::guard('web')->logout();
 
                 if ($request->hasSession()) {

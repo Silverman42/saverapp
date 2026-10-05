@@ -232,6 +232,32 @@ class SessionManagerService
     }
 
     /**
+     * Audit a session renewed from a remember cookie, or a sign-in from a device not seen on any other session or trusted device.
+     */
+    public function recordSignInContext(User $user, Request $request, bool $viaRemember): void
+    {
+        if ($viaRemember) {
+            AuditEvent::record('auth.session_renewed', User::class, $user->id, null,
+                ['outcome' => 'remember_cookie'], $user, ['executor' => self::class]);
+
+            return;
+        }
+
+        $userAgent = (string) $request->userAgent();
+        $knownDevice = DB::table(config('session.table', 'sessions'))
+            ->where('user_id', $user->id)
+            ->where('id', '!=', $request->hasSession() ? $request->session()->getId() : '')
+            ->where('user_agent', $userAgent)
+            ->exists()
+            || $user->trustedDevices()->where('user_agent', $userAgent)->exists();
+
+        if (! $knownDevice) {
+            AuditEvent::record('auth.new_device_sign_in', User::class, $user->id, null,
+                ['device_class' => $this->trustedDeviceService->resolveDeviceName($userAgent)], $user, ['executor' => self::class]);
+        }
+    }
+
+    /**
      * Mask an IP address to prevent exposing full network identifiers.
      */
     public function maskIpAddress(?string $ip): string

@@ -9,6 +9,7 @@ import {
     show as agentsShow,
 } from '@/routes/agents';
 import { edit as editAgentStatus } from '@/routes/agents/status';
+import { create as createRecovery } from '@/routes/admin/staff-recoveries';
 import {
     cancel as cancelInvitation,
     correctEmail as correctEmailInvitation,
@@ -139,6 +140,8 @@ export type AgentDetail = {
         can_manage_lifecycle: boolean;
         lifecycle_message: string;
         can_manage_invitation?: boolean;
+        can_request_recovery?: boolean;
+        recovery_user_id?: number;
     };
 };
 
@@ -412,6 +415,15 @@ const resetAssignmentFilters = (): void => {
                     :href="editAgentStatus(agent.id).url"
                 >
                     <Button variant="outline">Manage status</Button>
+                </Link>
+                <Link
+                    v-if="
+                        agent.actions.can_request_recovery &&
+                        agent.actions.recovery_user_id
+                    "
+                    :href="createRecovery(agent.actions.recovery_user_id).url"
+                >
+                    <Button variant="outline">Request account recovery</Button>
                 </Link>
                 <Badge
                     :variant="

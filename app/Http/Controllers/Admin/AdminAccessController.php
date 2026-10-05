@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateAdminPermissionsRequest;
+use App\Models\Invitation;
 use App\Models\Permission;
 use App\Models\PermissionGrantHistory;
 use App\Models\User;
@@ -13,6 +15,7 @@ use App\Services\AuthorizationRestrictionService;
 use App\Services\AuthorizationService;
 use App\Services\FreshAuthenticationService;
 use App\Services\PermissionManagementService;
+use App\Services\StaffRecoveryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -201,9 +204,37 @@ class AdminAccessController extends Controller
                 'per_page' => $historyPerPage,
             ],
             'canManage' => $canManage && ! $isSelf,
+            'canRequestRecovery' => $currentAdmin !== null && $admin->account_state !== AccountState::Invited
+                && app(StaffRecoveryService::class)->canManage($currentAdmin, $admin),
+            'invitation' => $canManage && ! $isSelf && $admin->account_state === AccountState::Invited
+                ? $this->latestInvitation($admin)
+                : null,
             'isFresh' => $isFresh,
             'isSelf' => $isSelf,
         ]);
+    }
+
+    /**
+     * Summarize the latest invitation for an invited Administrator without exposing its token.
+     *
+     * @return array{status: string, delivery_status: string, generation: int, issued_at: string|null, expires_at: string, is_expired: bool, can_resend: bool}|null
+     */
+    private function latestInvitation(User $admin): ?array
+    {
+        $invitation = Invitation::query()->where('user_id', $admin->id)->latest('generation')->first();
+        if ($invitation === null) {
+            return null;
+        }
+
+        return [
+            'status' => $invitation->status->value,
+            'delivery_status' => $invitation->delivery_status->value,
+            'generation' => $invitation->generation,
+            'issued_at' => $invitation->created_at?->toIso8601String(),
+            'expires_at' => $invitation->expires_at->toIso8601String(),
+            'is_expired' => $invitation->isExpired(),
+            'can_resend' => $invitation->canResend(),
+        ];
     }
 
     /**

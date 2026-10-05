@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\UserType;
+use App\Models\AuditEvent;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -89,55 +90,64 @@ class ResumeCookieService
             return null;
         }
 
+        $result = $this->validateResumeCookie($user, $rawCookie);
+        if (is_array($result)) {
+            AuditEvent::record('auth.resume_cookie_rejected', User::class, $user->id, null,
+                ['outcome' => $result['reason']], $user, ['executor' => self::class]);
+
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Validate a present resume cookie, returning its path or the rejection reason.
+     *
+     * @return string|array{reason: string}
+     */
+    protected function validateResumeCookie(User $user, string $rawCookie): string|array
+    {
         try {
             $payload = Crypt::decrypt($rawCookie);
         } catch (\Throwable) {
-            return null;
+            return ['reason' => 'undecryptable'];
         }
 
         if (! is_array($payload)) {
-            return null;
+            return ['reason' => 'malformed'];
         }
 
         if ((int) ($payload['access_version'] ?? 0) !== (int) $user->lifecycle_access_version) {
-            return null;
+            return ['reason' => 'access_version_changed'];
         }
 
-        // Verify account binding
         $expectedHash = $this->hashUserId($user->id);
         if (! isset($payload['user_hash']) || ! is_string($payload['user_hash']) || ! hash_equals($expectedHash, $payload['user_hash'])) {
-            return null;
+            return ['reason' => 'account_mismatch'];
         }
 
-        // Verify user type
         if (! isset($payload['user_type']) || $payload['user_type'] !== $user->user_type->value) {
-            return null;
+            return ['reason' => 'user_type_mismatch'];
         }
 
-        // Verify 24-hour expiration
         if (! isset($payload['saved_at']) || ! is_int($payload['saved_at']) || $payload['saved_at'] < Carbon::now()->subHours(24)->timestamp) {
-            return null;
+            return ['reason' => 'expired'];
         }
 
         $path = $payload['path'] ?? null;
         if (! $path || ! is_string($path) || ! str_starts_with($path, '/') || str_starts_with($path, '//')) {
-            return null;
+            return ['reason' => 'invalid_path'];
         }
 
-        // Ensure path routes to an existing GET route
         $route = $this->matchGetRoute($path);
         if (! $route) {
-            return null;
+            return ['reason' => 'unknown_route'];
         }
 
-        // Check if role middleware on target route matches user type
-        $middlewares = $route->gatherMiddleware();
-        foreach ($middlewares as $mw) {
-            if (is_string($mw) && str_starts_with($mw, 'role:')) {
-                $requiredRole = substr($mw, 5);
-                if ($requiredRole !== $user->user_type->value) {
-                    return null;
-                }
+        foreach ($route->gatherMiddleware() as $mw) {
+            if (is_string($mw) && str_starts_with($mw, 'role:') && substr($mw, 5) !== $user->user_type->value) {
+                return ['reason' => 'role_mismatch'];
             }
         }
 

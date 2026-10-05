@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAccessController;
+use App\Http\Controllers\Admin\AdminInvitationController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\BusinessSettingsController;
 use App\Http\Controllers\Admin\FeeActionAttemptController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\ManualChargeController;
 use App\Http\Controllers\Admin\RegistrationFeeRuleController;
 use App\Http\Controllers\Admin\SecurityCaseController;
+use App\Http\Controllers\Admin\StaffRecoveryController;
 use App\Http\Controllers\AgentDirectoryController;
 use App\Http\Controllers\AgentInvitationController;
 use App\Http\Controllers\AgentLifecycleController;
@@ -19,12 +21,15 @@ use App\Http\Controllers\AgentPhotoController;
 use App\Http\Controllers\AgentProfileController;
 use App\Http\Controllers\AgentRegistrationController;
 use App\Http\Controllers\AgentStatusController;
+use App\Http\Controllers\Auth\AdminActivationController;
 use App\Http\Controllers\Auth\AgentActivationController;
 use App\Http\Controllers\Auth\AssistedRecoveryHandoffController;
 use App\Http\Controllers\Auth\CustomerActivationController;
 use App\Http\Controllers\Auth\DeviceEvictionController;
+use App\Http\Controllers\Auth\EmergencyRecoveryController;
 use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\SessionController;
+use App\Http\Controllers\Auth\StaffRecoveryActivationController;
 use App\Http\Controllers\Auth\TwoFactorEnrolmentController;
 use App\Http\Controllers\Auth\TwoFactorManagementController;
 use App\Http\Controllers\BankPayoutCallbackController;
@@ -66,6 +71,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
 
+// Admin Activation via Hashed Challenge (AUTH-T05)
+Route::get('invitations/admin/{token}', [AdminActivationController::class, 'show'])->name('invitations.admin.show');
+Route::post('invitations/admin/{token}', [AdminActivationController::class, 'activate'])->name('invitations.admin.activate');
+
 // Agent Activation via Hashed Challenge (CAM-T05)
 Route::get('invitations/agent/{token}', [AgentActivationController::class, 'show'])->name('invitations.agent.show');
 Route::post('invitations/agent/{token}', [AgentActivationController::class, 'activate'])->name('invitations.agent.activate');
@@ -74,6 +83,10 @@ Route::post('invitations/agent/{token}', [AgentActivationController::class, 'act
 Route::get('invitations/customer/{token}', [CustomerActivationController::class, 'show'])->name('invitations.customer.show');
 Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->name('invitations.customer.activate');
 
+Route::get('emergency-recovery', [EmergencyRecoveryController::class, 'create'])->middleware('guest')->name('emergency-recovery.create');
+Route::post('emergency-recovery', [EmergencyRecoveryController::class, 'store'])->middleware(['guest', 'throttle:5,60'])->name('emergency-recovery.store');
+Route::get('staff-recovery/{recovery}/activate', [StaffRecoveryActivationController::class, 'show'])->whereUuid('recovery')->name('staff-recovery.activation');
+Route::post('staff-recovery/{recovery}/activate', [StaffRecoveryActivationController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('staff-recovery.activate');
 Route::get('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activation'])->whereUuid('recovery')->name('customer-recovery.activation');
 Route::post('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('customer-recovery.activate');
 
@@ -322,7 +335,16 @@ Route::middleware(['auth'])->group(function () {
         Route::get('lockouts', [LockoutController::class, 'index'])->name('lockouts.index');
         Route::post('lockouts/{user}/unlock', [LockoutController::class, 'unlock'])->name('lockouts.unlock');
 
+        Route::get('staff-recoveries', [StaffRecoveryController::class, 'index'])->name('staff-recoveries.index');
+        Route::get('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'create'])->middleware('fresh')->name('staff-recoveries.create');
+        Route::post('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'store'])->middleware(['fresh', 'throttle:10,1'])->name('staff-recoveries.store');
+        Route::post('staff-recoveries/{recovery:reference}/{action}', [StaffRecoveryController::class, 'decide'])->whereIn('action', ['approve', 'reject', 'cancel', 'reissue'])->middleware(['fresh', 'throttle:10,1'])->name('staff-recoveries.decide');
         Route::get('access', [AdminAccessController::class, 'index'])->name('access.index');
+        Route::get('access/invite', [AdminInvitationController::class, 'create'])->middleware('fresh')->name('access.invitations.create');
+        Route::post('access/invite', [AdminInvitationController::class, 'store'])->middleware(['fresh', 'throttle:20,1'])->name('access.invitations.store');
+        Route::post('access/{admin}/invitation/resend', [AdminInvitationController::class, 'resend'])->middleware('fresh')->name('access.invitations.resend');
+        Route::post('access/{admin}/invitation/correct-email', [AdminInvitationController::class, 'correctEmail'])->middleware('fresh')->name('access.invitations.correct-email');
+        Route::post('access/{admin}/invitation/cancel', [AdminInvitationController::class, 'cancel'])->middleware('fresh')->name('access.invitations.cancel');
         Route::get('access/{admin}', [AdminAccessController::class, 'show'])->name('access.show');
         Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
             ->middleware('fresh')
@@ -366,6 +388,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('fresh-authentication');
     Route::post('user/fresh-authentication', [FreshAuthenticationController::class, 'store'])
         ->name('fresh-authentication.store');
+
+    Route::get('emergency-recovery/replacement-key', [EmergencyRecoveryController::class, 'replacement'])->name('emergency-recovery.replacement');
 
     // Mandatory MFA Enrolment & Acknowledgement
     Route::get('two-factor-enrolment', [TwoFactorEnrolmentController::class, 'show'])
