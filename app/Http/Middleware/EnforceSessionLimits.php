@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AuditEvent;
+use App\Models\User;
 use App\Services\ResumeCookieService;
 use Closure;
 use Illuminate\Http\Request;
@@ -50,6 +52,7 @@ class EnforceSessionLimits
         // 1. Check maximum session lifetime (non-extendable)
         $maxLifetime = $user->maximumSessionLifetimeSeconds();
         if (($now - $loginAt) > $maxLifetime) {
+            $this->recordExpiry($request, 'max_lifetime');
             Auth::guard('web')->logout();
             $session->invalidate();
             $session->regenerateToken();
@@ -61,6 +64,7 @@ class EnforceSessionLimits
         // 2. Check inactivity timeout
         $inactivityTimeout = $user->inactivityTimeoutSeconds();
         if (($now - $lastActiveAt) > $inactivityTimeout) {
+            $this->recordExpiry($request, 'inactivity');
             Auth::guard('web')->logout();
             $session->invalidate();
             $session->regenerateToken();
@@ -83,6 +87,16 @@ class EnforceSessionLimits
         }
 
         return $response;
+    }
+
+    /**
+     * Audit a session expiry and mark the request as a forced logout so it is not also recorded as a sign-out.
+     */
+    protected function recordExpiry(Request $request, string $reason): void
+    {
+        $request->attributes->set('auth.forced_logout', true);
+        AuditEvent::record('auth.session_expired', User::class, $request->user()->id, null,
+            ['outcome' => $reason], null, ['executor' => self::class]);
     }
 
     /**

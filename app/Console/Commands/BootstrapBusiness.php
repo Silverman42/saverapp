@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\BusinessBootstrap;
+use App\Services\EmergencyRecoveryService;
 use Illuminate\Console\Command;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -13,7 +14,7 @@ class BootstrapBusiness extends Command
 
     protected $description = 'Provision the first Admin through trusted private input and mandatory MFA onboarding';
 
-    public function handle(BusinessBootstrap $bootstrap): int
+    public function handle(BusinessBootstrap $bootstrap, EmergencyRecoveryService $emergency): int
     {
         $path = $this->option('password-file');
         $password = null;
@@ -33,7 +34,7 @@ class BootstrapBusiness extends Command
             return self::FAILURE;
         }
         try {
-            $bootstrap->provision((string) $this->option('display-name'), (string) $this->option('admin-name'), (string) $this->option('admin-email'), $password);
+            $admin = $bootstrap->provision((string) $this->option('display-name'), (string) $this->option('admin-name'), (string) $this->option('admin-email'), $password);
         } catch (ValidationException|ConflictHttpException $exception) {
             $this->error($exception instanceof ValidationException ? 'Provisioning input did not satisfy the required identity or password policy.' : $exception->getMessage());
 
@@ -41,7 +42,10 @@ class BootstrapBusiness extends Command
         } finally {
             unset($password);
         }
-        $this->info('First Admin provisioned. Mandatory MFA setup is required. Emergency business recovery remains unavailable pending Authentication certification.');
+        $key = $emergency->issue($admin, 'issued_at_bootstrap');
+        $this->info('First Admin provisioned. Mandatory MFA setup is required.');
+        $this->warn('Business emergency recovery key. Store it offline now; it is shown once and only its hash is kept:');
+        $this->line($key);
 
         return self::SUCCESS;
     }

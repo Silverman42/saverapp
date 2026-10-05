@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\UserType;
 use App\Models\AgentTrustedDevice;
+use App\Models\AuditEvent;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -66,6 +67,8 @@ class AgentTrustedDeviceService
                 'user_agent' => $request->userAgent(),
                 'trusted_until' => $trustedUntil,
             ]);
+            AuditEvent::record('auth.trusted_device_created', User::class, $user->id, null,
+                ['device_class' => $deviceName], $user, ['executor' => self::class]);
 
             return true;
         });
@@ -89,7 +92,11 @@ class AgentTrustedDeviceService
      */
     public function revokeTrustedDevices(User $user): SymfonyCookie
     {
-        $user->trustedDevices()->delete();
+        $revokedCount = $user->trustedDevices()->delete();
+        if ($revokedCount > 0) {
+            AuditEvent::record('auth.trusted_device_revoked', User::class, $user->id, null,
+                ['device_count' => $revokedCount], null, ['executor' => self::class]);
+        }
 
         return Cookie::forget(self::COOKIE_NAME);
     }

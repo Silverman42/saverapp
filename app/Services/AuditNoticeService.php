@@ -26,6 +26,15 @@ class AuditNoticeService
         'auth.session_revoked' => 'account_security',
         'auth.recovery_codes_regenerated' => 'account_security',
         'auth.lock_created' => 'account_security',
+        'auth.manual_unlock' => 'account_security',
+        'auth.compromise_sessions_revoked' => 'account_security',
+        'auth.recovery_codes_used' => 'account_security',
+        'auth.staff_recovery_requested' => 'authorization',
+        'auth.staff_recovery_approval_recorded' => 'authorization',
+        'auth.staff_recovery_approved' => 'authorization',
+        'auth.staff_recovery_rejected' => 'authorization',
+        'auth.staff_recovery_cancelled' => 'authorization',
+        'auth.staff_recovery_completed' => 'authorization',
         'authorization.permissions_changed' => 'authorization',
         'authorization.restriction_applied' => 'authorization',
         'authorization.restriction_cleared' => 'authorization',
@@ -88,7 +97,7 @@ class AuditNoticeService
             if ($subjectUser !== null) {
                 $recipients[] = [$subjectUser->id, 'subject_user'];
             }
-            if ($family === 'account_security' || $subjectUser?->user_type !== UserType::Admin) {
+            if ($family === 'account_security' || ($subjectUser?->user_type !== UserType::Admin && ! str_starts_with($audit->event_type, 'auth.staff_recovery_'))) {
                 return $recipients;
             }
         }

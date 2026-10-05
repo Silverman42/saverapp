@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Enums\AdminPermission;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Notifications\CollectionReceiptMailNotification;
 use App\Notifications\FeeSavingsApplicationMailNotification;
@@ -11,6 +12,7 @@ use App\Notifications\ManualChargeMailNotification;
 use App\Notifications\ThriftPlanNotification;
 use App\Services\AuthorizationService;
 use App\Services\FakePayoutProvider;
+use App\Services\SessionManagerService;
 use App\Services\UnavailableExternalOutcomeLookup;
 use App\Services\UnavailablePayoutProvider;
 use App\Support\ExternalOutcomeLookup;
@@ -20,11 +22,13 @@ use App\Support\PlatformJobMiddleware;
 use App\Support\PlatformWorker;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
 use Illuminate\Mail\SentMessage;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Queue\Worker;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +74,15 @@ class AppServiceProvider extends ServiceProvider
             $request = app('request');
             if ($event->user instanceof User && $request->hasSession()) {
                 $request->session()->put('auth.lifecycle_access_version', (int) $event->user->lifecycle_access_version);
+            }
+            if ($event->user instanceof User) {
+                app(SessionManagerService::class)->recordSignInContext($event->user, $request, Auth::viaRemember());
+            }
+        });
+        Event::listen(Logout::class, static function (Logout $event): void {
+            if ($event->user instanceof User && ! app('request')->attributes->get('auth.forced_logout', false)) {
+                AuditEvent::record('auth.signed_out', User::class, $event->user->id, null,
+                    ['outcome' => 'signed_out'], $event->user, ['executor' => self::class]);
             }
         });
         Event::listen(NotificationSent::class, static function (NotificationSent $event): void {

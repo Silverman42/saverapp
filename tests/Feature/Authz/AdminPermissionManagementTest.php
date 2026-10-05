@@ -2,6 +2,7 @@
 
 use App\Enums\AdminPermission;
 use App\Enums\AuthorizationRestrictionType;
+use App\Models\AuditEvent;
 use App\Models\Permission;
 use App\Models\PermissionGrantHistory;
 use App\Models\User;
@@ -391,6 +392,8 @@ test('optimistic concurrency rejects stale expected_permission_version', functio
             'confirmed' => true,
         ])
         ->assertSessionHasErrors('expected_permission_version');
+
+    expect(AuditEvent::query()->where('event_type', 'authorization.permissions_changed')->exists())->toBeFalse();
 });
 
 test('final-capable-admin safeguard blocks revoking admins.manage from sole capable holder', function () {
@@ -471,6 +474,13 @@ test('atomic permission grant updates Spatie pivots, history, and version once',
             ->and($h->reason)->toBe('Assigning audit and export permissions for operational review')
             ->and($h->permission_version)->toBe($initialVersion + 1);
     }
+
+    $audit = AuditEvent::query()->where('event_type', 'authorization.permissions_changed')->sole();
+    expect($audit->target_id)->toBe($target->id)
+        ->and($audit->actor_id)->toBe($admin->id)
+        ->and($audit->payload['batch_id'])->toBe($batchId)
+        ->and($audit->payload['grants'])->toEqualCanonicalizing([AdminPermission::AuditView->value, AdminPermission::ReportsExport->value])
+        ->and($audit->payload['to_version'])->toBe($initialVersion + 1);
 });
 
 test('atomic permission revocation updates Spatie pivots, history, and version once', function () {

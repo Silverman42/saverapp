@@ -41,6 +41,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import AdminInvitationPanel from '@/components/AdminInvitationPanel.vue';
+import type { AdminInvitationSummary } from '@/components/AdminInvitationPanel.vue';
+import { create as createRecovery } from '@/routes/admin/staff-recoveries';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -110,6 +113,8 @@ const props = defineProps<{
     catalogue: CatalogueItem[];
     history: PaginatedHistory;
     canManage: boolean;
+    invitation: AdminInvitationSummary | null;
+    canRequestRecovery: boolean;
     isFresh: boolean;
     isSelf: boolean;
     history_filters: HistoryFilters;
@@ -307,6 +312,14 @@ const getPermissionDetails = (name: string) => {
                 </p>
             </div>
             <div class="ml-auto flex items-center gap-2">
+                <Link
+                    v-if="canRequestRecovery"
+                    :href="createRecovery(admin.id).url"
+                >
+                    <Button variant="outline" size="sm"
+                        >Request account recovery</Button
+                    >
+                </Link>
                 <Badge variant="outline" class="font-mono text-xs">
                     Version v{{ admin.permission_version }}
                 </Badge>
@@ -322,6 +335,13 @@ const getPermissionDetails = (name: string) => {
                 </Badge>
             </div>
         </div>
+
+        <AdminInvitationPanel
+            v-if="invitation"
+            :admin-id="admin.id"
+            :current-email="admin.email"
+            :invitation="invitation"
+        />
 
         <!-- Self-view notice -->
         <div

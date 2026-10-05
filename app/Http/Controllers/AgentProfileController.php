@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
+use App\Services\StaffRecoveryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -176,6 +177,8 @@ class AgentProfileController extends Controller
             ],
             // Contextual actions
             'actions' => [
+                'can_request_recovery' => app(StaffRecoveryService::class)->canManage($viewer, $agentProfile->user),
+                'recovery_user_id' => $agentProfile->user_id,
                 'can_edit' => Gate::forUser($viewer)->allows('update', $agentProfile),
                 'edit_message' => Gate::forUser($viewer)->allows('update', $agentProfile)
                     ? null

@@ -19,6 +19,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $invitation_sender_name
  * @property bool $is_invitation_sender_verified
  * @property int $version
+ * @property string|null $emergency_key_hash
+ * @property Carbon|null $emergency_key_issued_at
+ * @property int|null $emergency_admin_user_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -37,6 +40,8 @@ use Illuminate\Support\Carbon;
 ])]
 class BusinessProfile extends Model
 {
+    protected $hidden = ['emergency_key_hash'];
+
     protected static function booted(): void
     {
         static::updating(function (self $profile): void {
@@ -59,6 +64,7 @@ class BusinessProfile extends Model
         return [
             'is_invitation_sender_verified' => 'boolean',
             'version' => 'integer',
+            'emergency_key_issued_at' => 'datetime',
         ];
     }
 

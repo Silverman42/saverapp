@@ -3,6 +3,7 @@
 namespace App\Actions\Fortify;
 
 use App\Enums\AccountState;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Services\AuthenticationAbuseService;
 use App\Services\SessionManagerService;
@@ -57,6 +58,9 @@ class AttemptToAuthenticateWithDeviceLimit
         // Check concurrent device limit
         $activeSessions = $this->sessionManager->checkDeviceLimits($user);
         if ($activeSessions !== null) {
+            AuditEvent::record('auth.device_limit_reached', User::class, $user->id, null,
+                ['device_count' => $activeSessions->count()], null, ['executor' => self::class]);
+
             // User has reached maximum concurrent devices.
             // Save pending login state and redirect to device eviction screen.
             $request->session()->put('login.pending_eviction', [

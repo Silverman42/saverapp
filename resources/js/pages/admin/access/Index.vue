@@ -4,6 +4,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import {
     ChevronLeft,
     ChevronRight,
+    MailPlus,
     User as UserIcon,
     UsersRound,
 } from '@lucide/vue';
@@ -23,6 +24,7 @@ import {
     index as adminAccessIndex,
     show as adminAccessShow,
 } from '@/routes/admin/access';
+import { create as invitationsCreate } from '@/routes/admin/access/invitations';
 import { dashboard } from '@/routes';
 
 type Admin = {
@@ -101,14 +103,22 @@ const getBadgeVariant = (
 <template>
     <Head title="Administrator Access" />
     <div class="space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Administrator Access
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Directory of registered system administrators and their active
-                responsibilities.
-            </p>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h1 class="text-[25px] font-medium tracking-tight">
+                    Administrator Access
+                </h1>
+                <p class="text-muted-foreground mt-1.5 text-sm">
+                    Directory of registered system administrators and their
+                    active responsibilities.
+                </p>
+            </div>
+            <Link v-if="canManage" :href="invitationsCreate()">
+                <Button>
+                    <MailPlus class="mr-2 size-4" />
+                    Invite Administrator
+                </Button>
+            </Link>
         </div>
         <DirectoryPanel
             title="Administrators"

@@ -5,9 +5,11 @@ namespace App\Jobs;
 use App\Enums\AccountState;
 use App\Enums\DeliveryStatus;
 use App\Enums\InvitationStatus;
+use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\Invitation;
+use App\Notifications\Auth\AdminInvitationNotification;
 use App\Notifications\Auth\AgentInvitationNotification;
 use App\Services\InvitationDeliveryIssues;
 use App\Services\InvitationSenderReadinessService;
@@ -95,7 +97,8 @@ class DeliverAgentInvitationJob implements ShouldQueue
         $senderName = $senderService->resolveSenderName($business);
 
         try {
-            $notification = new AgentInvitationNotification(
+            $notificationClass = $invitation->role === UserType::Admin->value ? AdminInvitationNotification::class : AgentInvitationNotification::class;
+            $notification = new $notificationClass(
                 plainToken: $this->plainToken,
                 businessName: $business->display_name,
                 recipientName: $invitation->user->name,

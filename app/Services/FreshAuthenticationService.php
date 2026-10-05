@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\UserType;
 use App\Http\Middleware\EnsureFreshAuthentication;
+use App\Models\AuditEvent;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -78,6 +79,7 @@ class FreshAuthenticationService
         // 2. Validate password
         if (! Hash::check($password, $user->password)) {
             $this->abuseService->recordPasswordFailure($user->email, $request, $user);
+            $this->recordFailure($user, 'password_mismatch');
 
             throw ValidationException::withMessages([
                 'password' => [__('The provided password does not match our records.')],
@@ -103,6 +105,7 @@ class FreshAuthenticationService
                 $attempts = (int) $request->session()->get('auth.fresh_totp_attempts', 0) + 1;
                 $request->session()->put('auth.fresh_totp_attempts', $attempts);
                 $this->abuseService->recordTotpFailure($user, $request, $attempts);
+                $this->recordFailure($user, 'code_invalid');
 
                 throw ValidationException::withMessages([
                     'code' => [__('Please enter a valid 6-digit authentication code.')],
@@ -115,6 +118,7 @@ class FreshAuthenticationService
                 $attempts = (int) $request->session()->get('auth.fresh_totp_attempts', 0) + 1;
                 $request->session()->put('auth.fresh_totp_attempts', $attempts);
                 $this->abuseService->recordTotpFailure($user, $request, $attempts);
+                $this->recordFailure($user, 'code_invalid');
 
                 throw ValidationException::withMessages([
                     'code' => [__('The provided two-factor authentication code is invalid or has expired.')],
@@ -130,6 +134,18 @@ class FreshAuthenticationService
         $request->session()->put('auth.fresh_until', $now + EnsureFreshAuthentication::FRESH_WINDOW_SECONDS);
         $request->session()->put('auth.password_confirmed_at', $now);
 
+        AuditEvent::record('auth.fresh_authentication_succeeded', User::class, $user->id, null,
+            ['outcome' => 'succeeded'], $user, ['executor' => self::class, 'fresh_authentication' => true]);
+
         return true;
+    }
+
+    /**
+     * Record a failed step-up attempt without the submitted password or code.
+     */
+    private function recordFailure(User $user, string $outcome): void
+    {
+        AuditEvent::record('auth.fresh_authentication_failed', User::class, $user->id, null,
+            ['outcome' => $outcome], $user, ['executor' => self::class, 'fresh_authentication' => false]);
     }
 }

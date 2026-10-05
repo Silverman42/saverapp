@@ -1,10 +1,15 @@
 <?php
 
+use App\Enums\AdminPermission;
+use App\Models\AgentProfile;
+use App\Models\CustomerProfile;
 use App\Models\LedgerPostingGroup;
 use App\Models\ReversalRequest;
 use App\Models\User;
 use App\Services\CollectionLedgerService;
+use App\Services\CustomerReassignmentService;
 use App\Services\ReversalService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Process\Factory as ProcessFactory;
@@ -13,6 +18,7 @@ use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Facade;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -47,7 +53,7 @@ function reversalMysqlWorker(Closure $work): Closure
         config()->set(['collections.enabled' => true, 'collections.receipt_corrections_enabled' => true]);
         try {
             return $work();
-        } catch (ConflictHttpException|ValidationException) {
+        } catch (ConflictHttpException|ValidationException|AuthorizationException) {
             return 'blocked';
         } catch (QueryException $exception) {
             throw new RuntimeException($exception->getMessage());
@@ -136,5 +142,48 @@ test('REV-AC-027 mysql approval racing a remittance serializes and a stale previ
     }
     foreach (LedgerPostingGroup::query()->get() as $group) {
         expect((int) $group->entries()->where('side', 'debit')->sum('amount_kobo'))->toBe((int) $group->entries()->where('side', 'credit')->sum('amount_kobo'));
+    }
+});
+
+test('mysql a reversal submission racing a reassignment lets exactly one win and keeps the original assignment attribution', function (): void {
+    ['agent' => $agent, 'customer' => $customer, 'original' => $original] = revGapReceipt();
+    $quote = revGapQuote($this, $agent, $original);
+    $originalAssignmentId = $customer->currentAssignment->id;
+    $admin = User::factory()->admin()->withTwoFactor()->create();
+    $admin->givePermissionTo(AdminPermission::CustomersReassign->value);
+    $replacement = AgentProfile::factory()->active()->create(['user_id' => User::factory()->agent()->withTwoFactor()->create()->id]);
+    $preview = app(CustomerReassignmentService::class)->preview($admin, $customer, $replacement->id);
+    $reassignment = ['attempt_reference' => (string) Str::uuid(), 'confirmed' => true, 'version' => $preview['version'],
+        'assignment_version' => $preview['assignment_version'], 'preview_token' => $preview['preview_token'],
+        'target_agent_id' => $replacement->id, 'reason' => 'Personnel handover', 'customer_explanation' => 'Your contact changed.'];
+    $customerId = $customer->id;
+    $adminId = $admin->id;
+
+    $outcomes = reversalMysqlRun([
+        reversalMysqlSubmit($agent->id, $original->id, revGapSubmission($quote)),
+        (static function () use ($adminId, $customerId, $reassignment): string {
+            if (DB::getDriverName() !== 'mysql' || DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
+                throw new RuntimeException('Unsafe reversal race database.');
+            }
+            Queue::fake();
+            try {
+                app(CustomerReassignmentService::class)->execute(User::findOrFail($adminId), CustomerProfile::findOrFail($customerId), $reassignment);
+
+                return 'reassigned';
+            } catch (ConflictHttpException|ValidationException|AuthorizationException) {
+                return 'blocked';
+            }
+        })->bindTo(null, null),
+    ]);
+
+    $request = ReversalRequest::query()->first();
+    sort($outcomes);
+    expect($outcomes)->toBeIn([['blocked', 'submitted'], ['blocked', 'reassigned']]);
+    if (in_array('submitted', $outcomes, true)) {
+        expect($request->assignment_id)->toBe($originalAssignmentId)
+            ->and($request->requested_by_user_id)->toBe($agent->id)
+            ->and(CustomerProfile::findOrFail($customerId)->currentAssignment->id)->toBe($originalAssignmentId);
+    } else {
+        expect($request)->toBeNull();
     }
 });
