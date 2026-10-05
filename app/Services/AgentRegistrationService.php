@@ -66,7 +66,7 @@ class AgentRegistrationService
     {
         return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $attemptReference, $data, $photo) {
             return $this->registerAllowed($admin, $attemptReference, $data, $photo);
-        });
+        }, attempts: 3);
     }
 
     /**

@@ -245,7 +245,7 @@ class InvitationManagementService
             });
 
             return ['invitation' => $newInvitation];
-        });
+        }, attempts: 3);
     }
 
     /**

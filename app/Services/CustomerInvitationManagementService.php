@@ -264,7 +264,7 @@ class CustomerInvitationManagementService
             return [
                 'invitation' => $newInvitation,
             ];
-        });
+        }, attempts: 3);
     }
 
     /**

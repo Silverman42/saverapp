@@ -75,7 +75,7 @@ class CustomerRegistrationService
     {
         return app(PlatformGuard::class)->transaction('financial', function () use ($agent, $attemptReference, $data, $photo) {
             return $this->registerAllowed($agent, $attemptReference, $data, $photo);
-        });
+        }, attempts: 3);
     }
 
     /**
