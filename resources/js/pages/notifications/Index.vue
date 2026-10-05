@@ -7,6 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { notificationSyncState } from '@/composables/useNotificationSync';
 import { dashboard } from '@/routes';
 import { index, show, read, pageRead } from '@/routes/notifications';
@@ -63,7 +70,7 @@ watch(
         ) {
             visible.value = null;
             message.value =
-                'Notification access could not be verified. Refresh to retry.';
+                'The system cannot verify notification access. Refresh the page to try again.';
         } else if (
             notificationSyncState.scope &&
             notificationSyncState.scope !== props.inbox.scope
@@ -138,8 +145,8 @@ function date(value: string): string {
                 Notifications
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Your authorized account and business notices. Times shown in
-                {{ timezone }}.
+                This page shows your authorized account and business notices.
+                Times use the {{ timezone }} time zone.
             </p>
         </header>
         <form class="flex flex-row flex-wrap gap-4" @submit.prevent="visit()">
@@ -154,51 +161,70 @@ function date(value: string): string {
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-read">Read state</Label
-                ><select
-                    id="notice-read"
-                    v-model="filters.read"
-                    class="border-input bg-card h-11 rounded-xl border px-3"
+                ><Select v-model="filters.read"
+                    ><SelectTrigger id="notice-read" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="all">All</SelectItem
+                        ><SelectItem value="unread"
+                            >Unread</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="all">All</option>
-                    <option value="unread">Unread</option>
-                </select>
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-category">Category</Label
-                ><select
-                    id="notice-category"
-                    v-model="filters.category"
-                    class="border-input bg-card h-11 rounded-xl border px-3"
+                ><Select
+                    :model-value="filters.category || '__all'"
+                    @update:model-value="
+                        filters.category =
+                            $event === '__all' ? '' : String($event ?? '')
+                    "
+                    ><SelectTrigger id="notice-category" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="__all">All categories</SelectItem
+                        ><SelectItem value="account"
+                            >Account and lifecycle</SelectItem
+                        ><SelectItem value="financial">Financial</SelectItem
+                        ><SelectItem value="plan"
+                            >Plan</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="">All categories</option>
-                    <option value="account">Account and lifecycle</option>
-                    <option value="financial">Financial</option>
-                    <option value="plan">Plan</option>
-                </select>
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-action">Action</Label
-                ><select
-                    id="notice-action"
-                    v-model="filters.action_required"
-                    class="border-input bg-card h-11 rounded-xl border px-3"
+                ><Select
+                    :model-value="filters.action_required || '__all'"
+                    @update:model-value="
+                        filters.action_required =
+                            $event === '__all' ? '' : String($event ?? '')
+                    "
+                    ><SelectTrigger id="notice-action" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="__all">All notices</SelectItem
+                        ><SelectItem value="1">Action required</SelectItem
+                        ><SelectItem value="0"
+                            >Informational</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="">All notices</option>
-                    <option value="1">Action required</option>
-                    <option value="0">Informational</option>
-                </select>
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-status">Status</Label
-                ><select
-                    id="notice-status"
-                    v-model="filters.status"
-                    class="border-input bg-card h-11 rounded-xl border px-3"
+                ><Select v-model="filters.status"
+                    ><SelectTrigger id="notice-status" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="current">Current</SelectItem
+                        ><SelectItem value="expired">Expired action</SelectItem
+                        ><SelectItem value="superseded"
+                            >Superseded</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="current">Current</option>
-                    <option value="expired">Expired action</option>
-                    <option value="superseded">Superseded</option>
-                </select>
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-from">From</Label
@@ -210,15 +236,17 @@ function date(value: string): string {
             </div>
             <div class="w-fit space-y-1.5">
                 <Label for="notice-size">Rows</Label
-                ><select
-                    id="notice-size"
-                    v-model="filters.page_size"
-                    class="border-input bg-card h-11 rounded-xl border px-3"
+                ><Select
+                    :model-value="String(filters.page_size ?? 25)"
+                    @update:model-value="filters.page_size = Number($event)"
+                    ><SelectTrigger id="notice-size" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="25">25</SelectItem
+                        ><SelectItem value="50">50</SelectItem
+                        ><SelectItem value="100">100</SelectItem></SelectContent
+                    ></Select
                 >
-                    <option :value="25">25</option>
-                    <option :value="50">50</option>
-                    <option :value="100">100</option>
-                </select>
             </div>
             <Button type="submit" class="self-end" :disabled="loading"
                 >Apply filters</Button

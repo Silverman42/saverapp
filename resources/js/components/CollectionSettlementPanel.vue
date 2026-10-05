@@ -9,6 +9,13 @@ import { onMounted, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import { store, show } from '@/routes/collection-batches/settlements';
 import { link } from '@/routes/collection-settlements/files';
@@ -156,11 +163,11 @@ async function download(reference: string, file: number): Promise<void> {
     <section class="grid gap-4" aria-label="Clearing settlement">
         <h2 class="font-medium">Bank settlement</h2>
         <p class="text-muted-foreground text-sm">
-            Confirm money actually credited to the selected bank. Outstanding
-            clearing:
-            {{ money(outstandingKobo) }}. Settlement preserves Customer savings
-            and fee income. Processor deductions remain unresolved until their
-            separate expense policy is approved.
+            Confirm the money that the selected bank actually received.
+            Outstanding clearing:
+            {{ money(outstandingKobo) }}. Settlement does not change Customer
+            savings or fee income. Processor deductions stay unresolved until
+            their expense policy is approved.
         </p>
         <form
             v-if="canRecord && banks.length && !posted"
@@ -187,21 +194,27 @@ async function download(reference: string, file: number): Promise<void> {
             </div>
             <div class="grid gap-2">
                 <Label for="settlement-bank">Verified bank destination</Label>
-                <select
-                    id="settlement-bank"
-                    v-model="form.bank_method_version_id"
-                    class="bg-background min-h-11 rounded-md border p-2 text-sm"
+                <Select
+                    :model-value="String(form.bank_method_version_id)"
                     :disabled="uncertain || form.processing"
+                    @update:model-value="
+                        form.bank_method_version_id = Number($event)
+                    "
                 >
-                    <option
-                        v-for="bank in banks"
-                        :key="bank.id"
-                        :value="bank.id"
-                    >
-                        {{ bank.label }} · v{{ bank.version }} ·
-                        {{ bank.destination_key }}
-                    </option>
-                </select>
+                    <SelectTrigger id="settlement-bank" class="w-full"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem
+                            v-for="bank in banks"
+                            :key="bank.id"
+                            :value="String(bank.id)"
+                        >
+                            {{ bank.label }} · v{{ bank.version }} ·
+                            {{ bank.destination_key }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <div class="grid gap-2">
                 <Label for="settlement-reference">Bank credit reference</Label>
@@ -259,8 +272,8 @@ async function download(reference: string, file: number): Promise<void> {
                     @change="chooseFiles"
                 />
                 <p class="text-muted-foreground text-sm">
-                    One to three JPEG, PNG, WebP or PDF files, up to 5 MB each.
-                    Uploads require a clean scan.
+                    Attach one to three JPEG, PNG, WebP or PDF files. Each file
+                    can be up to 5 MB. Each upload must pass a clean scan.
                 </p>
             </div>
             <label class="flex items-start gap-2 text-sm sm:col-span-2"
@@ -307,8 +320,7 @@ async function download(reference: string, file: number): Promise<void> {
             role="status"
             class="text-muted-foreground text-sm"
         >
-            A configured bank destination is required before settlement can be
-            recorded.
+            Configure a bank destination before you record a settlement.
         </p>
         <p v-if="message" role="status" aria-live="polite" class="text-sm">
             {{ message }}

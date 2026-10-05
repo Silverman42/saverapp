@@ -183,8 +183,8 @@ function submit(): void {
             <CardContent class="grid gap-2 text-sm">
                 <p>{{ reversal.state.replaceAll('_', ' ') }}</p>
                 <p v-if="reversal.state === 'approved_no_money'">
-                    The fee was already fully conceded. The correction preserves
-                    your existing refund and records no further money movement.
+                    The full fee was already conceded. The correction keeps your
+                    existing refund. It records no more money movement.
                 </p>
                 <p>
                     Original amount {{ money(reversal.original_amount_kobo) }}
@@ -288,8 +288,8 @@ function submit(): void {
                     v-if="!can_approve && can_review"
                     class="text-muted-foreground text-sm"
                 >
-                    Approval is unavailable until the complete compensation
-                    contract is verified.
+                    You cannot approve until the full compensation terms are
+                    verified.
                 </p>
                 <p
                     v-if="previewError"
@@ -304,10 +304,9 @@ function submit(): void {
                 >
                     <p>Full correction amount {{ money(review.gross_kobo) }}</p>
                     <p v-if="review.summary.no_money === true">
-                        The fee was already fully conceded. Approval will
-                        preserve the existing refund and correct the receipt
-                        history without further money movement or a replacement
-                        allocation.
+                        The full fee was already conceded. Approval keeps the
+                        existing refund and corrects the receipt history. It
+                        does not move more money or make a new allocation.
                     </p>
                     <p
                         v-if="

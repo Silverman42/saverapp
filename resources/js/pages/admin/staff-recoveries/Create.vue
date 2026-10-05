@@ -12,6 +12,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
@@ -79,9 +80,9 @@ const submit = (): void => {
                         <ShieldAlert class="size-4" /> Identity verification
                     </CardTitle>
                     <CardDescription>
-                        Verify the person outside this account using the
-                        business's approved procedure. You never set or see
-                        their new password or authenticator.
+                        Use the approved business procedure to verify the person
+                        outside this account. You do not set or see their new
+                        password or authenticator.
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
@@ -122,10 +123,10 @@ const submit = (): void => {
                     </div>
                     <div class="space-y-1.5">
                         <Label for="verified-at">Verified at</Label>
-                        <Input
+                        <DatePicker
                             id="verified-at"
                             v-model="form.verified_at"
-                            type="datetime-local"
+                            with-time
                             required
                         />
                         <p

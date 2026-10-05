@@ -47,14 +47,14 @@ const submitEmailChange = (): void => {
         <Heading
             variant="small"
             title="Profile"
-            description="Review your account details and manage identity changes securely."
+            description="Review your account details and change your identity details securely."
         />
 
         <section class="space-y-3 rounded-lg border p-5">
             <h2 class="text-base font-medium">Name and phone</h2>
             <p class="text-muted-foreground text-sm">
-                Your current name is {{ user.name }}. Name and phone changes use
-                your account profile and may require fresh authentication.
+                Your current name is {{ user.name }}. Change your name and phone
+                in your account profile. You may need to sign in again.
             </p>
             <Link v-if="profileEditUrl" :href="profileEditUrl">
                 <Button variant="outline">Open profile</Button>
@@ -72,8 +72,8 @@ const submitEmailChange = (): void => {
             <div>
                 <h2 class="text-base font-medium">Email address</h2>
                 <p class="text-muted-foreground mt-1 text-sm">
-                    The current email stays active until both the current and
-                    new addresses confirm the change.
+                    Your current email stays active until both addresses confirm
+                    the change.
                 </p>
             </div>
             <div class="grid gap-2">

@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import {
     index,
@@ -126,12 +133,12 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                 Cash refunds and earnings draws
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Entitlements, controlled cash handoff and receipt confirmation
+                Entitlement, controlled cash handoff, and receipt confirmation
                 are separate steps.
             </p>
         </div>
         <p v-if="!enabled" class="text-muted-foreground text-sm">
-            Cash handoff awaits integrated acceptance.
+            Cash handoff is not available. It needs integrated acceptance first.
         </p>
         <Card v-if="can_refund"
             ><CardHeader
@@ -139,35 +146,36 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
             ><CardContent>
                 <form class="grid max-w-xl gap-3" @submit.prevent="entitlement">
                     <Label for="refund-obligation">Original paid fee</Label
-                    ><select
-                        id="refund-obligation"
-                        v-model="obligation"
-                        required
-                        class="border-input rounded-md border p-2"
+                    ><Select v-model="obligation" required
+                        ><SelectTrigger
+                            id="refund-obligation"
+                            class="h-11 w-full"
+                            ><SelectValue
+                                placeholder="Choose retained paid fee" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-for="item in refundable_obligations"
+                                :key="item.id"
+                                :value="String(item.id)"
+                                >{{ item.description }} · paid
+                                {{ money(item.settled_kobo) }}</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">Choose retained paid fee</option>
-                        <option
-                            v-for="item in refundable_obligations"
-                            :key="item.id"
-                            :value="String(item.id)"
-                        >
-                            {{ item.description }} · paid
-                            {{ money(item.settled_kobo) }}
-                        </option>
-                    </select>
                     <Label for="refund-kind">Refund destination</Label
-                    ><select
-                        id="refund-kind"
-                        v-model="refund.kind"
-                        class="border-input rounded-md border p-2"
+                    ><Select v-model="refund.kind"
+                        ><SelectTrigger id="refund-kind" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="external"
+                                >External receipt: cash payable</SelectItem
+                            ><SelectItem value="savings"
+                                >Savings-funded fee: restore savings</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="external">
-                            External receipt: cash payable
-                        </option>
-                        <option value="savings">
-                            Savings-funded fee: restore savings
-                        </option>
-                    </select>
                     <Label for="refund-amount">Amount (NGN)</Label
                     ><Input
                         id="refund-amount"
@@ -215,21 +223,21 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                     @submit.prevent="begin(false)"
                 >
                     <Label for="cash-refund">Approved refund payable</Label
-                    ><select
-                        id="cash-refund"
-                        v-model="refundReference"
-                        class="border-input rounded-md border p-2"
+                    ><Select v-model="refundReference"
+                        ><SelectTrigger id="cash-refund" class="h-11 w-full"
+                            ><SelectValue
+                                placeholder="Choose approved payable" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-for="item in refunds"
+                                :key="item.refund_reference"
+                                :value="item.refund_reference"
+                                >{{ item.refund_reference }} ·
+                                {{ money(item.amount_kobo) }}</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">Choose approved payable</option>
-                        <option
-                            v-for="item in refunds"
-                            :key="item.refund_reference"
-                            :value="item.refund_reference"
-                        >
-                            {{ item.refund_reference }} ·
-                            {{ money(item.amount_kobo) }}
-                        </option>
-                    </select>
                     <Label for="disbursement-proof"
                         >Controlled cash source and recipient
                         verification</Label
@@ -248,9 +256,9 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                             inputmode="decimal"
                         />
                         <p class="text-muted-foreground text-sm">
-                            Draws require both permissions and cannot exceed
-                            undrawn earnings or free cash after liabilities and
-                            encumbrances.
+                            A draw needs both permissions. A draw must not be
+                            more than undrawn earnings. It must not be more than
+                            free cash after liabilities and encumbrances.
                         </p></template
                     >
                     <p
@@ -300,7 +308,7 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                     v-if="!executions.length"
                     class="text-muted-foreground text-sm"
                 >
-                    No cash attempts in your current scope.
+                    Your current scope has no cash attempts.
                 </p>
                 <div
                     v-for="execution in executions"

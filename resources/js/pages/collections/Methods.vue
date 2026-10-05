@@ -7,6 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     isOperationReference,
     newOperationReference,
 } from '@/lib/operation-reference';
@@ -214,8 +221,8 @@ async function publish(): Promise<void> {
                 Collection methods
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Publish reviewed payment destinations and custody instructions.
-                Existing receipts retain their agreed method version.
+                Publish payment destinations and custody instructions after
+                review. Existing receipts keep their agreed method version.
             </p>
         </div>
         <p v-if="message" role="status" class="text-sm">{{ message }}</p>
@@ -248,15 +255,19 @@ async function publish(): Promise<void> {
                         </legend>
                         <div class="grid gap-2">
                             <Label for="method-key">Payment method</Label
-                            ><select
-                                id="method-key"
-                                v-model="form.method_key"
-                                class="bg-background h-11 rounded-md border px-3"
+                            ><Select v-model="form.method_key"
+                                ><SelectTrigger
+                                    id="method-key"
+                                    class="h-11 w-full"
+                                    ><SelectValue /></SelectTrigger
+                                ><SelectContent>
+                                    <SelectItem value="transfer"
+                                        >Bank transfer</SelectItem
+                                    >
+                                    <SelectItem value="pos">POS</SelectItem>
+                                    <SelectItem value="other">Other</SelectItem>
+                                </SelectContent></Select
                             >
-                                <option value="transfer">Bank transfer</option>
-                                <option value="pos">POS</option>
-                                <option value="other">Other</option>
-                            </select>
                         </div>
                         <div class="grid gap-2">
                             <Label for="method-label"
@@ -270,24 +281,30 @@ async function publish(): Promise<void> {
                         </div>
                         <div class="grid gap-2">
                             <Label for="method-custody">Funds held in</Label
-                            ><select
-                                id="method-custody"
+                            ><Select
                                 v-model="form.custody_account_code"
-                                class="bg-background h-11 rounded-md border px-3"
                                 required
+                                ><SelectTrigger
+                                    id="method-custody"
+                                    class="h-11 w-full"
+                                    ><SelectValue /></SelectTrigger
+                                ><SelectContent>
+                                    <SelectItem
+                                        v-for="account in options"
+                                        :key="account.code"
+                                        :value="account.code"
+                                        :disabled="
+                                            account.mapping_status !== 'mapped'
+                                        "
+                                    >
+                                        {{
+                                            account.display_name ?? account.code
+                                        }}
+                                        ·
+                                        {{ account.mapping_status }}
+                                    </SelectItem>
+                                </SelectContent></Select
                             >
-                                <option
-                                    v-for="account in options"
-                                    :key="account.code"
-                                    :value="account.code"
-                                    :disabled="
-                                        account.mapping_status !== 'mapped'
-                                    "
-                                >
-                                    {{ account.display_name ?? account.code }} ·
-                                    {{ account.mapping_status }}
-                                </option>
-                            </select>
                         </div>
                         <div class="grid gap-2">
                             <Label for="method-destination"
@@ -303,16 +320,16 @@ async function publish(): Promise<void> {
                         <p class="text-muted-foreground text-sm sm:col-span-2">
                             Publishing version {{ form.version }} against
                             custody mapping version {{ form.mapping_version }}.
-                            Confirm the destination independently before
-                            publication.
+                            Make an independent check of the destination before
+                            you publish.
                         </p>
                         <p
                             v-if="!mappingReady"
                             role="status"
                             class="text-muted-foreground text-sm sm:col-span-2"
                         >
-                            Publication is unavailable until the selected
-                            custody account has a current approved mapping.
+                            You cannot publish until the selected custody
+                            account has a current approved mapping.
                         </p>
                         <label class="flex items-center gap-2 text-sm"
                             ><input

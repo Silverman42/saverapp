@@ -231,7 +231,7 @@ const getAccountBadgeVariant = (
 
         <ModuleOverview
             title="Agent Overview"
-            description="Monitor agent activity, assignment eligibility, and customer coverage."
+            description="Monitor agent activity, who can take assignments, and customer coverage."
             :metrics="overviewMetrics"
         >
             <template #actions>

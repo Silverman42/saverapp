@@ -23,8 +23,8 @@ defineOptions({
         <header>
             <h1 class="text-[25px] font-medium tracking-tight">Reports</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Explore your authorized records. Activity defaults to this month
-                in {{ timezone }}.
+                View the records that you can access. Activity shows this month
+                in {{ timezone }} by default.
             </p>
         </header>
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

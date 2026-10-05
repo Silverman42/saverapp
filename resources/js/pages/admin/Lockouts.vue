@@ -282,8 +282,8 @@ const restrictionState = (lock: LockItem): string => {
                 <!-- heading end  -->
                 <!-- Subtext  -->
                 <p class="text-muted-foreground mt-1.5 text-sm">
-                    Monitor temporary authentication restrictions, sliding abuse
-                    counters, and perform authorized manual unlocks.
+                    Monitor temporary sign-in restrictions and abuse counters.
+                    Unlock accounts manually when you have permission.
                 </p>
                 <!-- Subtext end -->
             </div>
@@ -605,8 +605,8 @@ const restrictionState = (lock: LockItem): string => {
                         <strong>{{
                             selectedLock?.user_name || selectedLock?.email
                         }}</strong
-                        >. Per security policy, this does not change passwords,
-                        MFA, permissions, or account status.
+                        >. This does not change passwords, MFA, permissions, or
+                        account status.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -683,7 +683,7 @@ const restrictionState = (lock: LockItem): string => {
                             }"
                         />
                         <p class="text-muted-foreground text-xs">
-                            Detail the completed verification protocol (5–255
+                            Describe the verification steps you completed (5–255
                             characters). Do not record secrets, credentials, or
                             document contents.
                         </p>

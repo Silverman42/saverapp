@@ -312,8 +312,8 @@ function submit(): void {
                 </p></CardContent
             ><CardContent v-else
                 ><p class="text-muted-foreground text-sm">
-                    The authoritative savings position is unavailable. Financial
-                    decisions are blocked until it reconciles.
+                    The savings balance is not available. You cannot make
+                    financial decisions until it is reconciled.
                 </p></CardContent
             ></Card
         >
@@ -364,7 +364,7 @@ function submit(): void {
                         {{
                             action === 'approve'
                                 ? 'Approval keeps the gross reservation. It does not prove payment.'
-                                : 'This ends the unexecuted request and releases its gross reservation.'
+                                : 'This stops the request and releases the reserved amount.'
                         }}
                     </p>
                     <div v-if="action === 'approve'" class="grid gap-2">

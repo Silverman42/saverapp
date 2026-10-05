@@ -40,8 +40,8 @@ const fields = [
             }}
         </p>
         <p class="text-muted-foreground">
-            Recorded settlements retain original fee payments after concessions.
-            Refunds and corrections remain in fee history.
+            Recorded settlements keep the original fee payments after a
+            concession. Fee history shows refunds and corrections.
         </p>
     </section>
 </template>

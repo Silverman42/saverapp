@@ -128,9 +128,9 @@ watchEffect(() => {
                         Important: Save these emergency codes
                     </p>
                     <p class="text-muted-foreground text-xs">
-                        If you lose access to your authenticator app, these
-                        codes are your only way to recover account access. Each
-                        code can only be used once.
+                        If you lose your authenticator app, use these codes to
+                        get access to your account. You can use each code only
+                        once.
                     </p>
                 </div>
             </div>

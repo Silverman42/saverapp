@@ -26,6 +26,13 @@ import {
 } from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type Action =
     | 'suspend'
@@ -119,19 +126,19 @@ const form = useForm({
 const consequences = computed(() => {
     switch (action.value) {
         case 'suspend':
-            return 'End all application access immediately. Operational status, assignments, credentials, savings and financial history remain. Previously issued sessions and trusted devices are revoked.';
+            return 'This action stops all application access immediately. Operational status, assignments, credentials, savings and financial history do not change. The system revokes all old sessions and trusted devices.';
         case 'start-offboarding':
-            return 'Create one offboarding case, set readiness Inactive and suspend account access. Existing assignments and financial responsibilities remain for authorized review.';
+            return 'This action creates one offboarding case. It sets readiness to Inactive and suspends account access. Current assignments and financial responsibilities stay for authorized review.';
         case 'restore':
-            return `Restore account access to ${props.restoration_state ?? 'unavailable'}. Operational status stays ${props.agent.operational_status}. If both states permit Customer work, eligibility resumes for current assignments. Old sessions remain revoked.`;
+            return `This action sets account access to ${props.restoration_state ?? 'unavailable'}. Operational status stays ${props.agent.operational_status}. If both states permit Customer work, the Agent can work on current assignments again. Old sessions stay revoked.`;
         case 'return':
-            return `Retain this Agent identity and prior cases. Account access becomes ${props.restoration_state ?? 'unavailable'} and readiness stays Inactive until separately approved. Former Customers are not reclaimed.`;
+            return `This action keeps the Agent identity and prior cases. Account access changes to ${props.restoration_state ?? 'unavailable'}. Readiness stays Inactive until a separate approval. Former Customers do not return to this Agent.`;
         case 'transfer-owner':
-            return 'Change the accountable case owner. This does not transfer Customers, settle money or approve pending requests.';
+            return 'This action changes the accountable case owner. It does not transfer Customers. It does not settle money or approve pending requests.';
         case 'cancel-offboarding':
-            return 'Close this case as Cancelled. Account access stays Suspended and readiness stays Inactive. Completed handovers and financial resolutions remain.';
+            return 'This action closes the case as Cancelled. Account access stays Suspended. Readiness stays Inactive. Completed handovers and financial resolutions do not change.';
         case 'complete-offboarding':
-            return 'Deactivate account access and complete this case only after all authoritative gates pass again. Identity, archived assignments and historical attribution remain.';
+            return 'This action deactivates account access and completes the case. All authoritative gates must pass again first. Identity, archived assignments and historical attribution do not change.';
     }
 });
 const disabled = computed(
@@ -194,8 +201,8 @@ defineOptions({
             ><CardHeader
                 ><CardTitle>Current state</CardTitle
                 ><CardDescription
-                    >Account access and operational readiness are managed
-                    separately.</CardDescription
+                    >Account access and operational readiness use different
+                    procedures.</CardDescription
                 ></CardHeader
             ><CardContent class="space-y-4"
                 ><div class="flex flex-wrap gap-2">
@@ -232,8 +239,8 @@ defineOptions({
             ><CardHeader
                 ><CardTitle>Lifecycle action</CardTitle
                 ><CardDescription
-                    >A fresh password and authenticator verification is required
-                    within ten minutes.</CardDescription
+                    >You must verify your password and authenticator again. Do
+                    this within ten minutes.</CardDescription
                 ></CardHeader
             ><CardContent>
                 <Link
@@ -245,20 +252,21 @@ defineOptions({
                 >
                 <form class="space-y-5" @submit.prevent="submit">
                     <div class="space-y-2">
-                        <Label for="lifecycle-action">Action</Label
-                        ><select
-                            id="lifecycle-action"
-                            v-model="action"
-                            class="border-input bg-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2"
-                        >
-                            <option
-                                v-for="item in allowed_actions"
-                                :key="item"
-                                :value="item"
-                            >
-                                {{ labels[item] }}
-                            </option>
-                        </select>
+                        <Label for="lifecycle-action">Action</Label>
+                        <Select v-model="action">
+                            <SelectTrigger id="lifecycle-action" class="w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="item in allowed_actions"
+                                    :key="item"
+                                    :value="item"
+                                >
+                                    {{ labels[item] }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <Alert
                         ><AlertTitle>{{ labels[action] }}</AlertTitle
@@ -267,21 +275,31 @@ defineOptions({
                         }}</AlertDescription></Alert
                     >
                     <div v-if="action === 'transfer-owner'" class="space-y-2">
-                        <Label for="case-owner">Accountable owner</Label
-                        ><select
-                            id="case-owner"
-                            v-model="form.owner_user_id"
+                        <Label for="case-owner">Accountable owner</Label>
+                        <Select
+                            :model-value="
+                                form.owner_user_id === null
+                                    ? undefined
+                                    : String(form.owner_user_id)
+                            "
                             required
-                            class="border-input bg-background h-11 w-full rounded-md border px-3 text-sm"
+                            @update:model-value="
+                                (value) => (form.owner_user_id = Number(value))
+                            "
                         >
-                            <option
-                                v-for="owner in owners"
-                                :key="owner.id"
-                                :value="owner.id"
-                            >
-                                {{ owner.name }}
-                            </option>
-                        </select>
+                            <SelectTrigger id="case-owner" class="w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="owner in owners"
+                                    :key="owner.id"
+                                    :value="String(owner.id)"
+                                >
+                                    {{ owner.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div class="space-y-2">
                         <Label for="lifecycle-reason">Internal reason</Label
@@ -336,8 +354,9 @@ defineOptions({
             ><CardHeader
                 ><CardTitle>Offboarding completion checks</CardTitle
                 ><CardDescription
-                    >Unavailable evidence keeps the case open and account access
-                    suspended. Archived assignments may remain.</CardDescription
+                    >If evidence is not available, the case stays open. Account
+                    access stays suspended. Archived assignments can
+                    stay.</CardDescription
                 ></CardHeader
             ><CardContent
                 ><ul class="space-y-4">
@@ -376,8 +395,9 @@ defineOptions({
             ><CardHeader
                 ><CardTitle>Lifecycle history</CardTitle
                 ><CardDescription
-                    >Latest 50 events. Internal reasons and delivery outcomes
-                    are restricted to authorized management.</CardDescription
+                    >This list shows the latest 50 events. Only authorized
+                    managers can see internal reasons and delivery
+                    outcomes.</CardDescription
                 ></CardHeader
             ><CardContent
                 ><p

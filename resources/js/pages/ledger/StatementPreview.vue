@@ -12,6 +12,13 @@ import { show as showTransaction } from '@/routes/transactions';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type StatementLine = {
     reference: string;
@@ -108,8 +115,8 @@ function money(kobo: number): string {
                 Statement preview
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Posted savings activity for {{ customer.name }}. This preview is
-                not an issued statement.
+                This shows posted savings activity for {{ customer.name }}. This
+                preview is not an issued statement.
             </p>
         </div>
         <form
@@ -135,23 +142,29 @@ function money(kobo: number): string {
                 "
                 class="grid gap-1 text-sm"
                 >Supersede an issued statement for this period
-                <select
-                    v-model="issuance.supersedes_reference"
-                    class="rounded-md border p-2"
+                <Select
+                    :model-value="issuance.supersedes_reference || '__new'"
+                    @update:model-value="
+                        issuance.supersedes_reference =
+                            $event === '__new' ? '' : String($event ?? '')
+                    "
+                    ><SelectTrigger class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="__new"
+                            >Issue a new statement</SelectItem
+                        ><SelectItem
+                            v-for="statement in issued_statements.filter(
+                                (statement) =>
+                                    statement.status === 'ready' &&
+                                    !statement.superseded,
+                            )"
+                            :key="statement.artifact_reference"
+                            :value="statement.artifact_reference"
+                            >{{ statement.artifact_reference }}</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="">Issue a new statement</option>
-                    <option
-                        v-for="statement in issued_statements.filter(
-                            (statement) =>
-                                statement.status === 'ready' &&
-                                !statement.superseded,
-                        )"
-                        :key="statement.artifact_reference"
-                        :value="statement.artifact_reference"
-                    >
-                        {{ statement.artifact_reference }}
-                    </option>
-                </select>
             </label>
             <label class="flex gap-3 text-sm"
                 ><input v-model="issuance.confirmed" type="checkbox" />I confirm
@@ -188,7 +201,7 @@ function money(kobo: number): string {
                 <p class="text-muted-foreground mt-1 text-sm">
                     {{
                         preview.message ??
-                        'The ledger needs verification before statement totals can be shown.'
+                        'Verify the ledger. Then the statement totals show.'
                     }}
                 </p>
             </CardContent>

@@ -12,6 +12,7 @@ const props = withDefaults(
     ariaLabel?: string
     errorMessage?: string
     disabled?: boolean
+    withTime?: boolean
     class?: HTMLAttributes["class"]
   }>(),
   {
@@ -20,6 +21,7 @@ const props = withDefaults(
     ariaLabel: "Datepicker input",
     errorMessage: "",
     disabled: false,
+    withTime: false,
   },
 )
 
@@ -31,6 +33,9 @@ const pickerValue = computed(() => props.modelValue || null)
 const inputAriaLabel = computed(() =>
   props.errorMessage ? `${props.ariaLabel}. ${props.errorMessage}` : props.ariaLabel,
 )
+
+const inputFormat = computed(() => (props.withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"))
+const modelType = computed(() => (props.withTime ? "yyyy-MM-dd'T'HH:mm" : "yyyy-MM-dd"))
 
 const ui = {
   input:
@@ -56,11 +61,11 @@ function updateModelValue(value: unknown): void {
     :aria-labels="{ input: inputAriaLabel }"
     :ui
     :class="cn('saver-date-picker w-fit', props.class)"
-    auto-apply
     clearable
-    :formats="{ input: 'dd/MM/yyyy' }"
-    :time-config="{ enableTimePicker: false }"
-    model-type="yyyy-MM-dd"
+    :auto-apply="!withTime"
+    :formats="{ input: inputFormat }"
+    :time-config="{ enableTimePicker: withTime, is24: true }"
+    :model-type="modelType"
     @update:model-value="updateModelValue"
   />
 </template>

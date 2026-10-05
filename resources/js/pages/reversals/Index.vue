@@ -2,6 +2,13 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import {
@@ -53,14 +60,14 @@ function applyFilter(): void {
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Reversals</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Correction requests and posted outcomes in your permitted
-                Customer scope.
+                This list shows correction requests and posted outcomes in your
+                permitted Customer scope.
             </p>
         </div>
         <Card>
             <CardContent class="pt-6 text-sm">
-                New reversal requests are unavailable while accounting, custody,
-                and evidence contracts are being verified.
+                You cannot make new reversal requests now. The team must first
+                verify the accounting, custody, and evidence contracts.
             </CardContent>
         </Card>
         <div class="flex flex-row flex-wrap gap-4">
@@ -68,20 +75,27 @@ function applyFilter(): void {
                 <label for="reversal-state" class="text-sm font-medium"
                     >State</label
                 >
-                <select
-                    id="reversal-state"
-                    v-model="state"
-                    class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                <Select
+                    :model-value="state || '__all'"
+                    @update:model-value="
+                        state = $event === '__all' ? '' : String($event ?? '')
+                    "
+                    ><SelectTrigger id="reversal-state" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="__all">All states</SelectItem
+                        ><SelectItem value="pending_review"
+                            >Pending review</SelectItem
+                        ><SelectItem value="approved_posted"
+                            >Approved and posted</SelectItem
+                        ><SelectItem value="approved_no_money"
+                            >Approved, no money movement</SelectItem
+                        ><SelectItem value="rejected">Rejected</SelectItem
+                        ><SelectItem value="cancelled"
+                            >Cancelled</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="">All states</option>
-                    <option value="pending_review">Pending review</option>
-                    <option value="approved_posted">Approved and posted</option>
-                    <option value="approved_no_money">
-                        Approved, no money movement
-                    </option>
-                    <option value="rejected">Rejected</option>
-                    <option value="cancelled">Cancelled</option>
-                </select>
             </div>
             <Button
                 type="button"

@@ -3,6 +3,13 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import InputError from '@/components/InputError.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
@@ -200,23 +207,29 @@ function saveAnnotation(): void {
                         Day {{ selectedDay.ordinal }} ·
                         {{ selectedDay.due_date }}
                     </p>
-                    <Label for="annotation-kind">Attendance note</Label
-                    ><select
-                        id="annotation-kind"
+                    <Label for="annotation-kind">Attendance note</Label>
+                    <Select
                         v-model="annotation.kind"
                         :disabled="annotation.processing"
-                        :aria-invalid="Boolean(annotation.errors.kind)"
-                        :aria-describedby="
-                            annotation.errors.kind
-                                ? 'annotation-kind-error'
-                                : undefined
-                        "
-                        class="bg-background rounded-md border p-2 text-sm"
                     >
-                        <option value="missed">Missed</option>
-                        <option value="skipped">Skipped</option>
-                        <option value="clear">Clear note</option></select
-                    ><InputError
+                        <SelectTrigger
+                            id="annotation-kind"
+                            class="w-full"
+                            :aria-invalid="Boolean(annotation.errors.kind)"
+                            :aria-describedby="
+                                annotation.errors.kind
+                                    ? 'annotation-kind-error'
+                                    : undefined
+                            "
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="missed">Missed</SelectItem>
+                            <SelectItem value="skipped">Skipped</SelectItem>
+                            <SelectItem value="clear">Clear note</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <InputError
                         id="annotation-kind-error"
                         :message="annotation.errors.kind"
                     />

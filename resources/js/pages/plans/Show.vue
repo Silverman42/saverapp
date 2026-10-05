@@ -245,8 +245,7 @@ const reloadAction = (): void => {
         only: ['plan', 'customer', 'actions', 'attempt_reference'],
         onSuccess: (currentPage) => {
             const currentPlan = currentPage.props.plan as
-                | { id?: string }
-                | undefined;
+                { id?: string } | undefined;
             if (
                 currentPage.component !== 'plans/Show' ||
                 currentPlan?.id !== props.plan.id
@@ -441,9 +440,9 @@ const statusVariant = (
             id="plan-cancellation-blocker"
             class="text-muted-foreground text-sm"
         >
-            This cycle has fee or financial activity and cannot use unused
-            cancellation. Review its recorded fees and payments before choosing
-            a settlement action.
+            This cycle has fee or financial activity, so you cannot cancel it as
+            unused. Review its fees and payments before you choose a settlement
+            action.
         </p>
 
         <div
@@ -608,8 +607,8 @@ const statusVariant = (
                     v-if="plan.fee.estimate_available"
                     class="text-muted-foreground text-xs"
                 >
-                    The fee snapshot is contractual; any assessment waits for
-                    the financial workflow that owns it.
+                    The fee terms come from the agreement. The related financial
+                    process calculates the actual fee.
                 </p>
                 <p v-else class="text-muted-foreground text-xs">
                     The amount is calculated when a withdrawal is quoted.
@@ -624,9 +623,9 @@ const statusVariant = (
                     <div>
                         <CardTitle>Expected contribution dates</CardTitle
                         ><CardDescription
-                            >Agreed dates and verified allocated contributions.
-                            Unavailable funding retains the agreed
-                            target.</CardDescription
+                            >Agreed dates and verified contributions. If funding
+                            data is not available, the agreed target
+                            shows.</CardDescription
                         >
                     </div>
                 </div>
@@ -700,8 +699,8 @@ const statusVariant = (
                 <CardHeader
                     ><CardTitle>Revision history</CardTitle
                     ><CardDescription
-                        >Each accepted version of the plan terms is
-                        retained.</CardDescription
+                        >We keep each accepted version of the plan
+                        terms.</CardDescription
                     ></CardHeader
                 >
                 <CardContent>
@@ -718,7 +717,8 @@ const statusVariant = (
                             <p class="text-muted-foreground mt-1 text-sm">
                                 {{ revision.formatted_contribution_amount }}
                                 daily · {{ revision.contribution_days }} days
-                                from {{ revision.start_date }}
+                                from
+                                {{ revision.start_date }}
                             </p>
                             <p
                                 v-if="revision.reason"

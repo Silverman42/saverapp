@@ -15,6 +15,13 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type AgentStatus = 'active' | 'inactive';
 type HistoryEntry = {
@@ -100,8 +107,8 @@ defineOptions({
                 <CardHeader>
                     <CardTitle>Current state</CardTitle>
                     <CardDescription
-                        >Operational readiness and account access are
-                        separate.</CardDescription
+                        >Operational readiness and account access are different
+                        settings.</CardDescription
                     >
                 </CardHeader>
                 <CardContent class="flex flex-wrap gap-2">
@@ -118,7 +125,7 @@ defineOptions({
                     <CardTitle>Readiness</CardTitle>
                     <CardDescription>{{
                         agent.readiness.reason ??
-                        'Eligible for assigned Customer work.'
+                        'The Agent can do assigned Customer work.'
                     }}</CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-1 text-sm">
@@ -126,7 +133,7 @@ defineOptions({
                         New assignments:
                         {{
                             agent.assignment_readiness.reason ??
-                            'Eligible to receive.'
+                            'The Agent can receive them.'
                         }}
                     </p>
                     <p>
@@ -148,7 +155,7 @@ defineOptions({
             <CardHeader>
                 <CardTitle>Current assignments</CardTitle>
                 <CardDescription
-                    >Assignments stay in place when operational status
+                    >Assignments do not change when the operational status
                     changes.</CardDescription
                 >
             </CardHeader>
@@ -172,28 +179,32 @@ defineOptions({
             <CardHeader>
                 <CardTitle>Change operational status</CardTitle>
                 <CardDescription
-                    >Inactivity stops new Customer work immediately. Login
-                    access and assignments remain; suspension is a separate
-                    action.</CardDescription
+                    >The Inactive status stops new Customer work immediately.
+                    Login access and assignments do not change. Suspension is a
+                    different action.</CardDescription
                 >
             </CardHeader>
             <CardContent>
                 <form class="space-y-5" @submit.prevent="submit">
                     <div class="space-y-2">
                         <Label for="agent-target-status">New status</Label>
-                        <select
-                            id="agent-target-status"
-                            v-model="form.target_status"
-                            class="border-input bg-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
-                        >
-                            <option
-                                v-for="target in allowed_targets"
-                                :key="target.value"
-                                :value="target.value"
-                            >
-                                {{ target.label }}
-                            </option>
-                        </select>
+                        <Select v-model="form.target_status">
+                            <SelectTrigger
+                                id="agent-target-status"
+                                class="w-full"
+                                :aria-invalid="!!form.errors.target_status"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="target in allowed_targets"
+                                    :key="target.value"
+                                    :value="target.value"
+                                >
+                                    {{ target.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <p
                             v-if="form.errors.target_status"
                             class="text-destructive text-sm"
@@ -291,8 +302,8 @@ defineOptions({
             <CardHeader>
                 <CardTitle>Status history</CardTitle>
                 <CardDescription
-                    >Internal reasons and delivery outcomes are visible only to
-                    authorized management.</CardDescription
+                    >Only authorized managers can see internal reasons and
+                    delivery outcomes.</CardDescription
                 >
             </CardHeader>
             <CardContent>
@@ -300,7 +311,7 @@ defineOptions({
                     v-if="history.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    No status changes have been recorded.
+                    The system has no recorded status changes.
                 </p>
                 <ol v-else class="space-y-5">
                     <li

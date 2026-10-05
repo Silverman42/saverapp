@@ -84,8 +84,8 @@ const submit = (): void => {
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
                     Create an Inactive Agent profile and send an activation
-                    invitation. The agent will set their own password and
-                    configure mandatory MFA.
+                    invitation. The agent sets their own password and sets up
+                    MFA.
                 </p>
             </div>
             <Link :href="agentsIndex().url">
@@ -100,8 +100,8 @@ const submit = (): void => {
                 <CardHeader>
                     <CardTitle>Personal & Contact Information</CardTitle>
                     <CardDescription
-                        >Enter the agent's core identity details. Full name,
-                        email, and phone are required.</CardDescription
+                        >Enter the agent's identity details. Full name, email,
+                        and phone are required.</CardDescription
                     >
                 </CardHeader>
                 <CardContent class="space-y-4">
@@ -264,9 +264,8 @@ const submit = (): void => {
                 <CardHeader>
                     <CardTitle>Administrative Notes</CardTitle>
                     <CardDescription
-                        >Internal operational notes visible only to
-                        Administrators. Strictly omitted from agent
-                        self-service.</CardDescription
+                        >Internal notes for Administrators only. Agents cannot
+                        see these notes.</CardDescription
                     >
                 </CardHeader>
                 <CardContent>

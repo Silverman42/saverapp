@@ -114,8 +114,7 @@ function reloadPeriods(): void {
         only: ['periods', 'timezone', 'current_month'],
         onSuccess: (page) => {
             const currentPeriods = page.props.periods as
-                | { data?: Period[] }
-                | undefined;
+                { data?: Period[] } | undefined;
             if (
                 page.component !== 'admin/financial-periods/Index' ||
                 !Array.isArray(currentPeriods?.data) ||
@@ -225,8 +224,8 @@ function submitTransition(): void {
                 Cash receipt months
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Explicit booking periods in {{ timezone }}. A missing or closed
-                month blocks cash receipts.
+                Booking periods in {{ timezone }}. You cannot record cash
+                receipts for a missing or closed month.
             </p>
         </div>
         <div
@@ -386,9 +385,9 @@ function submitTransition(): void {
                     @submit.prevent="submitTransition"
                 >
                     <p class="text-muted-foreground text-sm">
-                        Closing requires an ended month with every cash batch
-                        reconciled and no unresolved exception. Reopening does
-                        not extend the receipt lookback.
+                        You can close only a month that has ended. All cash
+                        batches must be reconciled and all exceptions resolved.
+                        Reopening does not extend the receipt lookback period.
                     </p>
                     <div class="grid gap-2">
                         <Label for="transition-reason">Reason</Label

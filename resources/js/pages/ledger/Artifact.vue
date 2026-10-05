@@ -90,8 +90,8 @@ function cancelDocument(): void {
                     Download expires {{ artifact.expires_at }}.
                 </p>
                 <p v-if="artifact.failure_code">
-                    Generation failed. The original snapshot and operation
-                    identity are retained.
+                    The report was not created. The original data and request
+                    are kept.
                 </p>
                 <a
                     v-if="artifact.download_url"
@@ -146,8 +146,8 @@ function cancelDocument(): void {
                     </p>
                 </form>
                 <p v-if="artifact.held">
-                    A retention hold preserves this report file after its
-                    download expiry.
+                    A retention hold keeps this report file after its download
+                    link expires.
                 </p>
                 <form
                     v-if="artifact.can_hold"

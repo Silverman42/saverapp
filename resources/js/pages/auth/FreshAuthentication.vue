@@ -54,8 +54,8 @@ const submit = () => {
         >
             <p class="font-medium">High-security area</p>
             <p class="mt-1 text-xs opacity-90">
-                Fresh verification is required for 10 minutes. Recovery codes
-                and trusted-device bypasses do not apply.
+                Verify again to continue for 10 minutes. You cannot use recovery
+                codes or trusted devices for this step.
             </p>
         </div>
 

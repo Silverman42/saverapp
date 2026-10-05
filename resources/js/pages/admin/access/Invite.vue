@@ -70,9 +70,9 @@ const submit = (): void => {
                     Invite Administrator
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
-                    The new Administrator activates with a single-use link,
-                    creates their own password and sets up two-factor
-                    authentication. You never choose or see their password.
+                    The new Administrator uses a single-use link to activate.
+                    They create their own password and set up two-factor
+                    authentication. You do not see their password.
                 </p>
             </div>
             <Link :href="adminAccessIndex()">
@@ -133,9 +133,9 @@ const submit = (): void => {
                 <CardHeader>
                     <CardTitle>Initial permissions</CardTitle>
                     <CardDescription>
-                        Every Administrator has baseline access. Select any
-                        additional permissions; the invited Administrator cannot
-                        change them during activation.
+                        Every Administrator has basic access. Select more
+                        permissions if necessary. The invited Administrator
+                        cannot change them during activation.
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="space-y-3">

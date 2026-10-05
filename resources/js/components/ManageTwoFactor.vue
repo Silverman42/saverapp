@@ -173,9 +173,9 @@ const cancelReplacement = (): void => {
             </CardHeader>
             <CardContent class="space-y-4 pt-2">
                 <p class="text-muted-foreground text-xs leading-relaxed">
-                    Two-factor authentication is mandatory for your role. You
-                    are prompted for a 6-digit code during sign-in and sensitive
-                    operations.
+                    Your role must use two-factor authentication. You must enter
+                    a 6-digit code when you sign in and before sensitive
+                    actions.
                 </p>
 
                 <div class="flex flex-wrap items-center gap-3">
@@ -227,15 +227,14 @@ const cancelReplacement = (): void => {
                     >
                     <AlertDescription class="text-xs">
                         You have {{ remainingRecoveryCodes }} recovery code(s)
-                        remaining. Regenerate a new set to ensure you do not
-                        lose account access.
+                        remaining. Make a new set so that you do not lose access
+                        to your account.
                     </AlertDescription>
                 </Alert>
 
                 <p class="text-muted-foreground text-xs leading-relaxed">
-                    Recovery codes are stored exclusively as secure
-                    cryptographic hashes and cannot be viewed again. Each code
-                    can be used only once.
+                    We keep only a secure hash of each recovery code. You cannot
+                    see the codes again. You can use each code only once.
                 </p>
 
                 <div
@@ -271,7 +270,7 @@ const cancelReplacement = (): void => {
                     <DialogDescription>
                         {{
                             replaceStep === 'verify'
-                                ? 'Verify your current credentials to configure a new authenticator.'
+                                ? 'Confirm your current credentials. Then set up a new authenticator.'
                                 : replaceStep === 'scan'
                                   ? 'Scan the new code with your new authenticator app.'
                                   : 'Save your new emergency recovery codes.'
@@ -496,8 +495,8 @@ const cancelReplacement = (): void => {
                 <DialogHeader>
                     <DialogTitle>Regenerate Recovery Codes</DialogTitle>
                     <DialogDescription>
-                        This will immediately invalidate all existing recovery
-                        codes and generate 10 new ones.
+                        All current recovery codes stop working immediately. You
+                        get 10 new codes.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -577,8 +576,8 @@ const cancelReplacement = (): void => {
 
                 <div v-else class="space-y-4 py-2">
                     <p class="text-muted-foreground text-xs">
-                        Save these new recovery codes immediately. They will not
-                        be displayed again.
+                        Save these new recovery codes now. You cannot see them
+                        again.
                     </p>
 
                     <div

@@ -7,6 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { index, show, exportMethod as exportReport } from '@/routes/reports';
 import type {
@@ -125,7 +132,7 @@ watch(
 function clearOnFailure(): void {
     visible.value = null;
     notice.value =
-        'The report could not be verified. Refresh to start a new run.';
+        'The system cannot verify the report. Refresh to start a new run.';
 }
 usePoll(5000, {
     only: ['scopeSummary'],
@@ -236,66 +243,93 @@ function cell(value: string | number | boolean | null | undefined): string {
                     <Label :for="`report-${field}`">{{
                         field.replaceAll('_', ' ')
                     }}</Label>
-                    <select
+                    <Select
                         v-if="field === 'customer_status'"
-                        :id="`report-${field}`"
-                        v-model="filters.customer_status"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        :model-value="filters.customer_status || '__all'"
+                        @update:model-value="
+                            filters.customer_status =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger
+                            :id="`report-${field}`"
+                            class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all">All statuses</SelectItem
+                            ><SelectItem
+                                v-for="value in statuses"
+                                :key="value"
+                                :value="value"
+                                >{{ value }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">All statuses</option>
-                        <option
-                            v-for="value in statuses"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ value }}
-                        </option>
-                    </select>
-                    <select
+                    <Select
                         v-else-if="field === 'plan_status'"
-                        :id="`report-${field}`"
-                        v-model="filters.plan_status"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        :model-value="filters.plan_status || '__all'"
+                        @update:model-value="
+                            filters.plan_status =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger
+                            :id="`report-${field}`"
+                            class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all"
+                                >All lifecycle states</SelectItem
+                            ><SelectItem
+                                v-for="value in planStatuses"
+                                :key="value"
+                                :value="value"
+                                >{{ value }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">All lifecycle states</option>
-                        <option
-                            v-for="value in planStatuses"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ value }}
-                        </option>
-                    </select>
-                    <select
+                    <Select
                         v-else-if="field === 'state'"
-                        :id="`report-${field}`"
-                        v-model="filters.state"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        :model-value="filters.state || '__all'"
+                        @update:model-value="
+                            filters.state =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger
+                            :id="`report-${field}`"
+                            class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all"
+                                >All workflow states</SelectItem
+                            ><SelectItem
+                                v-for="value in workflowStates"
+                                :key="value"
+                                :value="value"
+                                >{{ value }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">All workflow states</option>
-                        <option
-                            v-for="value in workflowStates"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ value }}
-                        </option>
-                    </select>
-                    <select
+                    <Select
                         v-else-if="field === 'agent_basis'"
-                        :id="`report-${field}`"
-                        v-model="filters.agent_basis"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        :model-value="filters.agent_basis || '__all'"
+                        @update:model-value="
+                            filters.agent_basis =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger
+                            :id="`report-${field}`"
+                            class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all"
+                                >Choose attribution</SelectItem
+                            ><SelectItem
+                                v-for="value in agentBases"
+                                :key="value"
+                                :value="value"
+                                >{{ value }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">Choose attribution</option>
-                        <option
-                            v-for="value in agentBases"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ value }}
-                        </option>
-                    </select>
                     <Input
                         v-else-if="field === 'customer'"
                         :id="`report-${field}`"
@@ -317,36 +351,41 @@ function cell(value: string | number | boolean | null | undefined): string {
                 </div>
                 <div v-if="definition.groups.length" class="w-fit space-y-2">
                     <Label for="report-group">Group by</Label
-                    ><select
-                        id="report-group"
-                        v-model="filters.group"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    ><Select
+                        :model-value="filters.group || '__all'"
+                        @update:model-value="
+                            filters.group =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger id="report-group" class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all">No grouping</SelectItem
+                            ><SelectItem
+                                v-for="value in definition.groups"
+                                :key="value"
+                                :value="value"
+                                >{{ value.replaceAll('_', ' ') }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="">No grouping</option>
-                        <option
-                            v-for="value in definition.groups"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ value.replaceAll('_', ' ') }}
-                        </option>
-                    </select>
                 </div>
                 <div class="w-fit space-y-2">
                     <Label for="report-size">Rows per page</Label
-                    ><select
-                        id="report-size"
-                        v-model.number="filters.page_size"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    ><Select
+                        :model-value="String(filters.page_size ?? 25)"
+                        @update:model-value="filters.page_size = Number($event)"
+                        ><SelectTrigger id="report-size" class="h-11 w-fit"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-for="size in [25, 50, 100]"
+                                :key="size"
+                                :value="String(size)"
+                                >{{ size }}</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option
-                            v-for="size in [25, 50, 100]"
-                            :key="size"
-                            :value="size"
-                        >
-                            {{ size }}
-                        </option>
-                    </select>
                 </div>
                 <Button type="submit" class="self-end" :disabled="pending"
                     >Apply filters</Button
@@ -532,7 +571,7 @@ function cell(value: string | number | boolean | null | undefined): string {
                         role="status"
                         class="text-muted-foreground text-sm"
                     >
-                        No matching records in your authorized scope.
+                        No records in your authorized scope match these filters.
                     </p>
                     <div
                         v-if="section.groups.length"

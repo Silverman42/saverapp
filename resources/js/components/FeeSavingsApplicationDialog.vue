@@ -720,8 +720,8 @@ async function confirmApplication(): Promise<void> {
                 </div>
                 <div v-else-if="attempt" class="space-y-3">
                     <p class="text-muted-foreground text-sm">
-                        Check the saved outcome before changing instructions or
-                        submitting another application.
+                        Check the saved outcome first. Then change the
+                        instructions or submit a new application.
                     </p>
                     <p class="text-xs break-all">
                         Attempt: {{ attempt.reference }}
@@ -734,9 +734,9 @@ async function confirmApplication(): Promise<void> {
                         {{ error }}
                     </p>
                     <p class="text-muted-foreground text-sm">
-                        Stopping cannot undo a recorded application. The server
-                        verifies any winning commit or prevents delayed requests
-                        before permitting a new review.
+                        Stopping does not undo a recorded application. Before a
+                        new review, the server checks for a completed request
+                        and blocks delayed requests.
                     </p>
                     <Button
                         variant="outline"

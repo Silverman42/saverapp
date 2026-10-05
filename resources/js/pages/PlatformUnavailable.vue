@@ -25,9 +25,8 @@ defineProps<{
                 {{ message }}
             </p>
             <p class="text-muted-foreground mt-6 text-sm">
-                If you submitted a financial request, check its existing
-                reference when service resumes before submitting another
-                request.
+                Did you submit a financial request? When service starts again,
+                check its reference before you submit a new request.
             </p>
             <p
                 v-if="operation_reference"

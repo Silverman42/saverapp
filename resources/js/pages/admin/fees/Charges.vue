@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { isOperationReference } from '@/lib/operation-reference';
 import { dashboard, freshAuthentication } from '@/routes';
 import {
@@ -303,13 +310,13 @@ async function submitCharge(): Promise<void> {
                 Controlled charges
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Publish fixed NGN terms, then confirm a charge for an eligible
+                Publish fixed NGN terms. Then confirm a charge for an eligible
                 Customer cycle.
             </p>
         </div>
         <p v-if="!enabled" class="text-muted-foreground text-sm">
-            Charge posting awaits integrated acceptance. Published categories
-            remain available for review.
+            Charge posting is not available until integrated acceptance is
+            complete. You can still review published categories.
         </p>
         <Card
             ><CardHeader
@@ -320,18 +327,19 @@ async function submitCharge(): Promise<void> {
                     @submit.prevent="publishCategory"
                 >
                     <Label for="category-kind">Charge kind</Label
-                    ><select
-                        id="category-kind"
-                        v-model="catalogue.kind"
-                        class="border-input rounded-md border p-2"
-                    >
-                        <option v-if="can_fees" value="manual_fee">
-                            Manual fee obligation
-                        </option>
-                        <option v-if="can_deductions" value="deduction">
-                            Savings deduction
-                        </option>
-                    </select>
+                    ><Select v-model="catalogue.kind">
+                        <SelectTrigger id="category-kind" class="w-full"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-if="can_fees" value="manual_fee">
+                                Manual fee obligation
+                            </SelectItem>
+                            <SelectItem v-if="can_deductions" value="deduction">
+                                Savings deduction
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                     <Label for="category-key">Category key</Label
                     ><Input
                         id="category-key"
@@ -362,8 +370,8 @@ async function submitCharge(): Promise<void> {
                         inputmode="decimal"
                     />
                     <p class="text-muted-foreground text-sm">
-                        Manual fees recognize income when settled. Deductions
-                        use the configured deduction destination.
+                        Manual fees record income when they are settled.
+                        Deductions go to the configured deduction destination.
                     </p>
                     <p
                         v-for="(error, field) in catalogue.errors"
@@ -418,39 +426,39 @@ async function submitCharge(): Promise<void> {
                     >
                         <p>{{ customer.name }} · {{ customer.customer_id }}</p>
                         <Label for="charge-plan">Cycle</Label
-                        ><select
-                            id="charge-plan"
-                            v-model="charge.plan_id"
-                            class="border-input rounded-md border p-2"
-                            required
-                        >
-                            <option value="">Choose cycle</option>
-                            <option
-                                v-for="plan in plans"
-                                :key="plan.plan_id"
-                                :value="plan.plan_id"
-                            >
-                                {{ plan.plan_id }}
-                            </option>
-                        </select>
+                        ><Select v-model="charge.plan_id" required>
+                            <SelectTrigger id="charge-plan" class="w-full"
+                                ><SelectValue placeholder="Choose cycle"
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="plan in plans"
+                                    :key="plan.plan_id"
+                                    :value="plan.plan_id"
+                                >
+                                    {{ plan.plan_id }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <Label for="charge-category">Published category</Label
-                        ><select
-                            id="charge-category"
-                            v-model="charge.category_id"
-                            class="border-input rounded-md border p-2"
-                            required
-                        >
-                            <option value="">Choose category</option>
-                            <option
-                                v-for="category in categories"
-                                :key="category.id"
-                                :value="String(category.id)"
-                            >
-                                {{ category.category_key }} · version
-                                {{ category.version }} · NGN
-                                {{ (category.amount_kobo / 100).toFixed(2) }}
-                            </option>
-                        </select>
+                        ><Select v-model="charge.category_id" required>
+                            <SelectTrigger id="charge-category" class="w-full"
+                                ><SelectValue placeholder="Choose category"
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="category in categories"
+                                    :key="category.id"
+                                    :value="String(category.id)"
+                                >
+                                    {{ category.category_key }} · version
+                                    {{ category.version }} · NGN
+                                    {{
+                                        (category.amount_kobo / 100).toFixed(2)
+                                    }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <p v-if="selected" class="text-sm">
                             {{ selected.customer_description }} ·
                             {{
@@ -461,22 +469,23 @@ async function submitCharge(): Promise<void> {
                         </p>
                         <template v-if="selected?.kind === 'manual_fee'">
                             <Label for="charge-mode">Assessment action</Label>
-                            <select
-                                id="charge-mode"
-                                v-model="charge.mode"
-                                class="border-input rounded-md border p-2"
-                            >
-                                <option value="assessment_only">
-                                    Assess only, leave the fee unpaid
-                                </option>
-                                <option
-                                    value="assess_and_apply"
-                                    :disabled="!can_apply_savings"
-                                >
-                                    Assess and pay the full fee from this
-                                    cycle's savings
-                                </option>
-                            </select>
+                            <Select v-model="charge.mode">
+                                <SelectTrigger id="charge-mode" class="w-full"
+                                    ><SelectValue
+                                /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="assessment_only">
+                                        Assess only, leave the fee unpaid
+                                    </SelectItem>
+                                    <SelectItem
+                                        value="assess_and_apply"
+                                        :disabled="!can_apply_savings"
+                                    >
+                                        Assess and pay the full fee from this
+                                        cycle's savings
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </template>
                         <Label for="charge-reason">Reason for this charge</Label
                         ><Input

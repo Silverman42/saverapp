@@ -17,6 +17,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -110,8 +111,8 @@ defineOptions({
                 ><CardTitle>Phone number</CardTitle
                 ><CardDescription>{{
                     isAgent
-                        ? 'Fresh password and authenticator verification are required.'
-                        : 'Staff phone corrections are available before account activation and require a reason.'
+                        ? 'Enter your password and authenticator code again.'
+                        : 'You can correct a staff phone number only before account activation. Give a reason.'
                 }}</CardDescription></CardHeader
             >
             <form @submit.prevent="submitPhone">
@@ -198,10 +199,10 @@ defineOptions({
                     </div>
                     <div v-if="!isAgent" class="grid gap-2">
                         <Label for="employment-date">Engagement date</Label
-                        ><Input
+                        ><DatePicker
                             id="employment-date"
                             v-model="form.employment_date"
-                            type="date"
+                            :error-message="form.errors.employment_date"
                         />
                         <p
                             v-if="form.errors.employment_date"

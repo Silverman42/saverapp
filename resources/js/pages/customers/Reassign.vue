@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
 import { Head, Link, router, useHttp } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
 import { index, show } from '@/routes/customers';
 import { preview, store, operation } from '@/routes/customers/reassignment';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Card,
     CardContent,
@@ -53,6 +60,12 @@ const form = useHttp({
     reason: '',
     customer_explanation: '',
     confirmed: false,
+});
+const targetAgentSelection = computed({
+    get: () => String(form.target_agent_id),
+    set: (value: string) => {
+        form.target_agent_id = Number(value);
+    },
 });
 const lookup = useHttp({});
 watch(
@@ -216,19 +229,21 @@ defineOptions({
                 ><form class="space-y-5" @submit.prevent="submit()">
                     <div>
                         <Label for="replacement">Replacement Agent</Label
-                        ><select
-                            id="replacement"
-                            v-model="form.target_agent_id"
-                            class="border-input bg-background mt-2 h-11 w-full rounded-md border px-3"
+                        ><Select v-model="targetAgentSelection"
+                            ><SelectTrigger
+                                id="replacement"
+                                class="mt-2 h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent>
+                                <SelectItem
+                                    v-for="agent in agents"
+                                    :key="agent.id"
+                                    :value="String(agent.id)"
+                                >
+                                    {{ agent.name }} · {{ agent.reference }}
+                                </SelectItem>
+                            </SelectContent></Select
                         >
-                            <option
-                                v-for="agent in agents"
-                                :key="agent.id"
-                                :value="agent.id"
-                            >
-                                {{ agent.name }} · {{ agent.reference }}
-                            </option>
-                        </select>
                         <p
                             v-if="!agents.length"
                             class="text-muted-foreground mt-2 text-sm"

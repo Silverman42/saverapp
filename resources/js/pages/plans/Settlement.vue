@@ -131,9 +131,9 @@ function submit(): void {
                         v-if="preview.termination_fee.insufficient_savings"
                         role="status"
                     >
-                        Available savings cannot cover the unpaid fee. Final
-                        closure requires permitted settlement or an authorized
-                        waiver.
+                        Available savings do not cover the unpaid fee. To close
+                        the cycle, record a permitted settlement or an
+                        authorized waiver.
                     </p>
                 </div>
                 <ul

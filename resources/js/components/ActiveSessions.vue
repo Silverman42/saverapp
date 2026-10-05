@@ -72,7 +72,7 @@ const formatTime = (isoString: string): string => {
             <Heading
                 variant="small"
                 title="Active Sessions & Devices"
-                :description="`Manage devices that are currently signed in to your account. Your account allows up to ${props.maxDevices} concurrent active devices.`"
+                :description="`Manage the devices that are signed in to your account. You can use up to ${props.maxDevices} devices at the same time.`"
             />
 
             <div class="flex flex-wrap items-center gap-2">

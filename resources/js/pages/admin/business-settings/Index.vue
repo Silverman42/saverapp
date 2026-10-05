@@ -5,6 +5,13 @@ import type { FormDataConvertible } from "@inertiajs/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useProtectedWorkspace } from "@/composables/useProtectedWorkspace";
 import { dashboard } from "@/routes";
@@ -328,44 +335,56 @@ function retryOriginal(): void {
                     Draft and impact preview
                 </h2>
                 <p class="text-muted-foreground text-sm">
-                    Drafts do not change runtime values. Publication requires
-                    fresh password and MFA confirmation.
+                    Drafts do not change runtime values. To publish, confirm
+                    your password and MFA again.
                 </p>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>
                         <Label for="draft-choice">Draft</Label
-                        ><select
-                            id="draft-choice"
-                            v-model="selectedDraft"
-                            class="bg-background mt-2 h-11 w-full rounded-md border px-3"
+                        ><Select
+                            :model-value="
+                                selectedDraft === null
+                                    ? '__new'
+                                    : String(selectedDraft)
+                            "
+                            @update:model-value="
+                                selectedDraft =
+                                    $event === '__new' ? null : Number($event)
+                            "
                         >
-                            <option :value="null">New draft</option>
-                            <option
-                                v-for="item in settings.drafts"
-                                :key="item.id"
-                                :value="item.id"
-                            >
-                                Draft {{ item.id }} · revision
-                                {{ item.revision }} · base
-                                {{ item.base_version }}
-                            </option>
-                        </select>
+                            <SelectTrigger id="draft-choice" class="mt-2 w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__new">New draft</SelectItem>
+                                <SelectItem
+                                    v-for="item in settings.drafts"
+                                    :key="item.id"
+                                    :value="String(item.id)"
+                                >
+                                    Draft {{ item.id }} · revision
+                                    {{ item.revision }} · base
+                                    {{ item.base_version }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div>
                         <Label for="setting-code">Setting</Label
-                        ><select
-                            id="setting-code"
-                            v-model="selectedCode"
-                            class="bg-background mt-2 h-11 w-full rounded-md border px-3"
-                        >
-                            <option
-                                v-for="[code, item] in editable"
-                                :key="code"
-                                :value="code"
-                            >
-                                {{ item.label }}
-                            </option>
-                        </select>
+                        ><Select v-model="selectedCode">
+                            <SelectTrigger id="setting-code" class="mt-2 w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="[code, item] in editable"
+                                    :key="code"
+                                    :value="code"
+                                >
+                                    {{ item.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
                 <form class="space-y-3" @submit.prevent="saveDraft">
@@ -413,8 +432,8 @@ function retryOriginal(): void {
                             placeholder="2026-10-01T00:00:00+01:00"
                         />
                         <p class="text-muted-foreground text-sm">
-                            Collection limit changes require a future business
-                            midnight.
+                            Set collection limit changes to start at a future
+                            business midnight.
                         </p>
                         <p
                             v-for="(error, key) in preview.errors"

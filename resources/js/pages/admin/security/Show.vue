@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
 import { dashboard } from '@/routes';
 import { index, update } from '@/routes/admin/security';
@@ -38,14 +45,18 @@ const { visible, notice, refresh, clear } = useProtectedWorkspace(
     'security.operations.manage',
 );
 const evidence = ref('');
+const QUEUE = '__queue';
 const form = useForm({
     expected_version: props.case.version,
     action: 'note',
-    owner_id: '',
+    owner_id: '' as number | '',
     state: 'Investigating',
     note: '',
     evidence_references: [] as string[],
 });
+function setOwner(value: unknown): void {
+    form.owner_id = value === QUEUE ? '' : Number(value);
+}
 watch(
     () => props.case.version,
     (version) => {
@@ -100,8 +111,8 @@ function label(state: string): string {
                     Security case
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
-                    Review facts, retain investigation history and coordinate
-                    the next step.
+                    Review the facts. Keep the investigation history. Agree the
+                    next step.
                 </p>
             </div>
             <Button variant="outline" @click="refresh">Refresh</Button>
@@ -159,67 +170,83 @@ function label(state: string): string {
                 <h2 class="font-medium">Update investigation</h2>
                 <div class="flex flex-row flex-wrap gap-4">
                     <div class="w-fit space-y-1.5">
-                        <Label for="case-action">Action</Label
-                        ><select
-                            id="case-action"
-                            v-model="form.action"
-                            class="bg-background h-11 rounded-md border px-3"
-                        >
-                            <option value="note">Add protected note</option>
-                            <option value="assign">Assign owner</option>
-                            <option v-if="states.length" value="state">
-                                Change state
-                            </option>
-                            <option
-                                v-if="
-                                    ['Resolved', 'ClosedNoAction'].includes(
-                                        currentCase.state,
-                                    )
-                                "
-                                value="reopen"
-                            >
-                                Reopen investigation
-                            </option>
-                        </select>
+                        <Label for="case-action">Action</Label>
+                        <Select v-model="form.action">
+                            <SelectTrigger id="case-action"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="note"
+                                    >Add protected note</SelectItem
+                                >
+                                <SelectItem value="assign"
+                                    >Assign owner</SelectItem
+                                >
+                                <SelectItem v-if="states.length" value="state">
+                                    Change state
+                                </SelectItem>
+                                <SelectItem
+                                    v-if="
+                                        ['Resolved', 'ClosedNoAction'].includes(
+                                            currentCase.state,
+                                        )
+                                    "
+                                    value="reopen"
+                                >
+                                    Reopen investigation
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div
                         v-if="form.action === 'assign'"
                         class="w-fit space-y-1.5"
                     >
-                        <Label for="case-owner">Eligible owner</Label
-                        ><select
-                            id="case-owner"
-                            v-model="form.owner_id"
-                            class="bg-background h-11 rounded-md border px-3"
+                        <Label for="case-owner">Eligible owner</Label>
+                        <Select
+                            :model-value="
+                                form.owner_id === ''
+                                    ? QUEUE
+                                    : String(form.owner_id)
+                            "
+                            @update:model-value="setOwner"
                         >
-                            <option value="">Return to queue</option>
-                            <option
-                                v-for="owner in owners"
-                                :key="owner.id"
-                                :value="owner.id"
-                            >
-                                {{ owner.label }}
-                            </option>
-                        </select>
+                            <SelectTrigger id="case-owner"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem :value="QUEUE"
+                                    >Return to queue</SelectItem
+                                >
+                                <SelectItem
+                                    v-for="owner in owners"
+                                    :key="owner.id"
+                                    :value="String(owner.id)"
+                                >
+                                    {{ owner.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div
                         v-if="form.action === 'state'"
                         class="w-fit space-y-1.5"
                     >
-                        <Label for="case-next-state">Next state</Label
-                        ><select
-                            id="case-next-state"
-                            v-model="form.state"
-                            class="bg-background h-11 rounded-md border px-3"
-                        >
-                            <option
-                                v-for="state in states"
-                                :key="state"
-                                :value="state"
-                            >
-                                {{ label(state) }}
-                            </option>
-                        </select>
+                        <Label for="case-next-state">Next state</Label>
+                        <Select v-model="form.state">
+                            <SelectTrigger id="case-next-state"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="state in states"
+                                    :key="state"
+                                    :value="state"
+                                >
+                                    {{ label(state) }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
                 <div class="space-y-1.5">
@@ -237,8 +264,8 @@ function label(state: string): string {
                         id="case-note-help"
                         class="text-muted-foreground text-xs"
                     >
-                        For authorized investigation only. Do not enter
-                        credentials, recovery codes or tokens.
+                        Use this note only for authorized investigations. Do not
+                        enter credentials, recovery codes or tokens.
                     </p>
                 </div>
                 <div class="space-y-1.5">
@@ -254,8 +281,8 @@ function label(state: string): string {
                         id="case-evidence-help"
                         class="text-muted-foreground text-xs"
                     >
-                        Separate references with commas. Audit references also
-                        require audit access.
+                        Put a comma between references. You must have audit
+                        access to use audit references.
                     </p>
                 </div>
                 <p

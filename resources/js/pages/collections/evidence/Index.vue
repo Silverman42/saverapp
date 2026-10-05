@@ -4,6 +4,13 @@ import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { index, view } from '@/routes/collection-evidence';
 import { index as collections } from '@/routes/collections';
@@ -49,24 +56,30 @@ function filter(): void {
                 Payment evidence
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Protected payment claims in your current Customer scope.
-                Verification remains separate from receipt posting.
+                This list shows protected payment claims in your current
+                Customer scope. Verification does not post receipts.
             </p>
         </div>
         <div class="flex flex-row flex-wrap items-end gap-4">
             <div class="grid w-fit gap-2">
                 <Label for="evidence-status">Status</Label
-                ><select
-                    id="evidence-status"
-                    v-model="status"
-                    class="bg-background h-11 w-fit rounded-md border px-3 text-sm"
+                ><Select v-model="status"
+                    ><SelectTrigger id="evidence-status" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="pending"
+                            >Pending verification</SelectItem
+                        >
+                        <SelectItem value="verified"
+                            >Verified, unconsumed</SelectItem
+                        >
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="consumed"
+                            >Consumed by receipt</SelectItem
+                        >
+                    </SelectContent></Select
                 >
-                    <option value="all">All</option>
-                    <option value="pending">Pending verification</option>
-                    <option value="verified">Verified, unconsumed</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="consumed">Consumed by receipt</option>
-                </select>
             </div>
             <Button type="button" variant="outline" @click="filter"
                 >Apply filter</Button
@@ -78,7 +91,7 @@ function filter(): void {
                     v-if="evidence.data.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    No payment evidence matches this scope and status.
+                    No payment evidence agrees with this scope and status.
                 </p>
                 <div
                     v-for="proof in evidence.data"

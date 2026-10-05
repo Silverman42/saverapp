@@ -109,8 +109,8 @@ const getBadgeVariant = (
                     Administrator Access
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
-                    Directory of registered system administrators and their
-                    active responsibilities.
+                    View all system administrators and their current
+                    responsibilities.
                 </p>
             </div>
             <Link v-if="canManage" :href="invitationsCreate()">

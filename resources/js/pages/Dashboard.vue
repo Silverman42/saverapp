@@ -14,6 +14,13 @@ import {
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard as dashboardRoute } from '@/routes';
 import { dashboard as customerDashboard } from '@/routes/customer';
 import { dashboard as agentDashboard } from '@/routes/agent';
@@ -104,6 +111,9 @@ function filterValues(value: Filters): Filters {
     };
 }
 const filters = ref(filterValues(props.filters));
+const allOption = '__all';
+const fromAllOption = (value: unknown): string =>
+    value === allOption ? '' : String(value ?? '');
 const titles: Record<string, string> = {
     portfolio: 'Current portfolio',
     savings: 'Savings position',
@@ -237,8 +247,8 @@ function resetFilters(): void {
                     {{ heading }}
                 </h1>
                 <p class="text-muted-foreground mt-1.5 text-sm">
-                    Savings, activity and current work from their owning
-                    records.
+                    This page shows savings, activity and current work from
+                    their source records.
                 </p>
             </div>
             <Button variant="outline" :disabled="pending" @click="refresh"
@@ -252,16 +262,15 @@ function resetFilters(): void {
         >
             <div class="w-fit space-y-2">
                 <Label for="period">Activity period</Label>
-                <select
-                    id="period"
-                    v-model="filters.period"
-                    class="border-input bg-card h-11 rounded-xl border px-3 text-sm"
-                >
-                    <option value="today">Today</option>
-                    <option value="week">This week</option>
-                    <option value="month">This month</option>
-                    <option value="custom">Custom dates</option>
-                </select>
+                <Select v-model="filters.period">
+                    <SelectTrigger id="period"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="week">This week</SelectItem>
+                        <SelectItem value="month">This month</SelectItem>
+                        <SelectItem value="custom">Custom dates</SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <template v-if="filters.period === 'custom'">
                 <div class="w-fit space-y-2">
@@ -275,61 +284,87 @@ function resetFilters(): void {
             </template>
             <div v-if="dashboard.role !== 'customer'" class="w-fit space-y-2">
                 <Label for="customer-status">Customer status</Label>
-                <select
-                    id="customer-status"
-                    v-model="filters.customer_status"
-                    class="border-input bg-card h-11 rounded-xl border px-3 text-sm"
+                <Select
+                    :model-value="filters.customer_status || allOption"
+                    @update:model-value="
+                        filters.customer_status = fromAllOption($event)
+                    "
                 >
-                    <option value="">Non-archived</option>
-                    <option
-                        v-for="status in [
-                            'active',
-                            'inactive',
-                            'restricted',
-                            'archived',
-                        ]"
-                        :key="status"
-                        :value="status"
-                    >
-                        {{ status }}
-                    </option>
-                </select>
+                    <SelectTrigger id="customer-status"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem :value="allOption">Non-archived</SelectItem>
+                        <SelectItem
+                            v-for="status in [
+                                'active',
+                                'inactive',
+                                'restricted',
+                                'archived',
+                            ]"
+                            :key="status"
+                            :value="status"
+                        >
+                            {{ status }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <div class="w-fit space-y-2">
                 <Label for="plan-status">Plan status</Label>
-                <select
-                    id="plan-status"
-                    v-model="filters.plan_status"
-                    class="border-input bg-card h-11 rounded-xl border px-3 text-sm"
+                <Select
+                    :model-value="filters.plan_status || allOption"
+                    @update:model-value="
+                        filters.plan_status = fromAllOption($event)
+                    "
                 >
-                    <option value="">All plan states</option>
-                    <option
-                        v-for="status in [
-                            'active',
-                            'paused',
-                            'completed',
-                            'closed',
-                            'cancelled',
-                        ]"
-                        :key="status"
-                        :value="status"
-                    >
-                        {{ status }}
-                    </option>
-                </select>
+                    <SelectTrigger id="plan-status"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem :value="allOption"
+                            >All plan states</SelectItem
+                        >
+                        <SelectItem
+                            v-for="status in [
+                                'active',
+                                'paused',
+                                'completed',
+                                'closed',
+                                'cancelled',
+                            ]"
+                            :key="status"
+                            :value="status"
+                        >
+                            {{ status }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <template v-if="dashboard.role === 'admin'">
                 <div class="w-fit space-y-2">
                     <Label for="agent-basis">Agent attribution</Label>
-                    <select
-                        id="agent-basis"
-                        v-model="filters.agent_basis"
-                        class="border-input bg-card h-11 rounded-xl border px-3 text-sm"
+                    <Select
+                        :model-value="filters.agent_basis || allOption"
+                        @update:model-value="
+                            filters.agent_basis = fromAllOption($event)
+                        "
                     >
-                        <option value="">Business-wide</option>
-                        <option value="current">Current Agent</option>
-                        <option value="recording">Recording Agent</option>
-                    </select>
+                        <SelectTrigger id="agent-basis"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem :value="allOption"
+                                >Business-wide</SelectItem
+                            >
+                            <SelectItem value="current"
+                                >Current Agent</SelectItem
+                            >
+                            <SelectItem value="recording"
+                                >Recording Agent</SelectItem
+                            >
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div v-if="filters.agent_basis" class="w-fit space-y-2">
                     <Label for="agent-ref">Agent reference</Label
@@ -342,19 +377,23 @@ function resetFilters(): void {
             </template>
             <div class="w-fit space-y-2">
                 <Label for="page-size">Rows shown</Label
-                ><select
-                    id="page-size"
-                    v-model="filters.page_size"
-                    class="border-input bg-card h-11 rounded-xl border px-3 text-sm"
+                ><Select
+                    :model-value="String(filters.page_size)"
+                    @update:model-value="filters.page_size = Number($event)"
                 >
-                    <option
-                        v-for="size in [25, 50, 100]"
-                        :key="size"
-                        :value="size"
-                    >
-                        {{ size }}
-                    </option>
-                </select>
+                    <SelectTrigger id="page-size"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem
+                            v-for="size in [25, 50, 100]"
+                            :key="size"
+                            :value="String(size)"
+                        >
+                            {{ size }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <Button type="submit" :disabled="pending">Apply</Button
             ><Button
@@ -542,9 +581,9 @@ function resetFilters(): void {
                                 {{ section.trend_from }}–{{ section.trend_to }}
                             </h3>
                             <p class="text-muted-foreground text-xs">
-                                Received dates retained by the owner; exact NGN
-                                values. Dates with no posted receipt are
-                                omitted.
+                                The owner keeps the received dates. Values are
+                                exact NGN amounts. Dates with no posted receipt
+                                do not show.
                             </p>
                             <div
                                 class="max-h-64 overflow-y-auto rounded-xl border"

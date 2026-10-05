@@ -3,6 +3,13 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import {
     index as withdrawalsIndex,
@@ -56,15 +63,15 @@ function applyFilter(): void {
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Withdrawals</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Requests and reservations in your permitted Customer scope.
-                Approval does not mean payment.
+                This list shows requests and reservations in your permitted
+                Customer scope. Approval does not mean payment.
             </p>
         </div>
         <Card v-if="!new_requests_available"
             ><CardContent class="pt-6"
                 ><p class="text-sm">
-                    Payout methods are awaiting approved executor, custody, and
-                    evidence contracts. New requests are currently unavailable.
+                    Payout methods need approved executor, custody, and evidence
+                    contracts. You cannot make new requests now.
                 </p></CardContent
             ></Card
         >
@@ -72,28 +79,37 @@ function applyFilter(): void {
             <div class="grid w-fit gap-2">
                 <label for="withdrawal-state" class="text-sm font-medium"
                     >State</label
-                ><select
-                    id="withdrawal-state"
-                    v-model="state"
-                    class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                ><Select
+                    :model-value="state || '__all'"
+                    @update:model-value="
+                        state = $event === '__all' ? '' : String($event ?? '')
+                    "
+                    ><SelectTrigger id="withdrawal-state" class="h-11 w-fit"
+                        ><SelectValue /></SelectTrigger
+                    ><SelectContent
+                        ><SelectItem value="__all">All states</SelectItem
+                        ><SelectItem value="pending_review"
+                            >Pending review</SelectItem
+                        ><SelectItem value="approved"
+                            >Approved, awaiting payout</SelectItem
+                        ><SelectItem value="payout_processing"
+                            >Payout processing</SelectItem
+                        ><SelectItem value="outcome_unknown"
+                            >Outcome unknown</SelectItem
+                        ><SelectItem value="payment_failed"
+                            >Payment failed</SelectItem
+                        ><SelectItem value="posted">Posted</SelectItem
+                        ><SelectItem
+                            v-if="role !== 'customer'"
+                            value="needs_reconciliation"
+                            >Needs reconciliation</SelectItem
+                        ><SelectItem value="rejected">Rejected</SelectItem
+                        ><SelectItem value="cancelled">Cancelled</SelectItem
+                        ><SelectItem value="expired"
+                            >Expired</SelectItem
+                        ></SelectContent
+                    ></Select
                 >
-                    <option value="">All states</option>
-                    <option value="pending_review">Pending review</option>
-                    <option value="approved">Approved, awaiting payout</option>
-                    <option value="payout_processing">Payout processing</option>
-                    <option value="outcome_unknown">Outcome unknown</option>
-                    <option value="payment_failed">Payment failed</option>
-                    <option value="posted">Posted</option>
-                    <option
-                        v-if="role !== 'customer'"
-                        value="needs_reconciliation"
-                    >
-                        Needs reconciliation
-                    </option>
-                    <option value="rejected">Rejected</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="expired">Expired</option>
-                </select>
             </div>
             <Button type="button" variant="outline" @click="applyFilter"
                 >Apply filter</Button

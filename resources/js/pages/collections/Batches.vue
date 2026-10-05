@@ -31,8 +31,8 @@ defineOptions({
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Cash batches</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Daily cash received by the recording Agent, with separate late
-                supplements.
+                Daily cash that the recording Agent received. Late additions
+                show separately.
             </p>
         </div>
         <Card

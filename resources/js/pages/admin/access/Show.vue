@@ -408,9 +408,8 @@ const getPermissionDetails = (name: string) => {
                     <div>
                         <CardTitle>Permission Assignment</CardTitle>
                         <CardDescription>
-                            Select or deselect direct permissions to grant or
-                            revoke. Changes are applied atomically with
-                            optimistic concurrency.
+                            Select a permission to grant it. Clear a permission
+                            to remove it. All changes save together.
                         </CardDescription>
                     </div>
                     <div v-if="hasChanges" class="flex items-center gap-2">
@@ -586,10 +585,10 @@ const getPermissionDetails = (name: string) => {
                         </p>
                         <p class="mt-1">
                             You are modifying the
-                            <code>admins.manage</code> capability. This grants
-                            or revokes the power to alter administrator
-                            privileges and system security rules. Ensure this
-                            has been properly vetted.
+                            <code>admins.manage</code> capability. This
+                            permission controls who can change administrator
+                            access and security rules. Make sure that this
+                            change is approved.
                         </p>
                     </div>
 

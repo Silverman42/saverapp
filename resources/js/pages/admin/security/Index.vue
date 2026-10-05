@@ -4,6 +4,13 @@ import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
 import { dashboard } from '@/routes';
 import { index, show } from '@/routes/admin/security';
@@ -42,6 +49,10 @@ function search(): void {
         { onHttpException: clear, onNetworkError: clear },
     );
 }
+const ALL = '__all';
+function setFilter(key: string, value: unknown): void {
+    filters.value[key] = value === ALL ? '' : String(value ?? '');
+}
 function stateLabel(state: string): string {
     return state === 'ClosedNoAction' ? 'Closed — no action' : state;
 }
@@ -63,9 +74,9 @@ function stateLabel(state: string): string {
         <p v-if="notice" role="alert">{{ notice }}</p>
         <template v-if="visible">
             <div class="bg-muted/40 rounded-xl border p-4 text-sm">
-                Case resolution records investigation progress. Account
-                restrictions are managed separately. Assisted recovery is
-                unavailable until its owner workflow is ready.
+                Case resolution records the progress of an investigation.
+                Account restrictions use a different procedure. Assisted
+                recovery is not available until its owner workflow is ready.
                 <Link :href="lockouts()" class="underline underline-offset-4"
                     >Review authentication locks</Link
                 >
@@ -75,60 +86,83 @@ function stateLabel(state: string): string {
                 @submit.prevent="search"
             >
                 <div class="w-fit space-y-1.5">
-                    <Label for="case-state">State</Label
-                    ><select
-                        id="case-state"
-                        v-model="filters.state"
-                        class="bg-background h-11 rounded-md border px-3"
+                    <Label for="case-state">State</Label>
+                    <Select
+                        :model-value="filters.state || ALL"
+                        @update:model-value="
+                            (value) => setFilter('state', value)
+                        "
                     >
-                        <option value="">All states</option>
-                        <option
-                            v-for="state in [
-                                'Open',
-                                'Investigating',
-                                'Resolved',
-                                'ClosedNoAction',
-                            ]"
-                            :key="state"
-                            :value="state"
-                        >
-                            {{ stateLabel(state) }}
-                        </option>
-                    </select>
+                        <SelectTrigger id="case-state"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem :value="ALL">All states</SelectItem>
+                            <SelectItem
+                                v-for="state in [
+                                    'Open',
+                                    'Investigating',
+                                    'Resolved',
+                                    'ClosedNoAction',
+                                ]"
+                                :key="state"
+                                :value="state"
+                            >
+                                {{ stateLabel(state) }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div class="w-fit space-y-1.5">
-                    <Label for="case-severity">Severity</Label
-                    ><select
-                        id="case-severity"
-                        v-model="filters.severity"
-                        class="bg-background h-11 rounded-md border px-3"
+                    <Label for="case-severity">Severity</Label>
+                    <Select
+                        :model-value="filters.severity || ALL"
+                        @update:model-value="
+                            (value) => setFilter('severity', value)
+                        "
                     >
-                        <option value="">All severities</option>
-                        <option
-                            v-for="severity in [
-                                'Critical',
-                                'High',
-                                'Medium',
-                                'Low',
-                                'Informational',
-                            ]"
-                            :key="severity"
-                        >
-                            {{ severity }}
-                        </option>
-                    </select>
+                        <SelectTrigger id="case-severity"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem :value="ALL">All severities</SelectItem>
+                            <SelectItem
+                                v-for="severity in [
+                                    'Critical',
+                                    'High',
+                                    'Medium',
+                                    'Low',
+                                    'Informational',
+                                ]"
+                                :key="severity"
+                                :value="severity"
+                            >
+                                {{ severity }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div class="w-fit space-y-1.5">
-                    <Label for="case-size">Rows</Label
-                    ><select
-                        id="case-size"
-                        v-model="filters.per_page"
-                        class="bg-background h-11 rounded-md border px-3"
+                    <Label for="case-size">Rows</Label>
+                    <Select
+                        :model-value="filters.per_page"
+                        @update:model-value="
+                            (value) => setFilter('per_page', value)
+                        "
                     >
-                        <option v-for="size in [25, 50, 100]" :key="size">
-                            {{ size }}
-                        </option>
-                    </select>
+                        <SelectTrigger id="case-size"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="size in ['25', '50', '100']"
+                                :key="size"
+                                :value="size"
+                            >
+                                {{ size }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 <Button type="submit" class="self-end">Filter</Button>
             </form>

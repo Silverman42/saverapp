@@ -38,6 +38,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import InputError from '@/components/InputError.vue';
 import FeeSavingsApplicationDialog from '@/components/FeeSavingsApplicationDialog.vue';
@@ -318,8 +325,7 @@ function reloadAuthorizedWorkspace(): void {
         onSuccess: (currentPage) => {
             const auth = currentPage.props.auth;
             const obligations = currentPage.props.obligations as
-                | { data?: Obligation[] }
-                | undefined;
+                { data?: Obligation[] } | undefined;
             if (
                 currentPage.component !== 'admin/fees/Index' ||
                 auth?.user?.id !== originalActorId ||
@@ -736,8 +742,8 @@ async function submitAction(): Promise<void> {
                         Fees and Deductions
                     </h1>
                     <p class="text-muted-foreground mt-1.5 text-sm">
-                        Outstanding fee obligations and recognized earnings from
-                        committed ledger postings.
+                        This page shows outstanding fee obligations and the
+                        earnings from committed ledger postings.
                     </p>
                 </div>
                 <Button as-child variant="outline">
@@ -831,30 +837,45 @@ async function submitAction(): Promise<void> {
                                     <Label :for="`fee-filter-${field.key}`">{{
                                         field.label
                                     }}</Label>
-                                    <select
-                                        :id="`fee-filter-${field.key}`"
-                                        v-model="filterForm[field.key]"
-                                        :aria-invalid="
-                                            !!filterForm.errors[field.key]
+                                    <Select
+                                        :model-value="
+                                            filterForm[field.key] || '__all'
                                         "
-                                        :aria-describedby="
-                                            filterForm.errors[field.key]
-                                                ? `fee-filter-${field.key}-error`
-                                                : undefined
+                                        @update:model-value="
+                                            filterForm[field.key] =
+                                                $event === '__all'
+                                                    ? ''
+                                                    : String($event)
                                         "
-                                        class="border-input bg-background h-11 w-56 rounded-md border px-3 text-sm"
                                     >
-                                        <option value="">All</option>
-                                        <option
-                                            v-for="option in filter_options[
-                                                field.key
-                                            ]"
-                                            :key="option.value"
-                                            :value="option.value"
-                                        >
-                                            {{ option.label }}
-                                        </option>
-                                    </select>
+                                        <SelectTrigger
+                                            :id="`fee-filter-${field.key}`"
+                                            :aria-invalid="
+                                                !!filterForm.errors[field.key]
+                                            "
+                                            :aria-describedby="
+                                                filterForm.errors[field.key]
+                                                    ? `fee-filter-${field.key}-error`
+                                                    : undefined
+                                            "
+                                            class="w-56"
+                                            ><SelectValue
+                                        /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__all"
+                                                >All</SelectItem
+                                            >
+                                            <SelectItem
+                                                v-for="option in filter_options[
+                                                    field.key
+                                                ]"
+                                                :key="option.value"
+                                                :value="option.value"
+                                            >
+                                                {{ option.label }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                     <InputError
                                         role="alert"
                                         :id="`fee-filter-${field.key}-error`"
@@ -863,29 +884,31 @@ async function submitAction(): Promise<void> {
                                 </div>
                             </div>
                             <p class="text-muted-foreground mt-3 text-xs">
-                                Original assessment Agent identifies who
-                                established the obligation, not who collected
-                                cash. Refund outcomes describe recorded savings
-                                returns or external entitlements; an entitlement
-                                does not prove cash was paid. Batch status comes
-                                from linked physical fee receipts.
+                                The original assessment Agent is the Agent who
+                                created the obligation. This Agent did not
+                                always collect the cash. Refund outcomes show
+                                recorded savings returns or external
+                                entitlements. An entitlement does not prove that
+                                cash was paid. Batch status comes from the
+                                linked physical fee receipts.
                             </p>
                         </details>
                         <div class="flex flex-wrap items-end gap-4">
                             <div class="w-fit space-y-1.5">
                                 <Label for="fee-filter-sort">Order</Label>
-                                <select
-                                    id="fee-filter-sort"
-                                    v-model="filterForm.sort"
-                                    class="border-input bg-background h-11 rounded-md border px-3 text-sm"
-                                >
-                                    <option value="newest">
-                                        Newest assessed first
-                                    </option>
-                                    <option value="oldest">
-                                        Oldest assessed first
-                                    </option>
-                                </select>
+                                <Select v-model="filterForm.sort">
+                                    <SelectTrigger id="fee-filter-sort"
+                                        ><SelectValue
+                                    /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="newest">
+                                            Newest assessed first
+                                        </SelectItem>
+                                        <SelectItem value="oldest">
+                                            Oldest assessed first
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <InputError
                                     role="alert"
                                     :message="filterForm.errors.sort"
@@ -893,15 +916,21 @@ async function submitAction(): Promise<void> {
                             </div>
                             <div class="w-fit space-y-1.5">
                                 <Label for="fee-filter-rows">Rows</Label>
-                                <select
-                                    id="fee-filter-rows"
-                                    v-model.number="filterForm.per_page"
-                                    class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                                <Select
+                                    :model-value="String(filterForm.per_page)"
+                                    @update:model-value="
+                                        filterForm.per_page = Number($event)
+                                    "
                                 >
-                                    <option :value="25">25</option>
-                                    <option :value="50">50</option>
-                                    <option :value="100">100</option>
-                                </select>
+                                    <SelectTrigger id="fee-filter-rows"
+                                        ><SelectValue
+                                    /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="25">25</SelectItem>
+                                        <SelectItem value="50">50</SelectItem>
+                                        <SelectItem value="100">100</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <InputError
                                     role="alert"
                                     :message="filterForm.errors.per_page"
@@ -955,9 +984,9 @@ async function submitAction(): Promise<void> {
                                 unpaid balance</template
                             >
                             <template v-else
-                                >Financial history is unavailable for
-                                {{ summary.unavailable_count }} obligations.
-                                Retry after the source is verified.</template
+                                >Financial history is not available for
+                                {{ summary.unavailable_count }} obligations. Try
+                                again after the source is verified.</template
                             >
                         </p>
                     </CardContent>
@@ -973,7 +1002,7 @@ async function submitAction(): Promise<void> {
                             {{ summary.obligation_count }}
                         </p>
                         <p class="text-muted-foreground mt-1 text-xs">
-                            Complete filtered register, across every page
+                            Total for the filtered register on all pages
                         </p>
                     </CardContent>
                 </Card>
@@ -1020,7 +1049,7 @@ async function submitAction(): Promise<void> {
                             {{ summary.refund_payable.formatted_amount }}
                         </p>
                         <p class="text-muted-foreground mt-1 text-xs">
-                            External refund entitlements not yet paid
+                            External refund entitlements that are not paid
                         </p>
                     </CardContent>
                     <CardContent v-else>
@@ -1258,10 +1287,10 @@ async function submitAction(): Promise<void> {
                 <p class="font-medium">Financial owner availability</p>
                 <p class="text-muted-foreground mt-1">
                     Earnings and refund payable use their mapped accounting
-                    owners. Unavailable positions show their own reason above.
-                    Assessment, settlement, waiver, correction and payouts each
-                    recheck their own current permissions and financial
-                    contracts.
+                    owners. Each unavailable position shows its reason above.
+                    Assessment, settlement, waiver, correction and payout each
+                    check their current permissions and financial contracts
+                    again.
                 </p>
             </div>
         </div>
@@ -1310,20 +1339,23 @@ async function submitAction(): Promise<void> {
                                 <Label for="fee-action-direction"
                                     >Correction direction</Label
                                 >
-                                <select
-                                    id="fee-action-direction"
-                                    :aria-invalid="!!form.errors.direction"
-                                    aria-describedby="fee-action-direction-error"
-                                    v-model="form.direction"
-                                    class="border-input bg-background focus-visible:border-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm"
-                                >
-                                    <option value="reduce">
-                                        Reduce assessed fee
-                                    </option>
-                                    <option value="increase">
-                                        Increase assessed fee
-                                    </option>
-                                </select>
+                                <Select v-model="form.direction">
+                                    <SelectTrigger
+                                        id="fee-action-direction"
+                                        :aria-invalid="!!form.errors.direction"
+                                        aria-describedby="fee-action-direction-error"
+                                        class="w-full"
+                                        ><SelectValue
+                                    /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="reduce">
+                                            Reduce assessed fee
+                                        </SelectItem>
+                                        <SelectItem value="increase">
+                                            Increase assessed fee
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <p
                                     v-if="form.errors.direction"
                                     id="fee-action-direction-error"

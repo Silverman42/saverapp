@@ -6,6 +6,13 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { index as evidenceIndex } from '@/routes/collection-evidence';
 import { dashboard } from '@/routes';
 import {
@@ -108,8 +115,8 @@ function applyFilters(): void {
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Collections</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Daily work and posted receipts in your current Customer scope.
-                Dates use {{ timezone }}.
+                This page shows daily work and posted receipts for your current
+                Customers. Dates use {{ timezone }}.
             </p>
         </div>
         <div class="flex flex-row flex-wrap items-end gap-4">
@@ -132,24 +139,32 @@ function applyFilters(): void {
                 />
             </div>
             <div v-if="due_slots" class="grid w-fit gap-2">
-                <Label for="collection-status">Due work</Label
-                ><select
-                    id="collection-status"
-                    v-model="status"
-                    class="bg-background h-11 w-fit rounded-md border px-3 text-sm"
+                <Label for="collection-status">Due work</Label>
+                <Select
+                    :model-value="status || 'all'"
+                    @update:model-value="(value) => (status = String(value))"
                 >
-                    <option value="all">All</option>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partial</option>
-                    <option value="paid">Paid</option>
-                    <option value="missed">Missed</option>
-                    <option value="advance-covered">Advance covered</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="unavailable">History unavailable</option>
-                    <option value="service-interrupted">
-                        Agent unavailable
-                    </option>
-                </select>
+                    <SelectTrigger id="collection-status"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="partial">Partial</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="missed">Missed</SelectItem>
+                        <SelectItem value="advance-covered"
+                            >Advance covered</SelectItem
+                        >
+                        <SelectItem value="blocked">Blocked</SelectItem>
+                        <SelectItem value="unavailable"
+                            >History unavailable</SelectItem
+                        >
+                        <SelectItem value="service-interrupted">
+                            Agent unavailable
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <Button type="button" variant="outline" @click="applyFilters"
                 >Apply filters</Button
@@ -209,9 +224,9 @@ function applyFilters(): void {
             ><CardContent class="pt-6"
                 ><h2 class="font-medium">Slots due {{ date }}</h2>
                 <p class="text-muted-foreground mt-1 text-sm">
-                    Due work totals cover every matching slot, across all pages.
-                    Received tender above uses the receipt date and may fund
-                    other days.
+                    Due work totals include all matching slots on all pages.
+                    Received tender uses the receipt date. It can fund other
+                    days.
                 </p>
                 <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <div>
@@ -246,8 +261,8 @@ function applyFilters(): void {
                 >
                     The assigned Agent is unavailable for
                     {{ money(due_totals.service_interrupted_target_kobo) }} of
-                    scheduled targets. These rows are excluded from eligible
-                    outstanding. Recorded contributions remain unchanged.
+                    scheduled targets. Eligible outstanding does not include
+                    these rows. Recorded contributions do not change.
                 </p>
                 <p
                     v-if="due_totals.unavailable_target_kobo > 0"
@@ -255,13 +270,13 @@ function applyFilters(): void {
                 >
                     Participation history is unavailable for
                     {{ money(due_totals.unavailable_target_kobo) }} of scheduled
-                    targets. These rows are excluded from eligible outstanding.
+                    targets. Eligible outstanding does not include these rows.
                 </p>
                 <p
                     v-if="due_slots.data.length === 0"
                     class="text-muted-foreground mt-5 text-sm"
                 >
-                    No slots match these filters in your current scope.
+                    No slots in your current scope match these filters.
                 </p>
                 <ul v-else class="mt-5 grid gap-3 sm:grid-cols-2">
                     <li
@@ -331,7 +346,7 @@ function applyFilters(): void {
                     v-if="receipts.data.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    No receipts for this date in your current scope.
+                    Your current scope has no receipts for this date.
                 </p>
                 <ul v-else class="divide-y">
                     <li

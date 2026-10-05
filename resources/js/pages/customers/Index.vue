@@ -243,7 +243,7 @@ const getAccountBadgeVariant = (
 
         <ModuleOverview
             title="Customer Overview"
-            description="Monitor customer accounts, activity, and operational restrictions."
+            description="Monitor customer accounts, activity, and restrictions."
             :metrics="overviewMetrics"
         >
             <template #actions>

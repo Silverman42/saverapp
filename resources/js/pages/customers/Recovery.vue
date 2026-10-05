@@ -178,8 +178,8 @@ defineOptions({
             ><CardHeader
                 ><CardTitle>{{ recovery.state.replaceAll('_', ' ') }}</CardTitle
                 ><CardDescription
-                    >Only approval revokes existing credentials. The Customer
-                    chooses their own password.</CardDescription
+                    >Current credentials stop working only after approval. The
+                    Customer chooses their own password.</CardDescription
                 ></CardHeader
             ><CardContent class="space-y-2 text-sm"
                 ><p>Proposed email: {{ recovery.proposed_email }}</p>
@@ -397,8 +397,8 @@ defineOptions({
         <Card v-if="!uncertain && !can_initiate && !recovery"
             ><CardContent class="pt-6"
                 ><p class="text-muted-foreground text-sm">
-                    No recovery request is awaiting review. The current Agent
-                    must record in-person verification to initiate recovery.
+                    No recovery request is waiting for review. To start a
+                    recovery, the current Agent must record an in-person check.
                 </p></CardContent
             ></Card
         >
@@ -452,7 +452,8 @@ defineOptions({
                     >
                         <p>
                             {{ delivery.purpose.replaceAll('_', ' ') }} ·
-                            {{ delivery.channel }} · {{ delivery.status }}
+                            {{ delivery.channel }} ·
+                            {{ delivery.status }}
                         </p>
                         <p
                             v-if="delivery.failure_reason"

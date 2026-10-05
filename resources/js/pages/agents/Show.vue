@@ -527,7 +527,7 @@ const resetAssignmentFilters = (): void => {
                         <p class="text-muted-foreground text-xs">
                             {{
                                 agent.readiness.can_read_assigned.explanation ||
-                                'Permitted to view assigned customer accounts.'
+                                'Can view assigned customer accounts.'
                             }}
                         </p>
                     </div>
@@ -556,7 +556,7 @@ const resetAssignmentFilters = (): void => {
                         <p class="text-muted-foreground text-xs">
                             {{
                                 agent.readiness.can_perform_work.explanation ||
-                                'Permitted to record customer collections and transactions.'
+                                'Can record customer collections and transactions.'
                             }}
                         </p>
                     </div>
@@ -588,7 +588,7 @@ const resetAssignmentFilters = (): void => {
                             {{
                                 agent.readiness.can_receive_assignment
                                     .explanation ||
-                                'Satisfies all criteria to take on new customer assignments.'
+                                'Meets all conditions to get new customer assignments.'
                             }}
                         </p>
                     </div>
@@ -949,8 +949,9 @@ const resetAssignmentFilters = (): void => {
                             Lifecycle
                         </CardTitle>
                         <CardDescription>
-                            Track account activation invitation state, delivery
-                            attempts, and manage resends or address corrections.
+                            Track the activation invitation and its delivery
+                            attempts. Resend the invitation or correct the
+                            address.
                         </CardDescription>
                     </div>
                     <Badge
@@ -1054,8 +1055,8 @@ const resetAssignmentFilters = (): void => {
                     <StickyNote class="h-4 w-4" /> Internal Administrative Notes
                 </CardTitle>
                 <CardDescription>
-                    Visible only to administrators. Strictly omitted from agent
-                    self-service views.
+                    Only administrators can see these notes. Agents cannot see
+                    them.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1115,9 +1116,8 @@ const resetAssignmentFilters = (): void => {
                 <DialogHeader>
                     <DialogTitle>Correct Agent Email</DialogTitle>
                     <DialogDescription>
-                        Update the email address for {{ agent.name }}.
-                        Outstanding invitations will be invalidated and a new
-                        invitation will be dispatched.
+                        Update the email address for {{ agent.name }}. Open
+                        invitations stop working. A new invitation is sent.
                     </DialogDescription>
                 </DialogHeader>
                 <div class="space-y-4 py-2">
@@ -1175,9 +1175,9 @@ const resetAssignmentFilters = (): void => {
                 <DialogHeader>
                     <DialogTitle>Cancel Agent Invitation</DialogTitle>
                     <DialogDescription>
-                        Invalidate outstanding invitation and activation links
-                        for {{ agent.name }}. The account will not be able to
-                        activate with cancelled links.
+                        Cancel the open invitation and activation links for
+                        {{ agent.name }}. The account cannot activate with
+                        cancelled links.
                     </DialogDescription>
                 </DialogHeader>
                 <div class="space-y-4 py-2">

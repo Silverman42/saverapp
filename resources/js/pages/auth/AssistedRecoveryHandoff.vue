@@ -26,9 +26,9 @@ import { login } from '@/routes';
             <div class="space-y-1">
                 <p class="font-medium">High-Security Verification Required</p>
                 <p class="text-muted-foreground text-xs leading-relaxed">
-                    To protect accounts from unauthorized takeover,
-                    administrative and agent accounts cannot bypass multi-factor
-                    authentication without verified identity confirmation.
+                    To protect accounts, administrator and agent accounts must
+                    use multi-factor authentication. Only a verified identity
+                    check can replace it.
                 </p>
             </div>
         </div>
@@ -55,12 +55,12 @@ import { login } from '@/routes';
                         company records.
                     </p>
                     <p>
-                        2. Upon approval, your previous authenticator and
-                        recovery codes will be revoked.
+                        2. After approval, your old authenticator and recovery
+                        codes stop working.
                     </p>
                     <p>
-                        3. You will receive a single-use activation link to
-                        configure a new authenticator.
+                        3. You get a single-use activation link to set up a new
+                        authenticator.
                     </p>
                 </CardContent>
             </Card>
@@ -82,16 +82,16 @@ import { login } from '@/routes';
                     class="text-muted-foreground space-y-2 text-xs leading-relaxed"
                 >
                     <p>
-                        1. Two distinct Administrators are required to approve
-                        administrative recovery where eligible.
+                        1. Two different Administrators must approve an
+                        administrator recovery, when two are available.
                     </p>
                     <p>
-                        2. Once approved, all existing sessions and credentials
-                        are reset.
+                        2. After approval, all sessions and credentials are
+                        reset.
                     </p>
                     <p>
-                        3. If you are the final active Administrator, use the
-                        offline single-use business emergency recovery key.
+                        3. Are you the last active Administrator? Use the
+                        offline, single-use emergency recovery key.
                     </p>
                 </CardContent>
             </Card>

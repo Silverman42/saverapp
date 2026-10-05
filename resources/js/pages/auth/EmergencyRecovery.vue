@@ -51,10 +51,10 @@ function submit(): void {
                         />
                     </div>
                     <p class="text-muted-foreground text-sm">
-                        If both match, a single-use recovery link is sent to the
-                        seeded email and the key stops working. If other
+                        If both match, we send a single-use recovery link to the
+                        seeded email. The key then stops working. If other
                         Administrators are active, ask them for assisted
-                        recovery instead.
+                        recovery.
                     </p>
                     <ul
                         v-if="form.hasErrors"

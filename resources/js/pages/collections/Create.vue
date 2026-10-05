@@ -15,6 +15,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import {
     index as collectionsIndex,
@@ -82,6 +89,7 @@ const props = withDefaults(
     }>(),
     { collection_methods: () => [], initial_evidence: null },
 );
+const FEE_ONLY = '__fee_only';
 const paymentChoice = ref(props.initial_evidence ? 'evidence' : 'cash');
 const selectedEvidence = ref<PaymentEvidence | null>(null);
 const evidenceNotice = ref('');
@@ -597,7 +605,7 @@ async function lookupAttempt(): Promise<void> {
             </p>
             <p class="text-muted-foreground mt-1.5 text-sm">
                 <template v-if="accessUnavailable">
-                    Current access is required to review a receipt.
+                    You must have current access to review a receipt.
                 </template>
                 <template v-else>
                     {{
@@ -626,9 +634,9 @@ async function lookupAttempt(): Promise<void> {
                 <AlertDescription class="grid gap-2">
                     <p>{{ reviewMessage }}</p>
                     <p v-if="accessUnavailable && outcomeUnknown">
-                        The earlier submitted attempt still needs a result
-                        check. Its original reference has been retained. Current
-                        access is required to check its result.
+                        You must check the result of the earlier attempt. The
+                        system kept its original reference. You must have
+                        current access to check its result.
                     </p>
                     <Link
                         v-if="accessUnavailable"
@@ -699,10 +707,8 @@ async function lookupAttempt(): Promise<void> {
             class="grid gap-3"
         >
             <Label for="payment-choice">Payment method</Label>
-            <select
-                id="payment-choice"
+            <Select
                 v-model="paymentChoice"
-                class="bg-background h-11 w-fit rounded-md border px-3 text-sm"
                 :disabled="
                     submissionPending ||
                     outcomeUnknown ||
@@ -710,19 +716,24 @@ async function lookupAttempt(): Promise<void> {
                     reviewBusy
                 "
             >
-                <option value="cash">Cash</option>
-                <option
-                    v-if="collection_methods.length || initial_evidence"
-                    value="evidence"
-                >
-                    Verified noncash payment
-                </option>
-            </select>
+                <SelectTrigger id="payment-choice"
+                    ><SelectValue
+                /></SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem
+                        v-if="collection_methods.length || initial_evidence"
+                        value="evidence"
+                    >
+                        Verified noncash payment
+                    </SelectItem>
+                </SelectContent>
+            </Select>
             <p
                 v-if="!collection_methods.length"
                 class="text-muted-foreground text-sm"
             >
-                Noncash collection methods are currently unavailable.
+                Noncash collection methods are not available now.
             </p>
             <CollectionEvidencePanel
                 v-if="paymentChoice === 'evidence'"
@@ -760,26 +771,40 @@ async function lookupAttempt(): Promise<void> {
                 >
                     <div class="grid gap-2">
                         <Label for="collection-plan">Plan</Label>
-                        <select
-                            id="collection-plan"
-                            v-model="form.plan_id"
-                            :aria-invalid="Boolean(validationError('plan_id'))"
-                            :aria-describedby="
-                                validationError('plan_id')
-                                    ? 'collection-plan-error'
-                                    : undefined
+                        <Select
+                            :model-value="form.plan_id || FEE_ONLY"
+                            @update:model-value="
+                                (value) =>
+                                    (form.plan_id =
+                                        value === FEE_ONLY ? '' : String(value))
                             "
-                            class="border-input bg-background h-11 rounded-md border px-3 text-sm"
                         >
-                            <option value="">Fee payment only</option>
-                            <option
-                                v-for="plan in plans"
-                                :key="plan.id"
-                                :value="plan.id"
-                            >
-                                {{ plan.name }} · {{ plan.id }}
-                            </option>
-                        </select>
+                            <SelectTrigger
+                                id="collection-plan"
+                                class="w-full"
+                                :aria-invalid="
+                                    Boolean(validationError('plan_id'))
+                                "
+                                :aria-describedby="
+                                    validationError('plan_id')
+                                        ? 'collection-plan-error'
+                                        : undefined
+                                "
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem :value="FEE_ONLY"
+                                    >Fee payment only</SelectItem
+                                >
+                                <SelectItem
+                                    v-for="plan in plans"
+                                    :key="plan.id"
+                                    :value="plan.id"
+                                >
+                                    {{ plan.name }} · {{ plan.id }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <InputError
                             id="collection-plan-error"
                             role="alert"
@@ -829,7 +854,7 @@ async function lookupAttempt(): Promise<void> {
                             {{
                                 plans.find((plan) => plan.id === form.plan_id)
                                     ?.timezone
-                            }}. The time determines its slot date.
+                            }}. The time sets the slot date.
                         </p>
                         <p
                             v-if="timeNotice"
@@ -842,23 +867,34 @@ async function lookupAttempt(): Promise<void> {
                             <Label for="collection-offset"
                                 >UTC offset at the time received</Label
                             >
-                            <select
-                                id="collection-offset"
-                                v-model="form.received_utc_offset"
-                                class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                            <Select
+                                :model-value="
+                                    form.received_utc_offset || undefined
+                                "
+                                @update:model-value="
+                                    (value) =>
+                                        (form.received_utc_offset = String(
+                                            value ?? '',
+                                        ))
+                                "
                             >
-                                <option value="">
-                                    Choose the correct occurrence
-                                </option>
-                                <option
-                                    v-for="option in validOffsets"
-                                    :key="option.received_at_utc"
-                                    :value="option.offset"
-                                >
-                                    {{ option.offset }} ·
-                                    {{ option.received_at_utc }} UTC
-                                </option>
-                            </select>
+                                <SelectTrigger
+                                    id="collection-offset"
+                                    class="w-full"
+                                    ><SelectValue
+                                        placeholder="Choose the correct occurrence"
+                                /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem
+                                        v-for="option in validOffsets"
+                                        :key="option.received_at_utc"
+                                        :value="option.offset"
+                                    >
+                                        {{ option.offset }} ·
+                                        {{ option.received_at_utc }} UTC
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     <div class="grid gap-2">
@@ -1006,13 +1042,13 @@ async function lookupAttempt(): Promise<void> {
                     {{ money(preview.tender_kobo) }}
                 </p>
                 <p class="text-muted-foreground text-sm">
-                    Received date uses {{ preview.timezone }}. This records
-                    Customer savings and
+                    The received date uses {{ preview.timezone }}. This action
+                    records Customer savings and
                     {{ preview.method_context.method_label }} custody.
                     {{
                         preview.method_context.custody_account_code ===
                         'payment_clearing_ngn'
-                            ? 'Clearing remains pending independent bank settlement.'
+                            ? 'Clearing stays pending until an independent bank settlement.'
                             : ''
                     }}
                 </p>
@@ -1083,8 +1119,8 @@ async function lookupAttempt(): Promise<void> {
                 ><CardTitle>Custom slot allocation</CardTitle></CardHeader
             ><CardContent class="grid gap-3"
                 ><p class="text-muted-foreground text-sm">
-                    Enter an amount for each chosen slot. Leave unused slots
-                    empty, then review again.
+                    Enter an amount for each slot that you chose. Leave the
+                    other slots empty. Then review again.
                 </p>
                 <div
                     v-for="item in form.allocations"

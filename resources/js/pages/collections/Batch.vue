@@ -4,6 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import CollectionSettlementPanel from '@/components/CollectionSettlementPanel.vue';
 import { dashboard } from '@/routes';
@@ -196,7 +203,7 @@ function report(): void {
             class="text-muted-foreground text-sm"
             role="status"
         >
-            Awaiting verified bank settlement before reconciliation.
+            Reconciliation starts after the bank settlement is verified.
         </p>
         <Card
             v-if="
@@ -300,7 +307,7 @@ function report(): void {
                     v-if="remittances.data.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    No confirmed cash handoffs.
+                    There are no confirmed cash handoffs.
                 </p>
                 <ul v-else class="grid gap-2 text-sm">
                     <li v-for="item in remittances.data" :key="item.reference">
@@ -427,19 +434,24 @@ function report(): void {
             ><CardHeader
                 ><CardTitle>Report an investigation</CardTitle></CardHeader
             ><CardContent class="grid max-w-md gap-3"
-                ><Label for="exception-kind">Issue</Label
-                ><select
-                    id="exception-kind"
-                    v-model="investigation.kind"
-                    class="bg-background rounded-md border p-2 text-sm"
-                >
-                    <option v-if="batch.cash_handoff_allowed" value="overage">
-                        Counted cash overage
-                    </option>
-                    <option value="missing_transfer">
-                        Missing transfer evidence
-                    </option></select
-                ><Label for="exception-amount">Amount (NGN)</Label
+                ><Label for="exception-kind">Issue</Label>
+                <Select v-model="investigation.kind">
+                    <SelectTrigger id="exception-kind" class="w-full"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem
+                            v-if="batch.cash_handoff_allowed"
+                            value="overage"
+                        >
+                            Counted cash overage
+                        </SelectItem>
+                        <SelectItem value="missing_transfer">
+                            Missing transfer evidence
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+                <Label for="exception-amount">Amount (NGN)</Label
                 ><Input
                     id="exception-amount"
                     v-model="investigation.amount_ngn"
@@ -609,8 +621,8 @@ function report(): void {
                             }}</Button
                         >
                         <p class="text-muted-foreground">
-                            Investigation status preserves the original custody
-                            and Customer credit. Outstanding funds still require
+                            The investigation status keeps the original custody
+                            and Customer credit. Outstanding funds must have a
                             verified settlement.
                         </p>
                         <p
@@ -635,24 +647,29 @@ function report(): void {
                         <Label :for="`resolution-kind-${item.id}`"
                             >Evidence-backed resolution</Label
                         >
-                        <select
-                            :id="`resolution-kind-${item.id}`"
-                            v-model="resolution.resolution_kind"
-                            class="bg-background h-11 rounded-md border px-3"
-                        >
-                            <option value="remittance">
-                                Choose resolution evidence
-                            </option>
-                            <option
-                                v-if="item.kind === 'missing_transfer'"
-                                value="verified_match"
-                            >
-                                Match an independently verified noncash receipt
-                            </option>
-                            <option value="approved_correction">
-                                Link a separately approved receipt correction
-                            </option>
-                        </select>
+                        <Select v-model="resolution.resolution_kind">
+                            <SelectTrigger
+                                :id="`resolution-kind-${item.id}`"
+                                class="w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="remittance">
+                                    Choose resolution evidence
+                                </SelectItem>
+                                <SelectItem
+                                    v-if="item.kind === 'missing_transfer'"
+                                    value="verified_match"
+                                >
+                                    Match an independently verified noncash
+                                    receipt
+                                </SelectItem>
+                                <SelectItem value="approved_correction">
+                                    Link a separately approved receipt
+                                    correction
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <Label :for="`matched-receipt-${item.id}`"
                             >Original receipt reference in this batch</Label
                         >
@@ -689,9 +706,9 @@ function report(): void {
                             resolution cause.</label
                         >
                         <p class="text-muted-foreground">
-                            This closes the investigation only. Original custody
-                            still requires verified handoff or settlement; it
-                            does not change Customer credit or pay a refund.
+                            This action closes only the investigation. Original
+                            custody must have a verified handoff or settlement.
+                            Customer credit does not change. No refund is paid.
                         </p>
                         <Button
                             type="button"

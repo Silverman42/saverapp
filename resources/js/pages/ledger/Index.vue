@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import { resolve as resolveIncident } from '@/routes/ledger/incidents';
 import {
@@ -11,6 +11,13 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type Transaction = {
     reference: string;
@@ -76,6 +83,18 @@ const type = ref(props.filters.type ?? '');
 const from = ref(props.filters.from);
 const to = ref(props.filters.to);
 const pageSize = ref(props.filters.page_size ?? 25);
+const typeSelection = computed({
+    get: () => type.value || '__all',
+    set: (value: string) => {
+        type.value = value === '__all' ? '' : value;
+    },
+});
+const pageSizeSelection = computed({
+    get: () => String(pageSize.value),
+    set: (value: string) => {
+        pageSize.value = Number(value);
+    },
+});
 
 const resolution = useForm({ note: '', confirmed: true });
 function resolve(reference: string): void {
@@ -115,7 +134,8 @@ function money(kobo: number): string {
         <div>
             <h1 class="text-[25px] font-medium tracking-tight">Transactions</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Posted financial activity in your current scope. Dates use
+                This list shows posted financial activity in your current scope.
+                Dates use
                 {{ timezone }}.
             </p>
         </div>
@@ -133,37 +153,39 @@ function money(kobo: number): string {
                 placeholder="Customer ID"
                 class="w-fit"
             />
-            <select
-                v-model="type"
-                aria-label="Transaction type"
-                class="border-input bg-background h-11 w-fit rounded-md border px-3 text-sm"
+            <Select v-model="typeSelection"
+                ><SelectTrigger aria-label="Transaction type" class="h-11 w-fit"
+                    ><SelectValue /></SelectTrigger
+                ><SelectContent>
+                    <SelectItem value="__all">All types</SelectItem>
+                    <SelectItem value="contribution">Contribution</SelectItem>
+                    <SelectItem value="remittance">Remittance</SelectItem>
+                    <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                    <SelectItem value="reversal">Correction</SelectItem>
+                    <SelectItem value="deduction">Deduction</SelectItem>
+                    <SelectItem value="fee_application"
+                        >Fee applied from savings</SelectItem
+                    >
+                    <SelectItem value="fee_refund"
+                        >Fee refund entitlement</SelectItem
+                    >
+                    <SelectItem value="external_refund_payment"
+                        >Cash refund payment</SelectItem
+                    >
+                    <SelectItem value="earnings_draw">Earnings draw</SelectItem>
+                </SelectContent></Select
             >
-                <option value="">All types</option>
-                <option value="contribution">Contribution</option>
-                <option value="remittance">Remittance</option>
-                <option value="withdrawal">Withdrawal</option>
-                <option value="reversal">Correction</option>
-                <option value="deduction">Deduction</option>
-                <option value="fee_application">
-                    Fee applied from savings
-                </option>
-                <option value="fee_refund">Fee refund entitlement</option>
-                <option value="external_refund_payment">
-                    Cash refund payment
-                </option>
-                <option value="earnings_draw">Earnings draw</option>
-            </select>
             <DatePicker id="transactions-from" v-model="from" class="w-fit" />
             <DatePicker id="transactions-to" v-model="to" class="w-fit" />
-            <select
-                v-model.number="pageSize"
-                aria-label="Rows per page"
-                class="border-input bg-background h-11 w-fit rounded-md border px-3 text-sm"
+            <Select v-model="pageSizeSelection"
+                ><SelectTrigger aria-label="Rows per page" class="h-11 w-fit"
+                    ><SelectValue /></SelectTrigger
+                ><SelectContent>
+                    <SelectItem value="25">25 rows</SelectItem>
+                    <SelectItem value="50">50 rows</SelectItem>
+                    <SelectItem value="100">100 rows</SelectItem>
+                </SelectContent></Select
             >
-                <option :value="25">25 rows</option>
-                <option :value="50">50 rows</option>
-                <option :value="100">100 rows</option>
-            </select>
             <Button type="submit">Apply filters</Button>
         </form>
 
@@ -204,8 +226,8 @@ function money(kobo: number): string {
                         >
                     </form>
                     <p v-else class="text-muted-foreground">
-                        The ledger must verify cleanly before this can be
-                        resolved.
+                        You can resolve this incident only after the ledger
+                        verifies with no errors.
                     </p>
                 </div>
             </CardContent>
@@ -214,8 +236,8 @@ function money(kobo: number): string {
             <CardContent class="pt-6">
                 <p class="font-medium">Transaction history is unavailable</p>
                 <p class="text-muted-foreground mt-1 text-sm">
-                    The ledger projection needs verification before financial
-                    totals can be shown.
+                    The ledger projection must verify before the page can show
+                    financial totals.
                 </p>
             </CardContent>
         </Card>
@@ -227,9 +249,9 @@ function money(kobo: number): string {
                     </p>
                     <p class="text-muted-foreground mt-1 text-sm">
                         Entries after ledger watermark
-                        {{ result.state.watermark }} are not shown. Balances and
-                        balance-dependent actions are unavailable until the
-                        ledger verifies again.
+                        {{ result.state.watermark }} do not show. Balances and
+                        balance actions are not available until the ledger
+                        verifies again.
                     </p>
                 </CardContent>
             </Card>
@@ -246,7 +268,7 @@ function money(kobo: number): string {
                         v-if="result.data.length === 0"
                         class="text-muted-foreground text-sm"
                     >
-                        No posted transactions match these filters.
+                        No posted transactions agree with these filters.
                     </p>
                     <ul v-else class="divide-y">
                         <li

@@ -19,6 +19,13 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type StatusValue = 'active' | 'inactive' | 'restricted' | 'archived';
 
@@ -287,10 +294,10 @@ defineOptions({
                     >
                         {{
                             customer.current_agent?.is_eligible
-                                ? 'Eligible to service this Customer.'
+                                ? 'This Agent can service this Customer.'
                                 : (customer.current_agent
                                       ?.eligibility_message ??
-                                  'A current eligible Agent is required before activating this Customer.')
+                                  'Assign an eligible Agent before you activate this Customer.')
                         }}
                     </p>
                 </CardContent>
@@ -486,19 +493,21 @@ defineOptions({
                 <form class="space-y-5" @submit.prevent="submit">
                     <div class="space-y-2">
                         <Label for="target-status">New status</Label>
-                        <select
-                            id="target-status"
-                            v-model="form.target_status"
-                            class="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        <Select v-model="form.target_status"
+                            ><SelectTrigger
+                                id="target-status"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent>
+                                <SelectItem
+                                    v-for="target in allowed_targets"
+                                    :key="target.value"
+                                    :value="target.value"
+                                >
+                                    {{ target.label }}
+                                </SelectItem>
+                            </SelectContent></Select
                         >
-                            <option
-                                v-for="target in allowed_targets"
-                                :key="target.value"
-                                :value="target.value"
-                            >
-                                {{ target.label }}
-                            </option>
-                        </select>
                         <p
                             v-if="form.errors.target_status"
                             class="text-destructive text-sm"

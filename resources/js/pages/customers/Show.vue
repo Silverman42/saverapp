@@ -753,8 +753,8 @@ const getInvitationBadgeVariant = (
                     <StickyNote class="h-4 w-4" /> Internal Operational Notes
                 </CardTitle>
                 <CardDescription>
-                    Visible only to authorized staff and assigned agents. Never
-                    disclosed to customer.
+                    Only authorized staff and assigned agents can see these
+                    notes. The customer cannot see them.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -940,8 +940,8 @@ const getInvitationBadgeVariant = (
             <CardHeader>
                 <CardTitle class="text-base">Plan Fee Obligations</CardTitle>
                 <CardDescription
-                    >Plan fees are shown from immutable fee snapshots and
-                    recorded obligation entries.</CardDescription
+                    >Plan fees come from saved fee terms and recorded fee
+                    entries.</CardDescription
                 >
             </CardHeader>
             <CardContent class="space-y-4">
@@ -1046,8 +1046,8 @@ const getInvitationBadgeVariant = (
                     </Badge>
                 </div>
                 <CardDescription>
-                    Track account activation invitation state, delivery
-                    attempts, and manage resends or address corrections.
+                    Track the activation invitation and its delivery attempts.
+                    Resend the invitation or correct the address.
                 </CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">
@@ -1377,9 +1377,8 @@ const getInvitationBadgeVariant = (
                 <DialogHeader>
                     <DialogTitle>Correct Customer Email</DialogTitle>
                     <DialogDescription>
-                        Update the email address for {{ customer.name }}.
-                        Outstanding invitations will be invalidated and a fresh
-                        invitation will be dispatched.
+                        Update the email address for {{ customer.name }}. Open
+                        invitations stop working. A new invitation is sent.
                     </DialogDescription>
                 </DialogHeader>
                 <form @submit.prevent="submitCorrectEmail" class="space-y-4">
@@ -1455,9 +1454,9 @@ const getInvitationBadgeVariant = (
                 <DialogHeader>
                     <DialogTitle>Cancel Customer Invitation</DialogTitle>
                     <DialogDescription>
-                        Invalidate outstanding invitation and activation links
-                        for {{ customer.name }}. The account will not be able to
-                        activate with cancelled links.
+                        Cancel the open invitation and activation links for
+                        {{ customer.name }}. The account cannot activate with
+                        cancelled links.
                     </DialogDescription>
                 </DialogHeader>
                 <form

@@ -81,8 +81,8 @@ const formatDate = (value: string | null): string =>
                 Account recoveries
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Assisted recoveries for Agents and Administrators. Requesters
-                and the recovering user cannot approve; Admin recoveries need
+                Assisted recoveries for Agents and Administrators. The requester
+                and the recovering user cannot approve. Admin recoveries need
                 two approvers when two are available.
             </p>
         </div>

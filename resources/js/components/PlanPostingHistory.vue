@@ -33,9 +33,8 @@ function committedAt(value: string) {
     <div class="space-y-3 text-sm">
         <h3 class="font-medium">Recorded payout and deduction components</h3>
         <p class="text-muted-foreground">
-            Each posting can have separate savings, cash and fee components.
-            These amounts must not be added together. Pending reservations are
-            shown separately.
+            Each posting can have separate savings, cash and fee amounts. Do not
+            add these amounts together. Pending reservations show separately.
         </p>
         <p v-if="summary.as_of" class="text-muted-foreground text-xs">
             History as of {{ committedAt(summary.as_of) }} UTC

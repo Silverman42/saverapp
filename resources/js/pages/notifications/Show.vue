@@ -92,8 +92,8 @@ function date(value: string): string {
         <header>
             <h1 class="text-[25px] font-medium tracking-tight">Notification</h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                A notice records an outcome. Actions remain subject to current
-                authorization.
+                A notice records an outcome. Each action still needs your
+                current permissions.
             </p>
         </header>
         <p v-if="message" role="status">{{ message }}</p>

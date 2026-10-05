@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     preview as previewReversal,
     store as submitReversal,
 } from '@/routes/reversals';
@@ -215,26 +222,27 @@ function money(kobo: number): string {
                     @submit.prevent="requestCorrection"
                 >
                     <p class="text-sm">
-                        Full original amount {{ money(quote.gross_kobo) }}.
-                        Original custody is preserved unless the owning
-                        full-return contract proves otherwise.
+                        Full original amount {{ money(quote.gross_kobo) }}. The
+                        original custody does not change unless the full-return
+                        contract gives a different custody.
                     </p>
                     <Label for="correction-category">Reason category</Label>
-                    <select
-                        id="correction-category"
-                        v-model="reversal.reason_category"
-                        required
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    <Select v-model="reversal.reason_category" required
+                        ><SelectTrigger
+                            id="correction-category"
+                            class="h-11 w-full"
+                            ><SelectValue
+                                placeholder="Choose a reason" /></SelectTrigger
+                        ><SelectContent>
+                            <SelectItem
+                                v-for="[value, label] in reasonCategories"
+                                :key="value"
+                                :value="value"
+                            >
+                                {{ label }}
+                            </SelectItem>
+                        </SelectContent></Select
                     >
-                        <option value="" disabled>Choose a reason</option>
-                        <option
-                            v-for="[value, label] in reasonCategories"
-                            :key="value"
-                            :value="value"
-                        >
-                            {{ label }}
-                        </option>
-                    </select>
                     <Label for="correction-reason">Internal reason</Label
                     ><Input
                         id="correction-reason"
@@ -270,8 +278,9 @@ function money(kobo: number): string {
                         @change="chooseFiles"
                     />
                     <p class="text-muted-foreground text-xs">
-                        JPEG, PNG, WebP or PDF, 5 MB each. Files are scanned and
-                        kept privately; the Customer never sees them.
+                        JPEG, PNG, WebP or PDF, 5 MB each. The system scans the
+                        files and keeps them private. The Customer cannot see
+                        them.
                     </p>
                     <p
                         v-for="(error, key) in reversal.errors"

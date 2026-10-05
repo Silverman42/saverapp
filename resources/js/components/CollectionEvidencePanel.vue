@@ -11,6 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { show, view } from '@/routes/collection-evidence';
 import { store } from '@/routes/customers/collection-evidence';
 import type {
@@ -177,7 +184,7 @@ function filesChanged(event: Event): void {
         >
         <CardContent class="grid gap-5">
             <p class="text-muted-foreground text-sm">
-                Upload proof of actual payment. Uploading and verification do
+                Upload proof of the actual payment. Upload and verification do
                 not post savings or fees.
             </p>
             <fieldset
@@ -233,20 +240,30 @@ function filesChanged(event: Event): void {
                 >
                     <div class="grid gap-2">
                         <Label for="evidence-method">Configured method</Label
-                        ><select
-                            id="evidence-method"
-                            v-model="form.collection_method_version_id"
-                            class="bg-background h-11 rounded-md border px-3 text-sm"
+                        ><Select
+                            :model-value="
+                                String(form.collection_method_version_id)
+                            "
+                            :disabled="disabled || uncertain || form.processing"
+                            @update:model-value="
+                                form.collection_method_version_id =
+                                    Number($event)
+                            "
                         >
-                            <option
-                                v-for="method in methods"
-                                :key="method.id"
-                                :value="method.id"
-                            >
-                                {{ method.label }} ·
-                                {{ method.destination_key }}
-                            </option>
-                        </select>
+                            <SelectTrigger id="evidence-method" class="w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="method in methods"
+                                    :key="method.id"
+                                    :value="String(method.id)"
+                                >
+                                    {{ method.label }} ·
+                                    {{ method.destination_key }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div class="grid gap-2">
                         <Label for="evidence-reference">Payment reference</Label
@@ -297,8 +314,9 @@ function filesChanged(event: Event): void {
                             @change="filesChanged"
                         />
                         <p class="text-muted-foreground text-sm">
-                            Up to three JPEG, PNG, WebP or PDF files, 5 MB each.
-                            Required for methods configured with attachments.
+                            Attach up to three JPEG, PNG, WebP or PDF files.
+                            Each file can be up to 5 MB. Some methods require
+                            attachments.
                         </p>
                     </div>
                 </fieldset>

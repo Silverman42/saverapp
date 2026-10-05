@@ -74,8 +74,9 @@ const submitCancel = (): void => {
                         <Mail class="size-4" /> Invitation
                     </CardTitle>
                     <CardDescription>
-                        This Administrator has not activated yet. Resending or
-                        correcting the email invalidates every earlier link.
+                        This Administrator has not activated yet. If you resend
+                        the invitation or correct the email, all earlier links
+                        stop working.
                     </CardDescription>
                 </div>
                 <Badge
@@ -226,8 +227,8 @@ const submitCancel = (): void => {
                     </p>
                 </div>
                 <p class="text-muted-foreground text-xs">
-                    The account stays Invited but cannot activate until a new
-                    invitation is sent.
+                    The account stays Invited. It cannot activate until you send
+                    a new invitation.
                 </p>
                 <Button
                     type="submit"

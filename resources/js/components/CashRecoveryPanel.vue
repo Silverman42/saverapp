@@ -3,6 +3,13 @@ import { useForm, useHttp } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { ref } from 'vue';
 import { acknowledge } from '@/routes/cash-recoveries';
 
@@ -70,9 +77,9 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
     >
         <h2 class="font-medium">Cash recovery</h2>
         <p class="text-muted-foreground text-sm">
-            Confirm each counted return separately. Savings remain unchanged
-            until full recovery and reviewed compensation. Unresolved evidence
-            stays with the original payment.
+            Confirm each counted return separately. Savings do not change until
+            the full amount is recovered and compensation is reviewed.
+            Unresolved evidence stays with the original payment.
         </p>
         <Button
             v-if="canRecord"
@@ -97,15 +104,20 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
             <Label :for="`recovery-kind-${form.recovery_reference}`"
                 >Evidence type</Label
             >
-            <select
-                :id="`recovery-kind-${form.recovery_reference}`"
-                v-model="form.event_type"
-                class="border-input rounded-md border p-2"
-            >
-                <option value="return">Counted cash return</option>
-                <option value="dispute">Recipient dispute</option>
-                <option value="custody_uncertain">Uncertain custody</option>
-            </select>
+            <Select v-model="form.event_type">
+                <SelectTrigger
+                    :id="`recovery-kind-${form.recovery_reference}`"
+                    class="w-full"
+                    ><SelectValue
+                /></SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="return">Counted cash return</SelectItem>
+                    <SelectItem value="dispute">Recipient dispute</SelectItem>
+                    <SelectItem value="custody_uncertain"
+                        >Uncertain custody</SelectItem
+                    >
+                </SelectContent>
+            </Select>
             <template v-if="form.event_type === 'return'"
                 ><Label :for="`recovery-amount-${form.recovery_reference}`"
                     >Exact returned amount (NGN)</Label

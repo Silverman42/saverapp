@@ -233,8 +233,7 @@ const requestPreview = (): void => {
             replace: true,
             onSuccess: (currentPage) => {
                 const current = currentPage.props.customer as
-                    | { id?: string }
-                    | undefined;
+                    { id?: string } | undefined;
                 if (
                     currentPage.component !== 'plans/Create' ||
                     current?.id !== props.customer.id ||
@@ -357,8 +356,8 @@ const submit = (): void => {
             <CardHeader>
                 <CardTitle>Agreed terms</CardTitle>
                 <CardDescription
-                    >Enter the terms discussed with the Customer, then build a
-                    server-side preview before confirming.</CardDescription
+                    >Enter the terms that you agreed with the Customer. Then
+                    make a preview before you confirm.</CardDescription
                 >
             </CardHeader>
             <form @submit.prevent="submit">
@@ -594,18 +593,19 @@ const submit = (): void => {
                     </p>
                     <p class="text-muted-foreground mt-1 text-sm">
                         Basis: {{ preview.fee.basis.replaceAll('_', ' ') }} ·
-                        Timing: {{ preview.fee.timing.replaceAll('_', ' ') }}
+                        Timing:
+                        {{ preview.fee.timing.replaceAll('_', ' ') }}
                     </p>
                     <p
                         v-if="!preview.fee.estimate_available"
                         class="text-muted-foreground mt-2 text-xs"
                     >
-                        This fee is calculated when a withdrawal is quoted; no
-                        amount is estimated here.
+                        We calculate this fee when a withdrawal is quoted. No
+                        amount shows here.
                     </p>
                     <p v-else class="text-muted-foreground mt-2 text-xs">
-                        This is a contractual estimate. Any financial assessment
-                        waits for its owning workflow.
+                        This is an estimate from the agreement. The related
+                        financial process calculates the actual fee.
                     </p>
                 </div>
 
@@ -633,8 +633,8 @@ const submit = (): void => {
                         unavailable</AlertTitle
                     >
                     <AlertDescription
-                        >Only the agreed terms and expected dates will be saved.
-                        This action will not record or estimate money
+                        >This saves only the agreed terms and expected dates. It
+                        does not record or estimate money
                         received.</AlertDescription
                     >
                 </Alert>
@@ -666,8 +666,8 @@ const submit = (): void => {
                     v-if="!previewIsCurrent"
                     class="text-sm text-amber-700 dark:text-amber-400"
                 >
-                    Terms changed after this preview. Build a fresh preview
-                    before confirming.
+                    The terms changed after this preview. Make a new preview
+                    before you confirm.
                 </p>
                 <p
                     v-if="form.errors.preview_fingerprint"

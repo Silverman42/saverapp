@@ -73,7 +73,7 @@ const submit = (): void => {
                         <span class="text-foreground font-medium">{{
                             name
                         }}</span
-                        >, please choose a policy-compliant password to activate
+                        >, choose a password that meets the policy to activate
                         your agent account for
                         <span class="text-foreground font-medium">{{
                             email
@@ -138,9 +138,9 @@ const submit = (): void => {
                                 Next Step: Two-Factor Authentication
                             </p>
                             <p class="mt-1">
-                                Agents are required to use an authenticator app
-                                (TOTP). You will configure MFA immediately after
-                                setting your password.
+                                Agents must use an authenticator app (TOTP). You
+                                set up MFA immediately after you set your
+                                password.
                             </p>
                         </div>
                     </CardContent>
@@ -175,12 +175,12 @@ const submit = (): void => {
                 </CardHeader>
                 <CardContent class="text-muted-foreground space-y-3 text-sm">
                     <p>
-                        Your agent profile remains registered, but you cannot
-                        activate access with this expired link.
+                        Your agent profile is still registered. You cannot use
+                        this expired link to activate it.
                     </p>
                     <p>
-                        Please contact an Administrator to resend an activation
-                        invitation to your email.
+                        Ask an Administrator to send a new activation invitation
+                        to your email.
                     </p>
                 </CardContent>
                 <CardFooter>
@@ -205,8 +205,8 @@ const submit = (): void => {
                 </CardHeader>
                 <CardContent class="text-muted-foreground space-y-3 text-sm">
                     <p>
-                        If you believe this was done in error, please contact
-                        your platform administrator.
+                        If you think that this is an error, contact your
+                        platform administrator.
                     </p>
                 </CardContent>
                 <CardFooter>
@@ -231,8 +231,8 @@ const submit = (): void => {
                 </CardHeader>
                 <CardContent class="text-muted-foreground space-y-3 text-sm">
                     <p>
-                        You can sign in directly using your email, password, and
-                        authenticator app.
+                        Sign in with your email, password, and authenticator
+                        app.
                     </p>
                 </CardContent>
                 <CardFooter>
@@ -250,15 +250,14 @@ const submit = (): void => {
                         <CardTitle>Invalid Link</CardTitle>
                     </div>
                     <CardDescription>
-                        This invitation link is not recognized or may have been
-                        used previously.
+                        This invitation link is not valid, or someone used it
+                        before.
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="text-muted-foreground space-y-3 text-sm">
                     <p>
-                        Please ensure you opened the link from your invitation
-                        email, or ask an administrator to issue a new
-                        invitation.
+                        Open the link from your invitation email. Or ask an
+                        administrator to send a new invitation.
                     </p>
                 </CardContent>
                 <CardFooter>

@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { index as withdrawalsIndex } from '@/routes/withdrawals';
 import { index as payoutDestinations } from '@/routes/customers/payout-destinations';
@@ -146,15 +153,16 @@ function submit(): void {
                 Request withdrawal
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Create a review request for {{ customer.name }} from one savings
+                Make a review request for {{ customer.name }} from one savings
                 cycle.
             </p>
         </div>
         <Card v-if="methods.length === 0"
             ><CardContent class="pt-6"
                 ><p class="text-sm">
-                    Requests are unavailable until a payout method has approved
-                    execution, destination, custody, and evidence controls.
+                    You cannot make requests now. A payout method must first
+                    have approved execution, destination, custody, and evidence
+                    controls.
                 </p></CardContent
             ></Card
         >
@@ -163,31 +171,34 @@ function submit(): void {
             ><CardContent class="grid gap-4 sm:grid-cols-2">
                 <div class="grid gap-2">
                     <Label for="withdrawal-plan">Source cycle</Label
-                    ><select
-                        id="withdrawal-plan"
-                        v-model="form.plan_id"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    ><Select v-model="form.plan_id"
+                        ><SelectTrigger id="withdrawal-plan" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-for="plan in plans"
+                                :key="plan.id"
+                                :value="plan.id"
+                                >{{ plan.id }} · {{ plan.status }}</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option
-                            v-for="plan in plans"
-                            :key="plan.id"
-                            :value="plan.id"
-                        >
-                            {{ plan.id }} · {{ plan.status }}
-                        </option>
-                    </select>
                 </div>
                 <div class="grid gap-2">
                     <Label for="withdrawal-type">Type</Label
-                    ><select
-                        id="withdrawal-type"
-                        v-model="form.type"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    ><Select v-model="form.type"
+                        ><SelectTrigger id="withdrawal-type" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="partial">Partial</SelectItem
+                            ><SelectItem value="full"
+                                >Full cycle savings</SelectItem
+                            ><SelectItem value="end_of_cycle"
+                                >End of cycle</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <option value="partial">Partial</option>
-                        <option value="full">Full cycle savings</option>
-                        <option value="end_of_cycle">End of cycle</option>
-                    </select>
                 </div>
                 <div class="grid gap-2">
                     <Label for="withdrawal-gross"
@@ -201,21 +212,24 @@ function submit(): void {
                 </div>
                 <div class="grid gap-2">
                     <Label for="withdrawal-method">Method</Label
-                    ><select
-                        id="withdrawal-method"
-                        v-model="form.method"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                    ><Select v-model="form.method"
+                        ><SelectTrigger
+                            id="withdrawal-method"
+                            class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-if="methods.includes('cash')"
+                                value="cash"
+                                >Cash</SelectItem
+                            ><SelectItem
+                                v-if="methods.includes('bank_transfer')"
+                                value="bank_transfer"
+                                >Bank transfer</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option v-if="methods.includes('cash')" value="cash">
-                            Cash
-                        </option>
-                        <option
-                            v-if="methods.includes('bank_transfer')"
-                            value="bank_transfer"
-                        >
-                            Bank transfer
-                        </option>
-                    </select>
                 </div>
                 <div
                     v-if="form.method === 'bank_transfer'"
@@ -224,20 +238,23 @@ function submit(): void {
                     <Label for="withdrawal-destination"
                         >Verified bank destination</Label
                     >
-                    <select
+                    <Select
                         v-if="bank_destinations.length > 0"
-                        id="withdrawal-destination"
                         v-model="form.destination_reference"
-                        class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        ><SelectTrigger
+                            id="withdrawal-destination"
+                            class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem
+                                v-for="destination in bank_destinations"
+                                :key="destination.reference"
+                                :value="destination.reference"
+                                >{{ destination.label }}</SelectItem
+                            >
+                            ></SelectContent
+                        ></Select
                     >
-                        <option
-                            v-for="destination in bank_destinations"
-                            :key="destination.reference"
-                            :value="destination.reference"
-                        >
-                            {{ destination.label }}
-                        </option>
-                    </select>
                     <p v-else class="text-sm">
                         This Customer has no verified bank destination.
                         <Link
@@ -248,8 +265,8 @@ function submit(): void {
                     </p>
                 </div>
                 <p v-else class="text-sm sm:col-span-2">
-                    Cash is paid to the Customer personally and acknowledged by
-                    the Customer.
+                    The Customer gets the cash personally. The Customer then
+                    acknowledges the payment.
                 </p>
                 <div class="grid gap-2 sm:col-span-2">
                     <Label for="withdrawal-reason"
@@ -328,7 +345,7 @@ function submit(): void {
                 </p>
                 <p>
                     Destination {{ quote.destination_mask }}. This request
-                    reserves gross savings for review; it does not pay the
+                    reserves gross savings for review. It does not pay the
                     Customer.
                 </p>
                 <label class="flex gap-3"

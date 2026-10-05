@@ -5,6 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
 import { dashboard } from '@/routes';
@@ -128,37 +135,53 @@ function lookup(): void {
                 </div>
                 <div class="w-fit space-y-1.5">
                     <Label for="audit-outcome">Outcome</Label
-                    ><select
-                        id="audit-outcome"
-                        v-model="filters.outcome"
-                        class="bg-background h-11 rounded-md border px-3"
+                    ><Select
+                        :model-value="filters.outcome || '__all'"
+                        @update:model-value="
+                            filters.outcome =
+                                $event === '__all' ? '' : String($event)
+                        "
                     >
-                        <option value="">All outcomes</option>
-                        <option
-                            v-for="value in [
-                                'Succeeded',
-                                'Denied',
-                                'Failed',
-                                'Conflict',
-                                'Expired',
-                            ]"
-                            :key="value"
-                        >
-                            {{ value }}
-                        </option>
-                    </select>
+                        <SelectTrigger id="audit-outcome"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__all">All outcomes</SelectItem>
+                            <SelectItem
+                                v-for="value in [
+                                    'Succeeded',
+                                    'Denied',
+                                    'Failed',
+                                    'Conflict',
+                                    'Expired',
+                                ]"
+                                :key="value"
+                                :value="value"
+                            >
+                                {{ value }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div class="w-fit space-y-1.5">
                     <Label for="audit-size">Rows</Label
-                    ><select
-                        id="audit-size"
-                        v-model="filters.per_page"
-                        class="bg-background h-11 rounded-md border px-3"
+                    ><Select
+                        :model-value="String(filters.per_page)"
+                        @update:model-value="filters.per_page = String($event)"
                     >
-                        <option v-for="size in [25, 50, 100]" :key="size">
-                            {{ size }}
-                        </option>
-                    </select>
+                        <SelectTrigger id="audit-size"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="size in [25, 50, 100]"
+                                :key="size"
+                                :value="String(size)"
+                            >
+                                {{ size }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                 <Button type="submit" class="self-end">Search</Button>
             </form>
@@ -238,8 +261,8 @@ function lookup(): void {
                         </tr>
                         <tr v-if="!audit.rows.length">
                             <td colspan="5" class="text-muted-foreground p-6">
-                                No matching indexed events in this range.
-                                Default search covers the last 24 hours.
+                                No indexed events match this range. The default
+                                search covers the last 24 hours.
                             </td>
                         </tr>
                     </tbody>

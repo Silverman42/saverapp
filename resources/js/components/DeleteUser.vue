@@ -60,11 +60,9 @@ const passwordInput = useTemplateRef('passwordInput');
                                 account?</DialogTitle
                             >
                             <DialogDescription>
-                                Once your account is deleted, all of its
-                                resources and data will also be permanently
-                                deleted. Please enter your password to confirm
-                                you would like to permanently delete your
-                                account.
+                                When you delete your account, all of its data is
+                                also deleted permanently. Enter your password to
+                                confirm.
                             </DialogDescription>
                         </DialogHeader>
 

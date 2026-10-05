@@ -105,8 +105,9 @@ function date(value: string): string {
         <CardHeader>
             <CardTitle>Delivery information</CardTitle>
             <CardDescription
-                >Delivery is separate from the recorded business change. Email
-                acceptance does not confirm receipt or reading.</CardDescription
+                >Delivery is separate from the recorded change. An accepted
+                email does not show that the person received or read
+                it.</CardDescription
             >
         </CardHeader>
         <CardContent class="space-y-4">

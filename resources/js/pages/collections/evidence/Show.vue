@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { index, review } from '@/routes/collection-evidence';
 import { link } from '@/routes/collection-evidence/files';
@@ -256,9 +263,9 @@ async function download(id: number): Promise<void> {
             ><CardContent>
                 <form @submit.prevent="submit" class="grid gap-4">
                     <p class="text-muted-foreground text-sm">
-                        Independently confirm the bank or terminal record. Enter
-                        the actual reference, amount and destination you
-                        matched. Verification does not post money.
+                        Make an independent check of the bank or terminal
+                        record. Enter the reference, amount and destination that
+                        you matched. Verification does not post money.
                     </p>
                     <fieldset
                         :disabled="form.processing || uncertain"
@@ -266,16 +273,20 @@ async function download(id: number): Promise<void> {
                     >
                         <div class="grid gap-2">
                             <Label for="review-outcome">Outcome</Label
-                            ><select
-                                id="review-outcome"
-                                v-model="form.outcome"
-                                class="bg-background h-11 rounded-md border px-3 text-sm"
+                            ><Select v-model="form.outcome"
+                                ><SelectTrigger
+                                    id="review-outcome"
+                                    class="h-11 w-full"
+                                    ><SelectValue /></SelectTrigger
+                                ><SelectContent>
+                                    <SelectItem value="verified"
+                                        >Verified payment</SelectItem
+                                    >
+                                    <SelectItem value="rejected"
+                                        >Rejected claim</SelectItem
+                                    >
+                                </SelectContent></Select
                             >
-                                <option value="verified">
-                                    Verified payment
-                                </option>
-                                <option value="rejected">Rejected claim</option>
-                            </select>
                         </div>
                         <template v-if="form.outcome === 'verified'">
                             <div class="grid gap-2">

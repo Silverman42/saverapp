@@ -21,6 +21,13 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type NextOfKin = {
     full_name: string | null;
@@ -67,6 +74,12 @@ const form = useForm({
     photo: null as File | null,
     remove_photo: false,
     version: props.customer.version,
+});
+const genderSelection = computed({
+    get: () => form.gender || '__none',
+    set: (value: string) => {
+        form.gender = value === '__none' ? '' : value;
+    },
 });
 const nameForm = useForm({
     name: props.customer.name,
@@ -135,7 +148,7 @@ defineOptions({
                 Edit Customer profile
             </h1>
             <p class="text-muted-foreground mt-1.5 text-sm">
-                Update permitted profile details for {{ customer.name }}.
+                Change the permitted profile details for {{ customer.name }}.
             </p>
         </div>
 
@@ -276,19 +289,21 @@ defineOptions({
                     </div>
                     <div class="grid gap-2">
                         <Label for="gender">Gender</Label>
-                        <select
-                            id="gender"
-                            v-model="form.gender"
-                            class="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                        <Select v-model="genderSelection"
+                            ><SelectTrigger id="gender" class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent>
+                                <SelectItem value="__none"
+                                    >Not specified</SelectItem
+                                >
+                                <SelectItem value="female">Female</SelectItem>
+                                <SelectItem value="male">Male</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                                <SelectItem value="prefer_not_to_say"
+                                    >Prefer not to say</SelectItem
+                                >
+                            </SelectContent></Select
                         >
-                            <option value="">Not specified</option>
-                            <option value="female">Female</option>
-                            <option value="male">Male</option>
-                            <option value="other">Other</option>
-                            <option value="prefer_not_to_say">
-                                Prefer not to say
-                            </option>
-                        </select>
                         <p
                             v-if="form.errors.gender"
                             class="text-destructive text-sm"

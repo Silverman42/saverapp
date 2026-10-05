@@ -32,6 +32,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -348,9 +349,9 @@ const submitPublish = async (): Promise<void> => {
                         Fees and Plan Rules
                     </h1>
                     <p class="text-muted-foreground mt-1.5 text-sm">
-                        Versioned registration terms and selectable plan fee
-                        options. Posting stays gated until each owning financial
-                        workflow is ready.
+                        Manage registration fee versions and plan fee options.
+                        Fees are not posted until each related financial process
+                        is ready.
                     </p>
                 </div>
                 <Button @click="openPublishModal('registration')">
@@ -364,9 +365,8 @@ const submitPublish = async (): Promise<void> => {
                     <ShieldAlert class="size-4" />
                     <AlertTitle>Registration Disabled</AlertTitle>
                     <AlertDescription>
-                        No active registration fee rule is currently published.
-                        Customer registration will fail closed until a valid
-                        rule is published.
+                        No registration fee rule is active. Customer
+                        registration is blocked until you publish a valid rule.
                     </AlertDescription>
                 </Alert>
             </div>
@@ -452,9 +452,9 @@ const submitPublish = async (): Promise<void> => {
                         <div>
                             <CardTitle>Selectable Plan Fee Options</CardTitle>
                             <CardDescription class="mt-1.5">
-                                Rule options are versioned for future plan
-                                snapshots. Assessment and posting wait for
-                                Module 06 contracts.
+                                Each rule option has a version for future plans.
+                                Fees are not assessed or posted until Module 06
+                                is ready.
                             </CardDescription>
                         </div>
                         <Button
@@ -513,8 +513,8 @@ const submitPublish = async (): Promise<void> => {
                         <CardTitle>Plan Rule History</CardTitle>
                     </div>
                     <CardDescription
-                        >Published versions remain immutable; only future
-                        effective intervals change.</CardDescription
+                        >You cannot change a published version. You can change
+                        only future effective dates.</CardDescription
                     >
                 </CardHeader>
                 <CardContent>
@@ -594,8 +594,8 @@ const submitPublish = async (): Promise<void> => {
                         <CardTitle>Rule Publication History</CardTitle>
                     </div>
                     <CardDescription>
-                        Immutable historical audit trail of all published
-                        registration fee rules.
+                        A permanent record of all published registration fee
+                        rules.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -690,9 +690,9 @@ const submitPublish = async (): Promise<void> => {
                     <DialogHeader>
                         <DialogTitle>Retire fee rule</DialogTitle>
                         <DialogDescription
-                            >Review the effect on new agreements before
-                            confirming. Existing agreed fees remain payable
-                            under their original terms.</DialogDescription
+                            >Review the effect on new agreements before you
+                            confirm. Existing fees stay payable under their
+                            original terms.</DialogDescription
                         >
                     </DialogHeader>
                     <form
@@ -839,9 +839,9 @@ const submitPublish = async (): Promise<void> => {
                                 : 'Publish Plan Fee Option'
                         }}</DialogTitle>
                         <DialogDescription>
-                            Publishing creates an immutable version and sets its
-                            effective interval. Plan options do not trigger fees
-                            until their owning workflow is available.
+                            Publishing creates a version that you cannot change.
+                            It also sets the effective dates. Plan options do
+                            not charge fees until their process is ready.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1050,10 +1050,10 @@ const submitPublish = async (): Promise<void> => {
                             <Label for="rule-effective-at"
                                 >Effective from</Label
                             >
-                            <Input
+                            <DatePicker
                                 id="rule-effective-at"
                                 v-model="form.effective_at"
-                                type="datetime-local"
+                                with-time
                             />
                             <p
                                 v-if="form.errors.effective_at"
@@ -1128,9 +1128,8 @@ const submitPublish = async (): Promise<void> => {
                                 Step-up Authentication Requirement
                             </p>
                             <p class="mt-1">
-                                Confirmation requires a fresh password and
-                                authenticator check under the shared
-                                authentication policy.
+                                To confirm, enter your password and
+                                authenticator code again.
                             </p>
                         </div>
 

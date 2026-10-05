@@ -143,9 +143,8 @@ const submit = (): void => {
                         Register Customer
                     </h1>
                     <p class="text-muted-foreground mt-1.5 text-sm">
-                        Register a new customer into your portfolio. An
-                        activation invitation will be dispatched to the
-                        customer's email.
+                        Add a new customer to your portfolio. We send an
+                        activation invitation to the customer's email.
                     </p>
                 </div>
                 <Link :href="customersIndex().url">
@@ -165,7 +164,7 @@ const submit = (): void => {
                     <AlertDescription>
                         {{
                             fee_preview.message ??
-                            'No active registration fee rule is published. An administrator must publish fee terms before customers can be onboarded.'
+                            'No registration fee rule is active. An administrator must publish fee terms before you can add customers.'
                         }}
                     </AlertDescription>
                 </Alert>
@@ -186,8 +185,8 @@ const submit = (): void => {
                         >
                     </div>
                     <CardDescription>
-                        These terms will be permanently snapshotted to this
-                        customer's account at commit.
+                        These terms are saved permanently to the customer's
+                        account when you register them.
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4 sm:grid-cols-2">
@@ -205,8 +204,8 @@ const submit = (): void => {
                         <p class="text-muted-foreground text-[11px]">
                             {{
                                 fee_preview.is_zero
-                                    ? 'No payable obligation will be generated.'
-                                    : 'Creates a pending fee obligation upon registration.'
+                                    ? 'The customer will not owe a fee.'
+                                    : 'Registration creates a pending fee.'
                             }}
                         </p>
                     </div>
@@ -229,8 +228,8 @@ const submit = (): void => {
                     <CardHeader>
                         <CardTitle>Personal & Contact Information</CardTitle>
                         <CardDescription>
-                            Enter the customer's core identity details. Full
-                            name, email, and phone number are required.
+                            Enter the customer's identity details. Full name,
+                            email, and phone number are required.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">
@@ -522,8 +521,8 @@ const submit = (): void => {
                     <CardHeader>
                         <CardTitle>Profile Photo & Internal Notes</CardTitle>
                         <CardDescription>
-                            Upload an identity photo and record initial
-                            onboarding notes.
+                            Upload an identity photo. Add notes about the
+                            customer.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">

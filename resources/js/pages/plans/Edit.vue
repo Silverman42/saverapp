@@ -234,8 +234,7 @@ const requestPreview = (): void => {
             replace: true,
             onSuccess: (currentPage) => {
                 const current = currentPage.props.plan as
-                    | { id?: string }
-                    | undefined;
+                    { id?: string } | undefined;
                 if (
                     currentPage.component !== 'plans/Edit' ||
                     current?.id !== props.plan.id ||
@@ -318,9 +317,9 @@ const submit = (): void => {
             <AlertCircle class="size-4" />
             <AlertTitle>Financial and schedule terms are locked</AlertTitle>
             <AlertDescription
-                >Activity has started. You can correct the plan name and
-                Customer-visible notes; contribution amount, dates, duration,
-                and fee terms cannot change.</AlertDescription
+                >Activity has started. You can correct the plan name and the
+                notes that the Customer sees. You cannot change the amount,
+                dates, duration, or fee terms.</AlertDescription
             >
         </Alert>
 
@@ -349,8 +348,8 @@ const submit = (): void => {
             <CardHeader>
                 <CardTitle>Proposed revision</CardTitle>
                 <CardDescription
-                    >Prior revisions and schedule slot identities remain in the
-                    plan history.</CardDescription
+                    >The plan history keeps earlier revisions and schedule
+                    slots.</CardDescription
                 >
             </CardHeader>
             <form @submit.prevent="submit">
@@ -539,8 +538,8 @@ const submit = (): void => {
                     <div>
                         <CardTitle>Revision preview</CardTitle
                         ><CardDescription
-                            >Review the proposed schedule and fee terms before
-                            confirming with the Customer.</CardDescription
+                            >Review the schedule and fee terms. Then confirm
+                            them with the Customer.</CardDescription
                         >
                     </div>
                 </div>
@@ -599,7 +598,7 @@ const submit = (): void => {
                     <p class="text-muted-foreground mt-2 text-xs">
                         {{
                             preview.fee.estimate_available
-                                ? 'Any assessment waits for the financial workflow that owns it.'
+                                ? 'The related financial process calculates the actual fee.'
                                 : 'Calculated when a withdrawal is quoted.'
                         }}
                     </p>
@@ -662,8 +661,8 @@ const submit = (): void => {
                     v-if="!previewIsCurrent"
                     class="text-sm text-amber-700 dark:text-amber-400"
                 >
-                    Terms changed after this preview. Build a fresh preview
-                    before confirming.
+                    The terms changed after this preview. Make a new preview
+                    before you confirm.
                 </p>
             </CardContent>
             <CardFooter class="flex justify-end border-t pt-5">

@@ -23,6 +23,13 @@ import type { PlanSavings } from '@/types/plan-savings';
 import type { PlanFeeHistory } from '@/types/plan-fee-history';
 import type { PlanFundingSummary as FundingSummary } from '@/types/plan-funding';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
@@ -158,33 +165,59 @@ const statusVariant = (
                     </div>
                     <div class="grid w-fit gap-2">
                         <Label for="plan-status">Status</Label>
-                        <select
-                            id="plan-status"
-                            v-model="filters.status"
-                            class="border-input bg-card h-11 w-fit min-w-40 rounded-xl border px-3 text-sm"
-                            @change="applyFilters"
+                        <Select
+                            :model-value="filters.status || '__recent'"
+                            @update:model-value="
+                                (value) => {
+                                    filters.status =
+                                        value === '__recent'
+                                            ? ''
+                                            : String(value ?? '');
+                                    applyFilters();
+                                }
+                            "
+                            ><SelectTrigger
+                                id="plan-status"
+                                class="h-11 w-fit min-w-40"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem value="__recent"
+                                    >Recent plans</SelectItem
+                                ><SelectItem value="all"
+                                    >All statuses</SelectItem
+                                ><SelectItem value="active">Active</SelectItem
+                                ><SelectItem value="paused">Paused</SelectItem
+                                ><SelectItem value="completed"
+                                    >Completed</SelectItem
+                                ><SelectItem value="closed">Closed</SelectItem
+                                ><SelectItem value="cancelled"
+                                    >Cancelled</SelectItem
+                                ></SelectContent
+                            ></Select
                         >
-                            <option value="">Recent plans</option>
-                            <option value="all">All statuses</option>
-                            <option value="active">Active</option>
-                            <option value="paused">Paused</option>
-                            <option value="completed">Completed</option>
-                            <option value="closed">Closed</option>
-                            <option value="cancelled">Cancelled</option>
-                        </select>
                     </div>
                     <div class="grid w-fit gap-2">
                         <Label for="plan-page-size">Rows</Label>
-                        <select
-                            id="plan-page-size"
-                            v-model.number="filters.per_page"
-                            class="border-input bg-card h-11 w-fit min-w-24 rounded-xl border px-3 text-sm"
-                            @change="applyFilters"
+                        <Select
+                            :model-value="String(filters.per_page)"
+                            @update:model-value="
+                                (value) => {
+                                    filters.per_page = Number(value);
+                                    applyFilters();
+                                }
+                            "
+                            ><SelectTrigger
+                                id="plan-page-size"
+                                class="h-11 w-fit min-w-24"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem value="25">25</SelectItem
+                                ><SelectItem value="50">50</SelectItem
+                                ><SelectItem value="100"
+                                    >100</SelectItem
+                                ></SelectContent
+                            ></Select
                         >
-                            <option :value="25">25</option>
-                            <option :value="50">50</option>
-                            <option :value="100">100</option>
-                        </select>
                     </div>
                     <div class="grid w-fit gap-2">
                         <Label for="plan-start-from">Plan starts from</Label>

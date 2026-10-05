@@ -228,8 +228,8 @@ const matchText: Record<string, string> = {
                     </div>
                     <p class="text-muted-foreground text-sm sm:col-span-2">
                         The provider confirms the account holder's name. An
-                        Admin must verify the destination before it can be used.
-                        The number is discarded after the provider resolves it.
+                        Admin must verify the destination before use. We delete
+                        the number after the provider checks it.
                     </p>
                     <Button class="w-fit" :disabled="registration.processing"
                         >Register for review</Button

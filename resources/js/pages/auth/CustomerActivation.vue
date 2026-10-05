@@ -134,7 +134,7 @@ const submit = (): void => {
                                     {{
                                         fee_snapshot?.is_zero
                                             ? 'No registration charge is required for this account.'
-                                            : 'Standard onboarding registration charge.'
+                                            : 'Standard registration charge.'
                                     }}
                                 </p>
 
@@ -203,8 +203,9 @@ const submit = (): void => {
                                     <p
                                         class="text-muted-foreground text-[11px]"
                                     >
-                                        Must be at least 15 characters long and
-                                        not compromised in public data breaches.
+                                        Use at least 15 characters. Do not use a
+                                        password that is known from a public
+                                        data breach.
                                     </p>
                                 </div>
 
@@ -265,16 +266,15 @@ const submit = (): void => {
                             >Invitation Link Expired</CardTitle
                         >
                         <CardDescription>
-                            This activation link has expired. Invitation links
-                            remain valid for 7 days from dispatch for your
-                            security.
+                            This activation link has expired. For your security,
+                            invitation links work for 7 days after we send them.
                         </CardDescription>
                     </CardHeader>
                     <CardContent
                         class="text-muted-foreground text-center text-sm"
                     >
-                        Please contact your assigned agent or account
-                        administrator to receive a fresh invitation link.
+                        Ask your agent or account administrator for a new
+                        invitation link.
                     </CardContent>
                 </Card>
 
@@ -288,15 +288,15 @@ const submit = (): void => {
                         </div>
                         <CardTitle class="mt-2">Invitation Cancelled</CardTitle>
                         <CardDescription>
-                            This customer activation invitation was cancelled by
-                            an authorized agent or administrator.
+                            An agent or administrator cancelled this activation
+                            invitation.
                         </CardDescription>
                     </CardHeader>
                     <CardContent
                         class="text-muted-foreground text-center text-sm"
                     >
-                        If you believe this was done in error, please contact
-                        your account manager.
+                        If you think that this is an error, contact your account
+                        manager.
                     </CardContent>
                 </Card>
 
@@ -337,8 +337,8 @@ const submit = (): void => {
                             >Invalid Invitation Link</CardTitle
                         >
                         <CardDescription>
-                            This invitation link is unrecognized, malformed, or
-                            has been revoked.
+                            This invitation link is not valid, or it was
+                            cancelled.
                         </CardDescription>
                     </CardHeader>
                     <CardContent
