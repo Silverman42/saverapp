@@ -66,13 +66,28 @@ const hasFeesManage = computed(() => {
     return permissions.includes('fees.manage');
 });
 
-const mainNavItems = computed<NavItem[]>(() => {
+const overviewNavItems = computed<NavItem[]>(() => {
     const items: NavItem[] = [
         {
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutDashboard,
         },
+    ];
+
+    if (page.props.features.notifications) {
+        items.push({
+            title: 'Notifications',
+            href: notificationInbox(),
+            icon: Bell,
+        });
+    }
+
+    return items;
+});
+
+const savingsNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
         {
             title: 'Plans',
             href: plansIndex(),
@@ -88,17 +103,52 @@ const mainNavItems = computed<NavItem[]>(() => {
         });
     }
 
+    if (page.props.features.collections && (isAgent.value || isAdmin.value)) {
+        items.push({
+            title: 'Cash batches',
+            href: batchesIndex(),
+            icon: Briefcase,
+        });
+    }
+
     items.push({
         title: 'Withdrawals',
         href: withdrawalsIndex(),
         icon: WalletCards,
     });
 
+    if (
+        page.props.auth?.user?.user_type === 'customer' ||
+        (page.props.auth?.permissions ?? []).some((permission) =>
+            ['cash.execute', 'fees.manage'].includes(permission),
+        )
+    ) {
+        items.push({
+            title: 'Cash payouts',
+            href: cashPaymentsIndex(),
+            icon: WalletCards,
+        });
+    }
+
     items.push({
         title: 'Reversals',
         href: reversalsIndex(),
         icon: ShieldAlert,
     });
+
+    return items;
+});
+
+const recordsNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [];
+
+    if (canViewCustomers.value) {
+        items.push({
+            title: 'Customers',
+            href: '/customers',
+            icon: Users,
+        });
+    }
 
     items.push({
         title: 'Transactions',
@@ -112,41 +162,6 @@ const mainNavItems = computed<NavItem[]>(() => {
         icon: ChartNoAxesCombined,
     });
 
-    if (canViewCustomers.value) {
-        items.push({
-            title: 'Customers',
-            href: '/customers',
-            icon: Users,
-        });
-    }
-
-    if (page.props.features.collections && (isAgent.value || isAdmin.value)) {
-        items.push({
-            title: 'Cash batches',
-            href: batchesIndex(),
-            icon: Briefcase,
-        });
-    }
-
-    if (
-        page.props.auth?.user?.user_type === 'customer' ||
-        (page.props.auth?.permissions ?? []).some((permission) =>
-            ['cash.execute', 'fees.manage'].includes(permission),
-        )
-    ) {
-        items.push({
-            title: 'Cash refunds and draws',
-            href: cashPaymentsIndex(),
-            icon: WalletCards,
-        });
-    }
-    if (page.props.features.notifications) {
-        items.push({
-            title: 'Notifications',
-            href: notificationInbox(),
-            icon: Bell,
-        });
-    }
     return items;
 });
 
@@ -167,7 +182,7 @@ const adminNavItems = computed<NavItem[]>(() => {
             icon: Settings,
         },
         {
-            title: 'Admin Access',
+            title: 'Admin team',
             href: '/admin/access',
             icon: Users,
         },
@@ -190,7 +205,7 @@ const adminNavItems = computed<NavItem[]>(() => {
         (page.props.auth?.permissions ?? []).includes('deductions.manage')
     ) {
         items.push({
-            title: 'Controlled charges',
+            title: 'Manual charges',
             href: chargesIndex(),
             icon: WalletCards,
         });
@@ -209,14 +224,18 @@ const adminNavItems = computed<NavItem[]>(() => {
         )
     ) {
         items.push({
-            title: 'Cash receipt months',
+            title: 'Booking months',
             href: financialPeriodsIndex(),
             icon: WalletCards,
         });
     }
 
     if ((page.props.auth?.permissions ?? []).includes('audit.view')) {
-        items.push({ title: 'Audit trail', href: auditIndex(), icon: Receipt });
+        items.push({
+            title: 'Activity log',
+            href: auditIndex(),
+            icon: Receipt,
+        });
     }
     if (hasSecurityOperationsManage.value) {
         items.push({
@@ -225,7 +244,7 @@ const adminNavItems = computed<NavItem[]>(() => {
             icon: ShieldCheck,
         });
         items.push({
-            title: 'Security operations',
+            title: 'Security cases',
             href: securityCasesIndex(),
             icon: ShieldCheck,
         });
@@ -293,7 +312,9 @@ function closeMobileSidebar(): void {
         <SidebarContent
             class="gap-4 py-5 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:py-2"
         >
-            <NavMain label="Overview" :items="mainNavItems" />
+            <NavMain label="Overview" :items="overviewNavItems" />
+            <NavMain label="Savings" :items="savingsNavItems" />
+            <NavMain label="Records" :items="recordsNavItems" />
             <NavMain
                 v-if="adminNavItems.length > 0"
                 label="Administration"
@@ -313,10 +334,10 @@ function closeMobileSidebar(): void {
                     <p
                         class="text-sidebar-accent-foreground truncate text-xs font-semibold"
                     >
-                        Protected workspace
+                        Your account is protected
                     </p>
                     <p class="text-muted-foreground truncate text-[11px]">
-                        Account safeguards enabled
+                        Security checks are on
                     </p>
                 </div>
             </div>

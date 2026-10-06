@@ -6,6 +6,8 @@ import {
 import { router, useHttp } from '@inertiajs/vue3';
 import { HttpResponseError } from '@inertiajs/core';
 import { onMounted, ref, watch } from 'vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,6 +75,7 @@ const fileRequest = useHttp<Record<string, never>, { url: string }>({});
 const message = ref('');
 const uncertain = ref(false);
 const posted = ref(false);
+const sheetOpen = ref(false);
 watch(
     () => props.batchVersion,
     (version) => {
@@ -91,8 +94,8 @@ async function submit(): Promise<void> {
     try {
         await form.post(store.url(props.batchId));
         posted.value = true;
-        message.value =
-            'Bank settlement recorded. Review the updated batch separately.';
+        sheetOpen.value = false;
+        message.value = 'Bank deposit saved. Review the batch again.';
         router.reload();
     } catch (error) {
         if (
@@ -112,12 +115,11 @@ async function submit(): Promise<void> {
             }
         }
         if (form.hasErrors) {
-            message.value =
-                'Correct the highlighted fields and review the bank evidence again.';
+            message.value = 'Please fix the fields below and try again.';
         } else {
             uncertain.value = true;
             message.value =
-                'Settlement is not confirmed. Check this saved reference before retrying.';
+                'We could not confirm this was saved. Check its status before you try again.';
         }
     }
 }
@@ -128,11 +130,14 @@ async function checkStatus(): Promise<void> {
         );
         posted.value = result.status === 'posted';
         uncertain.value = !posted.value;
-        message.value = `Verified saved settlement: ${money(result.amount_kobo)}. Refresh the batch before another settlement.`;
+        if (posted.value) {
+            sheetOpen.value = false;
+        }
+        message.value = `Saved deposit found: ${money(result.amount_kobo)}. Refresh the batch before adding another.`;
         router.reload();
     } catch {
         message.value =
-            'The saved settlement could not be confirmed. Keep this reference and the original bank evidence; reauthenticate or retry the same request.';
+            'We could not check this deposit. Keep the reference and bank proof, sign in again if asked, then retry.';
     }
 }
 function startAnother(): void {
@@ -141,13 +146,14 @@ function startAnother(): void {
     try {
         sessionStorage.setItem(key, form.settlement_reference);
     } catch {
-        message.value = 'Keep the saved settlement reference when retrying.';
+        message.value = 'Keep the saved reference if you need to retry.';
     }
     form.batch_version = props.batchVersion;
     form.confirmed = false;
     posted.value = false;
     uncertain.value = false;
     message.value = '';
+    sheetOpen.value = true;
 }
 async function download(reference: string, file: number): Promise<void> {
     try {
@@ -155,210 +161,267 @@ async function download(reference: string, file: number): Promise<void> {
         window.location.assign(result.url);
     } catch {
         message.value =
-            'Settlement evidence is unavailable or your current access needs renewal.';
+            'This file is not available right now. Refresh the page and try again.';
     }
 }
 </script>
 <template>
-    <section class="grid gap-4" aria-label="Clearing settlement">
-        <h2 class="font-medium">Bank settlement</h2>
-        <p class="text-muted-foreground text-sm">
-            Confirm the money that the selected bank actually received.
-            Outstanding clearing:
-            {{ money(outstandingKobo) }}. Settlement does not change Customer
-            savings or fee income. Processor deductions stay unresolved until
-            their expense policy is approved.
-        </p>
-        <form
-            v-if="canRecord && banks.length && !posted"
-            class="grid gap-4 sm:grid-cols-2"
-            @submit.prevent="submit"
-        >
-            <div class="grid gap-2 sm:col-span-2">
-                <Label for="settlement-attempt"
-                    >Saved settlement reference</Label
-                >
-                <Input
-                    id="settlement-attempt"
-                    :model-value="form.settlement_reference"
-                    readonly
-                />
-                <Button
-                    type="button"
-                    variant="outline"
-                    class="w-fit"
-                    :disabled="statusRequest.processing || form.processing"
-                    @click="checkStatus"
-                    >Check saved status</Button
-                >
-            </div>
-            <div class="grid gap-2">
-                <Label for="settlement-bank">Verified bank destination</Label>
-                <Select
-                    :model-value="String(form.bank_method_version_id)"
-                    :disabled="uncertain || form.processing"
-                    @update:model-value="
-                        form.bank_method_version_id = Number($event)
-                    "
-                >
-                    <SelectTrigger id="settlement-bank" class="w-full"
-                        ><SelectValue
-                    /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem
-                            v-for="bank in banks"
-                            :key="bank.id"
-                            :value="String(bank.id)"
-                        >
-                            {{ bank.label }} · v{{ bank.version }} ·
-                            {{ bank.destination_key }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-            <div class="grid gap-2">
-                <Label for="settlement-reference">Bank credit reference</Label>
-                <Input
-                    id="settlement-reference"
-                    v-model="form.bank_reference"
-                    :disabled="uncertain || form.processing"
-                />
-            </div>
-            <div class="grid gap-2">
-                <Label for="settlement-amount">Actual bank amount (NGN)</Label>
-                <Input
-                    id="settlement-amount"
-                    v-model="form.amount_ngn"
-                    inputmode="decimal"
-                    :disabled="uncertain || form.processing"
-                />
-            </div>
-            <div class="grid gap-2">
-                <Label for="settlement-date"
-                    >Settlement date ({{ timezone }})</Label
-                >
-                <DatePicker
-                    id="settlement-date"
-                    v-model="form.settled_date"
-                    :disabled="uncertain || form.processing"
-                />
-            </div>
-            <div class="grid gap-2 sm:col-span-2">
-                <Label for="settlement-source"
-                    >Independent bank credit verification</Label
-                >
-                <Input
-                    id="settlement-source"
-                    v-model="form.source_attestation"
-                    :disabled="uncertain || form.processing"
-                />
-            </div>
-            <div class="grid gap-2 sm:col-span-2">
-                <Label for="settlement-reason">Review reason</Label>
-                <Input
-                    id="settlement-reason"
-                    v-model="form.reason"
-                    :disabled="uncertain || form.processing"
-                />
-            </div>
-            <div class="grid gap-2 sm:col-span-2">
-                <Label for="settlement-files">Private bank evidence</Label>
-                <Input
-                    id="settlement-files"
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/png,image/webp,application/pdf"
-                    :disabled="uncertain || form.processing"
-                    @change="chooseFiles"
-                />
-                <p class="text-muted-foreground text-sm">
-                    Attach one to three JPEG, PNG, WebP or PDF files. Each file
-                    can be up to 5 MB. Each upload must pass a clean scan.
+    <section class="grid gap-4" aria-labelledby="settlement-heading">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h2 id="settlement-heading" class="font-medium">
+                    Bank deposits
+                </h2>
+                <p class="text-muted-foreground mt-1 text-sm">
+                    Still to reach the bank: {{ money(outstandingKobo) }}
                 </p>
             </div>
-            <label class="flex items-start gap-2 text-sm sm:col-span-2"
-                ><input
-                    v-model="form.confirmed"
-                    type="checkbox"
-                    :disabled="uncertain || form.processing"
-                />
-                I independently matched the actual credit, reference and amount
-                to this bank destination.</label
-            >
-            <progress
-                v-if="form.progress"
-                :value="form.progress.percentage"
-                max="100"
-                aria-label="Settlement evidence upload"
-            />
             <Button
-                type="submit"
-                class="w-fit"
-                :disabled="
-                    form.processing ||
-                    !form.confirmed ||
-                    !form.settlement_reference
-                "
-                >{{
-                    uncertain
-                        ? 'Retry the same settlement'
-                        : 'Record actual settlement'
-                }}</Button
+                v-if="canRecord && banks.length && !posted"
+                type="button"
+                @click="sheetOpen = true"
+                >{{ uncertain ? 'Retry deposit' : 'Record deposit' }}</Button
             >
-            <ul
-                v-if="form.hasErrors"
-                class="text-destructive grid gap-1 text-sm sm:col-span-2"
-                role="alert"
+            <Button
+                v-if="posted && canRecord"
+                type="button"
+                variant="outline"
+                @click="startAnother"
+                >Record another</Button
             >
-                <li v-for="(error, field) in form.errors" :key="field">
-                    {{ field }}: {{ error }}
-                </li>
-            </ul>
-        </form>
+        </div>
         <p
             v-if="canRecord && !banks.length"
             role="status"
-            class="text-muted-foreground text-sm"
+            class="bg-muted rounded-xl p-4 text-sm"
         >
-            Configure a bank destination before you record a settlement.
+            Add a bank account in collection methods before you record a
+            deposit.
         </p>
-        <p v-if="message" role="status" aria-live="polite" class="text-sm">
+        <p
+            v-if="message && !sheetOpen"
+            role="status"
+            aria-live="polite"
+            class="text-sm"
+        >
             {{ message }}
         </p>
-        <Button
-            v-if="posted && canRecord"
-            type="button"
-            variant="outline"
-            class="w-fit"
-            @click="startAnother"
-            >Prepare another settlement</Button
-        >
-        <ul class="grid gap-3">
+        <ul v-if="settlements.length" class="divide-y text-sm">
             <li
                 v-for="settlement in settlements"
                 :key="settlement.reference"
-                class="grid gap-2 rounded-md border p-3 text-sm"
+                class="flex flex-wrap items-center justify-between gap-3 py-3"
             >
-                <span
-                    >{{ settlement.date }} ·
-                    {{ money(settlement.amount_kobo) }} ·
-                    {{ settlement.bank_reference }}</span
-                >
-                <span class="text-muted-foreground break-all">{{
-                    settlement.reference
-                }}</span>
+                <div class="min-w-0">
+                    <p class="font-medium">
+                        {{ money(settlement.amount_kobo) }}
+                    </p>
+                    <p class="text-muted-foreground mt-0.5 text-xs break-all">
+                        {{ settlement.date }} · Bank ref
+                        {{ settlement.bank_reference }}
+                    </p>
+                </div>
                 <div class="flex flex-wrap gap-2">
                     <Button
-                        v-for="file in settlement.files"
+                        v-for="(file, index) in settlement.files"
                         :key="file.id"
                         type="button"
                         variant="outline"
+                        size="sm"
                         :disabled="fileRequest.processing"
                         @click="download(settlement.reference, file.id)"
-                        >Download evidence {{ file.id }}</Button
+                        >Download proof
+                        {{
+                            settlement.files.length > 1 ? index + 1 : ''
+                        }}</Button
                     >
                 </div>
             </li>
         </ul>
+        <p v-else class="text-muted-foreground text-sm">
+            No bank deposits recorded yet.
+        </p>
+        <MoreDetails v-if="settlements.length" label="About bank deposits">
+            <div class="text-muted-foreground grid gap-2 text-xs leading-5">
+                <p>
+                    Recording a deposit does not change customer savings or fee
+                    income. Bank charges stay open until a charge rule is
+                    approved.
+                </p>
+                <p
+                    v-for="settlement in settlements"
+                    :key="settlement.reference"
+                    class="break-all"
+                >
+                    {{ settlement.date }}: reference
+                    {{ settlement.reference }}
+                </p>
+            </div>
+        </MoreDetails>
+
+        <FormSheet
+            v-model:open="sheetOpen"
+            title="Record bank deposit"
+            description="Enter what the bank actually received."
+        >
+            <form
+                id="settlement-form"
+                class="grid gap-5"
+                @submit.prevent="submit"
+            >
+                <p
+                    v-if="message"
+                    role="status"
+                    aria-live="polite"
+                    class="bg-muted rounded-xl p-3 text-sm"
+                >
+                    {{ message }}
+                </p>
+                <div class="grid gap-2">
+                    <Label for="settlement-bank">Bank account</Label>
+                    <Select
+                        :model-value="String(form.bank_method_version_id)"
+                        :disabled="uncertain || form.processing"
+                        @update:model-value="
+                            form.bank_method_version_id = Number($event)
+                        "
+                    >
+                        <SelectTrigger id="settlement-bank" class="w-full"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="bank in banks"
+                                :key="bank.id"
+                                :value="String(bank.id)"
+                            >
+                                {{ bank.label }} · {{ bank.destination_key }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div class="grid gap-5 sm:grid-cols-2">
+                    <div class="grid gap-2">
+                        <Label for="settlement-amount">Amount (NGN)</Label>
+                        <Input
+                            id="settlement-amount"
+                            v-model="form.amount_ngn"
+                            inputmode="decimal"
+                            :disabled="uncertain || form.processing"
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="settlement-date">Date received</Label>
+                        <DatePicker
+                            id="settlement-date"
+                            v-model="form.settled_date"
+                            :disabled="uncertain || form.processing"
+                        />
+                    </div>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="settlement-reference">Bank reference</Label>
+                    <Input
+                        id="settlement-reference"
+                        v-model="form.bank_reference"
+                        :disabled="uncertain || form.processing"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="settlement-source">How you checked it</Label>
+                    <Input
+                        id="settlement-source"
+                        v-model="form.source_attestation"
+                        placeholder="For example: matched on bank statement"
+                        :disabled="uncertain || form.processing"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="settlement-reason">Note</Label>
+                    <Input
+                        id="settlement-reason"
+                        v-model="form.reason"
+                        :disabled="uncertain || form.processing"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="settlement-files">Bank proof</Label>
+                    <Input
+                        id="settlement-files"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        :disabled="uncertain || form.processing"
+                        @change="chooseFiles"
+                    />
+                    <p class="text-muted-foreground text-xs">
+                        1 to 3 photos or PDFs, up to 5 MB each.
+                    </p>
+                </div>
+                <label class="flex items-start gap-2 text-sm"
+                    ><input
+                        v-model="form.confirmed"
+                        type="checkbox"
+                        class="mt-0.5"
+                        :disabled="uncertain || form.processing"
+                    />
+                    I checked the amount and reference against this bank
+                    account.</label
+                >
+                <progress
+                    v-if="form.progress"
+                    :value="form.progress.percentage"
+                    max="100"
+                    aria-label="Bank proof upload"
+                />
+                <ul
+                    v-if="form.hasErrors"
+                    class="text-destructive grid gap-1 text-sm"
+                    role="alert"
+                >
+                    <li v-for="(error, field) in form.errors" :key="field">
+                        {{ error }}
+                    </li>
+                </ul>
+                <MoreDetails :default-open="uncertain" label="Saved reference">
+                    <div class="grid gap-2">
+                        <Label for="settlement-attempt">Reference</Label>
+                        <Input
+                            id="settlement-attempt"
+                            :model-value="form.settlement_reference"
+                            readonly
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            class="w-fit"
+                            :disabled="
+                                statusRequest.processing || form.processing
+                            "
+                            @click="checkStatus"
+                            >Check status</Button
+                        >
+                    </div>
+                </MoreDetails>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="sheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="settlement-form"
+                    :disabled="
+                        form.processing ||
+                        !form.confirmed ||
+                        !form.settlement_reference
+                    "
+                    >{{ uncertain ? 'Retry' : 'Save deposit' }}</Button
+                >
+            </template>
+        </FormSheet>
     </section>
 </template>

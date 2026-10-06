@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
-import {
-    Laptop,
-    LogOut,
-    Monitor,
-    Shield,
-    Smartphone,
-    Trash2,
-} from '@lucide/vue';
+import { Laptop, LogOut, Monitor, Smartphone } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 export type SessionItem = {
     id: string;
@@ -31,6 +33,11 @@ const props = withDefaults(defineProps<Props>(), {
     sessions: () => [],
     maxDevices: 1,
 });
+
+const signOutEverywhereOpen = ref(false);
+const otherSessionCount = computed(
+    () => props.sessions.filter((s) => !s.is_current_device).length,
+);
 
 const getDeviceIcon = (deviceName: string) => {
     const lower = deviceName.toLowerCase();
@@ -65,55 +72,32 @@ const formatTime = (isoString: string): string => {
 </script>
 
 <template>
-    <div class="space-y-6">
+    <div class="space-y-4">
         <div
-            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+            class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
         >
             <Heading
                 variant="small"
-                title="Active Sessions & Devices"
-                :description="`Manage the devices that are signed in to your account. You can use up to ${props.maxDevices} devices at the same time.`"
+                title="Signed-in devices"
+                :description="`You can be signed in on up to ${props.maxDevices} device${props.maxDevices === 1 ? '' : 's'} at once.`"
             />
 
-            <div class="flex flex-wrap items-center gap-2">
-                <Form
-                    v-if="
-                        props.sessions.filter((s) => !s.is_current_device)
-                            .length > 0
-                    "
-                    action="/sessions/revoke-others"
-                    method="post"
-                    #default="{ processing }"
+            <Form
+                v-if="otherSessionCount > 0"
+                action="/sessions/revoke-others"
+                method="post"
+                #default="{ processing }"
+            >
+                <Button
+                    variant="outline"
+                    size="sm"
+                    type="submit"
+                    :disabled="processing"
                 >
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        type="submit"
-                        :disabled="processing"
-                        class="gap-1.5"
-                    >
-                        <LogOut class="size-4" />
-                        Sign Out Other Devices
-                    </Button>
-                </Form>
-
-                <Form
-                    action="/sessions/revoke-all"
-                    method="post"
-                    #default="{ processing }"
-                >
-                    <Button
-                        variant="destructive"
-                        size="sm"
-                        type="submit"
-                        :disabled="processing"
-                        class="gap-1.5"
-                    >
-                        <Trash2 class="size-4" />
-                        Sign Out Everywhere
-                    </Button>
-                </Form>
-            </div>
+                    <LogOut class="size-4" />
+                    Sign out others
+                </Button>
+            </Form>
         </div>
 
         <div
@@ -122,11 +106,12 @@ const formatTime = (isoString: string): string => {
             <div
                 v-for="session in props.sessions"
                 :key="session.id"
-                class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
+                class="flex items-center justify-between gap-4 p-4"
+                :title="`First signed in ${formatTime(session.first_sign_in_at)}`"
             >
-                <div class="flex items-start gap-3.5">
+                <div class="flex min-w-0 items-center gap-3">
                     <div
-                        class="bg-muted text-muted-foreground mt-0.5 rounded-lg p-2"
+                        class="bg-muted text-muted-foreground shrink-0 rounded-lg p-2"
                     >
                         <component
                             :is="getDeviceIcon(session.device_name)"
@@ -134,9 +119,9 @@ const formatTime = (isoString: string): string => {
                         />
                     </div>
 
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="truncate text-sm font-medium">
                                 {{ session.device_name }}
                             </span>
                             <Badge
@@ -144,53 +129,84 @@ const formatTime = (isoString: string): string => {
                                 variant="secondary"
                                 class="text-xs"
                             >
-                                This Device
+                                This device
                             </Badge>
                         </div>
-
-                        <div
-                            class="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
-                        >
-                            <span
-                                >Approx. network: {{ session.masked_ip }}</span
-                            >
-                            <span
-                                >First sign-in:
-                                {{ formatTime(session.first_sign_in_at) }}</span
-                            >
-                            <span
-                                >Last active:
-                                {{ formatTime(session.last_active_at) }}</span
-                            >
-                        </div>
+                        <p class="text-muted-foreground mt-0.5 text-xs">
+                            Last active
+                            {{ formatTime(session.last_active_at) }} ·
+                            {{ session.masked_ip }}
+                        </p>
                     </div>
                 </div>
 
-                <div v-if="!session.is_current_device" class="shrink-0">
-                    <Form
-                        :action="`/sessions/${session.id}`"
-                        method="delete"
-                        #default="{ processing }"
+                <Form
+                    v-if="!session.is_current_device"
+                    :action="`/sessions/${session.id}`"
+                    method="delete"
+                    #default="{ processing }"
+                    class="shrink-0"
+                >
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        type="submit"
+                        :disabled="processing"
+                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     >
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            type="submit"
-                            :disabled="processing"
-                            class="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
-                        >
-                            Sign Out
-                        </Button>
-                    </Form>
-                </div>
+                        Sign out
+                    </Button>
+                </Form>
             </div>
 
             <div
                 v-if="props.sessions.length === 0"
                 class="text-muted-foreground p-6 text-center text-sm"
             >
-                No active sessions found.
+                No signed-in devices found.
             </div>
         </div>
+
+        <Button
+            variant="ghost"
+            size="sm"
+            class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            @click="signOutEverywhereOpen = true"
+        >
+            Sign out everywhere
+        </Button>
+
+        <Dialog v-model:open="signOutEverywhereOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Sign out everywhere?</DialogTitle>
+                    <DialogDescription>
+                        You will be signed out on all devices, including this
+                        one. Each device will ask for your code again.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter class="gap-2">
+                    <Button
+                        variant="outline"
+                        @click="signOutEverywhereOpen = false"
+                        >Cancel</Button
+                    >
+                    <Form
+                        action="/sessions/revoke-all"
+                        method="post"
+                        #default="{ processing }"
+                    >
+                        <Button
+                            variant="destructive"
+                            type="submit"
+                            class="w-full"
+                            :disabled="processing"
+                        >
+                            Sign out everywhere
+                        </Button>
+                    </Form>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

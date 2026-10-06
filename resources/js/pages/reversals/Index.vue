@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import { ShieldAlert } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import ReversalStatusBadge from '@/components/ReversalStatusBadge.vue';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -9,7 +15,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import {
     index as reversalsIndex,
@@ -52,44 +57,38 @@ const money = (kobo: number): string =>
 function applyFilter(): void {
     router.get(reversalsIndex.url({ query: { state: state.value } }));
 }
+function onStateChange(value: unknown): void {
+    state.value = value === '__all' ? '' : String(value ?? '');
+    applyFilter();
+}
 </script>
 
 <template>
     <Head title="Reversals" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">Reversals</h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This list shows correction requests and posted outcomes in your
-                permitted Customer scope.
-            </p>
-        </div>
-        <Card>
-            <CardContent class="pt-6 text-sm">
-                You cannot make new reversal requests now. The team must first
-                verify the accounting, custody, and evidence contracts.
-            </CardContent>
-        </Card>
+        <PageHeader
+            title="Reversals"
+            description="Requests to undo or correct a past payment."
+        />
+        <p role="status" class="text-muted-foreground -mt-2 text-sm">
+            New reversal requests can't be made yet.
+        </p>
         <div class="flex flex-row flex-wrap gap-4">
             <div class="grid w-fit gap-2">
-                <label for="reversal-state" class="text-sm font-medium"
-                    >State</label
-                >
+                <Label for="reversal-state">Status</Label>
                 <Select
                     :model-value="state || '__all'"
-                    @update:model-value="
-                        state = $event === '__all' ? '' : String($event ?? '')
-                    "
+                    @update:model-value="onStateChange"
                     ><SelectTrigger id="reversal-state" class="h-11 w-fit"
                         ><SelectValue /></SelectTrigger
                     ><SelectContent
-                        ><SelectItem value="__all">All states</SelectItem
+                        ><SelectItem value="__all">All statuses</SelectItem
                         ><SelectItem value="pending_review"
-                            >Pending review</SelectItem
+                            >Waiting for review</SelectItem
                         ><SelectItem value="approved_posted"
-                            >Approved and posted</SelectItem
+                            >Approved, money corrected</SelectItem
                         ><SelectItem value="approved_no_money"
-                            >Approved, no money movement</SelectItem
+                            >Approved, no money moved</SelectItem
                         ><SelectItem value="rejected">Rejected</SelectItem
                         ><SelectItem value="cancelled"
                             >Cancelled</SelectItem
@@ -97,62 +96,55 @@ function applyFilter(): void {
                     ></Select
                 >
             </div>
-            <Button
-                type="button"
-                variant="outline"
-                class="self-end"
-                @click="applyFilter"
-                >Apply filter</Button
-            >
         </div>
-        <Card>
-            <CardContent class="pt-6">
-                <p
-                    v-if="requests.data.length === 0"
-                    class="text-muted-foreground text-sm"
-                >
-                    No reversal requests match this scope and filter.
-                </p>
-                <ul v-else class="divide-y">
+        <EmptyState
+            v-if="requests.data.length === 0"
+            :icon="ShieldAlert"
+            title="No reversals found"
+            :description="
+                state
+                    ? 'Try a different status to see more requests.'
+                    : 'Reversal requests will show up here.'
+            "
+        />
+        <Card v-else class="py-2">
+            <CardContent>
+                <ul class="divide-border divide-y">
                     <li
                         v-for="item in requests.data"
                         :key="item.id"
-                        class="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+                        class="flex flex-wrap items-center justify-between gap-3 py-4"
                     >
-                        <div class="grid gap-1">
+                        <div class="min-w-0 space-y-1">
                             <Link
                                 :href="showReversal(item.id)"
-                                class="font-medium underline"
-                                >{{ item.id }}</Link
+                                class="font-medium underline-offset-4 hover:underline"
+                                >{{ item.customer_name ?? item.id }}</Link
                             >
-                            <span class="text-muted-foreground text-sm"
-                                >{{ item.customer_name }} · original
-                                {{ item.original_reference }}</span
-                            >
-                            <span class="text-sm"
-                                >{{ item.state.replaceAll('_', ' ') }} ·
-                                {{ item.requested_at }}</span
-                            >
+                            <p class="text-muted-foreground text-xs">
+                                {{ item.id }} · for
+                                {{ item.original_reference }} ·
+                                {{ item.requested_at }}
+                            </p>
+                            <div class="pt-1">
+                                <ReversalStatusBadge :state="item.state" />
+                            </div>
                         </div>
-                        <strong class="text-sm">{{
-                            money(item.original_amount_kobo)
-                        }}</strong>
+                        <p class="font-medium">
+                            {{ money(item.original_amount_kobo) }}
+                        </p>
                     </li>
                 </ul>
             </CardContent>
         </Card>
-        <div class="flex gap-4 text-sm">
-            <Link
-                v-if="requests.prev_page_url"
-                :href="requests.prev_page_url"
-                class="underline"
-                >Previous</Link
-            >
-            <Link
-                v-if="requests.next_page_url"
-                :href="requests.next_page_url"
-                class="underline"
-                >Next</Link
+        <div
+            v-if="requests.prev_page_url || requests.next_page_url"
+            class="flex gap-3"
+        >
+            <Button v-if="requests.prev_page_url" variant="outline" as-child
+                ><Link :href="requests.prev_page_url">Previous</Link></Button
+            ><Button v-if="requests.next_page_url" variant="outline" as-child
+                ><Link :href="requests.next_page_url">Next</Link></Button
             >
         </div>
     </div>

@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import { Card, CardContent } from '@/components/ui/card';
+import { ChevronDown, Inbox, Search } from '@lucide/vue';
+import { computed, ref } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,6 +107,12 @@ const money = (kobo: number): string =>
 const selectedDate = ref(props.date);
 const search = ref(props.filters.search);
 const status = ref(props.filters.status);
+const showEvidenceLink = computed(
+    () => props.viewer_type === 'agent' || props.can_review_evidence,
+);
+const showBatchesLink = computed(
+    () => props.viewer_type === 'admin' || props.viewer_type === 'agent',
+);
 function applyFilters(): void {
     router.get(
         collectionsIndex.url({
@@ -112,34 +129,77 @@ function applyFilters(): void {
 <template>
     <Head title="Collections" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">Collections</h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This page shows daily work and posted receipts for your current
-                Customers. Dates use {{ timezone }}.
-            </p>
-        </div>
-        <div class="flex flex-row flex-wrap items-end gap-4">
+        <PageHeader
+            title="Collections"
+            description="Payments received and what is due."
+        >
+            <template
+                v-if="
+                    viewer_type === 'agent' ||
+                    showEvidenceLink ||
+                    showBatchesLink
+                "
+                #actions
+            >
+                <Button v-if="viewer_type === 'agent'" as-child
+                    ><Link :href="customersIndex()"
+                        >Record payment</Link
+                    ></Button
+                >
+                <DropdownMenu
+                    :modal="false"
+                    v-if="showEvidenceLink || showBatchesLink"
+                >
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline"
+                            >More <ChevronDown class="size-4"
+                        /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem v-if="showEvidenceLink" as-child>
+                            <Link :href="evidenceIndex()"
+                                >Payment evidence</Link
+                            >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-if="showBatchesLink" as-child>
+                            <Link :href="batchesIndex()">Cash batches</Link>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </template>
+        </PageHeader>
+
+        <form
+            class="flex flex-row flex-wrap items-end gap-4"
+            aria-label="Collection filters"
+            @submit.prevent="applyFilters"
+        >
             <div class="grid w-fit gap-2">
-                <Label for="collection-date">Business date</Label
+                <Label for="collection-date">Date</Label
                 ><DatePicker
                     id="collection-date"
-                    aria-label="Business date"
+                    aria-label="Date"
                     v-model="selectedDate"
                     class="w-fit"
                 />
             </div>
             <div v-if="due_slots" class="grid w-fit gap-2">
-                <Label for="collection-search">Customer name or ID</Label
-                ><Input
-                    id="collection-search"
-                    v-model="search"
-                    class="w-fit"
-                    maxlength="100"
-                />
+                <Label for="collection-search">Customer</Label>
+                <div class="relative">
+                    <Search
+                        class="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+                    />
+                    <Input
+                        id="collection-search"
+                        v-model="search"
+                        class="w-fit pl-9"
+                        maxlength="100"
+                        placeholder="Name or ID"
+                    />
+                </div>
             </div>
             <div v-if="due_slots" class="grid w-fit gap-2">
-                <Label for="collection-status">Due work</Label>
+                <Label for="collection-status">Status</Label>
                 <Select
                     :model-value="status || 'all'"
                     @update:model-value="(value) => (status = String(value))"
@@ -149,249 +209,287 @@ function applyFilters(): void {
                     /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="partial">Partial</SelectItem>
+                        <SelectItem value="pending">Not paid yet</SelectItem>
+                        <SelectItem value="partial">Part paid</SelectItem>
                         <SelectItem value="paid">Paid</SelectItem>
                         <SelectItem value="missed">Missed</SelectItem>
                         <SelectItem value="advance-covered"
-                            >Advance covered</SelectItem
+                            >Paid early</SelectItem
                         >
                         <SelectItem value="blocked">Blocked</SelectItem>
                         <SelectItem value="unavailable"
-                            >History unavailable</SelectItem
+                            >History not available</SelectItem
                         >
                         <SelectItem value="service-interrupted">
-                            Agent unavailable
+                            Agent not available
                         </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
-            <Button type="button" variant="outline" @click="applyFilters"
-                >Apply filters</Button
+            <Button type="submit" variant="outline">Show</Button>
+        </form>
+
+        <Card>
+            <CardHeader
+                ><CardTitle>Received on {{ date }}</CardTitle></CardHeader
             >
-        </div>
-        <Link
-            v-if="viewer_type === 'agent' || can_review_evidence"
-            :href="evidenceIndex()"
-            class="w-fit text-sm underline"
-            >Open protected payment evidence</Link
-        >
-        <Card
-            ><CardContent class="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4"
-                ><div>
-                    Receipts received {{ date }}<br /><strong>{{
-                        totals.receipt_count
-                    }}</strong>
-                </div>
-                <div>
-                    Total received<br /><strong>{{
-                        money(totals.tender_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Cash received<br /><strong>{{
-                        money(totals.cash_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Bank received<br /><strong>{{
-                        money(totals.bank_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Clearing captured<br /><strong>{{
-                        money(totals.clearing_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Other Agent custody<br /><strong>{{
-                        money(totals.other_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Savings component<br /><strong>{{
-                        money(totals.savings_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Fee component<br /><strong>{{
-                        money(totals.fees_kobo)
-                    }}</strong>
-                </div></CardContent
-            ></Card
-        >
-        <Card v-if="due_slots"
-            ><CardContent class="pt-6"
-                ><h2 class="font-medium">Slots due {{ date }}</h2>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    Due work totals include all matching slots on all pages.
-                    Received tender uses the receipt date. It can fund other
-                    days.
-                </p>
-                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    <div>
-                        Matching slots<br /><strong>{{
-                            due_totals.slot_count
-                        }}</strong>
+            <CardContent class="space-y-4">
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">
+                            Total received
+                        </p>
+                        <p class="mt-1 text-2xl font-semibold">
+                            {{ money(totals.tender_kobo) }}
+                        </p>
                     </div>
-                    <div>
-                        Scheduled<br /><strong>{{
-                            money(due_totals.scheduled_kobo)
-                        }}</strong>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Cash</p>
+                        <p class="mt-1 text-2xl font-semibold">
+                            {{ money(totals.cash_kobo) }}
+                        </p>
                     </div>
-                    <div>
-                        Covered<br /><strong>{{
-                            money(due_totals.covered_kobo)
-                        }}</strong>
-                    </div>
-                    <div>
-                        Outstanding eligible<br /><strong>{{
-                            money(due_totals.outstanding_kobo)
-                        }}</strong>
-                    </div>
-                    <div>
-                        Blocked target<br /><strong>{{
-                            money(due_totals.blocked_target_kobo)
-                        }}</strong>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Payments</p>
+                        <p class="mt-1 text-2xl font-semibold">
+                            {{ totals.receipt_count }}
+                        </p>
                     </div>
                 </div>
-                <p
-                    v-if="due_totals.service_interrupted_target_kobo > 0"
-                    class="text-muted-foreground mt-3 text-sm"
-                >
-                    The assigned Agent is unavailable for
-                    {{ money(due_totals.service_interrupted_target_kobo) }} of
-                    scheduled targets. Eligible outstanding does not include
-                    these rows. Recorded contributions do not change.
-                </p>
-                <p
-                    v-if="due_totals.unavailable_target_kobo > 0"
-                    class="text-muted-foreground mt-3 text-sm"
-                >
-                    Participation history is unavailable for
-                    {{ money(due_totals.unavailable_target_kobo) }} of scheduled
-                    targets. Eligible outstanding does not include these rows.
-                </p>
-                <p
+                <MoreDetails label="See breakdown">
+                    <dl
+                        class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3"
+                    >
+                        <div>
+                            <dt class="text-muted-foreground">Bank transfer</dt>
+                            <dd class="font-medium">
+                                {{ money(totals.bank_kobo) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                Waiting to reach the bank
+                            </dt>
+                            <dd class="font-medium">
+                                {{ money(totals.clearing_kobo) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">
+                                Other methods held by agents
+                            </dt>
+                            <dd class="font-medium">
+                                {{ money(totals.other_kobo) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">To savings</dt>
+                            <dd class="font-medium">
+                                {{ money(totals.savings_kobo) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground">Fees</dt>
+                            <dd class="font-medium">
+                                {{ money(totals.fees_kobo) }}
+                            </dd>
+                        </div>
+                    </dl>
+                    <p class="text-muted-foreground mt-3 text-xs">
+                        Dates use the {{ timezone }} time zone.
+                    </p>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <Card v-if="due_slots">
+            <CardHeader
+                ><CardTitle>Due on {{ date }}</CardTitle></CardHeader
+            >
+            <CardContent class="space-y-5">
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Expected</p>
+                        <p class="mt-1 text-lg font-medium">
+                            {{ money(due_totals.scheduled_kobo) }}
+                        </p>
+                    </div>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Paid</p>
+                        <p class="mt-1 text-lg font-medium">
+                            {{ money(due_totals.covered_kobo) }}
+                        </p>
+                    </div>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Still owed</p>
+                        <p class="mt-1 text-lg font-medium">
+                            {{ money(due_totals.outstanding_kobo) }}
+                        </p>
+                    </div>
+                </div>
+                <EmptyState
                     v-if="due_slots.data.length === 0"
-                    class="text-muted-foreground mt-5 text-sm"
-                >
-                    No slots in your current scope match these filters.
-                </p>
-                <ul v-else class="mt-5 grid gap-3 sm:grid-cols-2">
+                    :icon="Inbox"
+                    title="Nothing due"
+                    description="No customers match these filters. Try another date or status."
+                />
+                <ul v-else class="divide-y">
                     <li
                         v-for="slot in due_slots.data"
                         :key="slot.id"
-                        class="rounded-md border p-3 text-sm"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
                     >
-                        <strong
-                            >{{ slot.customer_name }} · day
-                            {{ slot.ordinal }}</strong
-                        >
-                        <p class="mt-1 capitalize">
-                            {{ slot.status.replaceAll('-', ' ') }}
-                        </p>
-                        <p class="mt-1">
-                            {{ money(slot.funded_kobo) }} of
-                            {{ money(slot.target_kobo) }} funded
-                            <span v-if="slot.advance_kobo > 0"
-                                >· {{ money(slot.advance_kobo) }} covered before
-                                this due date</span
+                        <div class="min-w-0">
+                            <p class="font-medium">{{ slot.customer_name }}</p>
+                            <p class="text-muted-foreground mt-0.5 text-xs">
+                                Day {{ slot.ordinal }} ·
+                                {{ money(slot.funded_kobo) }} of
+                                {{ money(slot.target_kobo) }} paid
+                                <span v-if="slot.advance_kobo > 0"
+                                    >· {{ money(slot.advance_kobo) }} paid
+                                    early</span
+                                >
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <Badge variant="secondary" class="capitalize">{{
+                                slot.status.replaceAll('-', ' ')
+                            }}</Badge>
+                            <Button
+                                v-if="
+                                    viewer_type === 'agent' &&
+                                    ['pending', 'partial', 'missed'].includes(
+                                        slot.status,
+                                    )
+                                "
+                                as-child
+                                size="sm"
+                                variant="outline"
+                                ><Link
+                                    :href="createCollection(slot.customer_id)"
+                                    >Record cash</Link
+                                ></Button
                             >
-                        </p>
-                        <Link
-                            v-if="
-                                viewer_type === 'agent' &&
-                                ['pending', 'partial', 'missed'].includes(
-                                    slot.status,
-                                )
-                            "
-                            :href="createCollection(slot.customer_id)"
-                            class="text-primary mt-2 inline-block underline"
-                            >Record collection</Link
-                        >
+                        </div>
                     </li>
                 </ul>
-                <div class="mt-4 flex gap-4 text-sm">
+                <nav
+                    v-if="due_slots.prev_page_url || due_slots.next_page_url"
+                    aria-label="Due list pages"
+                    class="flex gap-4 text-sm"
+                >
                     <Link
                         v-if="due_slots.prev_page_url"
                         :href="due_slots.prev_page_url"
-                        class="underline"
-                        >Previous due slots</Link
+                        class="underline-offset-4 hover:underline"
+                        >Previous</Link
                     ><Link
                         v-if="due_slots.next_page_url"
                         :href="due_slots.next_page_url"
-                        class="underline"
-                        >Next due slots</Link
+                        class="underline-offset-4 hover:underline"
+                        >Next</Link
                     >
-                </div></CardContent
-            ></Card
-        >
-        <Link
-            v-if="viewer_type === 'agent'"
-            :href="customersIndex()"
-            class="text-primary w-fit text-sm underline"
-            >Find another assigned Customer to record catch-up or advance
-            cash</Link
-        >
-        <Link
-            v-if="viewer_type === 'admin' || viewer_type === 'agent'"
-            :href="batchesIndex()"
-            class="text-primary w-fit text-sm underline"
-            >Cash batches and reconciliation</Link
-        >
-        <Card
-            ><CardContent class="pt-6">
-                <p
-                    v-if="receipts.data.length === 0"
-                    class="text-muted-foreground text-sm"
+                </nav>
+                <MoreDetails
+                    v-if="
+                        due_totals.blocked_target_kobo > 0 ||
+                        due_totals.service_interrupted_target_kobo > 0 ||
+                        due_totals.unavailable_target_kobo > 0
+                    "
+                    label="Not counted in still owed"
                 >
-                    Your current scope has no receipts for this date.
-                </p>
+                    <ul class="text-muted-foreground grid gap-1 text-sm">
+                        <li v-if="due_totals.blocked_target_kobo > 0">
+                            Blocked: {{ money(due_totals.blocked_target_kobo) }}
+                        </li>
+                        <li
+                            v-if="
+                                due_totals.service_interrupted_target_kobo > 0
+                            "
+                        >
+                            Agent not available:
+                            {{
+                                money(
+                                    due_totals.service_interrupted_target_kobo,
+                                )
+                            }}
+                        </li>
+                        <li v-if="due_totals.unavailable_target_kobo > 0">
+                            History not available:
+                            {{ money(due_totals.unavailable_target_kobo) }}
+                        </li>
+                    </ul>
+                    <p class="text-muted-foreground mt-2 text-xs">
+                        Totals cover all {{ due_totals.slot_count }} matching
+                        days, on every page. A payment can cover other days.
+                    </p>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader><CardTitle>Payments</CardTitle></CardHeader>
+            <CardContent>
+                <EmptyState
+                    v-if="receipts.data.length === 0"
+                    :icon="Inbox"
+                    title="No payments on this date"
+                    description="Pick another date to see earlier payments."
+                />
                 <ul v-else class="divide-y">
                     <li
                         v-for="receipt in receipts.data"
                         :key="receipt.id"
-                        class="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
-                        <div class="grid gap-1">
+                        <div class="min-w-0">
                             <Link
                                 :href="showReceipt(receipt.id)"
-                                class="font-medium underline"
-                                >{{ receipt.id }}</Link
-                            ><span class="text-muted-foreground text-sm"
-                                >{{ receipt.customer_name }} · received
-                                {{ receipt.received_date }} ·
-                                {{ receipt.method }}</span
+                                class="text-sm font-medium underline-offset-4 hover:underline"
+                                >{{ receipt.customer_name }}</Link
                             >
+                            <p class="text-muted-foreground mt-0.5 text-xs">
+                                {{ receipt.method }} ·
+                                {{ receipt.received_date }} · {{ receipt.id }}
+                            </p>
                         </div>
-                        <div class="flex items-center gap-4">
-                            <span class="text-sm">{{
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="text-sm font-medium">{{
                                 money(receipt.tender_kobo)
-                            }}</span
-                            ><Link
+                            }}</span>
+                            <Button
                                 v-if="receipt.can_record"
-                                :href="createCollection(receipt.customer_id)"
-                                class="text-primary text-sm underline"
-                                >Record another</Link
+                                as-child
+                                size="sm"
+                                variant="ghost"
+                                ><Link
+                                    :href="
+                                        createCollection(receipt.customer_id)
+                                    "
+                                    >Record another</Link
+                                ></Button
                             >
                         </div>
                     </li>
                 </ul>
-            </CardContent></Card
-        >
-        <div class="flex gap-4 text-sm">
-            <Link
-                v-if="receipts.prev_page_url"
-                :href="receipts.prev_page_url"
-                class="underline"
-                >Previous</Link
-            ><Link
-                v-if="receipts.next_page_url"
-                :href="receipts.next_page_url"
-                class="underline"
-                >Next</Link
-            >
-        </div>
+                <nav
+                    v-if="receipts.prev_page_url || receipts.next_page_url"
+                    aria-label="Payment pages"
+                    class="mt-4 flex gap-4 text-sm"
+                >
+                    <Link
+                        v-if="receipts.prev_page_url"
+                        :href="receipts.prev_page_url"
+                        class="underline-offset-4 hover:underline"
+                        >Previous</Link
+                    ><Link
+                        v-if="receipts.next_page_url"
+                        :href="receipts.next_page_url"
+                        class="underline-offset-4 hover:underline"
+                        >Next</Link
+                    >
+                </nav>
+            </CardContent>
+        </Card>
     </div>
 </template>

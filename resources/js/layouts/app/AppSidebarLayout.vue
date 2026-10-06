@@ -96,7 +96,7 @@ withDefaults(defineProps<Props>(), {
                 <PlatformBanner />
                 <slot v-if="!inaccessible" />
                 <p v-else role="status">
-                    Customer access is no longer available.
+                    You no longer have access to this customer.
                 </p>
             </div>
         </AppContent>

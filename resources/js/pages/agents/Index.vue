@@ -3,8 +3,10 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { Briefcase, ChevronLeft, ChevronRight, UserPlus } from '@lucide/vue';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
-import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import ModuleOverview from '@/components/directory/ModuleOverview.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -108,19 +110,19 @@ const activeFilterCount = computed(
 );
 const overviewMetrics = computed(() => [
     {
-        label: 'Total agents',
+        label: 'Agents',
         value: props.overview.total,
-        description: 'Registered in the selected period',
+        description: '',
     },
     {
-        label: 'Active agents',
+        label: 'Active',
         value: props.overview.active,
-        description: 'Currently active operationally',
+        description: '',
     },
     {
-        label: 'Eligible agents',
+        label: 'Ready for new customers',
         value: props.overview.eligible,
-        description: 'Ready to receive assignments',
+        description: '',
     },
 ]);
 
@@ -150,6 +152,10 @@ const applyFilters = (): void => {
         { preserveScroll: true, preserveState: true, replace: true },
     );
 };
+const applyFromSheet = (): void => {
+    filtersOpen.value = false;
+    applyFilters();
+};
 const updateOverviewPeriod = (value: unknown): void => {
     if (typeof value !== 'string') return;
     overviewPeriod.value = value as typeof overviewPeriod.value;
@@ -169,13 +175,7 @@ const resetFilters = (): void => {
         direction: 'desc',
         per_page: 25,
     });
-    applyFilters();
-};
-const updateDateFilter = (
-    field: 'registered_from' | 'registered_to',
-    value: string,
-): void => {
-    filterForm[field] = value;
+    filtersOpen.value = false;
     applyFilters();
 };
 const canRegister = computed(() => {
@@ -209,39 +209,29 @@ const getAccountBadgeVariant = (
 </script>
 
 <template>
-    <Head title="Agent Directory" />
+    <Head title="Agents" />
 
     <div class="space-y-6">
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        <PageHeader
+            title="Agents"
+            description="Your field agents and the customers they look after."
         >
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">Agents</h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    Manage agent profiles, invitations, and operational
-                    readiness.
-                </p>
-            </div>
-            <Link v-if="canRegister" :href="agentsCreate().url">
-                <Button>
-                    <UserPlus class="mr-1.5 size-4" /> Create Agent
+            <template v-if="canRegister" #actions>
+                <Button as-child>
+                    <Link :href="agentsCreate().url">
+                        <UserPlus class="size-4" /> Add agent
+                    </Link>
                 </Button>
-            </Link>
-        </div>
+            </template>
+        </PageHeader>
 
-        <ModuleOverview
-            title="Agent Overview"
-            description="Monitor agent activity, who can take assignments, and customer coverage."
-            :metrics="overviewMetrics"
-        >
+        <ModuleOverview title="Overview" :metrics="overviewMetrics">
             <template #actions>
                 <Select
                     :model-value="overviewPeriod"
                     @update:model-value="updateOverviewPeriod"
                 >
-                    <SelectTrigger
-                        class="w-40"
-                        aria-label="Agent overview period"
+                    <SelectTrigger class="w-40" aria-label="Overview period"
                         ><SelectValue
                     /></SelectTrigger>
                     <SelectContent
@@ -257,333 +247,93 @@ const getAccountBadgeVariant = (
         </ModuleOverview>
 
         <DirectoryPanel
-            title="Agents List"
-            :description="`${agents.total} agent${agents.total === 1 ? '' : 's'} matching the current directory view.`"
+            title="All agents"
+            :description="`${agents.total} agent${agents.total === 1 ? '' : 's'}`"
             :search-value="filterForm.search"
-            search-placeholder="Search agents"
-            :filters-open="filtersOpen"
+            search-placeholder="Search by name, email or phone"
+            :filters-open="false"
             :active-filter-count="activeFilterCount"
             @update:search-value="filterForm.search = $event"
             @submit-search="applyFilters"
-            @toggle-filters="filtersOpen = !filtersOpen"
+            @toggle-filters="filtersOpen = true"
             @reset-filters="resetFilters"
         >
-            <template #filters>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-status" class="text-xs"
-                        >Operational status</Label
-                    ><Select
-                        v-model="filterForm.operational_status"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="agent-status"
-                            ><SelectValue
-                                placeholder="All statuses" /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem value="all">All statuses</SelectItem
-                            ><SelectItem value="active">Active</SelectItem
-                            ><SelectItem value="inactive"
-                                >Inactive</SelectItem
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-account-state" class="text-xs"
-                        >Account state</Label
-                    ><Select
-                        v-model="filterForm.account_state"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="agent-account-state"
-                            ><SelectValue
-                                placeholder="All account states" /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem value="all">All states</SelectItem
-                            ><SelectItem value="active">Active</SelectItem
-                            ><SelectItem value="invited">Invited</SelectItem
-                            ><SelectItem value="mfa_setup">MFA setup</SelectItem
-                            ><SelectItem value="suspended">Suspended</SelectItem
-                            ><SelectItem value="deactivated"
-                                >Deactivated</SelectItem
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-eligibility" class="text-xs"
-                        >Assignment eligibility</Label
-                    ><Select
-                        v-model="filterForm.eligibility"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="agent-eligibility"
-                            ><SelectValue
-                                placeholder="Any eligibility" /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem value="all">Any eligibility</SelectItem
-                            ><SelectItem value="eligible">Eligible</SelectItem
-                            ><SelectItem value="ineligible"
-                                >Ineligible</SelectItem
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-min-customers" class="text-xs"
-                        >Minimum customers</Label
-                    ><Input
-                        id="agent-min-customers"
-                        v-model="filterForm.min_customers"
-                        class="w-36"
-                        type="number"
-                        min="0"
-                        @change="applyFilters"
-                    />
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-max-customers" class="text-xs"
-                        >Maximum customers</Label
-                    ><Input
-                        id="agent-max-customers"
-                        v-model="filterForm.max_customers"
-                        class="w-36"
-                        type="number"
-                        min="0"
-                        @change="applyFilters"
-                    />
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-registered-from" class="text-xs"
-                        >Registered from</Label
-                    ><DatePicker
-                        id="agent-registered-from"
-                        :model-value="filterForm.registered_from"
-                        @update:model-value="
-                            updateDateFilter('registered_from', $event)
-                        "
-                    />
-                </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="agent-registered-to" class="text-xs"
-                        >Registered to</Label
-                    ><DatePicker
-                        id="agent-registered-to"
-                        :model-value="filterForm.registered_to"
-                        @update:model-value="
-                            updateDateFilter('registered_to', $event)
-                        "
-                    />
-                </div>
-            </template>
-            <template #filter-summary
-                ><p class="text-muted-foreground text-xs">
-                    {{ agents.total }} agent{{ agents.total === 1 ? '' : 's' }}
-                    match the current filters.
-                </p></template
+            <EmptyState
+                v-if="agents.data.length === 0"
+                :icon="Briefcase"
+                title="No agents found"
+                description="Try a different search or clear the filters."
             >
-
-            <div v-if="agents.data.length === 0" class="py-14 text-center">
-                <div
-                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
+                <Button
+                    v-if="activeFilterCount > 0 || filterForm.search"
+                    variant="outline"
+                    @click="resetFilters"
+                    >Clear filters</Button
                 >
-                    <Briefcase class="size-5" />
-                </div>
-                <h3 class="mt-4 text-sm font-semibold">No agents found</h3>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    Adjust the search or filters to find an agent record.
-                </p>
-            </div>
-            <div v-else class="space-y-3">
+            </EmptyState>
+            <div v-else class="divide-border -my-2 divide-y">
                 <Link
                     v-for="agent in agents.data"
                     :key="agent.id"
                     :href="agentsShow(agent.id).url"
-                    class="group block rounded-2xl focus-visible:outline-none"
-                    ><DirectoryRow
-                        class="group-focus-visible:border-primary group-focus-visible:bg-accent/35"
-                        ><div
-                            class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(13rem,1.5fr)_repeat(5,minmax(0,1fr))]"
-                        >
-                            <div class="flex min-w-0 items-center gap-3">
-                                <Avatar class="size-11 shrink-0"
-                                    ><AvatarImage
-                                        v-if="agent.photo_url"
-                                        :src="agent.photo_url"
-                                        :alt="agent.name"
-                                    /><AvatarFallback>{{
-                                        getInitials(agent.name)
-                                    }}</AvatarFallback></Avatar
-                                >
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold">
-                                        {{ agent.name }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground truncate text-xs"
-                                    >
-                                        {{ agent.email || agent.id }}
-                                    </p>
-                                </div>
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Operational status
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getOperationalBadgeVariant(
-                                            agent.operational_status,
-                                        )
-                                    "
-                                    class="mt-1"
-                                    >{{ agent.operational_status_label }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Account state
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getAccountBadgeVariant(
-                                            agent.account_state,
-                                        )
-                                    "
-                                    class="mt-1"
-                                    >{{ agent.account_state_label }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Eligibility
-                                </p>
-                                <Badge
-                                    :variant="
-                                        agent.eligibility.is_eligible
-                                            ? 'default'
-                                            : 'secondary'
-                                    "
-                                    class="mt-1"
-                                    >{{
-                                        agent.eligibility.is_eligible
-                                            ? 'Eligible'
-                                            : 'Ineligible'
-                                    }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Assigned customers
-                                </p>
-                                <p class="mt-1 text-sm">
-                                    {{ agent.current_customers_count }}
-                                </p>
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Registered
-                                </p>
-                                <p class="mt-1 text-sm">
-                                    {{ agent.registered_at || '—' }}
-                                </p>
-                            </div>
-                        </div>
-                        <div class="lg:hidden">
-                            <div class="flex min-w-0 items-center gap-3">
-                                <Avatar class="size-11 shrink-0"
-                                    ><AvatarImage
-                                        v-if="agent.photo_url"
-                                        :src="agent.photo_url"
-                                        :alt="agent.name"
-                                    /><AvatarFallback>{{
-                                        getInitials(agent.name)
-                                    }}</AvatarFallback></Avatar
-                                >
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold">
-                                        {{ agent.name }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground truncate text-xs"
-                                    >
-                                        {{ agent.email || agent.id }}
-                                    </p>
-                                </div>
-                            </div>
-                            <div
-                                class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm"
-                            >
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Status
-                                    </p>
-                                    <Badge
-                                        :variant="
-                                            getOperationalBadgeVariant(
-                                                agent.operational_status,
-                                            )
-                                        "
-                                        class="mt-1"
-                                        >{{
-                                            agent.operational_status_label
-                                        }}</Badge
-                                    >
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Eligibility
-                                    </p>
-                                    <Badge
-                                        :variant="
-                                            agent.eligibility.is_eligible
-                                                ? 'default'
-                                                : 'secondary'
-                                        "
-                                        class="mt-1"
-                                        >{{
-                                            agent.eligibility.is_eligible
-                                                ? 'Eligible'
-                                                : 'Ineligible'
-                                        }}</Badge
-                                    >
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Assigned
-                                    </p>
-                                    <p class="mt-1">
-                                        {{ agent.current_customers_count }}
-                                        customers
-                                    </p>
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Registered
-                                    </p>
-                                    <p class="mt-1">
-                                        {{ agent.registered_at || '—' }}
-                                    </p>
-                                </div>
-                            </div>
-                        </div></DirectoryRow
-                    ></Link
+                    class="hover:bg-accent/35 focus-visible:ring-ring -mx-3 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl px-3 py-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                 >
+                    <div
+                        class="flex min-w-0 flex-1 basis-60 items-center gap-3"
+                    >
+                        <Avatar class="size-10 shrink-0"
+                            ><AvatarImage
+                                v-if="agent.photo_url"
+                                :src="agent.photo_url"
+                                :alt="agent.name"
+                            /><AvatarFallback>{{
+                                getInitials(agent.name)
+                            }}</AvatarFallback></Avatar
+                        >
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium">
+                                {{ agent.name }}
+                            </p>
+                            <p class="text-muted-foreground truncate text-xs">
+                                {{ agent.email || agent.phone }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Badge
+                            :variant="
+                                getOperationalBadgeVariant(
+                                    agent.operational_status,
+                                )
+                            "
+                            >{{ agent.operational_status_label }}</Badge
+                        >
+                        <Badge
+                            v-if="agent.account_state !== 'active'"
+                            :variant="
+                                getAccountBadgeVariant(agent.account_state)
+                            "
+                            >{{ agent.account_state_label }}</Badge
+                        >
+                        <Badge
+                            v-if="!agent.eligibility.is_eligible"
+                            variant="outline"
+                            >Can't take new customers</Badge
+                        >
+                    </div>
+                    <div
+                        class="flex items-center gap-3 text-sm sm:w-36 sm:justify-end"
+                    >
+                        <span
+                            >{{ agent.current_customers_count }} customer{{
+                                agent.current_customers_count === 1 ? '' : 's'
+                            }}</span
+                        >
+                        <ChevronRight
+                            class="text-muted-foreground hidden size-4 sm:block"
+                        />
+                    </div>
+                </Link>
             </div>
 
             <template #footer
@@ -593,11 +343,13 @@ const getAccountBadgeVariant = (
                     <div
                         class="text-muted-foreground flex items-center gap-2 text-sm"
                     >
-                        Display
+                        Show
                         <Select
                             v-model="filterForm.per_page"
                             @update:model-value="applyFilters"
-                            ><SelectTrigger class="h-9 w-20"
+                            ><SelectTrigger
+                                class="h-9 w-20"
+                                aria-label="Agents per page"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem :value="25">25</SelectItem
@@ -617,29 +369,135 @@ const getAccountBadgeVariant = (
                             {{ agents.last_page }}</span
                         >
                         <div class="flex gap-2">
-                            <Link
+                            <Button
                                 v-if="agents.prev_page_url"
-                                :href="agents.prev_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button variant="outline" size="sm"
-                                    ><ChevronLeft /> Prev</Button
-                                ></Link
+                                as-child
+                                variant="outline"
+                                size="sm"
+                                ><Link
+                                    :href="agents.prev_page_url"
+                                    preserve-state
+                                    preserve-scroll
+                                    ><ChevronLeft /> Previous</Link
+                                ></Button
                             ><Button v-else variant="outline" size="sm" disabled
-                                ><ChevronLeft /> Prev</Button
-                            ><Link
+                                ><ChevronLeft /> Previous</Button
+                            ><Button
                                 v-if="agents.next_page_url"
-                                :href="agents.next_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button size="sm"
-                                    >Next <ChevronRight /></Button></Link
-                            ><Button v-else size="sm" disabled
+                                as-child
+                                variant="outline"
+                                size="sm"
+                                ><Link
+                                    :href="agents.next_page_url"
+                                    preserve-state
+                                    preserve-scroll
+                                    >Next <ChevronRight /></Link></Button
+                            ><Button v-else variant="outline" size="sm" disabled
                                 >Next <ChevronRight
                             /></Button>
                         </div>
                     </div></div
             ></template>
         </DirectoryPanel>
+
+        <FormSheet
+            v-model:open="filtersOpen"
+            title="Filters"
+            description="Narrow down the agent list."
+        >
+            <div class="grid gap-5">
+                <div class="grid gap-2">
+                    <Label for="agent-status">Status</Label>
+                    <Select v-model="filterForm.operational_status"
+                        ><SelectTrigger id="agent-status" class="w-full"
+                            ><SelectValue
+                                placeholder="All statuses" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All statuses</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="inactive"
+                                >Inactive</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid gap-2">
+                    <Label for="agent-account-state">Account</Label>
+                    <Select v-model="filterForm.account_state"
+                        ><SelectTrigger id="agent-account-state" class="w-full"
+                            ><SelectValue
+                                placeholder="All accounts" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">All accounts</SelectItem
+                            ><SelectItem value="active">Active</SelectItem
+                            ><SelectItem value="invited">Invited</SelectItem
+                            ><SelectItem value="mfa_setup"
+                                >Setting up sign-in</SelectItem
+                            ><SelectItem value="suspended">Suspended</SelectItem
+                            ><SelectItem value="deactivated"
+                                >Deactivated</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid gap-2">
+                    <Label for="agent-eligibility">New customers</Label>
+                    <Select v-model="filterForm.eligibility"
+                        ><SelectTrigger id="agent-eligibility" class="w-full"
+                            ><SelectValue placeholder="Any" /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="all">Any</SelectItem
+                            ><SelectItem value="eligible"
+                                >Can take new customers</SelectItem
+                            ><SelectItem value="ineligible"
+                                >Can't take new customers</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="grid gap-2">
+                        <Label for="agent-min-customers">Min. customers</Label
+                        ><Input
+                            id="agent-min-customers"
+                            v-model="filterForm.min_customers"
+                            type="number"
+                            min="0"
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="agent-max-customers">Max. customers</Label
+                        ><Input
+                            id="agent-max-customers"
+                            v-model="filterForm.max_customers"
+                            type="number"
+                            min="0"
+                        />
+                    </div>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="agent-registered-from">Joined from</Label
+                    ><DatePicker
+                        id="agent-registered-from"
+                        v-model="filterForm.registered_from"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="agent-registered-to">Joined to</Label
+                    ><DatePicker
+                        id="agent-registered-to"
+                        v-model="filterForm.registered_to"
+                    />
+                </div>
+            </div>
+            <template #footer>
+                <Button type="button" variant="outline" @click="resetFilters"
+                    >Clear</Button
+                >
+                <Button type="button" @click="applyFromSheet"
+                    >Show results</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

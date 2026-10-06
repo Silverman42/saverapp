@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import { ArrowLeft, Briefcase, Camera, Loader2 } from '@lucide/vue';
+import { computed, ref } from 'vue';
+import { Camera, Loader2, Mail } from '@lucide/vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
-    CardDescription,
     CardFooter,
     CardHeader,
     CardTitle,
@@ -27,7 +28,7 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Agents', href: agentsIndex() },
-            { title: 'Register Agent', href: agentsCreate() },
+            { title: 'Add agent', href: agentsCreate() },
         ],
     },
 });
@@ -65,6 +66,15 @@ const onPhotoChange = (event: Event): void => {
     }
 };
 
+const hasOptionalErrors = computed(() =>
+    Boolean(
+        form.errors.employment_date ||
+        form.errors.address ||
+        form.errors.photo ||
+        form.errors.notes,
+    ),
+);
+
 const submit = (): void => {
     form.post(agentsStore.url(), {
         forceFormData: true,
@@ -74,71 +84,50 @@ const submit = (): void => {
 </script>
 
 <template>
-    <Head title="Register Agent" />
+    <Head title="Add agent" />
 
     <div class="space-y-6">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Register Agent
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    Create an Inactive Agent profile and send an activation
-                    invitation. The agent sets their own password and sets up
-                    MFA.
-                </p>
-            </div>
-            <Link :href="agentsIndex().url">
-                <Button variant="outline" size="sm">
-                    <ArrowLeft class="mr-1.5 size-4" /> Back to Agents
-                </Button>
-            </Link>
-        </div>
+        <PageHeader
+            title="Add agent"
+            description="We'll email them an invite to set up their account."
+        />
 
-        <form @submit.prevent="submit" class="max-w-3xl space-y-6">
+        <form class="max-w-3xl" @submit.prevent="submit">
             <Card>
                 <CardHeader>
-                    <CardTitle>Personal & Contact Information</CardTitle>
-                    <CardDescription
-                        >Enter the agent's identity details. Full name, email,
-                        and phone are required.</CardDescription
-                    >
+                    <CardTitle>Agent details</CardTitle>
                 </CardHeader>
-                <CardContent class="space-y-4">
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div class="space-y-1.5">
-                            <Label for="agent-name"
-                                >Full name
-                                <span class="text-destructive">*</span></Label
-                            >
-                            <Input
-                                id="agent-name"
-                                v-model="form.name"
-                                placeholder="e.g. Chukwuma Adebayo"
-                                required
-                                :class="{
-                                    'border-destructive': form.errors.name,
-                                }"
-                            />
-                            <p
-                                v-if="form.errors.name"
-                                class="text-destructive text-xs"
-                            >
-                                {{ form.errors.name }}
-                            </p>
-                        </div>
+                <CardContent class="space-y-5">
+                    <div class="space-y-1.5">
+                        <Label for="agent-name">Full name</Label>
+                        <Input
+                            id="agent-name"
+                            v-model="form.name"
+                            placeholder="e.g. Chukwuma Adebayo"
+                            required
+                            :aria-invalid="!!form.errors.name"
+                            :class="{
+                                'border-destructive': form.errors.name,
+                            }"
+                        />
+                        <p
+                            v-if="form.errors.name"
+                            class="text-destructive text-xs"
+                        >
+                            {{ form.errors.name }}
+                        </p>
+                    </div>
 
+                    <div class="grid gap-5 sm:grid-cols-2">
                         <div class="space-y-1.5">
-                            <Label for="agent-email"
-                                >Email address
-                                <span class="text-destructive">*</span></Label
-                            >
+                            <Label for="agent-email">Email</Label>
                             <Input
                                 id="agent-email"
                                 v-model="form.email"
                                 type="email"
                                 placeholder="e.g. agent@example.ng"
                                 required
+                                :aria-invalid="!!form.errors.email"
                                 :class="{
                                     'border-destructive': form.errors.email,
                                 }"
@@ -150,19 +139,15 @@ const submit = (): void => {
                                 {{ form.errors.email }}
                             </p>
                         </div>
-                    </div>
 
-                    <div class="grid gap-4 sm:grid-cols-2">
                         <div class="space-y-1.5">
-                            <Label for="agent-phone"
-                                >Phone number
-                                <span class="text-destructive">*</span></Label
-                            >
+                            <Label for="agent-phone">Phone number</Label>
                             <Input
                                 id="agent-phone"
                                 v-model="form.phone"
                                 placeholder="e.g. +2348012345678"
                                 required
+                                :aria-invalid="!!form.errors.phone"
                                 :class="{
                                     'border-destructive': form.errors.phone,
                                 }"
@@ -173,133 +158,130 @@ const submit = (): void => {
                             >
                                 {{ form.errors.phone }}
                             </p>
-                            <p class="text-muted-foreground text-[11px]">
-                                Must be in international E.164 format (e.g.
-                                +2348012345678).
-                            </p>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <Label for="agent-employment-date"
-                                >Employment date (optional)</Label
-                            >
-                            <DatePicker
-                                id="agent-employment-date"
-                                :model-value="form.employment_date"
-                                @update:model-value="
-                                    form.employment_date = $event
-                                "
-                            />
-                            <p
-                                v-if="form.errors.employment_date"
-                                class="text-destructive text-xs"
-                            >
-                                {{ form.errors.employment_date }}
+                            <p v-else class="text-muted-foreground text-xs">
+                                Include the country code, e.g. +234.
                             </p>
                         </div>
                     </div>
 
-                    <div class="space-y-1.5">
-                        <Label for="agent-address"
-                            >Physical address (optional)</Label
-                        >
-                        <Input
-                            id="agent-address"
-                            v-model="form.address"
-                            placeholder="e.g. 14 Commercial Avenue, Yaba, Lagos"
-                            :class="{
-                                'border-destructive': form.errors.address,
-                            }"
-                        />
-                        <p
-                            v-if="form.errors.address"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.address }}
-                        </p>
-                    </div>
-
-                    <div class="space-y-1.5">
-                        <Label for="agent-photo"
-                            >Profile photo (optional)</Label
-                        >
-                        <div class="flex items-center gap-4">
-                            <div
-                                class="border-muted bg-muted/40 relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
-                            >
-                                <img
-                                    v-if="photoPreview"
-                                    :src="photoPreview"
-                                    alt="Photo preview"
-                                    class="size-full object-cover"
-                                />
-                                <Camera
-                                    v-else
-                                    class="text-muted-foreground size-6"
-                                />
-                            </div>
-                            <Input
-                                id="agent-photo"
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                @change="onPhotoChange"
-                                class="h-10 text-sm"
-                            />
-                        </div>
-                        <p
-                            v-if="form.errors.photo"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.photo }}
-                        </p>
-                        <p class="text-muted-foreground text-[11px]">
-                            JPEG, PNG, or WebP. Max 2MB, between 128x128 and
-                            2048x2048 pixels.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Administrative Notes</CardTitle>
-                    <CardDescription
-                        >Internal notes for Administrators only. Agents cannot
-                        see these notes.</CardDescription
+                    <MoreDetails
+                        :key="hasOptionalErrors ? 'open' : 'closed'"
+                        label="More options"
+                        :default-open="hasOptionalErrors"
                     >
-                </CardHeader>
-                <CardContent>
-                    <div class="space-y-1.5">
-                        <Label for="agent-notes">Notes (optional)</Label>
-                        <textarea
-                            id="agent-notes"
-                            v-model="form.notes"
-                            placeholder="Add any internal onboarding or engagement notes..."
-                            rows="4"
-                            class="border-input placeholder:text-muted-foreground bg-card focus-visible:border-ring focus-visible:ring-ring/20 disabled:bg-muted w-full rounded-xl border px-3.5 py-2.5 text-base transition-[border-color,background-color] outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
-                            :class="{ 'border-destructive': form.errors.notes }"
-                        ></textarea>
-                        <p
-                            v-if="form.errors.notes"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.notes }}
-                        </p>
-                    </div>
+                        <div class="space-y-5">
+                            <div class="grid gap-5 sm:grid-cols-2">
+                                <div class="space-y-1.5">
+                                    <Label for="agent-employment-date"
+                                        >Start date</Label
+                                    >
+                                    <DatePicker
+                                        id="agent-employment-date"
+                                        :model-value="form.employment_date"
+                                        @update:model-value="
+                                            form.employment_date = $event
+                                        "
+                                    />
+                                    <p
+                                        v-if="form.errors.employment_date"
+                                        class="text-destructive text-xs"
+                                    >
+                                        {{ form.errors.employment_date }}
+                                    </p>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <Label for="agent-address">Address</Label>
+                                    <Input
+                                        id="agent-address"
+                                        v-model="form.address"
+                                        placeholder="e.g. 14 Commercial Avenue, Yaba, Lagos"
+                                        :class="{
+                                            'border-destructive':
+                                                form.errors.address,
+                                        }"
+                                    />
+                                    <p
+                                        v-if="form.errors.address"
+                                        class="text-destructive text-xs"
+                                    >
+                                        {{ form.errors.address }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label for="agent-photo">Photo</Label>
+                                <div class="flex items-center gap-4">
+                                    <div
+                                        class="border-muted bg-muted/40 relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+                                    >
+                                        <img
+                                            v-if="photoPreview"
+                                            :src="photoPreview"
+                                            alt="Photo preview"
+                                            class="size-full object-cover"
+                                        />
+                                        <Camera
+                                            v-else
+                                            class="text-muted-foreground size-6"
+                                        />
+                                    </div>
+                                    <Input
+                                        id="agent-photo"
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        class="h-10 text-sm"
+                                        @change="onPhotoChange"
+                                    />
+                                </div>
+                                <p
+                                    v-if="form.errors.photo"
+                                    class="text-destructive text-xs"
+                                >
+                                    {{ form.errors.photo }}
+                                </p>
+                                <p class="text-muted-foreground text-xs">
+                                    JPEG, PNG or WebP, up to 2 MB.
+                                </p>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <Label for="agent-notes">Notes</Label>
+                                <textarea
+                                    id="agent-notes"
+                                    v-model="form.notes"
+                                    placeholder="Anything other admins should know"
+                                    rows="3"
+                                    class="border-input placeholder:text-muted-foreground bg-card focus-visible:border-ring focus-visible:ring-ring/20 disabled:bg-muted w-full rounded-xl border px-3.5 py-2.5 text-base transition-[border-color,background-color] outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
+                                    :class="{
+                                        'border-destructive': form.errors.notes,
+                                    }"
+                                ></textarea>
+                                <p
+                                    v-if="form.errors.notes"
+                                    class="text-destructive text-xs"
+                                >
+                                    {{ form.errors.notes }}
+                                </p>
+                                <p v-else class="text-muted-foreground text-xs">
+                                    Only admins can see these.
+                                </p>
+                            </div>
+                        </div>
+                    </MoreDetails>
                 </CardContent>
-                <CardFooter
-                    class="flex items-center justify-between border-t pt-6"
-                >
-                    <Link :href="agentsIndex().url">
-                        <Button type="button" variant="outline">Cancel</Button>
-                    </Link>
+                <CardFooter class="flex justify-end gap-2 border-t pt-6">
+                    <Button as-child type="button" variant="outline">
+                        <Link :href="agentsIndex().url">Cancel</Link>
+                    </Button>
                     <Button type="submit" :disabled="form.processing">
                         <Loader2
                             v-if="form.processing"
-                            class="mr-1.5 size-4 animate-spin"
+                            class="size-4 animate-spin"
                         />
-                        <Briefcase v-else class="mr-1.5 size-4" />
-                        Register & Send Invitation
+                        <Mail v-else class="size-4" />
+                        Add and send invite
                     </Button>
                 </CardFooter>
             </Card>

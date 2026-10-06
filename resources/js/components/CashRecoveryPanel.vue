@@ -49,7 +49,7 @@ async function review(): Promise<void> {
         form.confirmed = false;
     } catch {
         previewError.value =
-            'The original attempt could not be verified. Reload and review again.';
+            'We could not check this payment. Reload the page and try again.';
         preview.value = null;
     }
 }
@@ -72,72 +72,92 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
 </script>
 <template>
     <section
-        class="grid gap-4 rounded-md border p-4"
+        class="grid gap-4 rounded-xl border p-4 sm:p-5"
         aria-label="Cash recovery"
     >
-        <h2 class="font-medium">Cash recovery</h2>
-        <p class="text-muted-foreground text-sm">
-            Confirm each counted return separately. Savings do not change until
-            the full amount is recovered and compensation is reviewed.
-            Unresolved evidence stays with the original payment.
-        </p>
-        <Button
-            v-if="canRecord"
-            class="w-fit"
-            variant="outline"
-            :disabled="http.processing"
-            @click="review"
-            >Review original recovery attempt</Button
-        >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h2 class="font-medium">Cash returned</h2>
+                <p class="text-muted-foreground mt-1 text-sm">
+                    Record each cash return on its own. Savings only change once
+                    the full amount is back and checked.
+                </p>
+            </div>
+            <Button
+                v-if="canRecord"
+                variant="outline"
+                :disabled="http.processing"
+                @click="review"
+                >Check payment</Button
+            >
+        </div>
         <p v-if="previewError" role="alert" class="text-destructive text-sm">
             {{ previewError }}
         </p>
-        <p v-if="preview" role="status" class="text-sm">
-            Unclaimed return balance: {{ money(preview.remaining_kobo) }}.
-            Original attempt: {{ preview.status.replaceAll('_', ' ') }}.
+        <p
+            v-if="preview"
+            role="status"
+            class="bg-muted/50 rounded-lg p-3 text-sm"
+        >
+            Still to return: <strong>{{ money(preview.remaining_kobo) }}</strong
+            >. Payment status:
+            <span class="capitalize">{{
+                preview.status.replaceAll('_', ' ')
+            }}</span
+            >.
         </p>
         <form
             v-if="canRecord && preview"
-            class="grid gap-3"
+            class="grid gap-4"
             @submit.prevent="submit"
         >
-            <Label :for="`recovery-kind-${form.recovery_reference}`"
-                >Evidence type</Label
-            >
-            <Select v-model="form.event_type">
-                <SelectTrigger
-                    :id="`recovery-kind-${form.recovery_reference}`"
-                    class="w-full"
-                    ><SelectValue
-                /></SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="return">Counted cash return</SelectItem>
-                    <SelectItem value="dispute">Recipient dispute</SelectItem>
-                    <SelectItem value="custody_uncertain"
-                        >Uncertain custody</SelectItem
-                    >
-                </SelectContent>
-            </Select>
-            <template v-if="form.event_type === 'return'"
-                ><Label :for="`recovery-amount-${form.recovery_reference}`"
-                    >Exact returned amount (NGN)</Label
+            <div class="grid gap-2">
+                <Label :for="`recovery-kind-${form.recovery_reference}`"
+                    >What happened?</Label
+                >
+                <Select v-model="form.event_type">
+                    <SelectTrigger
+                        :id="`recovery-kind-${form.recovery_reference}`"
+                        class="w-full"
+                        ><SelectValue
+                    /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="return"
+                            >Cash was returned and counted</SelectItem
+                        >
+                        <SelectItem value="dispute"
+                            >Recipient disputes it</SelectItem
+                        >
+                        <SelectItem value="custody_uncertain"
+                            >Not sure who has the cash</SelectItem
+                        >
+                    </SelectContent>
+                </Select>
+            </div>
+            <div v-if="form.event_type === 'return'" class="grid gap-2">
+                <Label :for="`recovery-amount-${form.recovery_reference}`"
+                    >Amount returned (NGN)</Label
                 ><Input
                     :id="`recovery-amount-${form.recovery_reference}`"
                     v-model="form.amount_ngn"
                     required
                     inputmode="decimal"
-            /></template>
-            <Label :for="`recovery-evidence-${form.recovery_reference}`"
-                >Evidence for the original attempt</Label
-            ><Input
-                :id="`recovery-evidence-${form.recovery_reference}`"
-                v-model="form.evidence"
-                required
-                maxlength="1000"
-            />
+                />
+            </div>
+            <div class="grid gap-2">
+                <Label :for="`recovery-evidence-${form.recovery_reference}`"
+                    >Notes</Label
+                ><Input
+                    :id="`recovery-evidence-${form.recovery_reference}`"
+                    v-model="form.evidence"
+                    required
+                    maxlength="1000"
+                    placeholder="Who returned it, when and where"
+                />
+            </div>
             <label class="flex items-center gap-2 text-sm"
-                ><input v-model="form.confirmed" type="checkbox" />I confirm
-                this amount and evidence.</label
+                ><input v-model="form.confirmed" type="checkbox" />The amount
+                and notes are correct.</label
             >
             <p
                 v-for="(error, key) in form.errors"
@@ -148,50 +168,58 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                 {{ error }}
             </p>
             <Button :disabled="form.processing || !form.confirmed" class="w-fit"
-                >Record recovery evidence</Button
+                >Save</Button
             >
         </form>
-        <div
-            v-for="recovery in recoveries"
-            :key="recovery.recovery_reference"
-            class="grid gap-2 border-t pt-3 text-sm"
-        >
-            <p>
-                {{ recovery.event_type.replaceAll('_', ' ') }} ·
-                {{ money(recovery.amount_kobo) }} ·
-                {{ recovery.status.replaceAll('_', ' ') }}
-            </p>
-            <form
-                v-if="canConfirm && recovery.status === 'awaiting_customer'"
-                class="grid gap-2"
-                @submit.prevent="
-                    confirmation.post(
-                        acknowledge.url(recovery.recovery_reference),
-                        { onSuccess: () => confirmation.reset() },
-                    )
-                "
+        <ul v-if="recoveries.length" class="divide-y border-t">
+            <li
+                v-for="recovery in recoveries"
+                :key="recovery.recovery_reference"
+                class="grid gap-2 py-3 text-sm"
             >
-                <label class="flex items-center gap-2"
-                    ><input v-model="confirmation.confirmed" type="checkbox" />I
-                    personally returned exactly
-                    {{ money(recovery.amount_kobo) }}.</label
-                >
-                <Button
-                    :disabled="
-                        confirmation.processing || !confirmation.confirmed
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="capitalize"
+                        >{{ recovery.event_type.replaceAll('_', ' ') }} ·
+                        {{ money(recovery.amount_kobo) }}</span
+                    >
+                    <span class="text-muted-foreground text-xs capitalize">{{
+                        recovery.status.replaceAll('_', ' ')
+                    }}</span>
+                </div>
+                <form
+                    v-if="canConfirm && recovery.status === 'awaiting_customer'"
+                    class="grid gap-2"
+                    @submit.prevent="
+                        confirmation.post(
+                            acknowledge.url(recovery.recovery_reference),
+                            { onSuccess: () => confirmation.reset() },
+                        )
                     "
-                    class="w-fit"
-                    >Confirm exact return</Button
                 >
-                <p
-                    v-for="(error, key) in confirmation.errors"
-                    :key="key"
-                    role="alert"
-                    class="text-destructive"
-                >
-                    {{ error }}
-                </p>
-            </form>
-        </div>
+                    <label class="flex items-center gap-2"
+                        ><input
+                            v-model="confirmation.confirmed"
+                            type="checkbox"
+                        />I returned exactly
+                        {{ money(recovery.amount_kobo) }}.</label
+                    >
+                    <Button
+                        :disabled="
+                            confirmation.processing || !confirmation.confirmed
+                        "
+                        class="w-fit"
+                        >Confirm</Button
+                    >
+                    <p
+                        v-for="(error, key) in confirmation.errors"
+                        :key="key"
+                        role="alert"
+                        class="text-destructive"
+                    >
+                        {{ error }}
+                    </p>
+                </form>
+            </li>
+        </ul>
     </section>
 </template>

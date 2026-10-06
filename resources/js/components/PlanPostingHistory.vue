@@ -31,96 +31,97 @@ function committedAt(value: string) {
 
 <template>
     <div class="space-y-3 text-sm">
-        <h3 class="font-medium">Recorded payout and deduction components</h3>
-        <p class="text-muted-foreground">
-            Each posting can have separate savings, cash and fee amounts. Do not
-            add these amounts together. Pending reservations show separately.
-        </p>
-        <p v-if="summary.as_of" class="text-muted-foreground text-xs">
-            History as of {{ committedAt(summary.as_of) }} UTC
+        <h3 class="font-medium">History</h3>
+        <p class="text-muted-foreground text-xs">
+            One entry can include separate savings, cash and fee amounts. Don't
+            add them together. Money set aside for pending withdrawals is not
+            shown here.<template v-if="summary.as_of">
+                Updated {{ committedAt(summary.as_of) }} UTC.</template
+            >
         </p>
         <template v-if="summary.history">
             <p v-if="summary.history.total === 0" class="text-muted-foreground">
-                No recorded payout or deduction components.
+                No payouts or deductions yet.
             </p>
             <p
                 v-else-if="summary.history.data.length === 0"
                 class="text-muted-foreground"
             >
-                No components on this page.
+                Nothing on this page.
                 <Link
                     :href="historyLink(1)"
                     preserve-scroll
                     class="underline underline-offset-4"
-                    >Return to the first page</Link
+                    >Go to the first page</Link
                 >
             </p>
             <ol
                 v-else
-                class="space-y-3"
-                aria-label="Recorded payout and deduction components"
+                class="divide-y rounded-xl border"
+                aria-label="Payout and deduction history"
             >
                 <li
                     v-for="entry in summary.history.data"
                     :key="entry.key"
-                    class="rounded-md border p-3"
+                    class="space-y-1 p-3"
                 >
                     <div class="flex flex-wrap justify-between gap-2">
                         <p class="font-medium">{{ entry.title }}</p>
                         <p class="font-medium">{{ entry.amount }}</p>
                     </div>
-                    <p class="text-muted-foreground mt-2 text-xs">
-                        Occurred {{ entry.occurred_on ?? 'date unavailable'
-                        }}<template v-if="entry.timezone">
-                            · {{ entry.timezone }}</template
-                        >
-                    </p>
-                    <p class="text-muted-foreground mt-1 text-xs">
-                        Recorded {{ committedAt(entry.committed_at) }} UTC
-                    </p>
-                    <p class="text-muted-foreground mt-1 text-xs break-all">
-                        Posting reference: {{ entry.reference }}
+                    <p class="text-muted-foreground text-xs break-all">
+                        {{ entry.occurred_on ?? 'Date unknown' }} · Saved
+                        {{ committedAt(entry.committed_at) }} UTC · Ref
+                        {{ entry.reference }}
                     </p>
                 </li>
             </ol>
             <nav
-                class="flex flex-wrap items-center gap-3"
+                v-if="summary.history.total > 0"
+                class="text-muted-foreground flex flex-wrap items-center gap-3 text-xs"
                 aria-label="Payout and deduction history pages"
             >
                 <Button
                     v-if="summary.history.current_page > 1"
                     variant="outline"
+                    size="sm"
                     as-child
                     ><Link
                         :href="historyLink(summary.history.current_page - 1)"
                         preserve-scroll
-                        >Previous components</Link
+                        >Previous</Link
                     ></Button
                 >
                 <span
                     >Page {{ summary.history.current_page }} of
                     {{ summary.history.last_page }} ·
-                    {{ summary.history.total }} components</span
+                    {{ summary.history.total }} entries</span
                 >
                 <Button
                     v-if="
                         summary.history.current_page < summary.history.last_page
                     "
                     variant="outline"
+                    size="sm"
                     as-child
                     ><Link
                         :href="historyLink(summary.history.current_page + 1)"
                         preserve-scroll
-                        >Next components</Link
+                        >Next</Link
                     ></Button
                 >
-                <span>Components per page:</span>
+                <span class="ml-auto">Show</span>
                 <Link
                     v-for="size in [25, 50, 100]"
                     :key="size"
                     :href="historyLink(1, size)"
                     preserve-scroll
-                    class="underline underline-offset-4"
+                    class="underline-offset-4 hover:underline"
+                    :class="
+                        summary.history.per_page === size
+                            ? 'text-foreground font-medium'
+                            : ''
+                    "
                     :aria-current="
                         summary.history.per_page === size ? 'true' : undefined
                     "
@@ -129,10 +130,12 @@ function committedAt(value: string) {
             </nav>
         </template>
         <template v-else>
-            <p class="font-medium">Verified posting history unavailable.</p>
-            <Button variant="outline" as-child
+            <p class="text-muted-foreground">
+                This history is not available right now.
+            </p>
+            <Button variant="outline" size="sm" as-child
                 ><Link :href="showPlan(planId)" preserve-scroll
-                    >Reload posting history</Link
+                    >Reload history</Link
                 ></Button
             >
         </template>

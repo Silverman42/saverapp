@@ -4,6 +4,8 @@ import type { PlanEstimate } from '@/types/plan-estimate';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref, watch } from 'vue';
 import { AlertCircle, CheckCircle2 } from '@lucide/vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import type { AcceptableValue } from 'reka-ui';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
-    CardDescription,
     CardFooter,
     CardHeader,
     CardTitle,
@@ -132,7 +133,7 @@ defineOptions({
             { title: 'Dashboard', href: dashboard() },
             { title: 'Plans', href: plansIndex() },
             { title: 'Plan', href: plansIndex() },
-            { title: 'Amend terms', href: '#' },
+            { title: 'Change terms', href: '#' },
         ],
     },
 });
@@ -234,14 +235,15 @@ const requestPreview = (): void => {
             replace: true,
             onSuccess: (currentPage) => {
                 const current = currentPage.props.plan as
-                    { id?: string } | undefined;
+                    | { id?: string }
+                    | undefined;
                 if (
                     currentPage.component !== 'plans/Edit' ||
                     current?.id !== props.plan.id ||
                     !currentPage.props.preview
                 ) {
                     previewMessage.value =
-                        'A current preview was not returned. Your draft is retained. Build a fresh preview before confirming.';
+                        'We could not load the preview. Your entries are kept. Try Preview again.';
                     return;
                 }
                 previewRequiresRefresh.value = false;
@@ -250,23 +252,23 @@ const requestPreview = (): void => {
             onError: (errors) => {
                 form.clearErrors().setError(errors);
                 previewMessage.value =
-                    'The preview could not be built. Review the validation errors and build a fresh preview before confirming.';
+                    'Some details need fixing. Check the fields below, then preview again.';
             },
             onHttpException: (response) => {
                 previewMessage.value =
                     response.status === 403 || response.status === 404
-                        ? 'The preview is unavailable or your access has changed. Reload to check current access before confirming.'
-                        : 'The preview could not be verified. Your draft is retained. Build a fresh preview before confirming.';
+                        ? 'This page is no longer available to you. Reload to check your access.'
+                        : 'We could not check the preview. Your entries are kept. Try Preview again.';
                 return false;
             },
             onNetworkError: () => {
                 previewMessage.value =
-                    'The preview could not be checked because the connection failed. Your draft is retained. Check your connection and build a fresh preview before confirming.';
+                    'The connection failed. Your entries are kept. Check your connection and preview again.';
                 return false;
             },
             onCancel: () => {
                 previewMessage.value =
-                    'Preview checking was interrupted. Your draft is retained. Build a fresh preview before confirming.';
+                    'The preview was interrupted. Your entries are kept. Try Preview again.';
             },
             onFinish: () => {
                 previewBusy.value = false;
@@ -302,30 +304,28 @@ const submit = (): void => {
 <template>
     <Head :title="`Amend ${plan.id}`" />
 
-    <div class="mx-auto w-full max-w-5xl space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Amend thrift plan
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ plan.id }} · {{ customer.name }} · revision
-                {{ plan.terms_revision }}
-            </p>
-        </div>
+    <div class="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader
+            title="Change plan terms"
+            :description="`${plan.current_terms.name} for ${customer.name}.`"
+        />
 
         <Alert v-if="financial_terms_locked">
             <AlertCircle class="size-4" />
-            <AlertTitle>Financial and schedule terms are locked</AlertTitle>
+            <AlertTitle>Some terms can't be changed</AlertTitle>
             <AlertDescription
-                >Activity has started. You can correct the plan name and the
-                notes that the Customer sees. You cannot change the amount,
-                dates, duration, or fee terms.</AlertDescription
+                >Payments have started, so you can only change the plan name and
+                the notes for the customer.</AlertDescription
             >
         </Alert>
 
-        <p v-if="previewBusy" role="status" aria-live="polite">
-            Checking the current agreement and schedule. Wait for the preview
-            before confirming.
+        <p
+            v-if="previewBusy"
+            role="status"
+            aria-live="polite"
+            class="text-muted-foreground text-sm"
+        >
+            Preparing the preview…
         </p>
         <div
             v-if="previewMessage"
@@ -334,7 +334,7 @@ const submit = (): void => {
             tabindex="-1"
             aria-live="assertive"
             aria-atomic="true"
-            class="rounded-lg border p-4 text-sm"
+            class="rounded-xl border p-4 text-sm"
         >
             <p>{{ previewMessage }}</p>
             <ul v-if="previewGeneralErrors.length" class="mt-2 grid gap-1">
@@ -346,11 +346,7 @@ const submit = (): void => {
 
         <Card>
             <CardHeader>
-                <CardTitle>Proposed revision</CardTitle>
-                <CardDescription
-                    >The plan history keeps earlier revisions and schedule
-                    slots.</CardDescription
-                >
+                <CardTitle>1. New terms</CardTitle>
             </CardHeader>
             <form @submit.prevent="submit">
                 <CardContent class="grid gap-5 sm:grid-cols-2">
@@ -370,9 +366,7 @@ const submit = (): void => {
                         </p>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-plan-amount"
-                            >Daily contribution amount (NGN)</Label
-                        >
+                        <Label for="edit-plan-amount">Daily amount (NGN)</Label>
                         <Input
                             id="edit-plan-amount"
                             v-model="form.amount_ngn"
@@ -384,6 +378,23 @@ const submit = (): void => {
                             class="text-destructive text-sm"
                         >
                             {{ form.errors.amount_ngn }}
+                        </p>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="edit-plan-days">Number of days</Label>
+                        <Input
+                            id="edit-plan-days"
+                            v-model.number="form.contribution_days"
+                            type="number"
+                            min="1"
+                            max="366"
+                            :disabled="busy || financial_terms_locked"
+                        />
+                        <p
+                            v-if="form.errors.contribution_days"
+                            class="text-destructive text-sm"
+                        >
+                            {{ form.errors.contribution_days }}
                         </p>
                     </div>
                     <div class="grid gap-2">
@@ -404,31 +415,14 @@ const submit = (): void => {
                         </p>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-plan-days">Contribution days</Label>
-                        <Input
-                            id="edit-plan-days"
-                            v-model.number="form.contribution_days"
-                            type="number"
-                            min="1"
-                            max="366"
-                            :disabled="busy || financial_terms_locked"
-                        />
-                        <p
-                            v-if="form.errors.contribution_days"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.contribution_days }}
-                        </p>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="edit-plan-fee">Fee option</Label>
+                        <Label for="edit-plan-fee">Fee</Label>
                         <Select
                             :model-value="String(form.fee_rule_id)"
                             :disabled="busy || financial_terms_locked"
                             @update:model-value="setFeeRule"
                         >
                             <SelectTrigger id="edit-plan-fee" class="w-full"
-                                ><SelectValue placeholder="Choose fee option"
+                                ><SelectValue placeholder="Choose a fee"
                             /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -449,7 +443,7 @@ const submit = (): void => {
                     </div>
                     <div class="grid gap-2 sm:col-span-2">
                         <Label for="edit-plan-notes"
-                            >Customer-visible notes
+                            >Notes for the customer
                             <span class="text-muted-foreground font-normal"
                                 >(optional)</span
                             ></Label
@@ -469,9 +463,15 @@ const submit = (): void => {
                             {{ form.errors.customer_visible_notes }}
                         </p>
                     </div>
+                    <div class="border-t pt-5 sm:col-span-2">
+                        <h3 class="text-sm font-medium">Why the change?</h3>
+                    </div>
                     <div class="grid gap-2 sm:col-span-2">
                         <Label for="edit-plan-reason"
-                            >Internal reason for revision</Label
+                            >Reason
+                            <span class="text-muted-foreground font-normal"
+                                >(staff only)</span
+                            ></Label
                         >
                         <textarea
                             id="edit-plan-reason"
@@ -490,7 +490,7 @@ const submit = (): void => {
                     </div>
                     <div class="grid gap-2 sm:col-span-2">
                         <Label for="edit-plan-explanation"
-                            >Explanation for Customer</Label
+                            >Message for the customer</Label
                         >
                         <textarea
                             id="edit-plan-explanation"
@@ -509,22 +509,24 @@ const submit = (): void => {
                     </div>
                 </CardContent>
                 <CardFooter
-                    class="flex flex-wrap justify-between gap-3 border-t pt-5"
+                    class="mt-6 flex flex-wrap justify-between gap-3 border-t pt-5"
                 >
-                    <Button v-if="!busy" as-child variant="outline"
+                    <Button v-if="!busy" as-child variant="ghost"
                         ><Link :href="showPlan(plan.id).url"
-                            >Back to plan</Link
+                            >Cancel</Link
                         ></Button
                     >
                     <Button
                         type="button"
-                        variant="secondary"
+                        :variant="
+                            preview && previewIsCurrent ? 'outline' : 'default'
+                        "
                         :disabled="busy"
                         @click="requestPreview"
                         >{{
                             previewBusy
-                                ? 'Building revision preview…'
-                                : 'Build revision preview'
+                                ? 'Preparing preview…'
+                                : 'Preview changes'
                         }}</Button
                     >
                 </CardFooter>
@@ -532,118 +534,102 @@ const submit = (): void => {
         </Card>
 
         <Card v-if="preview && !previewBusy && !previewRequiresRefresh">
-            <CardHeader>
-                <div class="flex items-start gap-3">
-                    <CheckCircle2 class="text-primary mt-0.5 size-5 shrink-0" />
-                    <div>
-                        <CardTitle>Revision preview</CardTitle
-                        ><CardDescription
-                            >Review the schedule and fee terms. Then confirm
-                            them with the Customer.</CardDescription
-                        >
-                    </div>
-                </div>
+            <CardHeader class="flex flex-row items-center gap-2">
+                <CheckCircle2 class="text-primary size-5 shrink-0" />
+                <CardTitle>2. Check and confirm</CardTitle>
             </CardHeader>
             <CardContent class="space-y-5">
-                <div class="grid gap-4 sm:grid-cols-3">
-                    <div class="rounded-xl border p-4">
+                <p class="text-muted-foreground text-sm">
+                    Go through the new terms with the customer before you save.
+                </p>
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="bg-muted/40 rounded-xl p-4">
                         <p class="text-muted-foreground text-xs">
-                            Daily contribution
+                            Daily amount
                         </p>
                         <p class="mt-1 font-semibold">
                             {{ preview.terms.formatted_contribution_amount }}
                         </p>
                     </div>
-                    <div class="rounded-xl border p-4">
-                        <p class="text-muted-foreground text-xs">
-                            Scheduled days
-                        </p>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-xs">Days</p>
                         <p class="mt-1 font-semibold">
                             {{ preview.terms.contribution_days }}
                         </p>
                     </div>
-                    <div class="rounded-xl border p-4">
-                        <p class="text-muted-foreground text-xs">
-                            Schedule end
-                        </p>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-xs">Ends on</p>
                         <p class="mt-1 font-semibold">
                             {{ preview.terms.scheduled_end_date }}
                         </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            Timezone stays with this plan
-                        </p>
                     </div>
                 </div>
-                <div class="space-y-3 rounded-xl border p-4">
-                    <h2 class="font-medium">Contractual estimates</h2>
-                    <PlanEstimateSummary :estimate="preview.estimate" />
-                </div>
 
-                <div class="rounded-xl border p-4">
-                    <h2 class="font-medium">Fee terms</h2>
-                    <p class="mt-2 text-sm font-medium">
-                        {{ preview.fee.name }} ·
+                <PlanEstimateSummary :estimate="preview.estimate" />
+
+                <div class="space-y-1 text-sm">
+                    <p class="font-medium">
+                        Fee: {{ preview.fee.name }} ·
                         {{ preview.fee.formatted_amount }}
                     </p>
-                    <p class="text-muted-foreground mt-1 text-sm">
+                    <p class="text-muted-foreground">
                         {{ preview.fee.customer_description }}
                     </p>
                     <p
                         v-if="preview.fee.early_termination_description"
-                        class="text-muted-foreground mt-2 text-sm"
+                        class="text-muted-foreground"
                     >
-                        Early termination:
+                        If the plan ends early:
                         {{ preview.fee.early_termination_description }}
                     </p>
-                    <p class="text-muted-foreground mt-2 text-xs">
-                        {{
-                            preview.fee.estimate_available
-                                ? 'The related financial process calculates the actual fee.'
-                                : 'Calculated when a withdrawal is quoted.'
-                        }}
-                    </p>
                 </div>
-                <div>
-                    <h2 class="font-medium">First scheduled dates</h2>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                        <Badge
-                            v-for="slot in preview.slots.slice(0, 7)"
-                            :key="slot.ordinal"
-                            variant="outline"
-                            >{{ slot.due_date }}</Badge
-                        >
-                        <Badge
-                            v-if="preview.slots.length > 7"
-                            variant="secondary"
-                            >+ {{ preview.slots.length - 7 }} more days</Badge
-                        >
+
+                <MoreDetails>
+                    <div class="text-muted-foreground space-y-4 text-sm">
+                        <div>
+                            <p class="text-foreground font-medium">
+                                First payment days
+                            </p>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <Badge
+                                    v-for="slot in preview.slots.slice(0, 7)"
+                                    :key="slot.ordinal"
+                                    variant="outline"
+                                    >{{ slot.due_date }}</Badge
+                                >
+                                <Badge
+                                    v-if="preview.slots.length > 7"
+                                    variant="secondary"
+                                    >+ {{ preview.slots.length - 7 }} more
+                                    days</Badge
+                                >
+                            </div>
+                        </div>
+                        <p>
+                            {{
+                                preview.fee.estimate_available
+                                    ? 'The fee shown is an estimate. The final fee is worked out when money is paid out.'
+                                    : 'The fee amount is worked out when a withdrawal is requested.'
+                            }}
+                        </p>
+                        <p>
+                            The plan keeps the same time zone. Earlier terms
+                            stay in the plan history. This change does not add,
+                            remove or recalculate any money.
+                        </p>
                     </div>
-                </div>
-                <Alert
-                    ><AlertCircle class="size-4" /><AlertTitle
-                        >Actual collections and balances remain
-                        unavailable</AlertTitle
-                    ><AlertDescription
-                        >This revision changes agreed terms only. It will not
-                        add, remove, or recalculate financial
-                        activity.</AlertDescription
-                    ></Alert
-                >
-                <div class="flex items-start gap-3 rounded-xl border p-4">
+                </MoreDetails>
+
+                <div class="bg-muted/40 flex items-start gap-3 rounded-xl p-4">
                     <Checkbox
                         id="revision-agreement"
                         v-model="form.customer_agreement_attested"
                         :disabled="busy || !previewIsCurrent"
                     />
-                    <div class="grid gap-1">
-                        <Label for="revision-agreement" class="leading-5"
-                            >I confirmed this revised agreement with the
-                            Customer.</Label
-                        >
-                        <p class="text-muted-foreground text-xs">
-                            The assigned Agent records the Customer’s agreement.
-                        </p>
-                    </div>
+                    <Label for="revision-agreement" class="leading-5"
+                        >I went through the new terms with the customer, and
+                        they agreed.</Label
+                    >
                 </div>
                 <p
                     v-if="form.errors.customer_agreement_attested"
@@ -661,8 +647,18 @@ const submit = (): void => {
                     v-if="!previewIsCurrent"
                     class="text-sm text-amber-700 dark:text-amber-400"
                 >
-                    The terms changed after this preview. Make a new preview
-                    before you confirm.
+                    You changed the details. Preview the changes again before
+                    you save.
+                </p>
+                <p
+                    v-if="
+                        previewIsCurrent &&
+                        (form.reason.trim().length < 3 ||
+                            form.customer_explanation.trim().length < 3)
+                    "
+                    class="text-muted-foreground text-sm"
+                >
+                    Add a reason and a message for the customer to continue.
                 </p>
             </CardContent>
             <CardFooter class="flex justify-end border-t pt-5">
@@ -676,11 +672,7 @@ const submit = (): void => {
                     "
                     @click="submit"
                 >
-                    {{
-                        form.processing
-                            ? 'Saving revision…'
-                            : 'Confirm revision'
-                    }}
+                    {{ form.processing ? 'Saving…' : 'Save changes' }}
                 </Button>
             </CardFooter>
         </Card>

@@ -43,41 +43,29 @@ const submitEmailChange = (): void => {
 
     <h1 class="sr-only">Profile settings</h1>
 
-    <div class="flex flex-col space-y-6">
-        <Heading
-            variant="small"
-            title="Profile"
-            description="Review your account details and change your identity details securely."
-        />
-
-        <section class="space-y-3 rounded-lg border p-5">
-            <h2 class="text-base font-medium">Name and phone</h2>
-            <p class="text-muted-foreground text-sm">
-                Your current name is {{ user.name }}. Change your name and phone
-                in your account profile. You may need to sign in again.
-            </p>
-            <Link v-if="profileEditUrl" :href="profileEditUrl">
-                <Button variant="outline">Open profile</Button>
-            </Link>
+    <div class="flex flex-col space-y-10">
+        <section class="space-y-4">
+            <Heading
+                variant="small"
+                title="Name and phone"
+                :description="`You are signed in as ${user.name}.`"
+            />
+            <Button v-if="profileEditUrl" variant="outline" as-child>
+                <Link :href="profileEditUrl">Edit profile</Link>
+            </Button>
             <p v-else class="text-muted-foreground text-sm">
-                Contact an authorized administrator to update your profile
-                details.
+                To change these, ask an admin.
             </p>
         </section>
 
-        <form
-            class="space-y-4 rounded-lg border p-5"
-            @submit.prevent="submitEmailChange"
-        >
-            <div>
-                <h2 class="text-base font-medium">Email address</h2>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    Your current email stays active until both addresses confirm
-                    the change.
-                </p>
-            </div>
+        <form class="space-y-4" @submit.prevent="submitEmailChange">
+            <Heading
+                variant="small"
+                title="Email address"
+                description="We will email both addresses to confirm. Your current email works until then."
+            />
             <div class="grid gap-2">
-                <Label for="email">New email address</Label>
+                <Label for="email">New email</Label>
                 <Input
                     id="email"
                     v-model="emailForm.email"
@@ -88,21 +76,24 @@ const submitEmailChange = (): void => {
                 />
                 <InputError :message="emailForm.errors.email" />
             </div>
-            <p v-if="emailFormProfileError" class="text-destructive text-sm">
+            <p
+                v-if="emailFormProfileError"
+                role="alert"
+                class="text-destructive text-sm"
+            >
                 {{ emailFormProfileError }}
             </p>
             <Button type="submit" :disabled="emailForm.processing">{{
-                emailForm.processing
-                    ? 'Sending confirmations…'
-                    : 'Request email change'
+                emailForm.processing ? 'Sending…' : 'Change email'
             }}</Button>
         </form>
 
         <p
             v-if="props.status === 'email-change-complete'"
+            role="status"
             class="text-sm font-medium text-green-700"
         >
-            Your email address changed. Sign in with the new address.
+            Your email has changed. Use the new one next time you sign in.
         </p>
 
         <DeleteUser />

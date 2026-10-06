@@ -5,6 +5,11 @@ import { ref, watch } from 'vue';
 import { dashboard } from '@/routes';
 import { index, show } from '@/routes/customers';
 import { store, update, operation, review } from '@/routes/customers/recovery';
+import { ShieldCheck } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -106,14 +111,14 @@ async function submit(
         if (!result || form.hasErrors) {
             uncertain.value = false;
             sessionStorage.removeItem(key);
-            message.value = 'Review the validation errors before confirming.';
+            message.value = 'Please fix the errors below and try again.';
             return;
         }
         sessionStorage.removeItem(key);
         uncertain.value = false;
         form.attempt_reference = crypto.randomUUID();
         form.confirmed = false;
-        message.value = 'Recovery operation committed.';
+        message.value = 'Saved.';
         router.reload();
     } catch (error) {
         const status = (error as { response?: { status?: number } }).response
@@ -123,8 +128,8 @@ async function submit(
             sessionStorage.removeItem(key);
         }
         message.value = uncertain.value
-            ? 'The outcome is uncertain. Check the original operation.'
-            : 'The operation was not committed. Check your access, verification and current request version.';
+            ? 'We are not sure this was saved. Check the result before trying again.'
+            : 'This was not saved. Check your access and the details, then reload the page.';
     }
 }
 async function resolveOutcome(): Promise<void> {
@@ -135,14 +140,14 @@ async function resolveOutcome(): Promise<void> {
                 attempt_reference: form.attempt_reference,
             }),
         )) as { state: string };
-        message.value = `Original operation: ${result.state}.`;
+        message.value = `Result: ${result.state.replaceAll('_', ' ')}.`;
         sessionStorage.removeItem(key);
         uncertain.value = false;
         form.attempt_reference = crypto.randomUUID();
         router.reload();
     } catch {
         message.value =
-            'No committed result could be confirmed. Retain the reference and check again before submitting another operation.';
+            'We could not find a saved result yet. Wait a moment and check again before trying again.';
     }
 }
 defineOptions({
@@ -150,7 +155,7 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Customers', href: index() },
-            { title: 'Assisted recovery', href: '#' },
+            { title: 'Account access help', href: '#' },
         ],
     },
 });
@@ -158,60 +163,106 @@ defineOptions({
 <template>
     <div class="mx-auto max-w-3xl space-y-6">
         <Head title="Customer assisted recovery" />
-        <header>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Customer assisted recovery
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ customer.name }} · {{ customer.reference }}
-            </p>
-        </header>
+        <PageHeader
+            title="Account access help"
+            :description="`Give ${customer.name} new login details after checking who they are.`"
+        >
+            <template #actions>
+                <Button as-child variant="outline">
+                    <Link :href="show.url(customer.reference)"
+                        >Back to customer</Link
+                    >
+                </Button>
+            </template>
+        </PageHeader>
+
         <p
             v-if="message"
             role="status"
             aria-live="polite"
-            class="rounded-lg border p-4 text-sm"
+            class="rounded-xl border p-4 text-sm"
         >
             {{ message }}
         </p>
-        <Card v-if="recovery"
-            ><CardHeader
-                ><CardTitle>{{ recovery.state.replaceAll('_', ' ') }}</CardTitle
-                ><CardDescription
-                    >Current credentials stop working only after approval. The
-                    Customer chooses their own password.</CardDescription
-                ></CardHeader
-            ><CardContent class="space-y-2 text-sm"
-                ><p>Proposed email: {{ recovery.proposed_email }}</p>
-                <p>Review deadline: {{ recovery.request_expires_at }}</p>
-                <p v-if="recovery.activation_expires_at">
-                    Activation deadline: {{ recovery.activation_expires_at }}
-                </p>
-                <p class="break-all">
-                    Request: {{ recovery.reference }}
-                </p></CardContent
-            ></Card
-        >
-        <Card v-if="uncertain"
-            ><CardContent class="space-y-4 pt-6"
-                ><p class="text-sm break-all">
-                    Original reference: {{ form.attempt_reference }}
-                </p>
-                <Button :disabled="lookup.processing" @click="resolveOutcome"
-                    >Check operation</Button
+
+        <Card v-if="recovery">
+            <CardHeader
+                class="flex flex-row flex-wrap items-start justify-between gap-3"
+            >
+                <div class="space-y-1.5">
+                    <CardTitle class="text-base">Current request</CardTitle>
+                    <CardDescription
+                        >Old login details keep working until this is approved.
+                        The customer picks their own password.</CardDescription
+                    >
+                </div>
+                <Badge variant="secondary" class="capitalize">{{
+                    recovery.state.replaceAll('_', ' ')
+                }}</Badge>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground">New email</dt>
+                        <dd class="mt-0.5 break-all">
+                            {{ recovery.proposed_email }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Review by</dt>
+                        <dd class="mt-0.5">
+                            {{ recovery.request_expires_at }}
+                        </dd>
+                    </div>
+                    <div v-if="recovery.activation_expires_at">
+                        <dt class="text-muted-foreground">Set up by</dt>
+                        <dd class="mt-0.5">
+                            {{ recovery.activation_expires_at }}
+                        </dd>
+                    </div>
+                </dl>
+                <MoreDetails>
+                    <p class="text-muted-foreground text-xs break-all">
+                        Request reference: {{ recovery.reference }}
+                    </p>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <Card v-if="uncertain">
+            <CardHeader>
+                <CardTitle class="text-base"
+                    >We're not sure the last step was saved</CardTitle
                 >
-                <Button
-                    v-if="canRetryOriginal"
-                    variant="outline"
-                    :disabled="form.processing"
-                    @click="submit(action, true)"
-                    >Retry original operation</Button
-                ></CardContent
-            ></Card
-        >
-        <Card v-else-if="can_initiate || (can_review && recovery)"
-            ><CardContent class="pt-6"
-                ><form
+                <CardDescription
+                    >Check the result before you try again.</CardDescription
+                >
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        :disabled="lookup.processing"
+                        @click="resolveOutcome"
+                        >Check result</Button
+                    >
+                    <Button
+                        v-if="canRetryOriginal"
+                        variant="outline"
+                        :disabled="form.processing"
+                        @click="submit(action, true)"
+                        >Try again</Button
+                    >
+                </div>
+                <MoreDetails>
+                    <p class="text-muted-foreground text-xs break-all">
+                        Reference: {{ form.attempt_reference }}
+                    </p>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+        <Card v-else-if="can_initiate || (can_review && recovery)">
+            <CardContent>
+                <form
                     class="space-y-5"
                     @submit.prevent="
                         submit(
@@ -221,6 +272,18 @@ defineOptions({
                         )
                     "
                 >
+                    <p
+                        v-if="can_review"
+                        class="bg-muted/50 rounded-lg p-3 text-sm"
+                    >
+                        Before you decide, confirm your password and
+                        authenticator code.
+                        <Link
+                            :href="review.url(customer.reference)"
+                            class="font-medium underline underline-offset-4"
+                            >Confirm now</Link
+                        >
+                    </p>
                     <template
                         v-if="
                             can_initiate &&
@@ -232,79 +295,80 @@ defineOptions({
                             v-if="
                                 !recovery || terminal.includes(recovery.state)
                             "
+                            class="space-y-2"
                         >
-                            <Label for="new-email">Proposed new email</Label
+                            <Label for="new-email">New email</Label
                             ><Input
                                 id="new-email"
                                 v-model="form.email"
                                 type="email"
-                                class="mt-2"
                             />
                         </div>
-                        <fieldset class="space-y-3 rounded-lg border p-4">
-                            <legend class="px-2 font-medium">
-                                In-person identity verification
+                        <fieldset class="space-y-4 rounded-xl border p-4">
+                            <legend class="px-2 text-sm font-medium">
+                                Check their identity in person
                             </legend>
-                            <label class="flex gap-3"
+                            <label class="flex gap-3 text-sm"
                                 ><input
                                     v-model="form.in_person"
                                     type="checkbox"
-                                />I met the Customer in person.</label
-                            ><label class="flex gap-3"
+                                />I met the customer in person.</label
+                            ><label class="flex gap-3 text-sm"
                                 ><input
                                     v-model="form.record_compared"
                                     type="checkbox"
-                                />I compared their identity with the Customer
+                                />I checked their ID against their customer
                                 record.</label
                             >
-                            <div>
-                                <Label for="verified-at"
-                                    >Verification time (ISO date and
-                                    timezone)</Label
-                                ><Input
-                                    id="verified-at"
-                                    v-model="form.verified_at"
-                                    class="mt-2"
-                                />
-                            </div>
-                            <div>
+                            <div class="space-y-2">
                                 <Label for="procedure"
-                                    >Approved procedure reference</Label
+                                    >Procedure reference</Label
                                 ><Input
                                     id="procedure"
                                     v-model="form.procedure_reference"
                                     maxlength="150"
-                                    class="mt-2"
                                 />
                             </div>
-                            <div>
+                            <div class="space-y-2">
                                 <Label for="verification-notes"
-                                    >Protected verification notes</Label
+                                    >Private notes</Label
                                 ><textarea
                                     id="verification-notes"
                                     v-model="form.notes"
                                     maxlength="2000"
-                                    class="border-input mt-2 min-h-24 w-full rounded-md border p-3"
+                                    class="border-input min-h-24 w-full rounded-md border p-3 text-sm"
                                 />
-                            </div></fieldset
-                    ></template>
-                    <div>
-                        <Label for="decision-reason"
-                            >Decision or verification reason</Label
+                            </div>
+                            <MoreDetails label="More options">
+                                <div class="space-y-2">
+                                    <Label for="verified-at"
+                                        >When you checked</Label
+                                    ><Input
+                                        id="verified-at"
+                                        v-model="form.verified_at"
+                                    />
+                                    <p class="text-muted-foreground text-xs">
+                                        Filled in with the current time. Only
+                                        change it if you checked earlier.
+                                    </p>
+                                </div>
+                            </MoreDetails>
+                        </fieldset></template
+                    >
+                    <div class="space-y-2">
+                        <Label for="decision-reason">Reason</Label
                         ><Input
                             id="decision-reason"
                             v-model="form.reason"
                             maxlength="500"
-                            class="mt-2"
                         />
                     </div>
-                    <label class="flex items-start gap-3"
+                    <label class="flex items-start gap-3 text-sm"
                         ><input
                             v-model="form.confirmed"
                             type="checkbox"
                             class="mt-1"
-                        />I confirm this recovery action and its stated
-                        effects.</label
+                        />I understand what this step does.</label
                     >
                     <ul
                         v-if="form.hasErrors"
@@ -315,14 +379,14 @@ defineOptions({
                             {{ error }}
                         </li>
                     </ul>
-                    <div class="flex flex-wrap gap-3">
+                    <div class="flex flex-wrap gap-2">
                         <Button
                             v-if="
                                 can_initiate &&
                                 (!recovery || terminal.includes(recovery.state))
                             "
                             :disabled="form.processing || !form.confirmed"
-                            >Submit verified request</Button
+                            >Send request</Button
                         ><Button
                             v-if="
                                 can_initiate &&
@@ -330,7 +394,7 @@ defineOptions({
                                 unapproved.includes(recovery.state)
                             "
                             :disabled="form.processing || !form.confirmed"
-                            >Record current verification</Button
+                            >Save check</Button
                         ><template
                             v-if="
                                 can_review &&
@@ -345,7 +409,7 @@ defineOptions({
                                     recovery.state !== 'awaiting_approval'
                                 "
                                 @click="submit('approve')"
-                                >Approve and revoke credentials</Button
+                                >Approve</Button
                             ><Button
                                 type="button"
                                 variant="outline"
@@ -365,7 +429,7 @@ defineOptions({
                             type="button"
                             :disabled="form.processing || !form.confirmed"
                             @click="submit('reissue')"
-                            >Reissue activation link</Button
+                            >Send new link</Button
                         ><Button
                             v-if="
                                 recovery &&
@@ -375,99 +439,102 @@ defineOptions({
                                         unapproved.includes(recovery.state)))
                             "
                             type="button"
-                            variant="outline"
+                            variant="ghost"
+                            class="text-destructive"
                             :disabled="form.processing || !form.confirmed"
                             @click="submit('cancel')"
-                            >Cancel recovery</Button
+                            >Cancel request</Button
                         >
                     </div>
-                    <p v-if="can_review" class="text-muted-foreground text-sm">
-                        Security decisions require fresh password and
-                        authenticator confirmation.
-                        <Link
-                            :href="review.url(customer.reference)"
-                            class="underline"
-                            >Confirm authentication</Link
-                        >
-                        before making a decision.
+                    <p
+                        v-if="
+                            can_review &&
+                            recovery &&
+                            unapproved.includes(recovery.state)
+                        "
+                        class="text-muted-foreground text-xs"
+                    >
+                        Approving stops the old login details from working.
                     </p>
-                </form></CardContent
-            ></Card
-        >
-        <Card v-if="!uncertain && !can_initiate && !recovery"
-            ><CardContent class="pt-6"
-                ><p class="text-muted-foreground text-sm">
-                    No recovery request is waiting for review. To start a
-                    recovery, the current Agent must record an in-person check.
-                </p></CardContent
-            ></Card
-        >
-        <Card v-if="events.length"
-            ><CardHeader><CardTitle>Protected history</CardTitle></CardHeader
-            ><CardContent
-                ><ol class="space-y-4">
-                    <li
-                        v-for="(event, position) in events"
-                        :key="position"
-                        class="rounded-lg border p-4 text-sm"
-                    >
-                        <p class="font-medium">
-                            {{
-                                event.type
-                                    .replace('auth.customer_recovery_', '')
-                                    .replaceAll('_', ' ')
-                            }}
-                            · {{ event.at }}
-                        </p>
-                        <p>
-                            Actor:
-                            {{
-                                event.actor_id ?? 'System / Customer activation'
-                            }}
-                        </p>
-                        <dl class="mt-2 space-y-2">
-                            <div
-                                v-for="(value, field) in event.details"
-                                :key="field"
-                            >
-                                <dt class="text-muted-foreground">
-                                    {{ String(field).replaceAll('_', ' ') }}
-                                </dt>
-                                <dd class="break-words whitespace-pre-wrap">
-                                    {{ value }}
-                                </dd>
-                            </div>
-                        </dl>
-                    </li>
-                </ol></CardContent
-            ></Card
-        >
-        <Card v-if="deliveries.length"
-            ><CardHeader><CardTitle>Delivery outcomes</CardTitle></CardHeader
-            ><CardContent
-                ><ul class="space-y-3 text-sm">
-                    <li
-                        v-for="(delivery, position) in deliveries"
-                        :key="position"
-                    >
-                        <p>
-                            {{ delivery.purpose.replaceAll('_', ' ') }} ·
-                            {{ delivery.channel }} ·
-                            {{ delivery.status }}
-                        </p>
-                        <p
-                            v-if="delivery.failure_reason"
-                            class="text-muted-foreground"
+                </form>
+            </CardContent>
+        </Card>
+        <EmptyState
+            v-if="!uncertain && !can_initiate && !recovery"
+            :icon="ShieldCheck"
+            title="No request to review"
+            description="The customer's agent must check their identity in person to start one."
+        />
+        <Card v-if="events.length || deliveries.length">
+            <CardHeader>
+                <CardTitle class="text-base">History</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <MoreDetails
+                    v-if="events.length"
+                    :label="`Show ${events.length} step${events.length === 1 ? '' : 's'}`"
+                >
+                    <ol class="divide-y">
+                        <li
+                            v-for="(event, position) in events"
+                            :key="position"
+                            class="space-y-1 py-3 text-sm"
                         >
-                            {{ delivery.failure_reason }}
-                        </p>
-                    </li>
-                </ul></CardContent
-            ></Card
-        >
-        <Link :href="show.url(customer.reference)" class="text-sm underline"
-            >Back to Customer</Link
-        >
+                            <p class="font-medium capitalize">
+                                {{
+                                    event.type
+                                        .replace('auth.customer_recovery_', '')
+                                        .replaceAll('_', ' ')
+                                }}
+                                <span class="text-muted-foreground font-normal"
+                                    >· {{ event.at }}</span
+                                >
+                            </p>
+                            <p class="text-muted-foreground">
+                                By:
+                                {{ event.actor_id ?? 'System or customer' }}
+                            </p>
+                            <dl class="mt-1 space-y-1 text-xs">
+                                <div
+                                    v-for="(value, field) in event.details"
+                                    :key="field"
+                                >
+                                    <dt
+                                        class="text-muted-foreground capitalize"
+                                    >
+                                        {{ String(field).replaceAll('_', ' ') }}
+                                    </dt>
+                                    <dd class="break-words whitespace-pre-wrap">
+                                        {{ value }}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </li>
+                    </ol>
+                </MoreDetails>
+                <MoreDetails v-if="deliveries.length" label="Messages sent">
+                    <ul class="divide-y">
+                        <li
+                            v-for="(delivery, position) in deliveries"
+                            :key="position"
+                            class="py-2 text-sm"
+                        >
+                            <p class="capitalize">
+                                {{ delivery.purpose.replaceAll('_', ' ') }} ·
+                                {{ delivery.channel }} ·
+                                {{ delivery.status }}
+                            </p>
+                            <p
+                                v-if="delivery.failure_reason"
+                                class="text-muted-foreground text-xs"
+                            >
+                                {{ delivery.failure_reason }}
+                            </p>
+                        </li>
+                    </ul>
+                </MoreDetails>
+            </CardContent>
+        </Card>
         <ManagementDeliveryPanel
             subject="customer"
             :reference="customer.reference"

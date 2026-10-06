@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
+import { ChevronRight, FileCheck2 } from '@lucide/vue';
 import { ref } from 'vue';
-import { Button } from '@/components/ui/button';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import {
@@ -51,82 +54,89 @@ function filter(): void {
 <template>
     <Head title="Payment evidence" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Payment evidence
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This list shows protected payment claims in your current
-                Customer scope. Verification does not post receipts.
-            </p>
-        </div>
+        <PageHeader
+            title="Payment evidence"
+            description="Proof of transfers and other payments. Checking proof does not record a payment."
+        />
         <div class="flex flex-row flex-wrap items-end gap-4">
             <div class="grid w-fit gap-2">
                 <Label for="evidence-status">Status</Label
-                ><Select v-model="status"
+                ><Select v-model="status" @update:model-value="filter"
                     ><SelectTrigger id="evidence-status" class="h-11 w-fit"
                         ><SelectValue /></SelectTrigger
                     ><SelectContent>
                         <SelectItem value="all">All</SelectItem>
                         <SelectItem value="pending"
-                            >Pending verification</SelectItem
+                            >Waiting for check</SelectItem
                         >
                         <SelectItem value="verified"
-                            >Verified, unconsumed</SelectItem
+                            >Checked, not used yet</SelectItem
                         >
                         <SelectItem value="rejected">Rejected</SelectItem>
                         <SelectItem value="consumed"
-                            >Consumed by receipt</SelectItem
+                            >Used for a payment</SelectItem
                         >
                     </SelectContent></Select
                 >
             </div>
-            <Button type="button" variant="outline" @click="filter"
-                >Apply filter</Button
-            >
         </div>
-        <Card
-            ><CardContent class="grid gap-4 pt-6">
-                <p
-                    v-if="evidence.data.length === 0"
-                    class="text-muted-foreground text-sm"
-                >
-                    No payment evidence agrees with this scope and status.
-                </p>
-                <div
-                    v-for="proof in evidence.data"
-                    :key="proof.evidence_reference"
-                    class="flex flex-wrap items-center justify-between gap-3 border-b pb-4 last:border-0"
-                >
-                    <div class="grid min-w-0 gap-1 text-sm">
-                        <p class="font-medium">
-                            {{ proof.customer_name }} · {{ proof.customer_id }}
-                        </p>
-                        <p>
-                            {{ proof.method_label }} ·
-                            {{ money(proof.amount_kobo) }} ·
-                            {{ proof.received_date }}
-                        </p>
-                        <p>{{ proof.status }}</p>
-                    </div>
-                    <Link
-                        :href="view(proof.evidence_reference)"
-                        class="text-sm underline"
-                        >Review evidence</Link
+        <EmptyState
+            v-if="evidence.data.length === 0"
+            :icon="FileCheck2"
+            title="No payment evidence"
+            description="Nothing matches this status. Try another status."
+        />
+        <Card v-else>
+            <CardContent class="py-2">
+                <ul class="divide-y">
+                    <li
+                        v-for="proof in evidence.data"
+                        :key="proof.evidence_reference"
                     >
-                </div>
-            </CardContent></Card
+                        <Link
+                            :href="view(proof.evidence_reference)"
+                            :aria-label="`Review evidence for ${proof.customer_name}`"
+                            class="hover:bg-muted/40 focus-visible:ring-ring -mx-2 flex flex-wrap items-center justify-between gap-3 rounded-lg px-2 py-4 focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                            <span class="grid min-w-0 gap-0.5 text-sm">
+                                <span class="font-medium">{{
+                                    proof.customer_name
+                                }}</span>
+                                <span class="text-muted-foreground text-xs"
+                                    >{{ proof.method_label }} ·
+                                    {{ proof.received_date }}</span
+                                >
+                            </span>
+                            <span class="flex items-center gap-3">
+                                <span class="text-sm font-medium">{{
+                                    money(proof.amount_kobo)
+                                }}</span>
+                                <Badge variant="secondary">{{
+                                    proof.status
+                                }}</Badge>
+                                <ChevronRight
+                                    class="text-muted-foreground size-4"
+                                />
+                            </span>
+                        </Link>
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+        <nav
+            v-if="evidence.prev_page_url || evidence.next_page_url"
+            aria-label="Evidence pages"
+            class="flex gap-4 text-sm"
         >
-        <nav aria-label="Evidence pages" class="flex gap-4">
             <Link
                 v-if="evidence.prev_page_url"
                 :href="evidence.prev_page_url"
-                class="underline"
+                class="underline-offset-4 hover:underline"
                 >Previous</Link
             ><Link
                 v-if="evidence.next_page_url"
                 :href="evidence.next_page_url"
-                class="underline"
+                class="underline-offset-4 hover:underline"
                 >Next</Link
             >
         </nav>

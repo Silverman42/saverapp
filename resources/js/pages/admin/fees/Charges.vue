@@ -2,8 +2,20 @@
 import { HttpResponseError } from '@inertiajs/core';
 import { Head, Link, router, useForm, useHttp, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
+import { Plus, Tags } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -45,7 +57,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
-            { title: 'Charges', href: index() },
+            { title: 'Manual charges', href: index() },
         ],
     },
 });
@@ -77,11 +89,16 @@ const selected = computed(() =>
         (category) => String(category.id) === charge.category_id,
     ),
 );
+const categorySheetOpen = ref(false);
+function formatNaira(amountKobo: number): string {
+    return `NGN ${(amountKobo / 100).toFixed(2)}`;
+}
 function publishCategory(): void {
     catalogue.post(publish.url(), {
         onSuccess: () => {
             catalogue.publication_reference = crypto.randomUUID();
             catalogue.confirmed = false;
+            categorySheetOpen.value = false;
         },
     });
 }
@@ -179,7 +196,7 @@ onMounted(() => {
     } catch {
         storageBlocked.value = true;
         message.value =
-            'Your browser cannot retain the charge attempt. Restore session storage before posting.';
+            'Your browser cannot save charges right now, so charging is turned off. Try another browser or turn off private mode.';
     }
 });
 function chargeError(error: unknown): string {
@@ -197,7 +214,7 @@ function chargeError(error: unknown): string {
             /* Keep the recoverable outcome message. */
         }
     }
-    return 'The charge outcome is unknown. Check the saved outcome before another charge.';
+    return 'We do not know if the charge went through. Check its status before charging again.';
 }
 function clearAttempt(): boolean {
     try {
@@ -207,7 +224,7 @@ function clearAttempt(): boolean {
         return true;
     } catch {
         message.value =
-            'Your browser could not clear the charge attempt. Check its outcome before another charge.';
+            'Your browser could not clear the last charge. Check its status before charging again.';
         return false;
     }
 }
@@ -216,7 +233,7 @@ function savedOutcome(outcome: Outcome): void {
         charge.operation_reference = crypto.randomUUID();
         review.value = null;
         charge.confirmed = false;
-        message.value = `Charge confirmed. Reference ${outcome.charge_reference}.`;
+        message.value = `Charge saved. Reference ${outcome.charge_reference}.`;
         router.reload({ only: ['customer', 'plans', 'categories'] });
     }
 }
@@ -236,7 +253,7 @@ async function checkOutcome(): Promise<void> {
                 review.value = null;
                 charge.confirmed = false;
                 message.value =
-                    'No confirmed charge was found. Review current terms and savings again.';
+                    'The charge did not go through. Review it again to try once more.';
             }
         } else message.value = chargeError(error);
     }
@@ -294,7 +311,7 @@ async function submitCharge(): Promise<void> {
     } catch {
         storageBlocked.value = true;
         message.value =
-            'Your browser cannot retain the charge attempt. Restore session storage before posting.';
+            'Your browser cannot save charges right now, so nothing was sent. Try another browser or turn off private mode.';
         return;
     }
     pendingReference.value = payload.operation_reference;
@@ -304,196 +321,149 @@ async function submitCharge(): Promise<void> {
 </script>
 <template>
     <div class="flex flex-col gap-6">
-        <Head title="Controlled charges" />
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Controlled charges
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Publish fixed NGN terms. Then confirm a charge for an eligible
-                Customer cycle.
-            </p>
-        </div>
-        <p v-if="!enabled" class="text-muted-foreground text-sm">
-            Charge posting is not available until integrated acceptance is
-            complete. You can still review published categories.
-        </p>
-        <Card
-            ><CardHeader
-                ><CardTitle>Publish a category version</CardTitle></CardHeader
-            ><CardContent>
-                <form
-                    class="grid max-w-xl gap-3"
-                    @submit.prevent="publishCategory"
-                >
-                    <Label for="category-kind">Charge kind</Label
-                    ><Select v-model="catalogue.kind">
-                        <SelectTrigger id="category-kind" class="w-full"
-                            ><SelectValue
-                        /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem v-if="can_fees" value="manual_fee">
-                                Manual fee obligation
-                            </SelectItem>
-                            <SelectItem v-if="can_deductions" value="deduction">
-                                Savings deduction
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Label for="category-key">Category key</Label
-                    ><Input
-                        id="category-key"
-                        v-model="catalogue.category_key"
-                        required
-                        maxlength="80"
-                    />
-                    <Label for="category-purpose">Approved purpose</Label
-                    ><Input
-                        id="category-purpose"
-                        v-model="catalogue.purpose"
-                        required
-                        maxlength="500"
-                    />
-                    <Label for="category-description"
-                        >Customer description</Label
-                    ><Input
-                        id="category-description"
-                        v-model="catalogue.customer_description"
-                        required
-                        maxlength="500"
-                    />
-                    <Label for="category-amount">Fixed amount (NGN)</Label
-                    ><Input
-                        id="category-amount"
-                        v-model="catalogue.amount_ngn"
-                        required
-                        inputmode="decimal"
-                    />
-                    <p class="text-muted-foreground text-sm">
-                        Manual fees record income when they are settled.
-                        Deductions go to the configured deduction destination.
-                    </p>
-                    <p
-                        v-for="(error, field) in catalogue.errors"
-                        :key="field"
-                        class="text-destructive text-sm"
-                        role="alert"
-                    >
-                        {{ error }}
-                    </p>
-                    <label class="flex items-center gap-2 text-sm"
-                        ><input
-                            v-model="catalogue.confirmed"
-                            type="checkbox"
-                        />Confirm publication of immutable terms</label
-                    >
-                    <Button
-                        type="submit"
-                        :disabled="catalogue.processing || !catalogue.confirmed"
-                        >Publish version</Button
-                    >
-                </form>
-            </CardContent></Card
+        <Head title="Manual charges" />
+        <PageHeader
+            title="Manual charges"
+            description="Charge a customer a one-off fee or take it from their savings."
         >
-        <Card
-            ><CardHeader><CardTitle>Assess a charge</CardTitle></CardHeader
-            ><CardContent class="grid max-w-xl gap-3">
+            <template #actions>
+                <Button variant="outline" @click="categorySheetOpen = true">
+                    <Plus class="size-4" /> New charge type
+                </Button>
+            </template>
+        </PageHeader>
+        <p
+            v-if="!enabled"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            Charging customers is not turned on yet. You can still set up charge
+            types.
+        </p>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Charge a customer</CardTitle>
+                <CardDescription class="mt-1.5">
+                    Find the customer, then pick a plan and charge type.
+                </CardDescription>
+            </CardHeader>
+            <CardContent class="grid max-w-xl gap-4">
                 <form
-                    class="flex gap-2"
+                    class="flex flex-wrap items-end gap-2"
                     @submit.prevent="
                         router.get(index.url(), { customer: customerSearch })
                     "
                 >
-                    <Label for="charge-customer" class="sr-only"
-                        >Customer ID</Label
-                    ><Input
-                        id="charge-customer"
-                        v-model="customerSearch"
-                        placeholder="Customer ID"
-                        required
-                    /><Button type="submit" variant="outline"
-                        >Find Customer</Button
-                    >
+                    <div class="grid w-fit gap-2">
+                        <Label for="charge-customer">Customer ID</Label
+                        ><Input
+                            id="charge-customer"
+                            v-model="customerSearch"
+                            placeholder="Customer ID"
+                            required
+                            class="w-56"
+                        />
+                    </div>
+                    <Button type="submit" variant="outline">Find</Button>
                 </form>
                 <form
                     v-if="customer"
-                    class="grid gap-3"
+                    class="grid gap-4"
                     @submit.prevent="submitCharge"
                 >
                     <fieldset
-                        class="grid gap-3"
+                        class="grid gap-4"
                         :disabled="busy || pendingReference !== null"
                     >
-                        <p>{{ customer.name }} · {{ customer.customer_id }}</p>
-                        <Label for="charge-plan">Cycle</Label
-                        ><Select v-model="charge.plan_id" required>
-                            <SelectTrigger id="charge-plan" class="w-full"
-                                ><SelectValue placeholder="Choose cycle"
-                            /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="plan in plans"
-                                    :key="plan.plan_id"
-                                    :value="plan.plan_id"
-                                >
-                                    {{ plan.plan_id }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Label for="charge-category">Published category</Label
-                        ><Select v-model="charge.category_id" required>
-                            <SelectTrigger id="charge-category" class="w-full"
-                                ><SelectValue placeholder="Choose category"
-                            /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="category in categories"
-                                    :key="category.id"
-                                    :value="String(category.id)"
-                                >
-                                    {{ category.category_key }} · version
-                                    {{ category.version }} · NGN
-                                    {{
-                                        (category.amount_kobo / 100).toFixed(2)
-                                    }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="selected" class="text-sm">
-                            {{ selected.customer_description }} ·
-                            {{
-                                selected.kind === 'manual_fee'
-                                    ? 'Creates an unpaid obligation'
-                                    : 'Debits unreserved cycle savings'
-                            }}
-                        </p>
-                        <template v-if="selected?.kind === 'manual_fee'">
-                            <Label for="charge-mode">Assessment action</Label>
+                        <div class="bg-muted/40 rounded-xl p-3 text-sm">
+                            <p class="font-medium">{{ customer.name }}</p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ customer.customer_id }}
+                            </p>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="charge-plan">Plan</Label
+                            ><Select v-model="charge.plan_id" required>
+                                <SelectTrigger id="charge-plan" class="w-full"
+                                    ><SelectValue placeholder="Choose a plan"
+                                /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem
+                                        v-for="plan in plans"
+                                        :key="plan.plan_id"
+                                        :value="plan.plan_id"
+                                    >
+                                        {{ plan.plan_id }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="charge-category">Charge type</Label
+                            ><Select v-model="charge.category_id" required>
+                                <SelectTrigger
+                                    id="charge-category"
+                                    class="w-full"
+                                    ><SelectValue
+                                        placeholder="Choose a charge type"
+                                /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem
+                                        v-for="category in categories"
+                                        :key="category.id"
+                                        :value="String(category.id)"
+                                    >
+                                        {{ category.purpose }} ·
+                                        {{ formatNaira(category.amount_kobo) }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p
+                                v-if="selected"
+                                class="text-muted-foreground text-xs"
+                            >
+                                {{
+                                    selected.kind === 'manual_fee'
+                                        ? 'Adds a fee the customer owes.'
+                                        : 'Takes the amount from savings on this plan.'
+                                }}
+                                Customer sees: "{{
+                                    selected.customer_description
+                                }}"
+                            </p>
+                        </div>
+                        <div
+                            v-if="selected?.kind === 'manual_fee'"
+                            class="grid gap-2"
+                        >
+                            <Label for="charge-mode">Payment</Label>
                             <Select v-model="charge.mode">
                                 <SelectTrigger id="charge-mode" class="w-full"
                                     ><SelectValue
                                 /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="assessment_only">
-                                        Assess only, leave the fee unpaid
+                                        Customer pays later
                                     </SelectItem>
                                     <SelectItem
                                         value="assess_and_apply"
                                         :disabled="!can_apply_savings"
                                     >
-                                        Assess and pay the full fee from this
-                                        cycle's savings
+                                        Pay now from this plan's savings
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
-                        </template>
-                        <Label for="charge-reason">Reason for this charge</Label
-                        ><Input
-                            id="charge-reason"
-                            v-model="charge.reason"
-                            required
-                            maxlength="500"
-                        />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="charge-reason">Reason</Label
+                            ><Input
+                                id="charge-reason"
+                                v-model="charge.reason"
+                                required
+                                maxlength="500"
+                            />
+                        </div>
                         <p
                             v-for="(error, field) in {
                                 ...reviewRequest.errors,
@@ -506,115 +476,291 @@ async function submitCharge(): Promise<void> {
                             {{ error }}
                         </p>
                         <Button
+                            v-if="!review"
                             type="button"
-                            variant="outline"
+                            class="w-fit"
                             :disabled="!enabled || busy"
                             @click="reviewCharge"
                             >Review charge</Button
                         >
                         <div
                             v-if="review"
-                            class="border-border grid gap-2 rounded-md border p-4 text-sm"
+                            class="grid gap-3 rounded-xl border p-4 text-sm"
                             aria-live="polite"
                         >
-                            <p>
-                                {{ review.purpose }} ·
-                                {{ review.customer_description }}
-                            </p>
+                            <p class="font-medium">Check before charging</p>
                             <dl class="grid grid-cols-2 gap-2">
-                                <dt>Charge</dt>
-                                <dd>{{ review.amount }}</dd>
-                                <dt>Posted cycle savings</dt>
-                                <dd>{{ review.posted_savings }}</dd>
-                                <dt>Reserved savings</dt>
-                                <dd>{{ review.reserved_savings }}</dd>
-                                <dt>Available savings</dt>
+                                <dt class="text-muted-foreground">Charge</dt>
+                                <dd class="font-medium">{{ review.amount }}</dd>
+                                <dt class="text-muted-foreground">
+                                    Savings available now
+                                </dt>
                                 <dd>{{ review.available_savings }}</dd>
-                                <dt>Remaining savings</dt>
-                                <dd>{{ review.remaining_savings }}</dd>
-                                <dt>Remaining available</dt>
+                                <dt class="text-muted-foreground">
+                                    Savings available after
+                                </dt>
                                 <dd>{{ review.remaining_available }}</dd>
-                                <dt>Remaining unpaid fee</dt>
+                                <dt class="text-muted-foreground">
+                                    Unpaid fee after
+                                </dt>
                                 <dd>{{ review.remaining_fee }}</dd>
-                                <dt>Destination</dt>
-                                <dd class="break-all">
-                                    {{ review.destination }}
-                                </dd>
                             </dl>
-                            <p>
-                                {{ review.occurred_on }} ·
-                                {{ review.business_timezone }}
+                            <p
+                                v-if="charge.mode === 'assess_and_apply'"
+                                class="text-muted-foreground text-xs"
+                            >
+                                The fee is added and paid in one step. If the
+                                payment fails, no fee is added.
                             </p>
-                            <p>Review expires {{ review.quote_expires_at }}</p>
-                            <p v-if="charge.mode === 'assess_and_apply'">
-                                Assessment and full payment commit together. A
-                                failed payment leaves no new fee debt.
-                            </p>
+                            <MoreDetails>
+                                <dl
+                                    class="text-muted-foreground grid grid-cols-2 gap-2 text-xs"
+                                >
+                                    <dt>Purpose</dt>
+                                    <dd>{{ review.purpose }}</dd>
+                                    <dt>Customer sees</dt>
+                                    <dd>{{ review.customer_description }}</dd>
+                                    <dt>Total savings on plan</dt>
+                                    <dd>{{ review.posted_savings }}</dd>
+                                    <dt>Savings on hold</dt>
+                                    <dd>{{ review.reserved_savings }}</dd>
+                                    <dt>Total savings after</dt>
+                                    <dd>{{ review.remaining_savings }}</dd>
+                                    <dt>Money goes to</dt>
+                                    <dd class="break-all">
+                                        {{ review.destination }}
+                                    </dd>
+                                    <dt>Date</dt>
+                                    <dd>
+                                        {{ review.occurred_on }} ({{
+                                            review.business_timezone
+                                        }})
+                                    </dd>
+                                    <dt>Review valid until</dt>
+                                    <dd>{{ review.quote_expires_at }}</dd>
+                                </dl>
+                            </MoreDetails>
+                            <label class="flex items-center gap-2 text-sm"
+                                ><input
+                                    v-model="charge.confirmed"
+                                    type="checkbox"
+                                />The customer, plan and amount are
+                                correct</label
+                            >
+                            <Button
+                                type="submit"
+                                class="w-fit"
+                                :disabled="
+                                    !canPost ||
+                                    busy ||
+                                    !review ||
+                                    !charge.confirmed ||
+                                    storageBlocked
+                                "
+                                >{{
+                                    charge.mode === 'assessment_only'
+                                        ? 'Add fee'
+                                        : charge.mode === 'assess_and_apply'
+                                          ? 'Add and pay fee'
+                                          : 'Deduct from savings'
+                                }}</Button
+                            >
                         </div>
-                        <label
-                            v-if="review"
-                            class="flex items-center gap-2 text-sm"
-                            ><input
-                                v-model="charge.confirmed"
-                                type="checkbox"
-                            />Confirm this Customer, cycle and exact category
-                            amount</label
-                        >
-                        <Button
-                            type="submit"
-                            :disabled="
-                                !canPost ||
-                                busy ||
-                                !review ||
-                                !charge.confirmed ||
-                                storageBlocked
-                            "
-                            >{{
-                                charge.mode === 'assessment_only'
-                                    ? 'Confirm assessment only'
-                                    : charge.mode === 'assess_and_apply'
-                                      ? 'Confirm assessment and full payment'
-                                      : 'Confirm deduction'
-                            }}</Button
-                        >
                     </fieldset>
                 </form>
-                <p v-if="message" class="text-sm" role="status">
+                <p
+                    v-if="message"
+                    class="bg-muted rounded-xl p-3 text-sm"
+                    role="status"
+                >
                     {{ message }}
                 </p>
-                <div v-if="pendingReference" class="grid gap-2 text-sm">
+                <div
+                    v-if="pendingReference"
+                    class="grid gap-3 rounded-xl border p-4 text-sm"
+                >
                     <p>
-                        Pending charge reference {{ pendingReference }}. Check
-                        its outcome before another charge.
+                        You have a charge that is not confirmed yet. Check its
+                        status before charging again.
                     </p>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        :disabled="busy"
-                        @click="checkOutcome"
-                        >Check saved outcome</Button
-                    >
-                    <Button
-                        v-if="submitted && canPost"
-                        type="button"
-                        variant="outline"
-                        :disabled="busy"
-                        @click="sendAttempt"
-                        >Retry the original charge</Button
-                    >
+                    <div class="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            :disabled="busy"
+                            @click="checkOutcome"
+                            >Check status</Button
+                        >
+                        <Button
+                            v-if="submitted && canPost"
+                            type="button"
+                            variant="outline"
+                            :disabled="busy"
+                            @click="sendAttempt"
+                            >Try again</Button
+                        >
+                    </div>
                     <Link
                         :href="freshAuthentication()"
-                        class="text-primary underline"
-                        >Confirm password and authenticator</Link
+                        class="text-primary w-fit text-sm underline"
+                        >Confirm it's you</Link
                     >
+                    <MoreDetails>
+                        <p class="text-muted-foreground text-xs">
+                            Reference {{ pendingReference }}
+                        </p>
+                    </MoreDetails>
                 </div>
                 <p v-if="!canPost" class="text-muted-foreground text-sm">
                     {{ page.props.platform.message }}
                 </p>
-            </CardContent></Card
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Charge types</CardTitle>
+                <CardDescription class="mt-1.5">
+                    Set amounts you can charge customers.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <EmptyState
+                    v-if="categories.length === 0"
+                    :icon="Tags"
+                    title="No charge types yet"
+                    description="Create a charge type before you charge a customer."
+                >
+                    <Button variant="outline" @click="categorySheetOpen = true"
+                        >New charge type</Button
+                    >
+                </EmptyState>
+                <div v-else class="divide-border divide-y">
+                    <div
+                        v-for="category in categories"
+                        :key="category.id"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3"
+                    >
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">
+                                {{ category.purpose }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ category.customer_description }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ category.category_key }} · version
+                                {{ category.version }}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <Badge variant="outline">{{
+                                category.kind === 'deduction'
+                                    ? 'From savings'
+                                    : 'Fee'
+                            }}</Badge>
+                            <span class="text-sm font-medium">{{
+                                formatNaira(category.amount_kobo)
+                            }}</span>
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        <FormSheet
+            v-model:open="categorySheetOpen"
+            title="New charge type"
+            description="Once saved, the amount cannot be changed."
         >
-        <Link :href="dashboard()" class="text-primary w-fit text-sm underline"
-            >Back to dashboard</Link
-        >
+            <form
+                id="category-form"
+                class="grid gap-4"
+                @submit.prevent="publishCategory"
+            >
+                <div class="grid gap-2">
+                    <Label for="category-kind">Type</Label
+                    ><Select v-model="catalogue.kind">
+                        <SelectTrigger id="category-kind" class="w-full"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-if="can_fees" value="manual_fee">
+                                Fee the customer owes
+                            </SelectItem>
+                            <SelectItem v-if="can_deductions" value="deduction">
+                                Take from savings
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="category-purpose">Name</Label
+                    ><Input
+                        id="category-purpose"
+                        v-model="catalogue.purpose"
+                        required
+                        maxlength="500"
+                        placeholder="e.g. Card replacement"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="category-description">What customers see</Label
+                    ><Input
+                        id="category-description"
+                        v-model="catalogue.customer_description"
+                        required
+                        maxlength="500"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="category-amount">Amount (NGN)</Label
+                    ><Input
+                        id="category-amount"
+                        v-model="catalogue.amount_ngn"
+                        required
+                        inputmode="decimal"
+                    />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="category-key">Short code</Label
+                    ><Input
+                        id="category-key"
+                        v-model="catalogue.category_key"
+                        required
+                        maxlength="80"
+                        placeholder="e.g. card_replacement"
+                    />
+                    <p class="text-muted-foreground text-xs">
+                        Use the same code to replace an existing charge type.
+                    </p>
+                </div>
+                <p
+                    v-for="(error, field) in catalogue.errors"
+                    :key="field"
+                    class="text-destructive text-sm"
+                    role="alert"
+                >
+                    {{ error }}
+                </p>
+                <label class="flex items-center gap-2 text-sm"
+                    ><input v-model="catalogue.confirmed" type="checkbox" />I
+                    understand this amount cannot be changed later</label
+                >
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="categorySheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="category-form"
+                    :disabled="catalogue.processing || !catalogue.confirmed"
+                    >Save</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

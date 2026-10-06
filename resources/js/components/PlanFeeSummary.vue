@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MoreDetails from '@/components/MoreDetails.vue';
 import type { PlanFeeHistory } from '@/types/plan-fee-history';
 
 defineProps<{
@@ -19,37 +20,34 @@ function dateTime(value: string) {
 
 <template>
     <div class="space-y-1 text-xs">
-        <p class="font-medium">Recorded cycle fees</p>
+        <p class="font-medium">Fees</p>
         <template v-if="summary.totals">
             <p>
                 Unpaid: <strong>{{ summary.totals.outstanding }}</strong>
             </p>
             <p>
-                Settled: {{ summary.totals.settled }} · waived:
+                Paid: {{ summary.totals.settled }} · Waived:
                 {{ summary.totals.waived }}
             </p>
-            <details>
-                <summary class="cursor-pointer underline underline-offset-4">
-                    Fee totals and timestamp
-                </summary>
-                <dl class="mt-2 space-y-1">
+            <MoreDetails label="Fee details">
+                <dl class="space-y-1">
                     <div>
-                        <dt>Original assessments</dt>
+                        <dt>Fees charged</dt>
                         <dd>{{ summary.totals.original_assessed }}</dd>
                     </div>
                     <div>
-                        <dt>Assessments after corrections</dt>
+                        <dt>Fees after corrections</dt>
                         <dd>{{ summary.totals.assessed }}</dd>
                     </div>
                 </dl>
                 <p class="text-muted-foreground mt-2">{{ summary.message }}</p>
                 <p v-if="summary.as_of" class="text-muted-foreground mt-1">
-                    As of {{ dateTime(summary.as_of) }} UTC
+                    Updated {{ dateTime(summary.as_of) }} UTC
                 </p>
-            </details>
+            </MoreDetails>
         </template>
         <p v-else class="text-muted-foreground">
-            Actual fee amounts unavailable. Open the plan to reload.
+            Fee amounts are not available. Open the plan to try again.
         </p>
     </div>
 </template>

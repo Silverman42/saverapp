@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { Loader2, ShieldAlert } from '@lucide/vue';
+import { Loader2 } from '@lucide/vue';
+import InputError from '@/components/InputError.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
@@ -26,7 +21,7 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Account recoveries', href: recoveriesIndex() },
-            { title: 'Request recovery', href: '#' },
+            { title: 'New request', href: '#' },
         ],
     },
 });
@@ -48,155 +43,136 @@ const recoveryError = computed(
     () => (form.errors as Record<string, string | undefined>).recovery,
 );
 
+const approvalText = computed(() =>
+    props.required_approvals === 2
+        ? 'two other admins approve'
+        : 'another admin approves',
+);
+
 const submit = (): void => {
     form.post(recoveriesStore.url(props.target.id), { preserveScroll: true });
 };
 </script>
 
 <template>
-    <Head title="Request account recovery" />
+    <Head title="Account recovery request" />
 
     <div class="space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Request account recovery
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ target.name }} ({{ target.type }}) cannot use their normal
-                password or authenticator recovery. Nothing changes on the
-                account until
-                {{
-                    required_approvals === 2
-                        ? 'two other Administrators approve'
-                        : 'another Administrator approves'
-                }}.
-            </p>
-        </div>
+        <PageHeader
+            :title="`Help ${target.name} get back in`"
+            :description="`Nothing changes on the account until ${approvalText}.`"
+        />
 
-        <form class="max-w-3xl" @submit.prevent="submit">
-            <Card>
-                <CardHeader>
-                    <CardTitle class="flex items-center gap-2">
-                        <ShieldAlert class="size-4" /> Identity verification
-                    </CardTitle>
-                    <CardDescription>
-                        Use the approved business procedure to verify the person
-                        outside this account. You do not set or see their new
-                        password or authenticator.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent class="grid gap-4 sm:grid-cols-2">
-                    <div class="space-y-1.5 sm:col-span-2">
-                        <Label for="email"
-                            >Verified email for the recovery link</Label
-                        >
-                        <Input
-                            id="email"
-                            v-model="form.email"
-                            type="email"
-                            required
-                            maxlength="254"
-                        />
+        <Card class="max-w-3xl">
+            <CardContent>
+                <form class="space-y-8" @submit.prevent="submit">
+                    <section class="space-y-4">
+                        <div>
+                            <h2 class="text-base font-medium">
+                                Check who they are
+                            </h2>
+                            <p class="text-muted-foreground mt-1 text-sm">
+                                Confirm their identity outside the app first.
+                                You will not see their new password.
+                            </p>
+                        </div>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="grid gap-2 sm:col-span-2">
+                                <Label for="email"
+                                    >Email for the recovery link</Label
+                                >
+                                <Input
+                                    id="email"
+                                    v-model="form.email"
+                                    type="email"
+                                    required
+                                    maxlength="254"
+                                />
+                                <InputError :message="form.errors.email" />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="procedure">Check reference</Label>
+                                <Input
+                                    id="procedure"
+                                    v-model="form.procedure_reference"
+                                    required
+                                    maxlength="150"
+                                    aria-describedby="procedure-help"
+                                />
+                                <p
+                                    id="procedure-help"
+                                    class="text-muted-foreground text-xs"
+                                >
+                                    The reference from your ID check.
+                                </p>
+                                <InputError
+                                    :message="form.errors.procedure_reference"
+                                />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="verified-at">Checked on</Label>
+                                <DatePicker
+                                    id="verified-at"
+                                    v-model="form.verified_at"
+                                    with-time
+                                    required
+                                />
+                                <InputError
+                                    :message="form.errors.verified_at"
+                                />
+                            </div>
+                            <div class="grid gap-2 sm:col-span-2">
+                                <Label for="notes">What did you check?</Label>
+                                <textarea
+                                    id="notes"
+                                    v-model="form.notes"
+                                    required
+                                    maxlength="2000"
+                                    rows="4"
+                                    class="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+                                />
+                                <InputError :message="form.errors.notes" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="space-y-4 border-t pt-6">
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="identity-verified"
+                                v-model="form.identity_verified"
+                                class="mt-0.5"
+                            />
+                            <Label
+                                for="identity-verified"
+                                class="cursor-pointer text-sm leading-relaxed font-normal"
+                            >
+                                I checked this person's identity myself, outside
+                                their account.
+                            </Label>
+                        </div>
+                        <InputError :message="form.errors.identity_verified" />
                         <p
-                            v-if="form.errors.email"
-                            class="text-destructive text-xs"
+                            v-if="recoveryError"
+                            role="alert"
+                            class="text-destructive text-sm"
                         >
-                            {{ form.errors.email }}
+                            {{ recoveryError }}
                         </p>
-                    </div>
-                    <div class="space-y-1.5">
-                        <Label for="procedure"
-                            >Verification procedure reference</Label
+                        <Button
+                            type="submit"
+                            class="w-full sm:w-fit"
+                            :disabled="form.processing"
                         >
-                        <Input
-                            id="procedure"
-                            v-model="form.procedure_reference"
-                            required
-                            maxlength="150"
-                        />
-                        <p
-                            v-if="form.errors.procedure_reference"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.procedure_reference }}
-                        </p>
+                            <Loader2
+                                v-if="form.processing"
+                                class="size-4 animate-spin"
+                            />
+                            Send for approval
+                        </Button>
                     </div>
-                    <div class="space-y-1.5">
-                        <Label for="verified-at">Verified at</Label>
-                        <DatePicker
-                            id="verified-at"
-                            v-model="form.verified_at"
-                            with-time
-                            required
-                        />
-                        <p
-                            v-if="form.errors.verified_at"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.verified_at }}
-                        </p>
-                    </div>
-                    <div class="space-y-1.5 sm:col-span-2">
-                        <Label for="notes">Verification notes</Label>
-                        <textarea
-                            id="notes"
-                            v-model="form.notes"
-                            required
-                            maxlength="2000"
-                            rows="4"
-                            class="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
-                        />
-                        <p
-                            v-if="form.errors.notes"
-                            class="text-destructive text-xs"
-                        >
-                            {{ form.errors.notes }}
-                        </p>
-                    </div>
-                </CardContent>
-                <CardFooter
-                    class="flex flex-col items-stretch gap-4 border-t pt-6"
-                >
-                    <div class="flex items-start gap-3">
-                        <Checkbox
-                            id="identity-verified"
-                            v-model="form.identity_verified"
-                            class="mt-1"
-                        />
-                        <Label
-                            for="identity-verified"
-                            class="cursor-pointer text-sm leading-relaxed font-normal"
-                        >
-                            I verified this person's identity outside the
-                            affected account.
-                        </Label>
-                    </div>
-                    <p
-                        v-if="form.errors.identity_verified"
-                        class="text-destructive text-xs"
-                    >
-                        {{ form.errors.identity_verified }}
-                    </p>
-                    <p
-                        v-if="recoveryError"
-                        role="alert"
-                        class="text-destructive text-sm"
-                    >
-                        {{ recoveryError }}
-                    </p>
-                    <Button
-                        type="submit"
-                        class="w-full sm:w-fit"
-                        :disabled="form.processing"
-                    >
-                        <Loader2
-                            v-if="form.processing"
-                            class="mr-2 size-4 animate-spin"
-                        />
-                        Request recovery
-                    </Button>
-                </CardFooter>
-            </Card>
-        </form>
+                </form>
+            </CardContent>
+        </Card>
     </div>
 </template>

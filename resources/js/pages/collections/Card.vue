@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -68,6 +72,24 @@ const annotationNotice = ref<HTMLElement | null>(null);
 const selectedDay = computed(() =>
     props.card.slots.find((slot) => slot.id === selectedSlot.value),
 );
+const noteSheetOpen = computed({
+    get: () => selectedSlot.value !== null && props.can_record,
+    set: (open: boolean) => {
+        if (!open && !annotation.processing) {
+            selectedSlot.value = null;
+        }
+    },
+});
+const fundedPercent = computed(() =>
+    props.card.target_kobo > 0
+        ? Math.min(
+              100,
+              Math.round(
+                  (props.card.funded_kobo / props.card.target_kobo) * 100,
+              ),
+          )
+        : 0,
+);
 function selectSlot(slot: Slot): void {
     if (annotation.processing) return;
     selectedSlot.value = slot.id;
@@ -86,16 +108,16 @@ function saveAnnotation(): void {
                 onHttpException: (response) => {
                     annotationMessage.value =
                         response.status === 409
-                            ? 'The attendance note was rejected. Future or funded days cannot be marked missed or skipped, and the slot may have changed. Reload the card and review the day before retrying.'
-                            : 'The attendance note could not be saved. Reload the card to check your current access and the day before retrying.';
+                            ? 'This note was not saved. Future or paid days cannot be marked missed or skipped. Refresh the page and try again.'
+                            : 'This note was not saved. Refresh the page and try again.';
                     return false;
                 },
                 onNetworkError: () => {
                     annotationMessage.value =
-                        'The outcome could not be confirmed. Reload the card to check whether the note was saved before retrying.';
+                        'We could not confirm the note was saved. Refresh the page to check before trying again.';
                 },
                 onSuccess: () => {
-                    annotationMessage.value = 'Attendance note saved.';
+                    annotationMessage.value = 'Note saved.';
                     selectedSlot.value = null;
                     annotation.resetAndClearErrors();
                 },
@@ -111,103 +133,172 @@ function saveAnnotation(): void {
 <template>
     <Head :title="`Thrift card ${card.plan_id}`" />
     <div class="flex flex-col gap-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Thrift card
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    {{ card.plan_id }} · {{ card.status }} · dates in
-                    {{ card.timezone }}
-                </p>
-            </div>
-            <Button
-                v-if="
-                    can_record &&
-                    card.status === 'active' &&
-                    card.funded_kobo < card.target_kobo
-                "
-                as-child
-                ><Link :href="createCollection(customer_id).url"
-                    >Record cash</Link
-                ></Button
+        <PageHeader title="Thrift card" :description="`Plan ${card.plan_id}`">
+            <template #actions>
+                <Button variant="outline" as-child
+                    ><Link :href="showPlan(card.plan_id)"
+                        >View plan</Link
+                    ></Button
+                >
+                <Button
+                    v-if="
+                        can_record &&
+                        card.status === 'active' &&
+                        card.funded_kobo < card.target_kobo
+                    "
+                    as-child
+                    ><Link :href="createCollection(customer_id).url"
+                        >Record cash</Link
+                    ></Button
+                >
+            </template>
+        </PageHeader>
+
+        <Card>
+            <CardHeader
+                class="flex flex-row flex-wrap items-center justify-between gap-3"
             >
-        </div>
-        <Card
-            ><CardHeader><CardTitle>Plan coverage</CardTitle></CardHeader
-            ><CardContent class="grid gap-3 sm:grid-cols-3"
-                ><div>
-                    Scheduled target<br /><strong>{{
-                        money(card.target_kobo)
-                    }}</strong>
-                </div>
+                <CardTitle>Progress</CardTitle>
+                <Badge variant="secondary" class="capitalize">{{
+                    card.status
+                }}</Badge>
+            </CardHeader>
+            <CardContent class="space-y-5">
                 <div>
-                    Net funded<br /><strong>{{
-                        money(card.funded_kobo)
-                    }}</strong>
+                    <p class="text-2xl font-semibold">
+                        {{ money(card.funded_kobo) }}
+                        <span
+                            class="text-muted-foreground text-base font-normal"
+                            >of {{ money(card.target_kobo) }}</span
+                        >
+                    </p>
+                    <div
+                        class="bg-muted mt-3 h-2 overflow-hidden rounded-full"
+                        role="progressbar"
+                        :aria-valuenow="fundedPercent"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-label="Amount saved"
+                    >
+                        <div
+                            class="bg-primary h-full rounded-full"
+                            :style="{ width: `${fundedPercent}%` }"
+                        />
+                    </div>
+                    <p class="text-muted-foreground mt-2 text-sm">
+                        {{ card.paid_slots }} of {{ card.slot_count }} days paid
+                    </p>
                 </div>
-                <div>
-                    Paid slots<br /><strong
-                        >{{ card.paid_slots }} / {{ card.slot_count }}</strong
-                    >
-                </div></CardContent
-            ></Card
-        >
-        <Card
-            ><CardHeader><CardTitle>Dated slots</CardTitle></CardHeader
-            ><CardContent
-                ><ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <li
-                        v-for="slot in card.slots"
-                        :key="slot.id"
-                        class="rounded-lg border p-3 text-sm"
-                    >
-                        <strong
-                            >Day {{ slot.ordinal }} ·
-                            {{ slot.due_date }}</strong
-                        >
-                        <p class="mt-1 capitalize">
-                            {{ slot.status }}
-                            <span v-if="slot.advance">· advance funded</span>
-                        </p>
-                        <p class="text-muted-foreground mt-1">
-                            {{ money(slot.funded_kobo) }} of
-                            {{ money(slot.target_kobo) }}
-                        </p>
-                        <p v-if="slot.annotation_reason" class="mt-1">
-                            {{ slot.annotation_reason }}
-                        </p>
-                        <Button
-                            v-if="can_record && slot.remaining_kobo > 0"
-                            type="button"
-                            variant="outline"
-                            class="mt-2"
-                            :disabled="annotation.processing"
-                            @click="selectSlot(slot)"
-                            >Annotate day</Button
-                        >
-                    </li>
-                </ol>
+                <dl class="grid gap-3 border-t pt-4 text-sm sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground">Total saved</dt>
+                        <dd class="mt-1 font-medium">
+                            {{ money(card.position.liability_kobo) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Set aside</dt>
+                        <dd class="mt-1 font-medium">
+                            {{ money(card.position.reservations_kobo) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Available</dt>
+                        <dd class="mt-1 font-medium">
+                            {{ money(card.position.available_kobo) }}
+                        </dd>
+                    </div>
+                </dl>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader><CardTitle>Days</CardTitle></CardHeader>
+            <CardContent>
                 <p
-                    v-if="annotationMessage"
+                    v-if="annotationMessage && !noteSheetOpen"
                     ref="annotationNotice"
                     role="alert"
                     tabindex="-1"
-                    class="mt-5 text-sm"
+                    class="bg-muted mb-4 rounded-xl p-3 text-sm"
                 >
                     {{ annotationMessage }}
                 </p>
-                <form
-                    v-if="selectedSlot !== null && can_record"
-                    class="mt-5 grid max-w-md gap-3"
-                    :aria-busy="annotation.processing"
-                    @submit.prevent="saveAnnotation"
+                <ol class="divide-y">
+                    <li
+                        v-for="slot in card.slots"
+                        :key="slot.id"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0"
+                    >
+                        <div class="min-w-0">
+                            <p class="font-medium">
+                                Day {{ slot.ordinal }}
+                                <span class="text-muted-foreground font-normal"
+                                    >· {{ slot.due_date }}</span
+                                >
+                            </p>
+                            <p class="text-muted-foreground mt-0.5 text-xs">
+                                {{ money(slot.funded_kobo) }} of
+                                {{ money(slot.target_kobo) }}
+                                <span v-if="slot.annotation_reason">
+                                    · {{ slot.annotation_reason }}</span
+                                >
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <Badge v-if="slot.advance" variant="outline"
+                                >Paid early</Badge
+                            >
+                            <Badge variant="secondary" class="capitalize">{{
+                                slot.status
+                            }}</Badge>
+                            <Button
+                                v-if="can_record && slot.remaining_kobo > 0"
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                :disabled="annotation.processing"
+                                @click="selectSlot(slot)"
+                                >Add note</Button
+                            >
+                        </div>
+                    </li>
+                </ol>
+            </CardContent>
+        </Card>
+
+        <MoreDetails>
+            <p class="text-muted-foreground text-sm">
+                Dates use the {{ card.timezone }} time zone.
+            </p>
+        </MoreDetails>
+
+        <FormSheet
+            v-model:open="noteSheetOpen"
+            title="Add a note"
+            :description="
+                selectedDay
+                    ? `Day ${selectedDay.ordinal}, ${selectedDay.due_date}`
+                    : undefined
+            "
+        >
+            <form
+                id="annotation-form"
+                class="grid gap-5"
+                :aria-busy="annotation.processing"
+                @submit.prevent="saveAnnotation"
+            >
+                <p
+                    v-if="annotationMessage && noteSheetOpen"
+                    ref="annotationNotice"
+                    role="alert"
+                    tabindex="-1"
+                    class="bg-muted rounded-xl p-3 text-sm"
                 >
-                    <p v-if="selectedDay" class="text-sm">
-                        Day {{ selectedDay.ordinal }} ·
-                        {{ selectedDay.due_date }}
-                    </p>
-                    <Label for="annotation-kind">Attendance note</Label>
+                    {{ annotationMessage }}
+                </p>
+                <div class="grid gap-2">
+                    <Label for="annotation-kind">What happened?</Label>
                     <Select
                         v-model="annotation.kind"
                         :disabled="annotation.processing"
@@ -226,13 +317,15 @@ function saveAnnotation(): void {
                         <SelectContent>
                             <SelectItem value="missed">Missed</SelectItem>
                             <SelectItem value="skipped">Skipped</SelectItem>
-                            <SelectItem value="clear">Clear note</SelectItem>
+                            <SelectItem value="clear">Remove note</SelectItem>
                         </SelectContent>
                     </Select>
                     <InputError
                         id="annotation-kind-error"
                         :message="annotation.errors.kind"
                     />
+                </div>
+                <div class="grid gap-2">
                     <Label for="annotation-reason">Reason</Label
                     ><Input
                         id="annotation-reason"
@@ -245,54 +338,39 @@ function saveAnnotation(): void {
                                 ? 'annotation-reason-error'
                                 : undefined
                         "
-                    /><Button
-                        type="submit"
-                        class="w-fit"
-                        :disabled="
-                            annotation.processing || !annotation.reason.trim()
-                        "
-                        >Save note</Button
-                    >
+                    />
                     <InputError
                         id="annotation-reason-error"
                         :message="annotation.errors.reason"
                     />
-                    <p
-                        v-for="(error, key) in annotation.errors"
-                        v-show="key !== 'kind' && key !== 'reason'"
-                        :key="key"
-                        class="text-destructive text-sm"
-                        role="alert"
-                    >
-                        {{ error }}
-                    </p>
-                </form></CardContent
-            ></Card
-        >
-        <Card
-            ><CardHeader><CardTitle>Lifetime savings</CardTitle></CardHeader
-            ><CardContent class="grid gap-3 sm:grid-cols-3"
-                ><div>
-                    Liability<br /><strong>{{
-                        money(card.position.liability_kobo)
-                    }}</strong>
                 </div>
-                <div>
-                    Reservations<br /><strong>{{
-                        money(card.position.reservations_kobo)
-                    }}</strong>
-                </div>
-                <div>
-                    Available<br /><strong>{{
-                        money(card.position.available_kobo)
-                    }}</strong>
-                </div></CardContent
-            ></Card
-        >
-        <Link
-            :href="showPlan(card.plan_id)"
-            class="text-primary w-fit text-sm underline"
-            >Back to plan</Link
-        >
+                <p
+                    v-for="(error, key) in annotation.errors"
+                    v-show="key !== 'kind' && key !== 'reason'"
+                    :key="key"
+                    class="text-destructive text-sm"
+                    role="alert"
+                >
+                    {{ error }}
+                </p>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="annotation.processing"
+                    @click="noteSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="annotation-form"
+                    :disabled="
+                        annotation.processing || !annotation.reason.trim()
+                    "
+                    >Save note</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

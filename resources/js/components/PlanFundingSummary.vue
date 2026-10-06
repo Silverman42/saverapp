@@ -29,42 +29,38 @@ const asOf = computed(() =>
                 "
             >
                 <div>
-                    <dt class="text-muted-foreground">
-                        Allocated contributions
-                    </dt>
+                    <dt class="text-muted-foreground">Paid toward plan</dt>
                     <dd class="font-medium">{{ summary.funded_principal }}</dd>
                 </div>
                 <div>
-                    <dt class="text-muted-foreground">Fully funded days</dt>
+                    <dt class="text-muted-foreground">Days fully paid</dt>
                     <dd class="font-medium">
                         {{ summary.fully_funded_slots }} /
                         {{ summary.required_slots }}
                     </dd>
                 </div>
                 <div>
-                    <dt class="text-muted-foreground">Partially funded days</dt>
+                    <dt class="text-muted-foreground">Days partly paid</dt>
                     <dd class="font-medium">
                         {{ summary.partially_funded_slots }}
                     </dd>
                 </div>
                 <div>
-                    <dt class="text-muted-foreground">
-                        Scheduled target remaining
-                    </dt>
+                    <dt class="text-muted-foreground">Still to pay</dt>
                     <dd class="font-medium">
                         {{ summary.remaining_scheduled_target }}
                     </dd>
                 </div>
             </dl>
             <p v-if="!compact" class="text-muted-foreground">
-                Funding shows contributions assigned to the agreed days.
+                Based on payments matched to each plan day.
             </p>
             <p v-if="asOf" class="text-muted-foreground text-xs">
-                As of {{ asOf }} UTC
+                Updated {{ asOf }} UTC
             </p>
         </template>
         <template v-else>
-            <p class="font-medium">Unavailable</p>
+            <p class="font-medium">Not available</p>
             <p class="text-muted-foreground">{{ summary.message }}</p>
         </template>
     </div>

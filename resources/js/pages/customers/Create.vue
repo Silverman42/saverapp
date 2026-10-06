@@ -1,25 +1,15 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import {
-    AlertCircle,
-    ArrowLeft,
-    Camera,
-    Coins,
-    HeartHandshake,
-    Loader2,
-    ShieldAlert,
-    UserCheck,
-    UserPlus,
-} from '@lucide/vue';
+import { computed, ref } from 'vue';
+import { Camera, Coins, Loader2, ShieldAlert, UserCheck } from '@lucide/vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
     CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
@@ -77,12 +67,13 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Customers', href: customersIndex() },
-            { title: 'Register Customer', href: customersCreate() },
+            { title: 'Add customer', href: customersCreate() },
         ],
     },
 });
 
 const photoPreview = ref<string | null>(null);
+const photoInput = ref<HTMLInputElement | null>(null);
 
 const form = useForm({
     attempt_reference: props.attempt_reference,
@@ -103,6 +94,18 @@ const form = useForm({
         address: '',
     },
 });
+
+const hasMoreOptionErrors = computed(() =>
+    (
+        [
+            'gender',
+            'occupation',
+            'internal_reference',
+            'photo',
+            'notes',
+        ] as const
+    ).some((field) => Boolean(form.errors[field])),
+);
 
 const onPhotoChange = (event: Event): void => {
     const target = event.target as HTMLInputElement;
@@ -136,104 +139,60 @@ const submit = (): void => {
     <div>
         <Head title="Register Customer" />
 
-        <div class="space-y-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-[25px] font-medium tracking-tight">
-                        Register Customer
-                    </h1>
-                    <p class="text-muted-foreground mt-1.5 text-sm">
-                        Add a new customer to your portfolio. We send an
-                        activation invitation to the customer's email.
+        <div class="mx-auto w-full max-w-3xl space-y-6">
+            <PageHeader
+                title="Add customer"
+                description="We will email them an invite to set up their account."
+            />
+
+            <Alert v-if="!fee_preview.available" variant="destructive">
+                <ShieldAlert class="size-4" />
+                <AlertTitle>You can't add customers right now</AlertTitle>
+                <AlertDescription>
+                    {{
+                        fee_preview.message ??
+                        'An admin needs to set up the registration fee first.'
+                    }}
+                </AlertDescription>
+            </Alert>
+
+            <div v-else class="bg-muted/50 space-y-3 rounded-xl p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2 text-sm">
+                        <Coins class="text-primary size-4" />
+                        <span>Registration fee</span>
+                    </div>
+                    <p class="text-lg font-semibold">
+                        {{ fee_preview.formatted_amount }}
                     </p>
                 </div>
-                <Link :href="customersIndex().url">
-                    <Button variant="outline" size="sm">
-                        <ArrowLeft class="mr-1.5 size-4" /> Back to Customers
-                    </Button>
-                </Link>
+                <p class="text-muted-foreground text-sm">
+                    {{
+                        fee_preview.is_zero
+                            ? 'This customer will not pay a fee.'
+                            : 'The customer will owe this fee after you add them.'
+                    }}
+                </p>
+                <MoreDetails label="What the customer sees">
+                    <p class="text-muted-foreground text-xs">
+                        {{ fee_preview.customer_description }}
+                    </p>
+                    <p class="text-muted-foreground mt-2 text-xs">
+                        These fee terms are saved to the customer's account. Fee
+                        version {{ fee_preview.version }}.
+                    </p>
+                </MoreDetails>
             </div>
 
-            <!-- Fee Rule Check -->
-            <div v-if="!fee_preview.available">
-                <Alert variant="destructive">
-                    <ShieldAlert class="size-4" />
-                    <AlertTitle
-                        >Registration Temporarily Unavailable</AlertTitle
-                    >
-                    <AlertDescription>
-                        {{
-                            fee_preview.message ??
-                            'No registration fee rule is active. An administrator must publish fee terms before you can add customers.'
-                        }}
-                    </AlertDescription>
-                </Alert>
-            </div>
-
-            <!-- Authoritative Fee Terms Preview -->
-            <Card v-else class="border-primary/20 bg-primary/5">
-                <CardHeader class="pb-3">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <Coins class="text-primary size-4" />
-                            <CardTitle class="text-base"
-                                >Applicable Registration Fee Terms</CardTitle
-                            >
-                        </div>
-                        <Badge variant="outline"
-                            >Rule v{{ fee_preview.version }}</Badge
-                        >
-                    </div>
-                    <CardDescription>
-                        These terms are saved permanently to the customer's
-                        account when you register them.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent class="grid gap-4 sm:grid-cols-2">
-                    <div>
-                        <p
-                            class="text-muted-foreground text-xs font-medium uppercase"
-                        >
-                            Snapshotted Charge
-                        </p>
-                        <p
-                            class="text-foreground mt-1 text-2xl font-bold tracking-tight"
-                        >
-                            {{ fee_preview.formatted_amount }}
-                        </p>
-                        <p class="text-muted-foreground text-[11px]">
-                            {{
-                                fee_preview.is_zero
-                                    ? 'The customer will not owe a fee.'
-                                    : 'Registration creates a pending fee.'
-                            }}
-                        </p>
-                    </div>
-                    <div>
-                        <p
-                            class="text-muted-foreground text-xs font-medium uppercase"
-                        >
-                            Disclosure to Customer
-                        </p>
-                        <p class="text-foreground mt-1 text-xs">
-                            {{ fee_preview.customer_description }}
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <form @submit.prevent="submit" class="max-w-3xl space-y-6">
-                <!-- Personal & Contact Information -->
+            <form class="space-y-6" @submit.prevent="submit">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Personal & Contact Information</CardTitle>
-                        <CardDescription>
-                            Enter the customer's identity details. Full name,
-                            email, and phone number are required.
-                        </CardDescription>
+                        <CardTitle class="text-base"
+                            >Customer details</CardTitle
+                        >
                     </CardHeader>
-                    <CardContent class="space-y-4">
-                        <div class="grid gap-4 sm:grid-cols-2">
+                    <CardContent class="space-y-5">
+                        <div class="grid gap-5 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="customer-name">
                                     Full name
@@ -258,7 +217,7 @@ const submit = (): void => {
 
                             <div class="space-y-1.5">
                                 <Label for="customer-email">
-                                    Email address
+                                    Email
                                     <span class="text-destructive">*</span>
                                 </Label>
                                 <Input
@@ -278,9 +237,7 @@ const submit = (): void => {
                                     {{ form.errors.email }}
                                 </p>
                             </div>
-                        </div>
 
-                        <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="customer-phone">
                                     Phone number
@@ -301,329 +258,305 @@ const submit = (): void => {
                                 >
                                     {{ form.errors.phone }}
                                 </p>
-                                <p class="text-muted-foreground text-[11px]">
-                                    Must be in international E.164 format (e.g.
-                                    +2348012345678).
+                                <p class="text-muted-foreground text-xs">
+                                    Start with +234.
                                 </p>
                             </div>
 
                             <div class="space-y-1.5">
-                                <Label for="customer-gender"
-                                    >Gender (optional)</Label
+                                <Label for="customer-address">Address</Label>
+                                <Input
+                                    id="customer-address"
+                                    v-model="form.address"
+                                    placeholder="e.g. 12 Broad Street, Lagos"
+                                    :class="{
+                                        'border-destructive':
+                                            form.errors.address,
+                                    }"
+                                />
+                                <p
+                                    v-if="form.errors.address"
+                                    class="text-destructive text-xs"
                                 >
-                                <Select v-model="form.gender">
-                                    <SelectTrigger id="customer-gender">
-                                        <SelectValue
-                                            placeholder="Select gender"
+                                    {{ form.errors.address }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <MoreDetails
+                            :key="hasMoreOptionErrors ? 'more-open' : 'more'"
+                            label="More options"
+                            :default-open="hasMoreOptionErrors"
+                        >
+                            <div class="space-y-5">
+                                <div class="grid gap-5 sm:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <Label for="customer-gender"
+                                            >Gender</Label
+                                        >
+                                        <Select v-model="form.gender">
+                                            <SelectTrigger
+                                                id="customer-gender"
+                                                class="w-full"
+                                            >
+                                                <SelectValue
+                                                    placeholder="Select gender"
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="female"
+                                                    >Female</SelectItem
+                                                >
+                                                <SelectItem value="male"
+                                                    >Male</SelectItem
+                                                >
+                                                <SelectItem value="other"
+                                                    >Other</SelectItem
+                                                >
+                                                <SelectItem
+                                                    value="prefer_not_to_say"
+                                                    >Prefer not to
+                                                    say</SelectItem
+                                                >
+                                            </SelectContent>
+                                        </Select>
+                                        <p
+                                            v-if="form.errors.gender"
+                                            class="text-destructive text-xs"
+                                        >
+                                            {{ form.errors.gender }}
+                                        </p>
+                                    </div>
+
+                                    <div class="space-y-1.5">
+                                        <Label for="customer-occupation"
+                                            >Occupation</Label
+                                        >
+                                        <Input
+                                            id="customer-occupation"
+                                            v-model="form.occupation"
+                                            placeholder="e.g. Trader"
+                                            :class="{
+                                                'border-destructive':
+                                                    form.errors.occupation,
+                                            }"
                                         />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="female"
-                                            >Female</SelectItem
+                                        <p
+                                            v-if="form.errors.occupation"
+                                            class="text-destructive text-xs"
                                         >
-                                        <SelectItem value="male"
-                                            >Male</SelectItem
+                                            {{ form.errors.occupation }}
+                                        </p>
+                                    </div>
+
+                                    <div class="space-y-1.5">
+                                        <Label for="customer-internal-ref"
+                                            >Reference</Label
                                         >
-                                        <SelectItem value="other"
-                                            >Other</SelectItem
+                                        <Input
+                                            id="customer-internal-ref"
+                                            v-model="form.internal_reference"
+                                            placeholder="e.g. BR-1092"
+                                            :class="{
+                                                'border-destructive':
+                                                    form.errors
+                                                        .internal_reference,
+                                            }"
+                                        />
+                                        <p
+                                            v-if="
+                                                form.errors.internal_reference
+                                            "
+                                            class="text-destructive text-xs"
                                         >
-                                        <SelectItem value="prefer_not_to_say"
-                                            >Prefer not to say</SelectItem
-                                        >
-                                    </SelectContent>
-                                </Select>
-                                <p
-                                    v-if="form.errors.gender"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors.gender }}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-1.5">
-                                <Label for="customer-occupation"
-                                    >Occupation (optional)</Label
-                                >
-                                <Input
-                                    id="customer-occupation"
-                                    v-model="form.occupation"
-                                    placeholder="e.g. Trader, Teacher, Engineer"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors.occupation,
-                                    }"
-                                />
-                                <p
-                                    v-if="form.errors.occupation"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors.occupation }}
-                                </p>
-                            </div>
-
-                            <div class="space-y-1.5">
-                                <Label for="customer-internal-ref"
-                                    >Internal Reference (optional)</Label
-                                >
-                                <Input
-                                    id="customer-internal-ref"
-                                    v-model="form.internal_reference"
-                                    placeholder="e.g. BR-1092"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors.internal_reference,
-                                    }"
-                                />
-                                <p
-                                    v-if="form.errors.internal_reference"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors.internal_reference }}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <Label for="customer-address"
-                                >Residential / Business address
-                                (optional)</Label
-                            >
-                            <Input
-                                id="customer-address"
-                                v-model="form.address"
-                                placeholder="e.g. 12 Broad Street, Lagos Island, Lagos"
-                                :class="{
-                                    'border-destructive': form.errors.address,
-                                }"
-                            />
-                            <p
-                                v-if="form.errors.address"
-                                class="text-destructive text-xs"
-                            >
-                                {{ form.errors.address }}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <!-- Next of Kin Information -->
-                <Card>
-                    <CardHeader>
-                        <div class="flex items-center gap-2">
-                            <HeartHandshake
-                                class="text-muted-foreground size-4"
-                            />
-                            <CardTitle>Next of Kin (Optional)</CardTitle>
-                        </div>
-                        <CardDescription>
-                            Emergency contact and next of kin information.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent class="space-y-4">
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-1.5">
-                                <Label for="nok-name">Full name</Label>
-                                <Input
-                                    id="nok-name"
-                                    v-model="form.next_of_kin.full_name"
-                                    placeholder="e.g. Emeka Amadi"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors[
-                                                'next_of_kin.full_name'
-                                            ],
-                                    }"
-                                />
-                                <p
-                                    v-if="form.errors['next_of_kin.full_name']"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors['next_of_kin.full_name'] }}
-                                </p>
-                            </div>
-
-                            <div class="space-y-1.5">
-                                <Label for="nok-relationship"
-                                    >Relationship</Label
-                                >
-                                <Input
-                                    id="nok-relationship"
-                                    v-model="form.next_of_kin.relationship"
-                                    placeholder="e.g. Spouse, Sibling, Child"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors[
-                                                'next_of_kin.relationship'
-                                            ],
-                                    }"
-                                />
-                                <p
-                                    v-if="
-                                        form.errors['next_of_kin.relationship']
-                                    "
-                                    class="text-destructive text-xs"
-                                >
-                                    {{
-                                        form.errors['next_of_kin.relationship']
-                                    }}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <div class="space-y-1.5">
-                                <Label for="nok-phone">Phone number</Label>
-                                <Input
-                                    id="nok-phone"
-                                    v-model="form.next_of_kin.phone"
-                                    placeholder="e.g. +2348098765432"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors['next_of_kin.phone'],
-                                    }"
-                                />
-                                <p
-                                    v-if="form.errors['next_of_kin.phone']"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors['next_of_kin.phone'] }}
-                                </p>
-                            </div>
-
-                            <div class="space-y-1.5">
-                                <Label for="nok-address"
-                                    >Physical address</Label
-                                >
-                                <Input
-                                    id="nok-address"
-                                    v-model="form.next_of_kin.address"
-                                    placeholder="e.g. Same as customer"
-                                    :class="{
-                                        'border-destructive':
-                                            form.errors['next_of_kin.address'],
-                                    }"
-                                />
-                                <p
-                                    v-if="form.errors['next_of_kin.address']"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors['next_of_kin.address'] }}
-                                </p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <!-- Profile Photo & Operational Notes -->
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Profile Photo & Internal Notes</CardTitle>
-                        <CardDescription>
-                            Upload an identity photo. Add notes about the
-                            customer.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent class="space-y-4">
-                        <div class="space-y-1.5">
-                            <Label>Customer Photo (optional)</Label>
-                            <div class="flex items-center gap-4">
-                                <div
-                                    class="border-border bg-muted/40 relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed"
-                                >
-                                    <img
-                                        v-if="photoPreview"
-                                        :src="photoPreview"
-                                        alt="Photo preview"
-                                        class="size-full object-cover"
-                                    />
-                                    <Camera
-                                        v-else
-                                        class="text-muted-foreground size-6"
-                                    />
+                                            {{ form.errors.internal_reference }}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div class="space-y-1">
-                                    <input
-                                        id="customer-photo"
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        class="hidden"
-                                        @change="onPhotoChange"
+
+                                <div class="space-y-1.5">
+                                    <Label for="customer-photo">Photo</Label>
+                                    <div class="flex items-center gap-4">
+                                        <div
+                                            class="border-border bg-muted/40 relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed"
+                                        >
+                                            <img
+                                                v-if="photoPreview"
+                                                :src="photoPreview"
+                                                alt="Photo preview"
+                                                class="size-full object-cover"
+                                            />
+                                            <Camera
+                                                v-else
+                                                class="text-muted-foreground size-5"
+                                            />
+                                        </div>
+                                        <div class="space-y-1">
+                                            <input
+                                                id="customer-photo"
+                                                ref="photoInput"
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp"
+                                                class="hidden"
+                                                @change="onPhotoChange"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                @click="photoInput?.click()"
+                                            >
+                                                Choose photo
+                                            </Button>
+                                            <p
+                                                class="text-muted-foreground text-xs"
+                                            >
+                                                JPEG, PNG or WebP, up to 2 MB.
+                                            </p>
+                                            <p
+                                                v-if="form.errors.photo"
+                                                class="text-destructive text-xs"
+                                            >
+                                                {{ form.errors.photo }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <Label for="customer-notes"
+                                        >Staff notes</Label
+                                    >
+                                    <textarea
+                                        id="customer-notes"
+                                        v-model="form.notes"
+                                        rows="3"
+                                        placeholder="Only staff and the customer's agent can see these."
+                                        class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                        :class="{
+                                            'border-destructive':
+                                                form.errors.notes,
+                                        }"
                                     />
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        @click="
-                                            () =>
-                                                $el
-                                                    .querySelector(
-                                                        '#customer-photo',
-                                                    )
-                                                    ?.click()
-                                        "
-                                    >
-                                        Choose Image
-                                    </Button>
                                     <p
-                                        class="text-muted-foreground text-[11px]"
-                                    >
-                                        JPEG, PNG, or WebP. Max 2MB.
-                                    </p>
-                                    <p
-                                        v-if="form.errors.photo"
+                                        v-if="form.errors.notes"
                                         class="text-destructive text-xs"
                                     >
-                                        {{ form.errors.photo }}
+                                        {{ form.errors.notes }}
                                     </p>
                                 </div>
                             </div>
-                        </div>
+                        </MoreDetails>
+                    </CardContent>
+                </Card>
 
+                <Card>
+                    <CardHeader>
+                        <CardTitle class="text-base"
+                            >Next of kin (optional)</CardTitle
+                        >
+                        <CardDescription
+                            >Someone we can contact in an
+                            emergency.</CardDescription
+                        >
+                    </CardHeader>
+                    <CardContent class="grid gap-5 sm:grid-cols-2">
                         <div class="space-y-1.5">
-                            <Label for="customer-notes"
-                                >Internal Operational Notes (optional)</Label
-                            >
-                            <textarea
-                                id="customer-notes"
-                                v-model="form.notes"
-                                rows="3"
-                                placeholder="Internal portfolio notes. Only visible to staff and assigned agents."
-                                class="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-[3px] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            <Label for="nok-name">Full name</Label>
+                            <Input
+                                id="nok-name"
+                                v-model="form.next_of_kin.full_name"
+                                placeholder="e.g. Emeka Amadi"
                                 :class="{
-                                    'border-destructive': form.errors.notes,
+                                    'border-destructive':
+                                        form.errors['next_of_kin.full_name'],
                                 }"
                             />
                             <p
-                                v-if="form.errors.notes"
+                                v-if="form.errors['next_of_kin.full_name']"
                                 class="text-destructive text-xs"
                             >
-                                {{ form.errors.notes }}
+                                {{ form.errors['next_of_kin.full_name'] }}
+                            </p>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label for="nok-relationship">Relationship</Label>
+                            <Input
+                                id="nok-relationship"
+                                v-model="form.next_of_kin.relationship"
+                                placeholder="e.g. Spouse, Sibling"
+                                :class="{
+                                    'border-destructive':
+                                        form.errors['next_of_kin.relationship'],
+                                }"
+                            />
+                            <p
+                                v-if="form.errors['next_of_kin.relationship']"
+                                class="text-destructive text-xs"
+                            >
+                                {{ form.errors['next_of_kin.relationship'] }}
+                            </p>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label for="nok-phone">Phone number</Label>
+                            <Input
+                                id="nok-phone"
+                                v-model="form.next_of_kin.phone"
+                                placeholder="e.g. +2348098765432"
+                                :class="{
+                                    'border-destructive':
+                                        form.errors['next_of_kin.phone'],
+                                }"
+                            />
+                            <p
+                                v-if="form.errors['next_of_kin.phone']"
+                                class="text-destructive text-xs"
+                            >
+                                {{ form.errors['next_of_kin.phone'] }}
+                            </p>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label for="nok-address">Address</Label>
+                            <Input
+                                id="nok-address"
+                                v-model="form.next_of_kin.address"
+                                placeholder="e.g. Same as customer"
+                                :class="{
+                                    'border-destructive':
+                                        form.errors['next_of_kin.address'],
+                                }"
+                            />
+                            <p
+                                v-if="form.errors['next_of_kin.address']"
+                                class="text-destructive text-xs"
+                            >
+                                {{ form.errors['next_of_kin.address'] }}
                             </p>
                         </div>
                     </CardContent>
-                    <CardFooter class="flex justify-between border-t pt-4">
-                        <Link :href="customersIndex().url">
-                            <Button type="button" variant="outline"
-                                >Cancel</Button
-                            >
-                        </Link>
-                        <Button
-                            type="submit"
-                            :disabled="
-                                form.processing || !fee_preview.available
-                            "
-                        >
-                            <Loader2
-                                v-if="form.processing"
-                                class="mr-2 size-4 animate-spin"
-                            />
-                            <UserCheck v-else class="mr-2 size-4" />
-                            Register Customer & Send Invitation
-                        </Button>
-                    </CardFooter>
                 </Card>
+
+                <div
+                    class="bg-background/95 sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-end gap-3 border-t px-1 py-4 backdrop-blur"
+                >
+                    <Button as-child type="button" variant="outline">
+                        <Link :href="customersIndex().url">Cancel</Link>
+                    </Button>
+                    <Button
+                        type="submit"
+                        :disabled="form.processing || !fee_preview.available"
+                    >
+                        <Loader2
+                            v-if="form.processing"
+                            class="size-4 animate-spin"
+                        />
+                        <UserCheck v-else class="size-4" />
+                        Add customer
+                    </Button>
+                </div>
             </form>
         </div>
     </div>

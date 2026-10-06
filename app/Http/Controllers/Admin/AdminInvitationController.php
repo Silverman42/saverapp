@@ -11,6 +11,7 @@ use App\Services\AdminInvitationService;
 use App\Services\AuthorizationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -26,9 +27,19 @@ class AdminInvitationController extends Controller
     {
         $this->authorizeManager($request);
 
+        return Inertia::render('admin/access/Invite', self::formProps());
+    }
+
+    /**
+     * Build the props the invitation form needs: a fresh attempt reference and the grantable permissions.
+     *
+     * @return array{attempt_reference: string, permissions: Collection<int, array{code: string, name: string, description: string}>}
+     */
+    public static function formProps(): array
+    {
         $active = Permission::query()->where('guard_name', 'web')->where('status', 'active')->pluck('name')->all();
 
-        return Inertia::render('admin/access/Invite', [
+        return [
             'attempt_reference' => (string) Str::uuid(),
             'permissions' => collect(AdminPermission::cases())
                 ->filter(fn (AdminPermission $permission): bool => in_array($permission->value, $active, true))
@@ -37,7 +48,7 @@ class AdminInvitationController extends Controller
                     'name' => $permission->displayName(),
                     'description' => $permission->description(),
                 ])->values(),
-        ]);
+        ];
     }
 
     /**

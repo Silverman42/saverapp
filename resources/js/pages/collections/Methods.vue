@@ -2,8 +2,13 @@
 import { HttpResponseError } from '@inertiajs/core';
 import { Head, Link, router, useHttp } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -76,6 +81,12 @@ const lookup = useHttp<
 const uncertain = ref(false);
 const confirmed = ref(false);
 const message = ref('');
+const sheetOpen = ref(false);
+const methodNames: Record<string, string> = {
+    transfer: 'Bank transfer',
+    pos: 'POS',
+    other: 'Other',
+};
 const storageKey = 'collection-method-publication';
 watch(
     () => [
@@ -153,7 +164,7 @@ async function check(): Promise<void> {
         const result = await lookup.get(
             publicationResult.url(form.publication_reference),
         );
-        message.value = `${result.label}, version ${result.version}, was published.`;
+        message.value = `${result.label} was published.`;
         clearAttempt();
         uncertain.value = false;
         confirmed.value = false;
@@ -166,14 +177,14 @@ async function check(): Promise<void> {
             error.response.status === 404
         ) {
             message.value =
-                'No publication was found for this reference. Refresh the current details and review before retrying.';
+                'It was not published. Check the details and try again.';
             clearAttempt();
             uncertain.value = false;
             confirmed.value = false;
             router.reload();
         } else
             message.value =
-                'The result could not be checked. Keep this reference and check again.';
+                'We could not check right now. Try again in a moment.';
     }
 }
 async function publish(): Promise<void> {
@@ -191,7 +202,8 @@ async function publish(): Promise<void> {
     }
     try {
         await form.post(store.url());
-        message.value = `${form.label}, version ${form.version}, was published.`;
+        message.value = `${form.label} was published.`;
+        sheetOpen.value = false;
         clearAttempt();
         form.publication_reference = newOperationReference();
         form.reason = '';
@@ -204,11 +216,11 @@ async function publish(): Promise<void> {
         ) {
             clearAttempt();
             message.value =
-                'Publication was not accepted. Check the field errors and fresh Admin authentication.';
+                'This was not published. Fix the errors below, or sign in again if asked.';
         } else {
             uncertain.value = true;
             message.value =
-                'The outcome is uncertain or the configuration changed. Check this reference before retrying.';
+                'We are not sure this was published. Check the result before trying again.';
         }
     }
 }
@@ -216,45 +228,169 @@ async function publish(): Promise<void> {
 <template>
     <Head title="Collection methods" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Collection methods
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Publish payment destinations and custody instructions after
-                review. Existing receipts keep their agreed method version.
-            </p>
+        <PageHeader
+            title="Collection methods"
+            description="Ways customers can pay, like bank transfer or POS."
+        >
+            <template #actions>
+                <Button type="button" @click="sheetOpen = true"
+                    >Add method</Button
+                >
+            </template>
+        </PageHeader>
+        <p
+            v-if="message && !sheetOpen"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            {{ message }}
+        </p>
+        <div
+            v-if="uncertain && !sheetOpen"
+            class="bg-muted flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm"
+            role="status"
+        >
+            <p>Check your last change before adding another.</p>
+            <Button
+                type="button"
+                variant="outline"
+                :disabled="lookup.processing"
+                @click="check"
+                >Check result</Button
+            >
         </div>
-        <p v-if="message" role="status" class="text-sm">{{ message }}</p>
-        <Card
-            ><CardContent class="grid gap-4 pt-6">
-                <h2 class="font-medium">Publish a method version</h2>
-                <div v-if="uncertain" class="grid gap-3" role="status">
-                    <p>
-                        Check the previous publication before submitting
-                        another.
-                    </p>
-                    <p class="text-sm break-all">
-                        {{ form.publication_reference }}
+
+        <EmptyState
+            v-if="!methods.data.length"
+            title="No collection methods yet"
+            description="Add a method so agents can record transfers and POS payments."
+        >
+            <Button type="button" @click="sheetOpen = true">Add method</Button>
+        </EmptyState>
+        <Card v-else>
+            <CardHeader><CardTitle>Published methods</CardTitle></CardHeader>
+            <CardContent>
+                <ul class="divide-y">
+                    <li
+                        v-for="method in methods.data"
+                        :key="method.id"
+                        class="grid gap-2 py-4 text-sm first:pt-0 last:pb-0"
+                    >
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <p class="font-medium">{{ method.label }}</p>
+                            <Badge variant="secondary">{{
+                                methodNames[method.method_key] ??
+                                method.method_key
+                            }}</Badge>
+                        </div>
+                        <p class="text-muted-foreground text-xs">
+                            Since {{ method.effective_at }} ·
+                            {{
+                                method.attachment_required
+                                    ? 'Proof required'
+                                    : 'Proof optional'
+                            }}
+                        </p>
+                        <MoreDetails>
+                            <dl
+                                class="text-muted-foreground grid gap-1 text-xs break-all"
+                            >
+                                <div>
+                                    <dt class="text-foreground inline">
+                                        Account ID:
+                                    </dt>
+                                    <dd class="inline">
+                                        {{ method.destination_key }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-foreground inline">
+                                        Money held in:
+                                    </dt>
+                                    <dd class="inline">
+                                        {{ method.custody_account_code }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-foreground inline">
+                                        Version:
+                                    </dt>
+                                    <dd class="inline">
+                                        {{ method.version }} (account setup
+                                        {{ method.mapping_version }})
+                                    </dd>
+                                </div>
+                            </dl>
+                        </MoreDetails>
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+        <nav
+            v-if="methods.prev_page_url || methods.next_page_url"
+            aria-label="Method history pages"
+            class="flex gap-4 text-sm"
+        >
+            <Link
+                v-if="methods.prev_page_url"
+                :href="methods.prev_page_url"
+                class="underline-offset-4 hover:underline"
+                >Previous</Link
+            ><Link
+                v-if="methods.next_page_url"
+                :href="methods.next_page_url"
+                class="underline-offset-4 hover:underline"
+                >Next</Link
+            >
+        </nav>
+
+        <FormSheet
+            v-model:open="sheetOpen"
+            title="Add collection method"
+            description="Existing payments keep the method they were recorded with."
+        >
+            <div class="grid gap-5">
+                <p
+                    v-if="message"
+                    role="status"
+                    class="bg-muted rounded-xl p-3 text-sm"
+                >
+                    {{ message }}
+                </p>
+                <div
+                    v-if="uncertain"
+                    class="bg-muted grid gap-3 rounded-xl p-3 text-sm"
+                    role="status"
+                >
+                    <p>Check your last change before adding another.</p>
+                    <p class="text-muted-foreground text-xs break-all">
+                        Reference: {{ form.publication_reference }}
                     </p>
                     <Button
                         type="button"
                         variant="outline"
+                        class="w-fit"
                         :disabled="lookup.processing"
                         @click="check"
-                        >Check publication result</Button
+                        >Check result</Button
                     >
                 </div>
-                <form class="grid gap-4" @submit.prevent="publish">
+                <form
+                    id="method-form"
+                    class="grid gap-5"
+                    @submit.prevent="publish"
+                >
                     <fieldset
                         :disabled="uncertain || form.processing"
-                        class="grid gap-4 sm:grid-cols-2"
+                        class="grid gap-5"
                     >
                         <legend class="sr-only">
-                            Collection method instructions
+                            Collection method details
                         </legend>
                         <div class="grid gap-2">
-                            <Label for="method-key">Payment method</Label
+                            <Label for="method-key">Payment type</Label
                             ><Select v-model="form.method_key"
                                 ><SelectTrigger
                                     id="method-key"
@@ -270,17 +406,17 @@ async function publish(): Promise<void> {
                             >
                         </div>
                         <div class="grid gap-2">
-                            <Label for="method-label"
-                                >Customer-facing name</Label
+                            <Label for="method-label">Name customers see</Label
                             ><Input
                                 id="method-label"
                                 v-model="form.label"
                                 maxlength="100"
+                                placeholder="For example: GTBank transfer"
                                 required
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="method-custody">Funds held in</Label
+                            <Label for="method-custody">Money goes to</Label
                             ><Select
                                 v-model="form.custody_account_code"
                                 required
@@ -297,18 +433,26 @@ async function publish(): Promise<void> {
                                             account.mapping_status !== 'mapped'
                                         "
                                     >
-                                        {{
-                                            account.display_name ?? account.code
+                                        {{ account.display_name ?? account.code
+                                        }}{{
+                                            account.mapping_status !== 'mapped'
+                                                ? ' (not ready)'
+                                                : ''
                                         }}
-                                        ·
-                                        {{ account.mapping_status }}
                                     </SelectItem>
                                 </SelectContent></Select
                             >
+                            <p
+                                v-if="!mappingReady"
+                                role="status"
+                                class="text-muted-foreground text-xs"
+                            >
+                                This account is not ready yet. Its accounting
+                                setup needs approval first.
+                            </p>
                         </div>
                         <div class="grid gap-2">
-                            <Label for="method-destination"
-                                >Verified destination identifier</Label
+                            <Label for="method-destination">Account ID</Label
                             ><Input
                                 id="method-destination"
                                 v-model="form.destination_key"
@@ -316,31 +460,21 @@ async function publish(): Promise<void> {
                                 pattern="[A-Za-z0-9._-]+"
                                 required
                             />
+                            <p class="text-muted-foreground text-xs">
+                                Letters, numbers, dots, dashes and underscores.
+                                Double-check it before you publish.
+                            </p>
                         </div>
-                        <p class="text-muted-foreground text-sm sm:col-span-2">
-                            Publishing version {{ form.version }} against
-                            custody mapping version {{ form.mapping_version }}.
-                            Make an independent check of the destination before
-                            you publish.
-                        </p>
-                        <p
-                            v-if="!mappingReady"
-                            role="status"
-                            class="text-muted-foreground text-sm sm:col-span-2"
-                        >
-                            You cannot publish until the selected custody
-                            account has a current approved mapping.
-                        </p>
                         <label class="flex items-center gap-2 text-sm"
                             ><input
                                 v-model="form.attachment_required"
                                 type="checkbox"
                             />
-                            Require a protected supporting file</label
+                            Ask for proof of payment</label
                         >
-                        <div class="grid gap-2 sm:col-span-2">
+                        <div class="grid gap-2">
                             <Label for="method-reason"
-                                >Internal publication reason</Label
+                                >Reason (staff only)</Label
                             ><textarea
                                 id="method-reason"
                                 v-model="form.reason"
@@ -350,15 +484,14 @@ async function publish(): Promise<void> {
                                 required
                             />
                         </div>
-                        <label
-                            class="flex items-start gap-2 text-sm sm:col-span-2"
+                        <label class="flex items-start gap-2 text-sm"
                             ><input
                                 v-model="confirmed"
                                 type="checkbox"
                                 class="mt-1"
                             />
-                            I reviewed the destination, custody and evidence
-                            requirements.</label
+                            I checked the account details and proof
+                            setting.</label
                         >
                     </fieldset>
                     <div
@@ -367,69 +500,36 @@ async function publish(): Promise<void> {
                         class="text-destructive grid gap-1 text-sm"
                     >
                         <p v-for="(error, field) in form.errors" :key="field">
-                            {{ field }}: {{ error }}
+                            {{ error }}
                         </p>
                     </div>
-                    <Button
-                        type="submit"
-                        class="w-fit"
-                        :disabled="
-                            !confirmed ||
-                            uncertain ||
-                            form.processing ||
-                            !mappingReady
-                        "
-                        >Publish reviewed version</Button
-                    >
+                    <MoreDetails>
+                        <p class="text-muted-foreground text-xs">
+                            This will be version {{ form.version }}, using
+                            account setup version {{ form.mapping_version }}.
+                        </p>
+                    </MoreDetails>
                 </form>
-            </CardContent></Card
-        >
-        <Card
-            ><CardContent class="grid gap-4 pt-6"
-                ><h2 class="font-medium">Published history</h2>
-                <p
-                    v-if="!methods.data.length"
-                    class="text-muted-foreground text-sm"
+            </div>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="sheetOpen = false"
+                    >Cancel</Button
                 >
-                    No collection method has been published.
-                </p>
-                <div
-                    v-for="method in methods.data"
-                    :key="method.id"
-                    class="grid gap-1 border-b pb-3 text-sm last:border-0"
+                <Button
+                    type="submit"
+                    form="method-form"
+                    :disabled="
+                        !confirmed ||
+                        uncertain ||
+                        form.processing ||
+                        !mappingReady
+                    "
+                    >Publish</Button
                 >
-                    <p class="font-medium">
-                        {{ method.label }} · {{ method.method_key }} · version
-                        {{ method.version }}
-                    </p>
-                    <p>Destination {{ method.destination_key }}</p>
-                    <p>
-                        {{ method.custody_account_code }} · mapping
-                        {{ method.mapping_version }} ·
-                        {{
-                            method.attachment_required
-                                ? 'Protected file required'
-                                : 'Supporting file optional'
-                        }}
-                    </p>
-                    <p class="text-muted-foreground">
-                        Published {{ method.effective_at }}
-                    </p>
-                </div></CardContent
-            ></Card
-        >
-        <nav aria-label="Method history pages" class="flex gap-4">
-            <Link
-                v-if="methods.prev_page_url"
-                :href="methods.prev_page_url"
-                class="underline"
-                >Previous</Link
-            ><Link
-                v-if="methods.next_page_url"
-                :href="methods.next_page_url"
-                class="underline"
-                >Next</Link
-            >
-        </nav>
+            </template>
+        </FormSheet>
     </div>
 </template>

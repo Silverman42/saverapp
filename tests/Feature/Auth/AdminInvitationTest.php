@@ -85,6 +85,25 @@ test('only an Admin with admins.manage and fresh authentication can open or subm
     expect(User::query()->where('email', 'x@example.test')->exists())->toBeFalse();
 });
 
+test('the admin directory loads the invite form only on request and only for admin managers', function (): void {
+    $manager = adminInvitationManager();
+    $baseline = User::factory()->admin()->withTwoFactor()->create();
+
+    $this->actingAs($manager)->withSession(adminInvitationFreshSession())->get(route('admin.access.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/access/Index')
+            ->where('isFresh', true)
+            ->missing('inviteForm')
+            ->reloadOnly('inviteForm', fn (Assert $reload) => $reload
+                ->has('inviteForm.attempt_reference')
+                ->where('inviteForm.permissions.0.code', AdminPermission::cases()[0]->value)));
+
+    $this->actingAs($baseline)->withSession(adminInvitationFreshSession())->get(route('admin.access.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('isFresh', false)
+            ->reloadOnly('inviteForm', fn (Assert $reload) => $reload->where('inviteForm', null)));
+});
+
 test('an invitation creates an Invited Admin with the chosen permissions, history, audit and a 24-hour link', function (): void {
     $inviter = adminInvitationManager();
 

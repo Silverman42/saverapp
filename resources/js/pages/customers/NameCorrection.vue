@@ -1,21 +1,16 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
+import NameCorrectionReview from '@/components/NameCorrectionReview.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import {
     index as customersIndex,
     show as customerShow,
 } from '@/routes/customers';
-import { accept, cancel, reject } from '@/routes/customers/name-corrections';
-import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 
-const props = defineProps<{
+defineProps<{
     customer: { id: string };
     correction: {
         id: number;
@@ -25,25 +20,6 @@ const props = defineProps<{
         can_cancel: boolean;
     };
 }>();
-
-const submit = (action: 'accept' | 'reject' | 'cancel'): void => {
-    const route =
-        action === 'accept'
-            ? accept({
-                  customer: props.customer.id,
-                  correction: props.correction.id,
-              })
-            : action === 'reject'
-              ? reject({
-                    customer: props.customer.id,
-                    correction: props.correction.id,
-                })
-              : cancel({
-                    customer: props.customer.id,
-                    correction: props.correction.id,
-                });
-    router.post(route.url, {}, { preserveScroll: true });
-};
 
 defineOptions({
     layout: {
@@ -59,48 +35,22 @@ defineOptions({
 <template>
     <Head title="Review name correction" />
     <div class="mx-auto w-full max-w-2xl space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Name correction
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This proposal expires
-                {{ correction.expires_at }} (Africa/Lagos).
-            </p>
-        </div>
+        <PageHeader
+            title="Name correction"
+            description="Check the new name before you confirm it."
+        />
         <Card>
-            <CardHeader>
-                <CardTitle>Proposed Customer name</CardTitle>
-                <CardDescription
-                    >Review the proposed change before confirming
-                    it.</CardDescription
+            <CardContent>
+                <NameCorrectionReview
+                    :customer-id="customer.id"
+                    :correction="correction"
                 >
-            </CardHeader>
-            <CardContent class="space-y-5">
-                <p class="text-xl font-medium">
-                    {{ correction.proposed_name }}
-                </p>
-                <div class="flex flex-wrap gap-3">
-                    <template v-if="correction.can_review">
-                        <Button @click="submit('accept')"
-                            >Accept correction</Button
+                    <Button as-child variant="ghost">
+                        <Link :href="customerShow(customer.id)"
+                            >Back to profile</Link
                         >
-                        <Button variant="outline" @click="submit('reject')"
-                            >Reject</Button
-                        >
-                    </template>
-                    <Button
-                        v-if="correction.can_cancel"
-                        variant="destructive"
-                        @click="submit('cancel')"
-                        >Cancel proposal</Button
-                    >
-                    <Link :href="customerShow(customer.id)"
-                        ><Button variant="ghost"
-                            >Return to profile</Button
-                        ></Link
-                    >
-                </div>
+                    </Button>
+                </NameCorrectionReview>
             </CardContent>
         </Card>
     </div>

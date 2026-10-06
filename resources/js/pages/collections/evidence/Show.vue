@@ -6,6 +6,10 @@ import {
 import { HttpResponseError } from '@inertiajs/core';
 import { Head, Link, router, useHttp } from '@inertiajs/vue3';
 import { onMounted, ref, watch } from 'vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -53,6 +57,12 @@ const form = useHttp({
 const confirmed = ref(false);
 const uncertain = ref(false);
 const message = ref('');
+const sheetOpen = ref(false);
+const statusLabels: Record<PaymentEvidence['status'], string> = {
+    pending: 'Waiting for check',
+    verified: 'Checked',
+    rejected: 'Rejected',
+};
 const key = `collection-evidence-review:${props.evidence.evidence_reference}`;
 const resultRequest = useHttp<
     Record<string, never>,
@@ -98,7 +108,7 @@ async function check(): Promise<void> {
                 operation: form.operation_reference,
             }),
         );
-        message.value = `Original review posted as ${result.outcome}, version ${result.version}.`;
+        message.value = `Your last review was saved as ${result.outcome}.`;
         clearAttempt();
         uncertain.value = false;
         form.operation_reference = newOperationReference();
@@ -111,12 +121,12 @@ async function check(): Promise<void> {
         ) {
             uncertain.value = false;
             message.value =
-                'No posted review was found. Review the refreshed current details before retrying this reference.';
+                'Your last review was not saved. Check the details and try again.';
             clearAttempt();
             router.reload();
         } else
             message.value =
-                'The result remains unavailable. Keep this reference and check again.';
+                'We could not check right now. Try again in a moment.';
     }
 }
 async function submit(): Promise<void> {
@@ -138,6 +148,8 @@ async function submit(): Promise<void> {
         clearAttempt();
         form.operation_reference = newOperationReference();
         confirmed.value = false;
+        sheetOpen.value = false;
+        message.value = 'Review saved.';
         router.reload();
     } catch (error) {
         if (
@@ -146,11 +158,11 @@ async function submit(): Promise<void> {
         ) {
             clearAttempt();
             message.value =
-                'Review was not accepted. Check the errors, current authority, fresh authentication and protected file availability.';
+                'Your review was not saved. Fix the errors below, or sign in again if asked.';
         } else {
             uncertain.value = true;
             message.value =
-                'Review outcome is uncertain or the version changed. Check this original operation before trying again.';
+                'We are not sure your review was saved. Check the result before trying again.';
         }
     }
 }
@@ -168,7 +180,7 @@ async function download(id: number): Promise<void> {
         );
     } catch {
         message.value =
-            'The protected file is unavailable or your current access changed.';
+            'This file is not available right now. Refresh the page and try again.';
     }
 }
 </script>
@@ -176,193 +188,288 @@ async function download(id: number): Promise<void> {
 <template>
     <Head title="Payment evidence detail" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Payment evidence detail
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ evidence.customer_name }} · {{ evidence.customer_id }}
-            </p>
-        </div>
-        <Card
-            ><CardHeader
-                ><CardTitle>{{ evidence.method_label }}</CardTitle></CardHeader
-            ><CardContent class="grid gap-3 text-sm">
-                <p class="break-all">
-                    Evidence {{ evidence.evidence_reference }}
-                </p>
-                <p>
-                    {{
-                        evidence.consumed
-                            ? 'Consumed by receipt'
-                            : evidence.status
-                    }}
-                    · review version {{ evidence.review_version }}
-                </p>
-                <p>
-                    Claimed payment {{ money(evidence.amount_kobo) }} · received
-                    {{ evidence.received_date }}
-                </p>
-                <p class="break-all">
-                    Payment reference: {{ evidence.method_reference }}
-                </p>
-                <p>Configured destination: {{ evidence.destination_key }}</p>
-                <p class="whitespace-pre-line">
-                    Source attestation: {{ evidence.source_attestation }}
-                </p>
-                <p v-if="evidence.review_reason" class="whitespace-pre-line">
-                    Review reason: {{ evidence.review_reason }}
-                </p>
+        <PageHeader
+            title="Payment proof"
+            :description="`From ${evidence.customer_name}.`"
+        >
+            <template
+                v-if="
+                    (can_record &&
+                        evidence.status === 'verified' &&
+                        !evidence.consumed) ||
+                    can_review
+                "
+                #actions
+            >
                 <Button
-                    v-for="file in evidence.files"
-                    :key="file.id"
-                    type="button"
-                    variant="outline"
-                    class="w-fit"
-                    :disabled="fileRequest.processing"
-                    @click="download(file.id)"
-                    >Download protected {{ file.mime_type }} ·
-                    {{ Math.ceil(file.byte_size / 1024) }} KB</Button
-                >
-                <Link
                     v-if="
                         can_record &&
                         evidence.status === 'verified' &&
                         !evidence.consumed
                     "
-                    :href="
-                        create(evidence.customer_id, {
-                            query: { evidence: evidence.evidence_reference },
-                        })
-                    "
-                    class="underline"
-                    >Record receipt using this verified proof</Link
+                    as-child
+                    ><Link
+                        :href="
+                            create(evidence.customer_id, {
+                                query: {
+                                    evidence: evidence.evidence_reference,
+                                },
+                            })
+                        "
+                        >Record payment</Link
+                    ></Button
                 >
-            </CardContent></Card
+                <Button
+                    v-if="can_review"
+                    type="button"
+                    :variant="
+                        can_record &&
+                        evidence.status === 'verified' &&
+                        !evidence.consumed
+                            ? 'outline'
+                            : 'default'
+                    "
+                    @click="sheetOpen = true"
+                    >Check payment</Button
+                >
+            </template>
+        </PageHeader>
+
+        <p
+            v-if="message && !sheetOpen"
+            role="status"
+            aria-live="polite"
+            class="bg-muted rounded-xl p-4 text-sm"
         >
-        <p v-if="message" role="status" aria-live="polite">{{ message }}</p>
-        <div v-if="uncertain && can_check_review" class="grid gap-3">
-            <p class="break-all">
-                Check operation {{ form.operation_reference }} before another
-                review.
-            </p>
+            {{ message }}
+        </p>
+        <div
+            v-if="uncertain && can_check_review"
+            class="bg-muted flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm"
+        >
+            <p>Check your last review before saving another.</p>
             <Button
                 type="button"
                 variant="outline"
-                class="w-fit"
                 :disabled="resultRequest.processing"
                 @click="check"
-                >Check original review result</Button
+                >Check result</Button
             >
         </div>
-        <Card v-if="can_review"
-            ><CardHeader
-                ><CardTitle
-                    >Independent payment verification</CardTitle
-                ></CardHeader
-            ><CardContent>
-                <form @submit.prevent="submit" class="grid gap-4">
-                    <p class="text-muted-foreground text-sm">
-                        Make an independent check of the bank or terminal
-                        record. Enter the reference, amount and destination that
-                        you matched. Verification does not post money.
+
+        <Card>
+            <CardHeader
+                class="flex flex-row flex-wrap items-center justify-between gap-3"
+            >
+                <CardTitle>{{ evidence.method_label }}</CardTitle>
+                <Badge variant="secondary">{{
+                    evidence.consumed
+                        ? 'Used for a payment'
+                        : statusLabels[evidence.status]
+                }}</Badge>
+            </CardHeader>
+            <CardContent class="space-y-5 text-sm">
+                <div>
+                    <p class="text-muted-foreground">Amount claimed</p>
+                    <p class="mt-1 text-2xl font-semibold">
+                        {{ money(evidence.amount_kobo) }}
                     </p>
-                    <fieldset
-                        :disabled="form.processing || uncertain"
-                        class="grid gap-4 sm:grid-cols-2"
+                </div>
+                <dl class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-muted-foreground">Date paid</dt>
+                        <dd class="mt-1 font-medium">
+                            {{ evidence.received_date }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Payment reference</dt>
+                        <dd class="mt-1 font-medium break-all">
+                            {{ evidence.method_reference }}
+                        </dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-muted-foreground">Note from sender</dt>
+                        <dd class="mt-1 whitespace-pre-line">
+                            {{ evidence.source_attestation }}
+                        </dd>
+                    </div>
+                    <div v-if="evidence.review_reason" class="sm:col-span-2">
+                        <dt class="text-muted-foreground">Review note</dt>
+                        <dd class="mt-1 whitespace-pre-line">
+                            {{ evidence.review_reason }}
+                        </dd>
+                    </div>
+                </dl>
+                <div v-if="evidence.files.length" class="flex flex-wrap gap-2">
+                    <Button
+                        v-for="(file, index) in evidence.files"
+                        :key="file.id"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        :disabled="fileRequest.processing"
+                        @click="download(file.id)"
+                        >Download file
+                        {{ evidence.files.length > 1 ? index + 1 : '' }} ({{
+                            Math.ceil(file.byte_size / 1024)
+                        }}
+                        KB)</Button
                     >
-                        <div class="grid gap-2">
-                            <Label for="review-outcome">Outcome</Label
-                            ><Select v-model="form.outcome"
-                                ><SelectTrigger
-                                    id="review-outcome"
-                                    class="h-11 w-full"
-                                    ><SelectValue /></SelectTrigger
-                                ><SelectContent>
-                                    <SelectItem value="verified"
-                                        >Verified payment</SelectItem
-                                    >
-                                    <SelectItem value="rejected"
-                                        >Rejected claim</SelectItem
-                                    >
-                                </SelectContent></Select
-                            >
+                </div>
+                <MoreDetails>
+                    <dl
+                        class="text-muted-foreground grid gap-1 text-xs break-all"
+                    >
+                        <div>
+                            <dt class="text-foreground inline">Customer ID:</dt>
+                            <dd class="inline">{{ evidence.customer_id }}</dd>
                         </div>
-                        <template v-if="form.outcome === 'verified'">
-                            <div class="grid gap-2">
-                                <Label for="matched-reference"
-                                    >Independently matched reference</Label
-                                ><Input
-                                    id="matched-reference"
-                                    v-model="form.verified_reference"
-                                    maxlength="120"
-                                    required
-                                />
-                            </div>
-                            <div class="grid gap-2">
-                                <Label for="matched-amount"
-                                    >Independently matched amount, NGN</Label
-                                ><Input
-                                    id="matched-amount"
-                                    v-model="form.verified_amount_ngn"
-                                    inputmode="decimal"
-                                    required
-                                />
-                            </div>
-                            <div class="grid gap-2">
-                                <Label for="matched-destination"
-                                    >Independently matched destination</Label
-                                ><Input
-                                    id="matched-destination"
-                                    v-model="form.verified_destination_key"
-                                    maxlength="100"
-                                    required
-                                />
-                            </div>
-                        </template>
-                        <div class="grid gap-2 sm:col-span-2">
-                            <Label for="review-reason">Review reason</Label
-                            ><textarea
-                                id="review-reason"
-                                v-model="form.reason"
-                                class="bg-background min-h-24 rounded-md border p-3 text-sm"
-                                minlength="10"
-                                maxlength="2000"
+                        <div>
+                            <dt class="text-foreground inline">
+                                Proof number:
+                            </dt>
+                            <dd class="inline">
+                                {{ evidence.evidence_reference }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-foreground inline">Paid into:</dt>
+                            <dd class="inline">
+                                {{ evidence.destination_key }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-foreground inline">
+                                Times reviewed:
+                            </dt>
+                            <dd class="inline">
+                                {{ evidence.review_version }}
+                            </dd>
+                        </div>
+                        <div v-for="file in evidence.files" :key="file.id">
+                            <dt class="text-foreground inline">File type:</dt>
+                            <dd class="inline">{{ file.mime_type }}</dd>
+                        </div>
+                    </dl>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <FormSheet
+            v-if="can_review"
+            v-model:open="sheetOpen"
+            title="Check payment"
+            description="Compare with the bank or POS record. This does not record the payment."
+        >
+            <form id="review-form" class="grid gap-5" @submit.prevent="submit">
+                <p
+                    v-if="message"
+                    role="status"
+                    aria-live="polite"
+                    class="bg-muted rounded-xl p-3 text-sm"
+                >
+                    {{ message }}
+                </p>
+                <fieldset
+                    :disabled="form.processing || uncertain"
+                    class="grid gap-5"
+                >
+                    <legend class="sr-only">Payment check</legend>
+                    <div class="grid gap-2">
+                        <Label for="review-outcome">Result</Label
+                        ><Select v-model="form.outcome"
+                            ><SelectTrigger
+                                id="review-outcome"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent>
+                                <SelectItem value="verified"
+                                    >Payment is correct</SelectItem
+                                >
+                                <SelectItem value="rejected"
+                                    >Reject this proof</SelectItem
+                                >
+                            </SelectContent></Select
+                        >
+                    </div>
+                    <template v-if="form.outcome === 'verified'">
+                        <p class="text-muted-foreground text-xs">
+                            Enter what you see on the bank or POS record.
+                        </p>
+                        <div class="grid gap-2">
+                            <Label for="matched-reference">Reference</Label
+                            ><Input
+                                id="matched-reference"
+                                v-model="form.verified_reference"
+                                maxlength="120"
                                 required
                             />
                         </div>
-                        <label
-                            class="flex items-start gap-2 text-sm sm:col-span-2"
-                            ><input
-                                v-model="confirmed"
-                                type="checkbox"
-                                class="mt-1"
+                        <div class="grid gap-2">
+                            <Label for="matched-amount">Amount (NGN)</Label
+                            ><Input
+                                id="matched-amount"
+                                v-model="form.verified_amount_ngn"
+                                inputmode="decimal"
                                 required
-                            />I independently checked the payment claim and
-                            confirm this outcome.</label
-                        >
-                    </fieldset>
-                    <div
-                        v-if="form.hasErrors"
-                        role="alert"
-                        class="text-destructive text-sm"
-                    >
-                        <p v-for="(error, field) in form.errors" :key="field">
-                            {{ error }}
-                        </p>
+                            />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="matched-destination"
+                                >Account it was paid into</Label
+                            ><Input
+                                id="matched-destination"
+                                v-model="form.verified_destination_key"
+                                maxlength="100"
+                                required
+                            />
+                        </div>
+                    </template>
+                    <div class="grid gap-2">
+                        <Label for="review-reason">Note</Label
+                        ><textarea
+                            id="review-reason"
+                            v-model="form.reason"
+                            class="bg-background min-h-24 rounded-md border p-3 text-sm"
+                            minlength="10"
+                            maxlength="2000"
+                            required
+                        />
                     </div>
-                    <Button
-                        type="submit"
-                        class="w-fit"
-                        :disabled="form.processing || uncertain || !confirmed"
-                        >{{
-                            form.processing
-                                ? 'Saving review…'
-                                : 'Save independent review'
-                        }}</Button
+                    <label class="flex items-start gap-2 text-sm"
+                        ><input
+                            v-model="confirmed"
+                            type="checkbox"
+                            class="mt-1"
+                            required
+                        />I checked this payment myself.</label
                     >
-                </form>
-            </CardContent></Card
-        >
+                </fieldset>
+                <div
+                    v-if="form.hasErrors"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    <p v-for="(error, field) in form.errors" :key="field">
+                        {{ error }}
+                    </p>
+                </div>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="sheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="review-form"
+                    :disabled="form.processing || uncertain || !confirmed"
+                    >{{ form.processing ? 'Saving…' : 'Save review' }}</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

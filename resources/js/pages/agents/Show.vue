@@ -9,6 +9,7 @@ import {
     show as agentsShow,
 } from '@/routes/agents';
 import { edit as editAgentStatus } from '@/routes/agents/status';
+import { show as showLifecycle } from '@/actions/App/Http/Controllers/AgentLifecycleController';
 import { create as createRecovery } from '@/routes/admin/staff-recoveries';
 import {
     cancel as cancelInvitation,
@@ -17,22 +18,18 @@ import {
 } from '@/routes/agents/invitations';
 import { show as customersShow } from '@/routes/customers';
 import {
-    AlertCircle,
-    ArrowLeft,
-    CheckCircle2,
-    Clock,
-    Lock,
+    ChevronRight,
     Mail,
+    MoreHorizontal,
     Pencil,
     Phone,
     RefreshCw,
-    Shield,
-    ShieldCheck,
-    StickyNote,
-    User as UserIcon,
-    Wallet,
+    Users,
     XCircle,
 } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,8 +41,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
-import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -228,6 +230,34 @@ const getInvitationBadgeVariant = (status: string) => {
     }
 };
 
+const hasMoreActions = computed(
+    () =>
+        props.agent.actions.can_manage_lifecycle ||
+        (props.agent.actions.can_request_recovery &&
+            !!props.agent.actions.recovery_user_id),
+);
+
+const abilities = computed(() => [
+    {
+        key: 'read',
+        label: 'See their customers',
+        check: props.agent.readiness.can_read_assigned,
+        fallback: 'Can view the customers assigned to them.',
+    },
+    {
+        key: 'work',
+        label: 'Work with customers',
+        check: props.agent.readiness.can_perform_work,
+        fallback: 'Can record collections for their customers.',
+    },
+    {
+        key: 'assign',
+        label: 'Take new customers',
+        check: props.agent.readiness.can_receive_assignment,
+        fallback: 'Can be given new customers.',
+    },
+]);
+
 const isResending = ref(false);
 const handleResendInvitation = () => {
     if (!props.agent.invitation?.can_resend) return;
@@ -261,7 +291,7 @@ const openCorrectEmailModal = () => {
 
 const submitCorrectEmail = () => {
     if (!correctEmailForm.email || !correctEmailForm.reason) {
-        correctEmailForm.error = 'Both email and reason are required.';
+        correctEmailForm.error = 'Enter the new email and a reason.';
         return;
     }
     correctEmailForm.processing = true;
@@ -301,7 +331,7 @@ const openCancelModal = () => {
 
 const submitCancelInvitation = () => {
     if (!cancelForm.reason) {
-        cancelForm.error = 'A cancellation reason is required.';
+        cancelForm.error = 'Add a reason for cancelling.';
         return;
     }
     cancelForm.processing = true;
@@ -372,235 +402,304 @@ const resetAssignmentFilters = (): void => {
 </script>
 
 <template>
-    <Head :title="`${agent.name} - Agent Profile`" />
+    <Head :title="agent.name" />
 
     <div class="space-y-6">
-        <!-- Back Navigation & Header -->
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-            <div class="flex items-center gap-4">
-                <Link v-if="viewer_type === 'admin'" :href="agentsIndex().url">
-                    <Button variant="outline" size="icon" class="h-9 w-9">
-                        <ArrowLeft class="h-4 w-4" />
-                    </Button>
-                </Link>
-                <div>
-                    <div class="flex items-center gap-3">
-                        <h1 class="text-[25px] font-medium tracking-tight">
-                            {{ agent.name }}
-                        </h1>
-                        <span
-                            class="bg-muted text-muted-foreground rounded-md px-2.5 py-0.5 font-mono text-sm"
+        <PageHeader :title="agent.name">
+            <template v-if="agent.actions.can_edit || hasMoreActions" #actions>
+                <Button v-if="agent.actions.can_edit" as-child>
+                    <Link :href="editAgent(agent.id).url">
+                        <Pencil class="size-4" /> Edit profile
+                    </Link>
+                </Button>
+                <DropdownMenu :modal="false" v-if="hasMoreActions">
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline">
+                            <MoreHorizontal class="size-4" /> More
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-52">
+                        <template v-if="agent.actions.can_manage_lifecycle">
+                            <DropdownMenuItem as-child>
+                                <Link :href="editAgentStatus(agent.id).url"
+                                    >Change status</Link
+                                >
+                            </DropdownMenuItem>
+                            <DropdownMenuItem as-child>
+                                <Link :href="showLifecycle(agent.id).url"
+                                    >Account access</Link
+                                >
+                            </DropdownMenuItem>
+                        </template>
+                        <DropdownMenuItem
+                            v-if="
+                                agent.actions.can_request_recovery &&
+                                agent.actions.recovery_user_id
+                            "
+                            as-child
                         >
-                            {{ agent.id }}
-                        </span>
-                    </div>
-                    <p class="text-muted-foreground mt-1.5 text-sm">
-                        Registered on {{ agent.registered_at }} (Africa/Lagos)
-                    </p>
-                </div>
-            </div>
+                            <Link
+                                :href="
+                                    createRecovery(
+                                        agent.actions.recovery_user_id,
+                                    ).url
+                                "
+                                >Recover account</Link
+                            >
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </template>
+        </PageHeader>
 
-            <!-- Status Badges -->
-            <div class="flex items-center gap-2">
-                <Link
-                    v-if="agent.actions.can_edit"
-                    :href="editAgent(agent.id).url"
-                >
-                    <Button variant="outline">Edit profile</Button>
-                </Link>
-                <Link
-                    v-if="agent.actions.can_manage_lifecycle"
-                    :href="editAgentStatus(agent.id).url"
-                >
-                    <Button variant="outline">Manage status</Button>
-                </Link>
-                <Link
-                    v-if="
-                        agent.actions.can_request_recovery &&
-                        agent.actions.recovery_user_id
-                    "
-                    :href="createRecovery(agent.actions.recovery_user_id).url"
-                >
-                    <Button variant="outline">Request account recovery</Button>
-                </Link>
-                <Badge
-                    :variant="
-                        getOperationalBadgeVariant(agent.operational_status)
-                    "
-                    class="px-3 py-1 text-sm"
-                >
-                    {{ agent.operational_status_label }}
-                </Badge>
-                <Badge
-                    :variant="getAccountBadgeVariant(agent.account_state)"
-                    class="px-3 py-1 text-sm"
-                >
-                    Account: {{ agent.account_state_label }}
-                </Badge>
-            </div>
-        </div>
-
-        <!-- Identity Banner -->
+        <!-- Profile summary -->
         <Card>
-            <CardContent class="p-6">
-                <div class="flex flex-col items-center gap-6 sm:flex-row">
-                    <Avatar class="border-border h-24 w-24 border-2 shadow-sm">
+            <CardContent class="space-y-5">
+                <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
+                    <Avatar class="size-16 shrink-0">
                         <AvatarImage
                             v-if="agent.photo_url"
                             :src="agent.photo_url"
                             :alt="agent.name"
                         />
-                        <AvatarFallback class="text-xl font-bold">{{
+                        <AvatarFallback class="text-lg font-semibold">{{
                             getInitials(agent.name)
                         }}</AvatarFallback>
                     </Avatar>
-                    <div class="space-y-1.5 text-center sm:text-left">
-                        <div class="text-lg font-semibold">
-                            {{ agent.name }}
+                    <div class="min-w-0 space-y-3">
+                        <div class="flex flex-wrap gap-2">
+                            <Badge
+                                :variant="
+                                    getOperationalBadgeVariant(
+                                        agent.operational_status,
+                                    )
+                                "
+                                >{{ agent.operational_status_label }}</Badge
+                            >
+                            <Badge
+                                :variant="
+                                    getAccountBadgeVariant(agent.account_state)
+                                "
+                                >Account: {{ agent.account_state_label }}</Badge
+                            >
                         </div>
-                        <div
-                            class="text-muted-foreground flex flex-wrap justify-center gap-4 text-sm sm:justify-start"
+                        <ul
+                            class="text-muted-foreground flex flex-col gap-x-5 gap-y-1.5 text-sm sm:flex-row sm:flex-wrap"
                         >
-                            <span
-                                >Phone:
-                                <strong class="text-foreground">{{
+                            <li class="flex items-center gap-1.5">
+                                <Phone class="size-4" />
+                                <span class="text-foreground">{{
                                     agent.phone
-                                }}</strong></span
-                            >
-                            <span
-                                >Email:
-                                <strong class="text-foreground">{{
+                                }}</span>
+                            </li>
+                            <li class="flex min-w-0 items-center gap-1.5">
+                                <Mail class="size-4 shrink-0" />
+                                <span class="text-foreground truncate">{{
                                     agent.email
-                                }}</strong></span
+                                }}</span>
+                            </li>
+                            <li
+                                v-if="agent.address"
+                                class="flex min-w-0 items-center gap-1.5"
                             >
-                            <span v-if="agent.employment_date">
-                                Employment Date:
-                                <strong class="text-foreground">{{
-                                    agent.employment_date
-                                }}</strong>
-                            </span>
-                        </div>
+                                <span class="text-foreground">{{
+                                    agent.address
+                                }}</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
+
+                <MoreDetails>
+                    <dl
+                        class="divide-border grid divide-y rounded-xl border text-sm"
+                    >
+                        <div class="flex justify-between gap-4 px-4 py-2.5">
+                            <dt class="text-muted-foreground">Agent ID</dt>
+                            <dd class="font-mono text-xs">{{ agent.id }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4 px-4 py-2.5">
+                            <dt class="text-muted-foreground">Joined</dt>
+                            <dd>{{ agent.registered_at }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4 px-4 py-2.5">
+                            <dt class="text-muted-foreground">Start date</dt>
+                            <dd>
+                                {{ agent.employment_date || 'Not recorded' }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-4 px-4 py-2.5">
+                            <dt class="text-muted-foreground">
+                                Two-step sign-in
+                            </dt>
+                            <dd>
+                                {{
+                                    agent.invitation_and_access.mfa_confirmed
+                                        ? 'Set up'
+                                        : 'Not set up yet'
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-4 px-4 py-2.5">
+                            <dt class="text-muted-foreground">Collections</dt>
+                            <dd class="max-w-xs text-right">
+                                {{
+                                    agent.collections_and_reconciliation.message
+                                }}
+                            </dd>
+                        </div>
+                    </dl>
+                </MoreDetails>
             </CardContent>
         </Card>
 
-        <!-- Readiness & Eligibility Evaluation Card -->
+        <!-- What the agent can do -->
         <Card>
-            <CardHeader class="pb-3">
-                <CardTitle
-                    class="flex items-center gap-2 text-base font-semibold"
-                >
-                    <ShieldCheck class="h-4 w-4" /> Operational Readiness &
-                    Capabilities
-                </CardTitle>
-                <CardDescription>
-                    Derived eligibility status across core operational
-                    responsibilities.
-                </CardDescription>
+            <CardHeader>
+                <CardTitle>What they can do</CardTitle>
             </CardHeader>
             <CardContent>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <!-- Read Assigned -->
-                    <div class="bg-muted/20 space-y-2 rounded-lg border p-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-foreground text-xs font-semibold"
-                                >Read Assigned Customers</span
-                            >
-                            <Badge
-                                :variant="
-                                    agent.readiness.can_read_assigned.eligible
-                                        ? 'default'
-                                        : 'secondary'
-                                "
-                                class="text-[11px]"
-                            >
+                <ul class="divide-border -my-3 divide-y">
+                    <li
+                        v-for="ability in abilities"
+                        :key="ability.key"
+                        class="flex items-start justify-between gap-4 py-3"
+                    >
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">
+                                {{ ability.label }}
+                            </p>
+                            <p class="text-muted-foreground mt-0.5 text-xs">
                                 {{
-                                    agent.readiness.can_read_assigned.eligible
-                                        ? 'Authorized'
-                                        : 'Blocked'
+                                    ability.check.explanation ||
+                                    ability.fallback
                                 }}
-                            </Badge>
+                            </p>
                         </div>
-                        <p class="text-muted-foreground text-xs">
-                            {{
-                                agent.readiness.can_read_assigned.explanation ||
-                                'Can view assigned customer accounts.'
-                            }}
-                        </p>
-                    </div>
+                        <Badge
+                            :variant="
+                                ability.check.eligible ? 'default' : 'secondary'
+                            "
+                            class="shrink-0"
+                            >{{ ability.check.eligible ? 'Yes' : 'No' }}</Badge
+                        >
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
 
-                    <!-- Perform Work -->
-                    <div class="bg-muted/20 space-y-2 rounded-lg border p-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-foreground text-xs font-semibold"
-                                >Perform Customer Work</span
-                            >
-                            <Badge
-                                :variant="
-                                    agent.readiness.can_perform_work.eligible
-                                        ? 'default'
-                                        : 'secondary'
-                                "
-                                class="text-[11px]"
-                            >
-                                {{
-                                    agent.readiness.can_perform_work.eligible
-                                        ? 'Active Work'
-                                        : 'Blocked'
-                                }}
-                            </Badge>
-                        </div>
-                        <p class="text-muted-foreground text-xs">
-                            {{
-                                agent.readiness.can_perform_work.explanation ||
-                                'Can record customer collections and transactions.'
-                            }}
-                        </p>
-                    </div>
-
-                    <!-- Receive Assignment -->
-                    <div class="bg-muted/20 space-y-2 rounded-lg border p-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-foreground text-xs font-semibold"
-                                >Receive New Assignments</span
-                            >
-                            <Badge
-                                :variant="
-                                    agent.readiness.can_receive_assignment
-                                        .eligible
-                                        ? 'default'
-                                        : 'secondary'
-                                "
-                                class="text-[11px]"
-                            >
-                                {{
-                                    agent.readiness.can_receive_assignment
-                                        .eligible
-                                        ? 'Eligible'
-                                        : 'Ineligible'
-                                }}
-                            </Badge>
-                        </div>
-                        <p class="text-muted-foreground text-xs">
-                            {{
-                                agent.readiness.can_receive_assignment
-                                    .explanation ||
-                                'Meets all conditions to get new customer assignments.'
-                            }}
-                        </p>
-                    </div>
+        <!-- Invitation (admins only) -->
+        <Card v-if="agent.invitation">
+            <CardHeader
+                class="flex flex-row flex-wrap items-start justify-between gap-3"
+            >
+                <div class="space-y-1.5">
+                    <CardTitle class="flex items-center gap-2">
+                        Invitation
+                        <Badge
+                            :variant="
+                                getInvitationBadgeVariant(
+                                    agent.invitation.status,
+                                )
+                            "
+                            >{{ agent.invitation.status_label }}</Badge
+                        >
+                    </CardTitle>
+                    <CardDescription>
+                        Sent {{ agent.invitation.sent_at || 'not yet' }}
+                        <template v-if="agent.invitation.expires_at">
+                            · Expires {{ agent.invitation.expires_at }}
+                        </template>
+                    </CardDescription>
                 </div>
+                <div
+                    v-if="agent.actions.can_manage_invitation"
+                    class="flex items-center gap-2"
+                >
+                    <Button
+                        v-if="agent.invitation.can_resend"
+                        variant="outline"
+                        size="sm"
+                        :disabled="isResending"
+                        @click="handleResendInvitation"
+                    >
+                        <RefreshCw
+                            class="size-4"
+                            :class="{ 'animate-spin': isResending }"
+                        />
+                        Resend
+                    </Button>
+                    <DropdownMenu :modal="false">
+                        <DropdownMenuTrigger as-child>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label="More invitation actions"
+                            >
+                                <MoreHorizontal class="size-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-48">
+                            <DropdownMenuItem @select="openCorrectEmailModal">
+                                <Pencil /> Change email
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                variant="destructive"
+                                @select="openCancelModal"
+                            >
+                                <XCircle /> Cancel invitation
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div
+                    v-if="agent.invitation.delivery_error"
+                    role="alert"
+                    class="bg-destructive/10 text-destructive rounded-lg p-3 text-sm"
+                >
+                    <p class="font-medium">We couldn't deliver the invite</p>
+                    <p class="mt-0.5 text-xs">
+                        {{ agent.invitation.delivery_error }}
+                    </p>
+                </div>
+                <MoreDetails>
+                    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                        <div>
+                            <dt class="text-muted-foreground text-xs">
+                                Delivery
+                            </dt>
+                            <dd class="mt-1">
+                                {{ agent.invitation.delivery_status_label }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground text-xs">
+                                Opened
+                            </dt>
+                            <dd class="mt-1">
+                                {{ agent.invitation.opened_at || 'Not yet' }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-muted-foreground text-xs">
+                                Invite number
+                            </dt>
+                            <dd class="mt-1">
+                                #{{ agent.invitation.generation }}
+                            </dd>
+                        </div>
+                    </dl>
+                </MoreDetails>
             </CardContent>
         </Card>
 
         <DirectoryPanel
-            title="Assigned customers"
-            :description="`${assigned_customers.total} current customer${assigned_customers.total === 1 ? '' : 's'} assigned to this agent.`"
+            title="Customers"
+            :description="`${agent.assignments_summary.active_count} active · ${agent.assignments_summary.inactive_count} inactive · ${agent.assignments_summary.restricted_count} restricted · ${agent.assignments_summary.archived_count} archived`"
             :search-value="assignmentFilterForm.search"
-            search-placeholder="Search assigned customers"
+            search-placeholder="Search customers"
             :filters-open="assignmentFiltersOpen"
             :active-filter-count="activeAssignmentFilterCount"
             @update:search-value="assignmentFilterForm.search = $event"
@@ -610,8 +709,7 @@ const resetAssignmentFilters = (): void => {
         >
             <template #filters>
                 <div class="w-fit space-y-1.5">
-                    <Label for="assignment-status" class="text-xs"
-                        >Operational status</Label
+                    <Label for="assignment-status" class="text-xs">Status</Label
                     ><Select
                         v-model="assignmentFilterForm.operational_status"
                         @update:model-value="applyAssignmentFilters"
@@ -633,162 +731,49 @@ const resetAssignmentFilters = (): void => {
             </template>
             <template #filter-summary
                 ><p class="text-muted-foreground text-xs">
-                    {{ assigned_customers.total }} current customer{{
+                    {{ assigned_customers.total }} customer{{
                         assigned_customers.total === 1 ? '' : 's'
                     }}
-                    match the current filters.
+                    found
                 </p></template
             >
 
-            <div class="mb-5 flex flex-wrap gap-2 text-xs">
-                <Badge variant="default"
-                    >{{ agent.assignments_summary.active_count }} Active</Badge
-                ><Badge variant="secondary"
-                    >{{
-                        agent.assignments_summary.inactive_count
-                    }}
-                    Inactive</Badge
-                ><Badge variant="secondary"
-                    >{{
-                        agent.assignments_summary.restricted_count
-                    }}
-                    Restricted</Badge
-                ><Badge variant="destructive"
-                    >{{
-                        agent.assignments_summary.archived_count
-                    }}
-                    Archived</Badge
-                >
-            </div>
-            <div
+            <EmptyState
                 v-if="assigned_customers.data.length === 0"
-                class="text-muted-foreground py-10 text-center text-sm"
-            >
-                No customers currently assigned to this agent match this view.
-            </div>
-            <div v-else class="space-y-3">
-                <DirectoryRow
+                :icon="Users"
+                title="No customers to show"
+                description="Customers assigned to this agent will show up here."
+            />
+            <div v-else class="divide-border -my-2 divide-y">
+                <Link
                     v-for="customer in assigned_customers.data"
                     :key="customer.id"
-                    ><div
-                        class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(0,1fr))_auto]"
-                    >
-                        <div>
-                            <p class="text-sm font-semibold">
-                                {{ customer.name }}
-                            </p>
-                            <p class="text-muted-foreground text-xs">
-                                {{ customer.id }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Operational status
-                            </p>
-                            <Badge
-                                :variant="
-                                    getOperationalBadgeVariant(
-                                        customer.operational_status,
-                                    )
-                                "
-                                class="mt-1"
-                                >{{ customer.operational_status_label }}</Badge
-                            >
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Account state
-                            </p>
-                            <p class="mt-1 text-sm capitalize">
-                                {{
-                                    customer.account_state?.replace('_', ' ') ||
-                                    'Unknown'
-                                }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Assigned since
-                            </p>
-                            <p class="mt-1 text-sm">
-                                {{ customer.assigned_since || '—' }}
-                            </p>
-                        </div>
-                        <Link :href="customersShow(customer.id).url"
-                            ><Button variant="outline" size="sm"
-                                >View</Button
-                            ></Link
-                        >
-                    </div>
-                    <div class="md:hidden">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="text-sm font-semibold">
-                                    {{ customer.name }}
-                                </p>
-                                <p class="text-muted-foreground text-xs">
-                                    {{ customer.id }}
-                                </p>
-                            </div>
-                            <Link :href="customersShow(customer.id).url"
-                                ><Button variant="outline" size="sm"
-                                    >View</Button
-                                ></Link
-                            >
-                        </div>
-                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Status
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getOperationalBadgeVariant(
-                                            customer.operational_status,
-                                        )
-                                    "
-                                    class="mt-1"
-                                    >{{
-                                        customer.operational_status_label
-                                    }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Account
-                                </p>
-                                <p class="mt-1 capitalize">
-                                    {{
-                                        customer.account_state?.replace(
-                                            '_',
-                                            ' ',
-                                        ) || 'Unknown'
-                                    }}
-                                </p>
-                            </div>
-                            <div class="col-span-2">
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Assigned since
-                                </p>
-                                <p class="mt-1">
-                                    {{ customer.assigned_since || '—' }}
-                                </p>
-                            </div>
-                        </div>
-                    </div></DirectoryRow
+                    :href="customersShow(customer.id).url"
+                    class="hover:bg-accent/35 focus-visible:ring-ring -mx-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl px-3 py-3.5 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                 >
+                    <div class="min-w-0 flex-1 basis-48">
+                        <p class="truncate text-sm font-medium">
+                            {{ customer.name }}
+                        </p>
+                        <p class="text-muted-foreground text-xs">
+                            <template v-if="customer.assigned_since"
+                                >Since {{ customer.assigned_since }}</template
+                            >
+                            <template v-else>{{ customer.id }}</template>
+                        </p>
+                    </div>
+                    <Badge
+                        :variant="
+                            getOperationalBadgeVariant(
+                                customer.operational_status,
+                            )
+                        "
+                        >{{ customer.operational_status_label }}</Badge
+                    >
+                    <ChevronRight
+                        class="text-muted-foreground hidden size-4 sm:block"
+                    />
+                </Link>
             </div>
             <template #footer
                 ><div
@@ -797,11 +782,13 @@ const resetAssignmentFilters = (): void => {
                     <div
                         class="text-muted-foreground flex items-center gap-2 text-sm"
                     >
-                        Display
+                        Show
                         <Select
                             v-model="assignmentFilterForm.per_page"
                             @update:model-value="applyAssignmentFilters"
-                            ><SelectTrigger class="h-9 w-20"
+                            ><SelectTrigger
+                                class="h-9 w-20"
+                                aria-label="Customers per page"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem :value="10">10</SelectItem
@@ -819,313 +806,77 @@ const resetAssignmentFilters = (): void => {
                             {{ assigned_customers.last_page }}</span
                         >
                         <div class="flex gap-2">
-                            <Link
+                            <Button
                                 v-if="assigned_customers.prev_page_url"
-                                :href="assigned_customers.prev_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button variant="outline" size="sm"
-                                    >Previous</Button
-                                ></Link
+                                as-child
+                                variant="outline"
+                                size="sm"
+                                ><Link
+                                    :href="assigned_customers.prev_page_url"
+                                    preserve-state
+                                    preserve-scroll
+                                    >Previous</Link
+                                ></Button
                             ><Button v-else variant="outline" size="sm" disabled
                                 >Previous</Button
-                            ><Link
+                            ><Button
                                 v-if="assigned_customers.next_page_url"
-                                :href="assigned_customers.next_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button size="sm">Next</Button></Link
-                            ><Button v-else size="sm" disabled>Next</Button>
+                                as-child
+                                variant="outline"
+                                size="sm"
+                                ><Link
+                                    :href="assigned_customers.next_page_url"
+                                    preserve-state
+                                    preserve-scroll
+                                    >Next</Link
+                                ></Button
+                            ><Button v-else variant="outline" size="sm" disabled
+                                >Next</Button
+                            >
                         </div>
                     </div>
                 </div></template
             >
         </DirectoryPanel>
 
-        <!-- Personal & Engagement Details + Internal Notes Grid -->
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <!-- Personal Details -->
-            <Card>
-                <CardHeader class="pb-3">
-                    <CardTitle
-                        class="flex items-center gap-2 text-base font-semibold"
-                    >
-                        <UserIcon class="h-4 w-4" /> Personal & Engagement
-                        Details
-                    </CardTitle>
-                </CardHeader>
-                <CardContent class="space-y-3 text-sm">
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground">Full Name</span>
-                        <span class="font-medium">{{ agent.name }}</span>
-                    </div>
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground">Phone Number</span>
-                        <span class="font-medium">{{ agent.phone }}</span>
-                    </div>
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground">Email Address</span>
-                        <span class="font-medium">{{ agent.email }}</span>
-                    </div>
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground"
-                            >Residential Address</span
-                        >
-                        <span class="max-w-xs text-right font-medium">{{
-                            agent.address || 'Not provided'
-                        }}</span>
-                    </div>
-                    <div class="flex justify-between py-1.5">
-                        <span class="text-muted-foreground"
-                            >Employment Date</span
-                        >
-                        <span class="font-medium">{{
-                            agent.employment_date || 'Not recorded'
-                        }}</span>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <!-- Invitation & Access Details -->
-            <Card>
-                <CardHeader class="pb-3">
-                    <CardTitle
-                        class="flex items-center gap-2 text-base font-semibold"
-                    >
-                        <Lock class="h-4 w-4" /> Account & Security Status
-                    </CardTitle>
-                </CardHeader>
-                <CardContent class="space-y-3 text-sm">
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground"
-                            >Authentication State</span
-                        >
-                        <Badge
-                            :variant="
-                                getAccountBadgeVariant(agent.account_state)
-                            "
-                            class="text-xs"
-                        >
-                            {{ agent.account_state_label }}
-                        </Badge>
-                    </div>
-                    <div class="flex justify-between border-b py-1.5">
-                        <span class="text-muted-foreground"
-                            >Two-Factor Authentication</span
-                        >
-                        <span
-                            v-if="agent.invitation_and_access.mfa_confirmed"
-                            class="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                        >
-                            <CheckCircle2 class="h-3.5 w-3.5" /> Enrolled &
-                            Confirmed
-                        </span>
-                        <span
-                            v-else
-                            class="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400"
-                        >
-                            <Clock class="h-3.5 w-3.5" /> Pending Setup
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5">
-                        <span class="text-muted-foreground">Agent ID</span>
-                        <span class="font-mono text-xs font-semibold">{{
-                            agent.id
-                        }}</span>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-
-        <!-- Invitation Lifecycle & Delivery Card (Admin Only) -->
-        <Card v-if="agent.invitation">
-            <CardHeader class="pb-3">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <CardTitle
-                            class="flex items-center gap-2 text-base font-semibold"
-                        >
-                            <Mail class="h-4 w-4" /> Invitation & Delivery
-                            Lifecycle
-                        </CardTitle>
-                        <CardDescription>
-                            Track the activation invitation and its delivery
-                            attempts. Resend the invitation or correct the
-                            address.
-                        </CardDescription>
-                    </div>
-                    <Badge
-                        :variant="
-                            getInvitationBadgeVariant(agent.invitation.status)
-                        "
-                    >
-                        {{ agent.invitation.status_label }}
-                    </Badge>
-                </div>
-            </CardHeader>
-            <CardContent class="space-y-4">
-                <div class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-                    <div>
-                        <p class="text-muted-foreground text-xs font-medium">
-                            Delivery Status
-                        </p>
-                        <Badge variant="outline" class="mt-1">{{
-                            agent.invitation.delivery_status_label
-                        }}</Badge>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs font-medium">
-                            Generation
-                        </p>
-                        <p class="mt-1 font-mono text-sm font-semibold">
-                            #{{ agent.invitation.generation }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs font-medium">
-                            Sent At
-                        </p>
-                        <p class="mt-1 text-sm">
-                            {{ agent.invitation.sent_at || '—' }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs font-medium">
-                            Expires At
-                        </p>
-                        <p class="mt-1 text-sm">
-                            {{ agent.invitation.expires_at || '—' }}
-                        </p>
-                    </div>
-                </div>
-
-                <div
-                    v-if="agent.invitation.delivery_error"
-                    class="bg-destructive/10 text-destructive rounded-lg p-3 text-xs"
-                >
-                    <p class="font-medium">Delivery Issue</p>
-                    <p class="mt-0.5">{{ agent.invitation.delivery_error }}</p>
-                </div>
-
-                <!-- Invitation Management Actions -->
-                <div
-                    v-if="agent.actions.can_manage_invitation"
-                    class="flex flex-wrap items-center gap-3 border-t pt-2"
-                >
-                    <Button
-                        v-if="agent.invitation.can_resend"
-                        variant="outline"
-                        size="sm"
-                        :disabled="isResending"
-                        @click="handleResendInvitation"
-                    >
-                        <RefreshCw
-                            class="mr-1.5 h-3.5 w-3.5"
-                            :class="{ 'animate-spin': isResending }"
-                        />
-                        Resend Invitation
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        @click="openCorrectEmailModal"
-                    >
-                        <Pencil class="mr-1.5 h-3.5 w-3.5" />
-                        Correct Email
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        class="text-destructive hover:bg-destructive/10"
-                        @click="openCancelModal"
-                    >
-                        <XCircle class="mr-1.5 h-3.5 w-3.5" />
-                        Cancel Invitation
-                    </Button>
-                </div>
-            </CardContent>
-        </Card>
-
-        <!-- Internal Notes Card (Admin Only, strictly omitted from Agent self-service) -->
+        <!-- Admin-only notes (omitted from agent self-service) -->
         <Card v-if="agent.notes !== undefined">
-            <CardHeader class="pb-3">
-                <CardTitle
-                    class="flex items-center gap-2 text-base font-semibold"
-                >
-                    <StickyNote class="h-4 w-4" /> Internal Administrative Notes
-                </CardTitle>
-                <CardDescription>
-                    Only administrators can see these notes. Agents cannot see
-                    them.
-                </CardDescription>
+            <CardHeader>
+                <CardTitle>Notes</CardTitle>
+                <CardDescription>Only admins can see these.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div
+                <p
                     v-if="agent.notes"
-                    class="bg-muted/50 rounded-lg p-4 font-sans text-sm whitespace-pre-wrap"
+                    class="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap"
                 >
                     {{ agent.notes }}
-                </div>
-                <p v-else class="text-muted-foreground text-sm italic">
-                    No internal administrative notes recorded.
+                </p>
+                <p v-else class="text-muted-foreground text-sm">
+                    No notes yet.
                 </p>
             </CardContent>
         </Card>
 
-        <!-- Explicit Unavailable Collections & Reconciliation Section -->
-        <Card class="bg-muted/20 border-dashed">
-            <CardHeader class="pb-2">
-                <CardTitle
-                    class="text-muted-foreground flex items-center gap-2 text-sm font-medium"
-                >
-                    <Wallet class="h-4 w-4" /> Collections and Cash
-                    Reconciliation
-                </CardTitle>
-            </CardHeader>
-            <CardContent class="text-xs">
-                <div class="bg-muted/60 text-muted-foreground rounded-md p-3">
-                    <div class="text-foreground font-medium">
-                        Reconciliation summary unavailable
-                    </div>
-                    <p class="mt-0.5 text-[11px]">
-                        {{ agent.collections_and_reconciliation.message }}
-                    </p>
-                </div>
-            </CardContent>
-        </Card>
+        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
 
-        <!-- Blocked Actions Notice -->
-        <Card class="bg-muted/30">
-            <CardContent
-                class="text-muted-foreground flex items-center justify-between p-4 text-xs"
-            >
-                <div class="flex items-center gap-2">
-                    <Lock class="text-muted-foreground h-4 w-4" />
-                    <span
-                        >Agent management actions (registration, lifecycle
-                        transitions, reassignment) are read-only until owning
-                        tasks are completed.</span
-                    >
-                </div>
-            </CardContent>
-        </Card>
-
-        <!-- Correct Email Dialog -->
+        <!-- Change email dialog -->
         <Dialog v-model:open="showCorrectEmailModal">
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Correct Agent Email</DialogTitle>
+                    <DialogTitle>Change email</DialogTitle>
                     <DialogDescription>
-                        Update the email address for {{ agent.name }}. Open
-                        invitations stop working. A new invitation is sent.
+                        We'll send a new invite to this address. The old invite
+                        will stop working.
                     </DialogDescription>
                 </DialogHeader>
-                <div class="space-y-4 py-2">
+                <form
+                    id="correct-email-form"
+                    class="space-y-4 py-2"
+                    @submit.prevent="submitCorrectEmail"
+                >
                     <div class="space-y-1.5">
-                        <Label for="correct-email"
-                            >New email address
-                            <span class="text-destructive">*</span></Label
-                        >
+                        <Label for="correct-email">New email</Label>
                         <Input
                             id="correct-email"
                             v-model="correctEmailForm.email"
@@ -1135,24 +886,22 @@ const resetAssignmentFilters = (): void => {
                         />
                     </div>
                     <div class="space-y-1.5">
-                        <Label for="correct-reason"
-                            >Correction reason
-                            <span class="text-destructive">*</span></Label
-                        >
+                        <Label for="correct-reason">Reason</Label>
                         <Input
                             id="correct-reason"
                             v-model="correctEmailForm.reason"
                             required
-                            placeholder="e.g. Typo in original email address"
+                            placeholder="e.g. Typo in the first email"
                         />
                     </div>
                     <p
                         v-if="correctEmailForm.error"
-                        class="text-destructive text-xs"
+                        role="alert"
+                        class="text-destructive text-sm"
                     >
                         {{ correctEmailForm.error }}
                     </p>
-                </div>
+                </form>
                 <DialogFooter>
                     <Button
                         variant="outline"
@@ -1160,57 +909,62 @@ const resetAssignmentFilters = (): void => {
                         >Cancel</Button
                     >
                     <Button
+                        type="submit"
+                        form="correct-email-form"
                         :disabled="correctEmailForm.processing"
-                        @click="submitCorrectEmail"
                     >
-                        Update Email & Resend
+                        Save and resend
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
 
-        <!-- Cancel Invitation Dialog -->
+        <!-- Cancel invitation dialog -->
         <Dialog v-model:open="showCancelModal">
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Cancel Agent Invitation</DialogTitle>
+                    <DialogTitle>Cancel invitation?</DialogTitle>
                     <DialogDescription>
-                        Cancel the open invitation and activation links for
-                        {{ agent.name }}. The account cannot activate with
-                        cancelled links.
+                        {{ agent.name }} won't be able to use the invite link to
+                        set up their account.
                     </DialogDescription>
                 </DialogHeader>
-                <div class="space-y-4 py-2">
+                <form
+                    id="cancel-invitation-form"
+                    class="space-y-4 py-2"
+                    @submit.prevent="submitCancelInvitation"
+                >
                     <div class="space-y-1.5">
-                        <Label for="cancel-reason"
-                            >Cancellation reason
-                            <span class="text-destructive">*</span></Label
-                        >
+                        <Label for="cancel-reason">Reason</Label>
                         <Input
                             id="cancel-reason"
                             v-model="cancelForm.reason"
                             required
-                            placeholder="e.g. Onboarding cancelled or identity error"
+                            placeholder="e.g. No longer joining"
                         />
                     </div>
-                    <p v-if="cancelForm.error" class="text-destructive text-xs">
+                    <p
+                        v-if="cancelForm.error"
+                        role="alert"
+                        class="text-destructive text-sm"
+                    >
                         {{ cancelForm.error }}
                     </p>
-                </div>
+                </form>
                 <DialogFooter>
                     <Button variant="outline" @click="showCancelModal = false"
-                        >Keep Invitation</Button
+                        >Keep invitation</Button
                     >
                     <Button
+                        type="submit"
+                        form="cancel-invitation-form"
                         variant="destructive"
                         :disabled="cancelForm.processing"
-                        @click="submitCancelInvitation"
                     >
-                        Confirm Cancellation
+                        Cancel invitation
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
     </div>
 </template>

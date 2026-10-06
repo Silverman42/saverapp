@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Mail, Pencil, RefreshCw, XCircle } from '@lucide/vue';
+import { Mail, MoreHorizontal, Pencil, RefreshCw, XCircle } from '@lucide/vue';
 import { ref } from 'vue';
+import InputError from '@/components/InputError.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -35,13 +45,14 @@ const props = defineProps<{
     invitation: AdminInvitationSummary;
 }>();
 
-const mode = ref<'idle' | 'correct' | 'cancel'>('idle');
+const correctOpen = ref(false);
+const cancelOpen = ref(false);
 const resendForm = useForm<{ resend?: string }>({});
 const correctForm = useForm({ email: props.currentEmail, reason: '' });
 const cancelForm = useForm({ reason: '' });
 
 const formatDate = (value: string | null): string =>
-    value ? new Date(value).toLocaleString() : '—';
+    value ? new Date(value).toLocaleString() : '-';
 const statusLabel = (value: string): string => value.replaceAll('_', ' ');
 
 const resend = (): void => {
@@ -52,33 +63,35 @@ const resend = (): void => {
 const submitCorrection = (): void => {
     correctForm.post(correctInvitationEmail(props.adminId).url, {
         preserveScroll: true,
-        onSuccess: () => (mode.value = 'idle'),
+        onSuccess: () => (correctOpen.value = false),
     });
 };
 const submitCancel = (): void => {
     cancelForm.post(cancelInvitation(props.adminId).url, {
         preserveScroll: true,
-        onSuccess: () => (mode.value = 'idle'),
+        onSuccess: () => (cancelOpen.value = false),
     });
 };
 </script>
 
 <template>
     <Card>
-        <CardHeader class="pb-3">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <CardTitle
-                        class="flex items-center gap-2 text-base font-semibold"
-                    >
-                        <Mail class="size-4" /> Invitation
-                    </CardTitle>
-                    <CardDescription>
-                        This Administrator has not activated yet. If you resend
-                        the invitation or correct the email, all earlier links
-                        stop working.
-                    </CardDescription>
-                </div>
+        <CardHeader
+            class="flex flex-row flex-wrap items-start justify-between gap-3"
+        >
+            <div class="space-y-1">
+                <CardTitle class="flex items-center gap-2 text-base">
+                    <Mail class="size-4" /> Invite not accepted yet
+                </CardTitle>
+                <p class="text-muted-foreground text-sm">
+                    {{
+                        invitation.is_expired
+                            ? 'The link has expired. Send a new one.'
+                            : `The link works until ${formatDate(invitation.expires_at)}.`
+                    }}
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
                 <Badge
                     :variant="invitation.is_expired ? 'destructive' : 'outline'"
                     class="capitalize"
@@ -89,156 +102,156 @@ const submitCancel = (): void => {
                             : statusLabel(invitation.status)
                     }}
                 </Badge>
-            </div>
-        </CardHeader>
-        <CardContent class="space-y-4">
-            <dl class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-                <div>
-                    <dt class="text-muted-foreground text-xs font-medium">
-                        Delivery
-                    </dt>
-                    <dd class="mt-1 capitalize">
-                        {{ statusLabel(invitation.delivery_status) }}
-                    </dd>
-                </div>
-                <div>
-                    <dt class="text-muted-foreground text-xs font-medium">
-                        Generation
-                    </dt>
-                    <dd class="mt-1 font-mono">#{{ invitation.generation }}</dd>
-                </div>
-                <div>
-                    <dt class="text-muted-foreground text-xs font-medium">
-                        Issued
-                    </dt>
-                    <dd class="mt-1">{{ formatDate(invitation.issued_at) }}</dd>
-                </div>
-                <div>
-                    <dt class="text-muted-foreground text-xs font-medium">
-                        Expires
-                    </dt>
-                    <dd class="mt-1">
-                        {{ formatDate(invitation.expires_at) }}
-                    </dd>
-                </div>
-            </dl>
-
-            <p v-if="resendForm.errors.resend" class="text-destructive text-xs">
-                {{ resendForm.errors.resend }}
-            </p>
-
-            <div class="flex flex-wrap items-center gap-3 border-t pt-4">
                 <Button
                     v-if="invitation.can_resend"
-                    variant="outline"
                     size="sm"
                     :disabled="resendForm.processing"
                     @click="resend"
                 >
                     <RefreshCw
-                        class="mr-1.5 size-3.5"
+                        class="size-3.5"
                         :class="{ 'animate-spin': resendForm.processing }"
                     />
-                    Resend invitation
+                    Resend
                 </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    @click="mode = mode === 'correct' ? 'idle' : 'correct'"
-                >
-                    <Pencil class="mr-1.5 size-3.5" />
-                    Correct email
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    class="text-destructive hover:bg-destructive/10"
-                    @click="mode = mode === 'cancel' ? 'idle' : 'cancel'"
-                >
-                    <XCircle class="mr-1.5 size-3.5" />
-                    Cancel invitation
-                </Button>
+                <DropdownMenu :modal="false">
+                    <DropdownMenuTrigger as-child>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            class="size-8"
+                            aria-label="More invite actions"
+                        >
+                            <MoreHorizontal class="size-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem @select="correctOpen = true">
+                            <Pencil class="size-4" />
+                            Change email
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            class="text-destructive"
+                            @select="cancelOpen = true"
+                        >
+                            <XCircle class="size-4" />
+                            Cancel invite
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
-
-            <form
-                v-if="mode === 'correct'"
-                class="grid gap-3 sm:grid-cols-2"
-                @submit.prevent="submitCorrection"
-            >
-                <div class="space-y-1.5">
-                    <Label for="invitation-email">Corrected email</Label>
-                    <Input
-                        id="invitation-email"
-                        v-model="correctForm.email"
-                        type="email"
-                        required
-                        maxlength="254"
-                    />
-                    <p
-                        v-if="correctForm.errors.email"
-                        class="text-destructive text-xs"
-                    >
-                        {{ correctForm.errors.email }}
-                    </p>
-                </div>
-                <div class="space-y-1.5">
-                    <Label for="correction-reason">Reason</Label>
-                    <Input
-                        id="correction-reason"
-                        v-model="correctForm.reason"
-                        required
-                        maxlength="500"
-                    />
-                    <p
-                        v-if="correctForm.errors.reason"
-                        class="text-destructive text-xs"
-                    >
-                        {{ correctForm.errors.reason }}
-                    </p>
-                </div>
-                <Button
-                    type="submit"
-                    size="sm"
-                    class="w-fit"
-                    :disabled="correctForm.processing"
-                >
-                    Correct and resend
-                </Button>
-            </form>
-
-            <form
-                v-if="mode === 'cancel'"
-                class="space-y-3"
-                @submit.prevent="submitCancel"
-            >
-                <div class="space-y-1.5">
-                    <Label for="cancel-reason">Reason for cancelling</Label>
-                    <Input
-                        id="cancel-reason"
-                        v-model="cancelForm.reason"
-                        required
-                        maxlength="500"
-                    />
-                    <p
-                        v-if="cancelForm.errors.reason"
-                        class="text-destructive text-xs"
-                    >
-                        {{ cancelForm.errors.reason }}
-                    </p>
-                </div>
-                <p class="text-muted-foreground text-xs">
-                    The account stays Invited. It cannot activate until you send
-                    a new invitation.
-                </p>
-                <Button
-                    type="submit"
-                    variant="destructive"
-                    size="sm"
-                    :disabled="cancelForm.processing"
-                >
-                    Cancel invitation
-                </Button>
-            </form>
+        </CardHeader>
+        <CardContent class="space-y-3">
+            <p class="text-muted-foreground text-xs">
+                Sending again or changing the email stops older links from
+                working.
+            </p>
+            <InputError :message="resendForm.errors.resend" />
+            <MoreDetails>
+                <dl class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground text-xs">Email</dt>
+                        <dd class="mt-1 capitalize">
+                            {{ statusLabel(invitation.delivery_status) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground text-xs">Sent</dt>
+                        <dd class="mt-1">
+                            {{ formatDate(invitation.issued_at) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground text-xs">
+                            Times sent
+                        </dt>
+                        <dd class="mt-1">{{ invitation.generation }}</dd>
+                    </div>
+                </dl>
+            </MoreDetails>
         </CardContent>
+
+        <Dialog v-model:open="correctOpen">
+            <DialogContent class="sm:max-w-md">
+                <form class="space-y-5" @submit.prevent="submitCorrection">
+                    <DialogHeader>
+                        <DialogTitle>Change email</DialogTitle>
+                        <DialogDescription>
+                            We will send a new invite to this address.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-2">
+                        <Label for="invitation-email">New email</Label>
+                        <Input
+                            id="invitation-email"
+                            v-model="correctForm.email"
+                            type="email"
+                            required
+                            maxlength="254"
+                        />
+                        <InputError :message="correctForm.errors.email" />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="correction-reason">Reason</Label>
+                        <Input
+                            id="correction-reason"
+                            v-model="correctForm.reason"
+                            required
+                            maxlength="500"
+                        />
+                        <InputError :message="correctForm.errors.reason" />
+                    </div>
+                    <DialogFooter class="gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="correctOpen = false"
+                            >Close</Button
+                        >
+                        <Button type="submit" :disabled="correctForm.processing"
+                            >Save and resend</Button
+                        >
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="cancelOpen">
+            <DialogContent class="sm:max-w-md">
+                <form class="space-y-5" @submit.prevent="submitCancel">
+                    <DialogHeader>
+                        <DialogTitle>Cancel invite?</DialogTitle>
+                        <DialogDescription>
+                            The link will stop working. They cannot join until
+                            you send a new invite.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-2">
+                        <Label for="cancel-reason">Reason</Label>
+                        <Input
+                            id="cancel-reason"
+                            v-model="cancelForm.reason"
+                            required
+                            maxlength="500"
+                        />
+                        <InputError :message="cancelForm.errors.reason" />
+                    </div>
+                    <DialogFooter class="gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="cancelOpen = false"
+                            >Keep invite</Button
+                        >
+                        <Button
+                            type="submit"
+                            variant="destructive"
+                            :disabled="cancelForm.processing"
+                            >Cancel invite</Button
+                        >
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </Card>
 </template>

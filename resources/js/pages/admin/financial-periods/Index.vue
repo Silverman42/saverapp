@@ -1,8 +1,22 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
+import { CalendarDays, Plus } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
@@ -27,7 +41,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
-            { title: 'Cash receipt months', href: index() },
+            { title: 'Booking months', href: index() },
         ],
     },
 });
@@ -51,6 +65,10 @@ const busy = computed(
     () => opening.processing || transition.processing || reloading.value,
 );
 const locked = computed(() => busy.value || requiresReload.value);
+const openSheetOpen = ref(false);
+const transitionDialogOpen = computed(
+    () => selected.value !== null && !requiresReload.value,
+);
 
 function focusNotice(): void {
     if (notice.value) void nextTick(() => periodNotice.value?.focus());
@@ -71,14 +89,15 @@ function cancelReview(): void {
 }
 
 function reportFailure(status?: number): void {
+    openSheetOpen.value = false;
     requiresReload.value = true;
     unknownOutcome.value = status !== 403 && status !== 404 && status !== 409;
     notice.value =
         status === 409
-            ? 'This month changed or the action is not currently allowed. Reload current periods and review the month before confirming another action.'
+            ? 'This month has changed, or this action is not allowed right now. Reload to see the latest before trying again.'
             : status === 403 || status === 404
-              ? 'This action was rejected because the period is unavailable or your access has changed. Reload to check current access before continuing.'
-              : 'The action outcome could not be confirmed. Your submitted instructions are retained. Reload current periods to check the month before confirming another action.';
+              ? 'This was not allowed. The month may be gone or your access has changed. Reload to check.'
+              : 'We could not confirm if this worked. Reload to check the month before trying again.';
 }
 
 function submitOpening(): void {
@@ -90,10 +109,8 @@ function submitOpening(): void {
         preserveScroll: true,
         onSuccess: () => {
             opening.reason = '';
-            notice.value = 'The month was opened.';
-        },
-        onError: () => {
-            notice.value = 'The month was not opened. Review the field errors.';
+            openSheetOpen.value = false;
+            notice.value = 'Month opened.';
         },
         onHttpException: (response) => {
             reportFailure(response.status);
@@ -114,14 +131,15 @@ function reloadPeriods(): void {
         only: ['periods', 'timezone', 'current_month'],
         onSuccess: (page) => {
             const currentPeriods = page.props.periods as
-                { data?: Period[] } | undefined;
+                | { data?: Period[] }
+                | undefined;
             if (
                 page.component !== 'admin/financial-periods/Index' ||
                 !Array.isArray(currentPeriods?.data) ||
                 page.props.timezone !== failedTimezone.value
             ) {
                 notice.value =
-                    'The current period could not be verified. The previous action remains unverified. Reload again before continuing.';
+                    'We could not load the latest months. Please reload again.';
                 return;
             }
             const current = currentPeriods.data.find(
@@ -131,7 +149,7 @@ function reloadPeriods(): void {
             );
             if (unknownOutcome.value && !current) {
                 notice.value =
-                    'The submitted month is absent from the reloaded list, so its outcome remains unconfirmed. The submitted instructions are retained and another action is blocked.';
+                    'We still cannot see that month in the list, so we do not know if it worked. Please reload again.';
                 return;
             }
             requiresReload.value = false;
@@ -140,23 +158,23 @@ function reloadPeriods(): void {
             transition.clearErrors();
             selected.value = null;
             notice.value = current
-                ? `Current periods reloaded. ${current.month} is ${current.status}, version ${current.version}. Review its recorded status before choosing another action.`
-                : 'Current periods reloaded. Review the recorded months before choosing another action.';
+                ? `Updated. ${current.month} is ${current.status}.`
+                : 'Updated. Check the months below before you continue.';
         },
         onError: () => {
             notice.value =
-                'Current periods could not be verified. Reload again before continuing.';
+                'We could not load the latest months. Please reload again.';
         },
         onHttpException: (response) => {
             notice.value =
                 response.status === 403 || response.status === 404
-                    ? 'Current periods are unavailable or your access has changed. The previous action remains unverified.'
-                    : 'Current periods could not be verified. Reload again before continuing.';
+                    ? 'This page is not available, or your access has changed.'
+                    : 'We could not load the latest months. Please reload again.';
             return false;
         },
         onNetworkError: () => {
             notice.value =
-                'Current periods could not be verified because the connection failed. Reload again before continuing.';
+                'Connection failed. Reload again when you are back online.';
             return false;
         },
         onFinish: () => {
@@ -200,8 +218,8 @@ function submitTransition(): void {
         onError: () => {
             if (transition.errors.version) requiresReload.value = true;
             notice.value = transition.errors.version
-                ? 'The reviewed period version is invalid. Reload current periods before choosing another action.'
-                : 'The month action was not saved. Review the field errors.';
+                ? 'This month changed while you were looking at it. Reload to see the latest.'
+                : '';
         },
         onHttpException: (response) => {
             reportFailure(response.status);
@@ -217,17 +235,18 @@ function submitTransition(): void {
 </script>
 
 <template>
-    <Head title="Cash receipt months" />
+    <Head title="Booking months" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Cash receipt months
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Booking periods in {{ timezone }}. You cannot record cash
-                receipts for a missing or closed month.
-            </p>
-        </div>
+        <PageHeader
+            title="Booking months"
+            description="Cash can only be recorded in an open month."
+        >
+            <template #actions>
+                <Button :disabled="locked" @click="openSheetOpen = true">
+                    <Plus class="size-4" /> Open month
+                </Button>
+            </template>
+        </PageHeader>
         <div
             v-if="notice"
             ref="periodNotice"
@@ -235,118 +254,65 @@ function submitTransition(): void {
             tabindex="-1"
             aria-live="assertive"
             aria-atomic="true"
-            class="grid gap-3 rounded-md border p-4 text-sm"
+            class="bg-muted flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm"
         >
             <p>{{ notice }}</p>
             <Button
                 v-if="requiresReload"
                 type="button"
                 variant="outline"
-                class="w-fit"
+                size="sm"
                 :disabled="busy"
                 @click="reloadPeriods"
-                >{{
-                    reloading
-                        ? 'Reloading current periods…'
-                        : 'Reload current periods'
-                }}</Button
+                >{{ reloading ? 'Reloading…' : 'Reload' }}</Button
             >
         </div>
-        <p v-if="busy" role="status" aria-live="polite">
-            {{
-                reloading
-                    ? 'Checking current periods. Wait for the result.'
-                    : 'Saving the period action. Wait for the result before continuing.'
-            }}
+        <p
+            v-if="busy"
+            role="status"
+            aria-live="polite"
+            class="text-muted-foreground text-sm"
+        >
+            {{ reloading ? 'Checking…' : 'Saving…' }}
         </p>
+
         <Card>
-            <CardHeader><CardTitle>Open a month</CardTitle></CardHeader>
-            <CardContent
-                ><form
-                    class="grid max-w-lg gap-4"
-                    @submit.prevent="submitOpening"
+            <CardContent>
+                <EmptyState
+                    v-if="periods.data.length === 0"
+                    :icon="CalendarDays"
+                    title="No months yet"
+                    description="Open a month so agents can record cash in it."
                 >
-                    <div class="grid gap-2">
-                        <Label for="open-month">Calendar month</Label
-                        ><Input
-                            id="open-month"
-                            v-model="opening.month"
-                            type="month"
-                            :aria-invalid="!!opening.errors.month"
-                            :aria-describedby="
-                                opening.errors.month
-                                    ? 'open-month-error'
-                                    : undefined
-                            "
-                            :disabled="locked"
-                        />
-                        <p
-                            v-if="opening.errors.month"
-                            id="open-month-error"
-                            role="alert"
-                            class="text-destructive text-sm"
-                        >
-                            {{ opening.errors.month }}
-                        </p>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="open-reason">Reason</Label
-                        ><Input
-                            id="open-reason"
-                            v-model="opening.reason"
-                            maxlength="500"
-                            :aria-invalid="!!opening.errors.reason"
-                            :aria-describedby="
-                                opening.errors.reason
-                                    ? 'open-reason-error'
-                                    : undefined
-                            "
-                            :disabled="locked"
-                        />
-                        <p
-                            v-if="opening.errors.reason"
-                            id="open-reason-error"
-                            role="alert"
-                            class="text-destructive text-sm"
-                        >
-                            {{ opening.errors.reason }}
-                        </p>
-                    </div>
                     <Button
-                        type="submit"
-                        class="w-fit"
-                        :disabled="
-                            locked || !opening.month || !opening.reason.trim()
-                        "
+                        variant="outline"
+                        :disabled="locked"
+                        @click="openSheetOpen = true"
                         >Open month</Button
                     >
-                </form></CardContent
-            >
-        </Card>
-        <Card>
-            <CardHeader><CardTitle>Recorded months</CardTitle></CardHeader>
-            <CardContent class="grid gap-4">
-                <p
-                    v-if="periods.data.length === 0"
-                    class="text-muted-foreground text-sm"
-                >
-                    No month has been opened.
-                </p>
+                </EmptyState>
                 <ul v-else class="divide-y" aria-live="polite">
                     <li
                         v-for="period in periods.data"
                         :key="`${period.timezone}-${period.month}`"
                         class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
-                        <span
-                            >{{ period.month }} · {{ period.timezone }} ·
-                            <strong class="capitalize">{{
-                                period.status
-                            }}</strong></span
-                        >
+                        <div class="flex items-center gap-3">
+                            <span class="font-medium">{{ period.month }}</span>
+                            <Badge
+                                :variant="
+                                    period.status === 'open'
+                                        ? 'default'
+                                        : 'secondary'
+                                "
+                                class="capitalize"
+                                >{{ period.status }}</Badge
+                            >
+                        </div>
                         <Button
                             :id="`period-action-${period.timezone}-${period.month}`"
                             type="button"
+                            size="sm"
                             variant="outline"
                             :disabled="locked"
                             :aria-label="`${period.status === 'open' ? 'Close' : 'Reopen'} ${period.month}`"
@@ -357,14 +323,20 @@ function submitTransition(): void {
                         >
                     </li>
                 </ul>
-                <div class="flex gap-4 text-sm">
+                <div
+                    v-if="
+                        (periods.prev_page_url || periods.next_page_url) &&
+                        !locked
+                    "
+                    class="mt-4 flex gap-4 text-sm"
+                >
                     <Link
-                        v-if="periods.prev_page_url && !locked"
+                        v-if="periods.prev_page_url"
                         :href="periods.prev_page_url"
                         class="underline"
                         >Previous</Link
                     ><Link
-                        v-if="periods.next_page_url && !locked"
+                        v-if="periods.next_page_url"
                         :href="periods.next_page_url"
                         class="underline"
                         >Next</Link
@@ -372,23 +344,116 @@ function submitTransition(): void {
                 </div>
             </CardContent>
         </Card>
-        <Card v-if="selected">
-            <CardHeader
-                ><CardTitle
-                    >{{ selected.action === 'close' ? 'Close' : 'Reopen' }}
-                    {{ selected.month }}</CardTitle
-                ></CardHeader
+
+        <MoreDetails>
+            <p class="text-muted-foreground text-xs leading-5">
+                Months follow the {{ timezone }} time zone. A month can only be
+                closed after it ends, when all cash batches are matched and all
+                issues are fixed. Reopening a month does not give more time to
+                record old receipts.
+            </p>
+        </MoreDetails>
+
+        <FormSheet
+            v-model:open="openSheetOpen"
+            title="Open a month"
+            description="Agents can record cash once the month is open."
+        >
+            <form
+                id="open-month-form"
+                class="grid gap-4"
+                @submit.prevent="submitOpening"
             >
-            <CardContent
-                ><form
-                    class="grid max-w-lg gap-4"
-                    @submit.prevent="submitTransition"
-                >
-                    <p class="text-muted-foreground text-sm">
-                        You can close only a month that has ended. All cash
-                        batches must be reconciled and all exceptions resolved.
-                        Reopening does not extend the receipt lookback period.
+                <div class="grid gap-2">
+                    <Label for="open-month">Month</Label
+                    ><Input
+                        id="open-month"
+                        v-model="opening.month"
+                        type="month"
+                        :aria-invalid="!!opening.errors.month"
+                        :aria-describedby="
+                            opening.errors.month
+                                ? 'open-month-error'
+                                : undefined
+                        "
+                        :disabled="locked"
+                    />
+                    <p
+                        v-if="opening.errors.month"
+                        id="open-month-error"
+                        role="alert"
+                        class="text-destructive text-sm"
+                    >
+                        {{ opening.errors.month }}
                     </p>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="open-reason">Reason</Label
+                    ><Input
+                        id="open-reason"
+                        v-model="opening.reason"
+                        maxlength="500"
+                        :aria-invalid="!!opening.errors.reason"
+                        :aria-describedby="
+                            opening.errors.reason
+                                ? 'open-reason-error'
+                                : undefined
+                        "
+                        :disabled="locked"
+                    />
+                    <p
+                        v-if="opening.errors.reason"
+                        id="open-reason-error"
+                        role="alert"
+                        class="text-destructive text-sm"
+                    >
+                        {{ opening.errors.reason }}
+                    </p>
+                </div>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="busy"
+                    @click="openSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="open-month-form"
+                    :disabled="
+                        locked || !opening.month || !opening.reason.trim()
+                    "
+                    >Open month</Button
+                >
+            </template>
+        </FormSheet>
+
+        <Dialog
+            :open="transitionDialogOpen"
+            @update:open="if (!$event) cancelReview();"
+        >
+            <DialogContent
+                class="sm:max-w-md"
+                :show-close-button="!locked"
+                @escape-key-down="locked && $event.preventDefault()"
+                @interact-outside="locked && $event.preventDefault()"
+            >
+                <DialogHeader>
+                    <DialogTitle
+                        >{{ selected?.action === 'close' ? 'Close' : 'Reopen' }}
+                        {{ selected?.month }}?</DialogTitle
+                    >
+                    <DialogDescription>
+                        {{
+                            selected?.action === 'close'
+                                ? 'Agents will not be able to record cash in this month.'
+                                : 'Agents will be able to record cash in this month again.'
+                        }}
+                    </DialogDescription>
+                </DialogHeader>
+                <form class="grid gap-4" @submit.prevent="submitTransition">
                     <div class="grid gap-2">
                         <Label for="transition-reason">Reason</Label
                         ><Input
@@ -421,8 +486,14 @@ function submitTransition(): void {
                     >
                         {{ transition.errors.version }}
                     </p>
-                    <div class="flex flex-wrap gap-3">
+                    <DialogFooter>
                         <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="locked"
+                            @click="cancelReview"
+                            >Cancel</Button
+                        ><Button
                             type="submit"
                             :disabled="locked || !transition.reason.trim()"
                             :aria-describedby="
@@ -430,17 +501,15 @@ function submitTransition(): void {
                                     ? 'transition-version-error'
                                     : undefined
                             "
-                            >Confirm {{ selected.action }}</Button
-                        ><Button
-                            type="button"
-                            variant="outline"
-                            :disabled="locked"
-                            @click="cancelReview"
-                            >Cancel</Button
+                            >{{
+                                selected?.action === 'close'
+                                    ? 'Close month'
+                                    : 'Reopen month'
+                            }}</Button
                         >
-                    </div>
-                </form></CardContent
-            >
-        </Card>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

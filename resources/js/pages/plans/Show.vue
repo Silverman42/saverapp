@@ -19,25 +19,21 @@ import {
 } from '@inertiajs/vue3';
 import { computed, nextTick, ref, watch, watchEffect } from 'vue';
 import {
-    AlertCircle,
     ArrowLeft,
     CalendarDays,
+    Ellipsis,
     History,
     PencilLine,
-    WalletCards,
 } from '@lucide/vue';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import PlanFundingSummary from '@/components/PlanFundingSummary.vue';
 import type { PlanFundingSummary as FundingSummary } from '@/types/plan-funding';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -46,6 +42,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
@@ -162,6 +165,7 @@ const actionNotice = ref<HTMLElement | null>(null);
 const actionRequiresReload = ref(false);
 const reloadingAction = ref(false);
 const showAllSlots = ref(false);
+const historyOpen = ref(false);
 const transitionForm = useForm({
     attempt_reference: props.attempt_reference,
     plan_version: props.plan.version,
@@ -194,17 +198,76 @@ watchEffect(() => {
     });
 });
 
+const currentQuery = computed(
+    () => new URL(page.url, 'http://localhost').searchParams,
+);
+const openFeeHistory = computed(
+    () =>
+        currentQuery.value.has('fee_page') ||
+        currentQuery.value.has('fee_per_page'),
+);
+const openPostingHistory = computed(
+    () =>
+        currentQuery.value.has('activity_page') ||
+        currentQuery.value.has('activity_per_page'),
+);
+
 const visibleSlots = computed(() =>
     showAllSlots.value ? props.plan.slots : props.plan.slots.slice(0, 10),
 );
 const remainingSlots = computed(() =>
     Math.max(props.plan.slots.length - visibleSlots.value.length, 0),
 );
+const recentHistory = computed(() => props.plan.history.slice(-3).reverse());
+const fullHistory = computed(() => [...props.plan.history].reverse());
+const fullRevisions = computed(() => [...props.plan.revisions].reverse());
 const confirmationTitle = computed(() => {
     if (confirmationAction.value === 'pause') return 'Pause this plan?';
     if (confirmationAction.value === 'resume') return 'Resume this plan?';
-    return 'Cancel this unused plan?';
+    return 'Cancel this plan?';
 });
+const canRecordCash = computed(
+    () =>
+        page.props.features.collections &&
+        props.actions.can_manage &&
+        props.plan.status === 'active',
+);
+const showCancel = computed(
+    () =>
+        props.actions.can_manage &&
+        ['active', 'paused'].includes(props.plan.status),
+);
+const hasMoreActions = computed(
+    () =>
+        props.actions.can_edit ||
+        props.actions.can_pause ||
+        props.actions.can_settle ||
+        showCancel.value,
+);
+
+const keyFigures = computed(() => [
+    {
+        label: 'Daily amount',
+        value:
+            props.plan.current_terms?.formatted_contribution_amount ??
+            'Not set',
+    },
+    {
+        label: 'Paid so far',
+        value: props.plan.financial_summary.funded_principal ?? 'Not available',
+    },
+    {
+        label: 'Days paid',
+        value:
+            props.plan.financial_summary.fully_funded_slots === null
+                ? 'Not available'
+                : `${props.plan.financial_summary.fully_funded_slots} of ${props.plan.financial_summary.required_slots}`,
+    },
+    {
+        label: 'Available savings',
+        value: props.plan.savings_summary.cycle.available ?? 'Not available',
+    },
+]);
 
 watch(
     () => [
@@ -245,7 +308,8 @@ const reloadAction = (): void => {
         only: ['plan', 'customer', 'actions', 'attempt_reference'],
         onSuccess: (currentPage) => {
             const currentPlan = currentPage.props.plan as
-                { id?: string } | undefined;
+                | { id?: string }
+                | undefined;
             if (
                 currentPage.component !== 'plans/Show' ||
                 currentPlan?.id !== props.plan.id
@@ -259,18 +323,18 @@ const reloadAction = (): void => {
         },
         onError: () => {
             actionMessage.value =
-                'The current plan could not be verified. Reload again before confirming another action.';
+                'We could not load the latest plan. Try reloading again.';
         },
         onHttpException: (response) => {
             actionMessage.value =
                 response.status === 403 || response.status === 404
-                    ? 'The current plan is unavailable or your access has changed. Your previous action remains unverified.'
-                    : 'The current plan could not be verified. Reload again before confirming another action.';
+                    ? 'This plan is not available, or your access has changed. We could not confirm your last action.'
+                    : 'We could not load the latest plan. Try reloading again.';
             return false;
         },
         onNetworkError: () => {
             actionMessage.value =
-                'The current plan could not be verified because the connection failed. Reload again before confirming another action.';
+                'The connection failed while loading the plan. Try reloading again.';
             return false;
         },
         onFinish: () => {
@@ -311,16 +375,16 @@ const submitAction = (): void => {
                 actionRequiresReload.value = true;
                 actionMessage.value =
                     response.status === 409
-                        ? 'The plan or Customer changed, or this action is no longer available. Reload the current plan and review it before confirming another action.'
+                        ? 'This plan or customer changed, or this action is no longer available. Reload the plan and check it before trying again.'
                         : response.status === 403 || response.status === 404
-                          ? 'This action was rejected because the plan is unavailable or your access has changed. Reload to check your current access before confirming another action.'
-                          : 'The action outcome could not be confirmed. Reload the current plan to check its status before confirming another action.';
+                          ? 'This action was blocked because the plan is not available or your access changed. Reload to check.'
+                          : 'We could not confirm if this worked. Reload the plan to check its status.';
                 return false;
             },
             onNetworkError: () => {
                 actionRequiresReload.value = true;
                 actionMessage.value =
-                    'The action outcome could not be confirmed because the connection failed. Reload the current plan to check whether it was saved before confirming another action.';
+                    'The connection failed, so we could not confirm if this was saved. Reload the plan to check.';
                 return false;
             },
             onSuccess: () => {
@@ -347,24 +411,11 @@ const statusVariant = (
     />
 
     <div class="space-y-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    {{ plan.current_terms?.name ?? 'Daily thrift plan' }}
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    <Link
-                        :href="showCustomer(customer.id).url"
-                        class="hover:underline"
-                        >{{ customer.name }} · {{ customer.id }}</Link
-                    >
-                    <span>
-                        · {{ plan.id }} · revision
-                        {{ plan.terms_revision }}</span
-                    >
-                </p>
-            </div>
-            <div class="flex flex-wrap gap-2">
+        <PageHeader
+            :title="plan.current_terms?.name ?? 'Daily thrift plan'"
+            :description="`Savings plan for ${customer.name}.`"
+        >
+            <template #actions>
                 <Button
                     v-if="page.props.features.collections"
                     as-child
@@ -373,50 +424,13 @@ const statusVariant = (
                         >View thrift card</Link
                     ></Button
                 >
-                <Button
-                    v-if="
-                        page.props.features.collections &&
-                        actions.can_manage &&
-                        plan.status === 'active'
-                    "
-                    as-child
+                <Button v-if="canRecordCash" as-child
                     ><Link :href="createCollection(customer.id).url"
                         >Record cash</Link
                     ></Button
                 >
-                <Button v-if="actions.can_edit" as-child variant="outline"
-                    ><Link :href="editPlan(plan.id).url"
-                        ><PencilLine class="mr-2 size-4" />Amend terms</Link
-                    ></Button
-                >
-                <Button
-                    v-if="actions.can_pause"
-                    variant="outline"
-                    @click="openAction('pause')"
-                    >Pause</Button
-                >
                 <Button v-if="actions.can_resume" @click="openAction('resume')"
                     >Resume</Button
-                >
-                <Button v-if="actions.can_settle" as-child
-                    ><Link :href="planSettlement.url(plan.id)"
-                        >Review settlement</Link
-                    ></Button
-                >
-                <Button
-                    v-if="
-                        actions.can_manage &&
-                        ['active', 'paused'].includes(plan.status)
-                    "
-                    variant="destructive"
-                    :disabled="!actions.can_cancel"
-                    :aria-describedby="
-                        actions.can_cancel
-                            ? undefined
-                            : 'plan-cancellation-blocker'
-                    "
-                    @click="openAction('cancel')"
-                    >Cancel unused plan</Button
                 >
                 <Button v-if="actions.can_renew" as-child
                     ><Link
@@ -425,210 +439,226 @@ const statusVariant = (
                                 query: { predecessor_plan_id: plan.id },
                             }).url
                         "
-                        >Create renewal</Link
+                        >Start new plan</Link
                     ></Button
                 >
-            </div>
-        </div>
-
-        <p
-            v-if="
-                actions.can_manage &&
-                ['active', 'paused'].includes(plan.status) &&
-                !actions.can_cancel
-            "
-            id="plan-cancellation-blocker"
-            class="text-muted-foreground text-sm"
-        >
-            This cycle has fee or financial activity, so you cannot cancel it as
-            unused. Review its fees and payments before you choose a settlement
-            action.
-        </p>
-
-        <div
-            class="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]"
-        >
-            <Card>
-                <CardHeader class="flex-row items-start justify-between">
-                    <div>
-                        <CardTitle>Agreed terms</CardTitle>
-                        <CardDescription
-                            >Revision {{ plan.terms_revision }} · created
-                            {{
-                                plan.created_at ?? 'date unavailable'
-                            }}</CardDescription
+                <DropdownMenu :modal="false" v-if="hasMoreActions">
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline" aria-label="More actions">
+                            <Ellipsis class="size-4" />
+                            More
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-64">
+                        <DropdownMenuItem v-if="actions.can_edit" as-child>
+                            <Link :href="editPlan(plan.id).url"
+                                ><PencilLine class="size-4" />Change terms</Link
+                            >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-if="actions.can_settle" as-child>
+                            <Link :href="planSettlement.url(plan.id)"
+                                >Review settlement</Link
+                            >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            v-if="actions.can_pause"
+                            @select="openAction('pause')"
+                            >Pause plan</DropdownMenuItem
                         >
-                    </div>
-                    <Badge :variant="statusVariant(plan.status)">{{
-                        plan.status_label
-                    }}</Badge>
-                </CardHeader>
-                <CardContent
-                    v-if="plan.current_terms"
-                    class="grid gap-5 sm:grid-cols-2"
-                >
-                    <div>
-                        <p class="text-muted-foreground text-xs">
-                            Daily contribution
-                        </p>
-                        <p class="mt-1 text-lg font-semibold">
-                            {{
-                                plan.current_terms.formatted_contribution_amount
-                            }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs">Frequency</p>
-                        <p class="mt-1 font-medium">
-                            Daily ·
-                            {{ plan.current_terms.contribution_days }} scheduled
-                            days
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs">Schedule</p>
-                        <p class="mt-1 font-medium">
-                            {{ plan.current_terms.start_date }} –
-                            {{ plan.current_terms.scheduled_end_date }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs">Timezone</p>
-                        <p class="mt-1 font-medium">
-                            {{ plan.current_terms.timezone }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground text-xs">
-                            Expected gross
-                        </p>
-                        <p class="mt-1 font-medium">
-                            {{ plan.current_terms.formatted_expected_gross }}
-                        </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            Contractual estimate only
-                        </p>
-                    </div>
-                    <div
-                        v-if="plan.current_terms.customer_visible_notes"
-                        class="sm:col-span-2"
-                    >
-                        <p class="text-muted-foreground text-xs">
-                            Customer-visible notes
-                        </p>
-                        <p class="mt-1 text-sm whitespace-pre-wrap">
-                            {{ plan.current_terms.customer_visible_notes }}
-                        </p>
-                    </div>
-                </CardContent>
-                <CardContent v-else
-                    ><p class="text-muted-foreground text-sm">
-                        Agreed terms are unavailable.
-                    </p></CardContent
-                >
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle class="flex items-center gap-2"
-                        ><WalletCards class="size-4" /> Plan funding</CardTitle
-                    >
-                    <CardDescription
-                        >Recorded allocation coverage of the agreed
-                        schedule.</CardDescription
-                    >
-                </CardHeader>
-                <CardContent>
-                    <PlanFundingSummary :summary="plan.financial_summary" />
-                </CardContent>
-            </Card>
-        </div>
+                        <template v-if="showCancel">
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                variant="destructive"
+                                :disabled="!actions.can_cancel"
+                                :aria-describedby="
+                                    actions.can_cancel
+                                        ? undefined
+                                        : 'plan-cancellation-blocker'
+                                "
+                                @select="openAction('cancel')"
+                                >Cancel plan</DropdownMenuItem
+                            >
+                            <p
+                                v-if="!actions.can_cancel"
+                                id="plan-cancellation-blocker"
+                                class="text-muted-foreground px-3 pb-2 text-xs"
+                            >
+                                This plan has payments or fees, so it can't be
+                                cancelled. Use settlement instead.
+                            </p>
+                        </template>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </template>
+        </PageHeader>
 
         <Card>
             <CardHeader
-                ><CardTitle>Contractual estimates</CardTitle></CardHeader
+                class="flex flex-row flex-wrap items-center justify-between gap-3"
             >
-            <CardContent
-                ><PlanEstimateSummary :estimate="plan.estimate"
-            /></CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader
-                ><CardTitle
-                    >Actual savings and reservations</CardTitle
-                ></CardHeader
-            >
-            <CardContent
-                ><PlanSavingsSummary :summary="plan.savings_summary"
-            /></CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader
-                ><CardTitle
-                    >Posted payouts and deductions</CardTitle
-                ></CardHeader
-            >
-            <CardContent class="space-y-6">
-                <PlanPostedActivity :summary="plan.posted_activity" />
-                <PlanPostingHistory
-                    :plan-id="plan.id"
-                    :summary="plan.posting_history"
-                />
-            </CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader><CardTitle>Recorded cycle fees</CardTitle></CardHeader>
-            <CardContent
-                ><PlanFeeHistory :plan-id="plan.id" :summary="plan.fee_history"
-            /></CardContent>
-        </Card>
-
-        <Card v-if="plan.fee">
-            <CardHeader>
-                <CardTitle>Agreed fee terms</CardTitle>
-                <CardDescription>{{ plan.fee.name }}</CardDescription>
+                <CardTitle>Summary</CardTitle>
+                <Badge :variant="statusVariant(plan.status)">{{
+                    plan.status_label
+                }}</Badge>
             </CardHeader>
-            <CardContent class="space-y-2">
-                <p class="font-medium">{{ plan.fee.formatted_amount }}</p>
-                <p class="text-muted-foreground text-sm">
-                    {{ plan.fee.description }}
-                </p>
-                <p
-                    v-if="plan.fee.early_termination_description"
-                    class="text-muted-foreground text-sm"
-                >
-                    Early termination:
-                    {{ plan.fee.early_termination_description }}
-                </p>
-                <p
-                    v-if="plan.fee.estimate_available"
-                    class="text-muted-foreground text-xs"
-                >
-                    The fee terms come from the agreement. The related financial
-                    process calculates the actual fee.
-                </p>
-                <p v-else class="text-muted-foreground text-xs">
-                    The amount is calculated when a withdrawal is quoted.
-                </p>
-            </CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader>
-                <div class="flex items-start gap-3">
-                    <CalendarDays class="text-primary mt-0.5 size-5" />
-                    <div>
-                        <CardTitle>Expected contribution dates</CardTitle
-                        ><CardDescription
-                            >Agreed dates and verified contributions. If funding
-                            data is not available, the agreed target
-                            shows.</CardDescription
-                        >
+            <CardContent class="space-y-5">
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div
+                        v-for="figure in keyFigures"
+                        :key="figure.label"
+                        class="bg-muted/40 rounded-xl p-4"
+                    >
+                        <p class="text-muted-foreground text-sm">
+                            {{ figure.label }}
+                        </p>
+                        <p class="mt-2 text-xl font-semibold break-words">
+                            {{ figure.value }}
+                        </p>
                     </div>
                 </div>
+
+                <dl
+                    v-if="plan.current_terms"
+                    class="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4"
+                >
+                    <div>
+                        <dt class="text-muted-foreground">Customer</dt>
+                        <dd class="mt-0.5 font-medium">
+                            <Link
+                                :href="showCustomer(customer.id).url"
+                                class="underline-offset-4 hover:underline"
+                                >{{ customer.name }}</Link
+                            >
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Dates</dt>
+                        <dd class="mt-0.5 font-medium">
+                            {{ plan.current_terms.start_date }} to
+                            {{ plan.current_terms.scheduled_end_date }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Expected total</dt>
+                        <dd class="mt-0.5 font-medium">
+                            {{ plan.current_terms.formatted_expected_gross }}
+                            <span
+                                class="text-muted-foreground block text-xs font-normal"
+                                >Over
+                                {{ plan.current_terms.contribution_days }}
+                                days</span
+                            >
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Fee</dt>
+                        <dd class="mt-0.5 font-medium">
+                            <template v-if="plan.fee"
+                                >{{ plan.fee.formatted_amount }}
+                                <span
+                                    class="text-muted-foreground block text-xs font-normal"
+                                    >{{ plan.fee.name }}</span
+                                ></template
+                            >
+                            <template v-else>No fee</template>
+                        </dd>
+                    </div>
+                </dl>
+                <p v-else class="text-muted-foreground text-sm">
+                    The plan terms can't be shown right now.
+                </p>
+
+                <div
+                    v-if="plan.current_terms?.customer_visible_notes"
+                    class="bg-muted/40 rounded-xl p-4 text-sm"
+                >
+                    <p class="text-muted-foreground text-xs">
+                        Notes for the customer
+                    </p>
+                    <p class="mt-1 whitespace-pre-wrap">
+                        {{ plan.current_terms.customer_visible_notes }}
+                    </p>
+                </div>
+
+                <MoreDetails label="Plan details">
+                    <div class="space-y-6">
+                        <dl
+                            class="text-muted-foreground grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4"
+                        >
+                            <div>
+                                <dt>Plan ID</dt>
+                                <dd class="text-foreground mt-0.5 break-all">
+                                    {{ plan.id }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Customer ID</dt>
+                                <dd class="text-foreground mt-0.5 break-all">
+                                    {{ customer.id }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Terms version</dt>
+                                <dd class="text-foreground mt-0.5">
+                                    {{ plan.terms_revision }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>Created</dt>
+                                <dd class="text-foreground mt-0.5">
+                                    {{ plan.created_at ?? 'Unknown' }}
+                                </dd>
+                            </div>
+                            <div v-if="plan.current_terms">
+                                <dt>Time zone</dt>
+                                <dd class="text-foreground mt-0.5">
+                                    {{ plan.current_terms.timezone }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <section class="space-y-3">
+                            <h3 class="text-sm font-medium">
+                                Payment progress
+                            </h3>
+                            <PlanFundingSummary
+                                :summary="plan.financial_summary"
+                            />
+                        </section>
+                        <section class="space-y-3">
+                            <h3 class="text-sm font-medium">Estimate</h3>
+                            <PlanEstimateSummary :estimate="plan.estimate" />
+                        </section>
+                        <section v-if="plan.fee" class="space-y-2 text-sm">
+                            <h3 class="font-medium">
+                                Fee: {{ plan.fee.name }}
+                            </h3>
+                            <p class="text-muted-foreground">
+                                {{ plan.fee.description }}
+                            </p>
+                            <p
+                                v-if="plan.fee.early_termination_description"
+                                class="text-muted-foreground"
+                            >
+                                If the plan ends early:
+                                {{ plan.fee.early_termination_description }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{
+                                    plan.fee.estimate_available
+                                        ? 'The final fee is worked out when money is paid out.'
+                                        : 'The fee is worked out when a withdrawal is requested.'
+                                }}
+                            </p>
+                        </section>
+                    </div>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader class="flex flex-row items-center gap-2">
+                <CalendarDays class="text-muted-foreground size-4" />
+                <CardTitle>Payment schedule</CardTitle>
             </CardHeader>
             <CardContent>
                 <div
@@ -638,10 +668,10 @@ const statusVariant = (
                     <div
                         v-for="slot in visibleSlots"
                         :key="slot.ordinal"
-                        class="flex items-center justify-between rounded-xl border px-3 py-2.5"
+                        class="bg-muted/40 flex items-start justify-between gap-3 rounded-xl px-3 py-2.5"
                     >
                         <div>
-                            <p class="text-xs font-medium">
+                            <p class="text-sm font-medium">
                                 Day {{ slot.ordinal }}
                             </p>
                             <p class="text-muted-foreground text-xs">
@@ -652,32 +682,26 @@ const statusVariant = (
                             <p class="text-sm font-medium">
                                 {{ slot.formatted_expected_amount }}
                             </p>
-                            <p class="text-muted-foreground text-[11px]">
-                                Target
-                            </p>
-                            <template
-                                v-if="slot.formatted_funded_amount !== null"
-                            >
-                                <p class="mt-1 text-xs">
-                                    Allocated {{ slot.formatted_funded_amount }}
-                                </p>
-                                <p class="text-muted-foreground text-xs">
-                                    Remaining
-                                    {{ slot.formatted_remaining_amount }}
-                                </p>
-                            </template>
                             <p
-                                class="text-muted-foreground mt-1 text-xs capitalize"
+                                v-if="slot.formatted_funded_amount !== null"
+                                class="text-muted-foreground text-xs"
                             >
+                                Paid {{ slot.formatted_funded_amount }} · Left
+                                {{ slot.formatted_remaining_amount }}
+                            </p>
+                            <p class="text-muted-foreground text-xs capitalize">
                                 {{ slot.collection_status }}
-                                <span v-if="slot.advance"> · Advance</span>
+                                <span v-if="slot.advance"> · Paid early</span>
                             </p>
                         </div>
                     </div>
                 </div>
-                <p v-else class="text-muted-foreground text-sm">
-                    No schedule slots are available.
-                </p>
+                <EmptyState
+                    v-else
+                    :icon="CalendarDays"
+                    title="No payment days yet"
+                    description="Payment days will show here once the plan has a schedule."
+                />
                 <Button
                     v-if="remainingSlots > 0 || showAllSlots"
                     class="mt-4"
@@ -687,100 +711,86 @@ const statusVariant = (
                 >
                     {{
                         showAllSlots
-                            ? 'Show fewer dates'
-                            : `Show all ${plan.slots.length} dates`
+                            ? 'Show fewer days'
+                            : `Show all ${plan.slots.length} days`
                     }}
                 </Button>
             </CardContent>
         </Card>
 
-        <div class="grid gap-4 lg:grid-cols-2">
-            <Card>
-                <CardHeader
-                    ><CardTitle>Revision history</CardTitle
-                    ><CardDescription
-                        >We keep each accepted version of the plan
-                        terms.</CardDescription
-                    ></CardHeader
+        <Card>
+            <CardHeader><CardTitle>Money details</CardTitle></CardHeader>
+            <CardContent class="divide-y">
+                <div class="pb-4">
+                    <MoreDetails label="Savings breakdown">
+                        <PlanSavingsSummary :summary="plan.savings_summary" />
+                    </MoreDetails>
+                </div>
+                <div class="py-4">
+                    <MoreDetails
+                        label="Payouts and deductions"
+                        :default-open="openPostingHistory"
+                    >
+                        <div class="space-y-6">
+                            <PlanPostedActivity
+                                :summary="plan.posted_activity"
+                            />
+                            <PlanPostingHistory
+                                :plan-id="plan.id"
+                                :summary="plan.posting_history"
+                            />
+                        </div>
+                    </MoreDetails>
+                </div>
+                <div class="pt-4">
+                    <MoreDetails label="Fees" :default-open="openFeeHistory">
+                        <PlanFeeHistory
+                            :plan-id="plan.id"
+                            :summary="plan.fee_history"
+                        />
+                    </MoreDetails>
+                </div>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader
+                class="flex flex-row flex-wrap items-center justify-between gap-3"
+            >
+                <CardTitle class="flex items-center gap-2"
+                    ><History class="text-muted-foreground size-4" /> Recent
+                    activity</CardTitle
                 >
-                <CardContent>
-                    <ol class="space-y-4">
-                        <li
-                            v-for="revision in plan.revisions"
-                            :key="revision.revision"
-                            class="border-l-2 pl-4"
-                        >
-                            <p class="font-medium">
-                                Revision {{ revision.revision }} ·
-                                {{ revision.name }}
-                            </p>
-                            <p class="text-muted-foreground mt-1 text-sm">
-                                {{ revision.formatted_contribution_amount }}
-                                daily · {{ revision.contribution_days }} days
-                                from
-                                {{ revision.start_date }}
-                            </p>
+                <Button variant="ghost" size="sm" @click="historyOpen = true"
+                    >See full history</Button
+                >
+            </CardHeader>
+            <CardContent>
+                <ol v-if="recentHistory.length" class="divide-y">
+                    <li
+                        v-for="(event, index) in recentHistory"
+                        :key="`${event.event}-${index}`"
+                        class="flex flex-wrap items-start justify-between gap-2 py-3 first:pt-0 last:pb-0"
+                    >
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">{{ event.event }}</p>
                             <p
-                                v-if="revision.reason"
-                                class="text-muted-foreground mt-1 text-xs"
+                                v-if="event.explanation"
+                                class="text-muted-foreground mt-0.5 text-sm"
                             >
-                                Reason: {{ revision.reason }}
-                            </p>
-                            <p class="text-muted-foreground mt-1 text-xs">
-                                {{ revision.created_at ?? 'Date unavailable' }}
-                            </p>
-                        </li>
-                    </ol>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader
-                    ><CardTitle class="flex items-center gap-2"
-                        ><History class="size-4" /> Plan history</CardTitle
-                    ><CardDescription
-                        >Lifecycle actions are recorded with their
-                        reasons.</CardDescription
-                    ></CardHeader
-                >
-                <CardContent>
-                    <ol v-if="plan.history.length" class="space-y-4">
-                        <li
-                            v-for="(event, index) in plan.history"
-                            :key="`${event.event}-${index}`"
-                            class="border-l-2 pl-4"
-                        >
-                            <p class="font-medium">
-                                {{ event.event
-                                }}<span v-if="event.status">
-                                    · {{ event.status }}</span
-                                >
-                            </p>
-                            <p v-if="event.explanation" class="mt-1 text-sm">
                                 {{ event.explanation }}
                             </p>
-                            <p
-                                v-if="event.reason"
-                                class="text-muted-foreground mt-1 text-xs"
-                            >
-                                Reason: {{ event.reason }}
-                            </p>
-                            <p
-                                v-if="event.actor"
-                                class="text-muted-foreground mt-1 text-xs"
-                            >
-                                Recorded by {{ event.actor }}
-                            </p>
-                            <p class="text-muted-foreground mt-1 text-xs">
-                                {{ event.effective_at ?? 'Date unavailable' }}
-                            </p>
-                        </li>
-                    </ol>
-                    <p v-else class="text-muted-foreground text-sm">
-                        No lifecycle events are available.
-                    </p>
-                </CardContent>
-            </Card>
-        </div>
+                        </div>
+                        <p class="text-muted-foreground text-xs">
+                            {{ event.effective_at ?? 'Date unknown' }}
+                        </p>
+                    </li>
+                </ol>
+                <p v-else class="text-muted-foreground text-sm">
+                    Nothing has happened on this plan yet.
+                </p>
+            </CardContent>
+        </Card>
 
         <div class="flex justify-start">
             <Button as-child variant="ghost"
@@ -790,6 +800,79 @@ const statusVariant = (
             >
         </div>
     </div>
+
+    <FormSheet
+        v-model:open="historyOpen"
+        title="Plan history"
+        description="Everything that has changed on this plan."
+    >
+        <div class="space-y-8">
+            <section class="space-y-3">
+                <h3 class="text-sm font-medium">Activity</h3>
+                <ol v-if="fullHistory.length" class="divide-y">
+                    <li
+                        v-for="(event, index) in fullHistory"
+                        :key="`${event.event}-${index}`"
+                        class="space-y-1 py-3 text-sm first:pt-0"
+                    >
+                        <p class="font-medium">
+                            {{ event.event
+                            }}<span v-if="event.status">
+                                · {{ event.status }}</span
+                            >
+                        </p>
+                        <p v-if="event.explanation">
+                            {{ event.explanation }}
+                        </p>
+                        <p
+                            v-if="event.reason"
+                            class="text-muted-foreground text-xs"
+                        >
+                            Reason: {{ event.reason }}
+                        </p>
+                        <p class="text-muted-foreground text-xs">
+                            {{ event.effective_at ?? 'Date unknown'
+                            }}<template v-if="event.actor">
+                                · By {{ event.actor }}</template
+                            >
+                        </p>
+                    </li>
+                </ol>
+                <p v-else class="text-muted-foreground text-sm">
+                    Nothing has happened on this plan yet.
+                </p>
+            </section>
+            <section class="space-y-3">
+                <h3 class="text-sm font-medium">Changes to terms</h3>
+                <ol class="divide-y">
+                    <li
+                        v-for="revision in fullRevisions"
+                        :key="revision.revision"
+                        class="space-y-1 py-3 text-sm first:pt-0"
+                    >
+                        <p class="font-medium">
+                            Version {{ revision.revision }} ·
+                            {{ revision.name }}
+                        </p>
+                        <p class="text-muted-foreground">
+                            {{ revision.formatted_contribution_amount }} daily
+                            for {{ revision.contribution_days }} days from
+                            {{ revision.start_date }}
+                        </p>
+                        <p
+                            v-if="revision.reason"
+                            class="text-muted-foreground text-xs"
+                        >
+                            Reason: {{ revision.reason }}
+                        </p>
+                        <p class="text-muted-foreground text-xs">
+                            {{ revision.created_at ?? 'Date unknown' }}
+                        </p>
+                    </li>
+                </ol>
+            </section>
+        </div>
+    </FormSheet>
 
     <Dialog
         :open="confirmationAction !== null"
@@ -836,17 +919,16 @@ const statusVariant = (
                 <DialogTitle>{{ confirmationTitle }}</DialogTitle>
                 <DialogDescription>
                     <template v-if="confirmationAction === 'cancel'"
-                        >Cancellation is available only for a plan with no
-                        recorded activity and no fee obligation. The server
-                        rechecks both conditions.</template
+                        >You can only cancel a plan with no payments and no
+                        fees. We check this again before cancelling.</template
                     >
                     <template v-else-if="confirmationAction === 'pause'"
-                        >The agreed schedule remains in history. No financial
-                        activity is recorded by this action.</template
+                        >Pausing does not move any money. The schedule stays in
+                        the plan history.</template
                     >
                     <template v-else
-                        >The plan returns to Active only if the Customer is
-                        currently Active.</template
+                        >The plan becomes active again only if the customer is
+                        active.</template
                     >
                 </DialogDescription>
             </DialogHeader>
@@ -892,7 +974,7 @@ const statusVariant = (
                 </div>
                 <div class="grid gap-2">
                     <Label for="plan-action-explanation"
-                        >Explanation for Customer</Label
+                        >Message for the customer</Label
                     >
                     <textarea
                         id="plan-action-explanation"
@@ -938,7 +1020,7 @@ const statusVariant = (
                     variant="outline"
                     :disabled="transitionForm.processing || reloadingAction"
                     @click="confirmationAction = null"
-                    >Keep current status</Button
+                    >Go back</Button
                 >
                 <Button
                     v-if="actionRequiresReload"
@@ -947,7 +1029,7 @@ const statusVariant = (
                     aria-describedby="plan-action-notice"
                     @click="reloadAction"
                     >{{
-                        reloadingAction ? 'Reloading…' : 'Reload current plan'
+                        reloadingAction ? 'Reloading…' : 'Reload plan'
                     }}</Button
                 >
                 <Button
@@ -972,9 +1054,7 @@ const statusVariant = (
                     "
                     @click="submitAction"
                 >
-                    {{
-                        transitionForm.processing ? 'Saving…' : 'Confirm action'
-                    }}
+                    {{ transitionForm.processing ? 'Saving…' : 'Confirm' }}
                 </Button>
             </DialogFooter>
         </DialogContent>

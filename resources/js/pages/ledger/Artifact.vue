@@ -1,7 +1,23 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePoll } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Download } from '@lucide/vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import { cancel, show, retry, hold } from '@/routes/financial-artifacts';
 const props = defineProps<{
@@ -42,165 +58,307 @@ const retention = useForm({
     reason: '',
     confirmed: false,
 });
+const cancelOpen = ref(false);
+const retryOpen = ref(false);
+const holdOpen = ref(false);
 usePoll(5000, { only: ['artifact'] });
+
+const statusLabels: Record<string, string> = {
+    queued: 'Waiting to start',
+    running: 'Being prepared',
+    ready: 'Ready',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    expired: 'Expired',
+};
+const statusMessages: Record<string, string> = {
+    queued: 'Your file is in line. This page updates on its own.',
+    running: 'Your file is being prepared. This page updates on its own.',
+    ready: 'Your file is ready to download.',
+    failed: 'We could not create this file. Your request and data are kept.',
+    cancelled: 'This file was cancelled.',
+    expired: 'The download link has expired.',
+};
+const statusLabel = computed(
+    () =>
+        statusLabels[props.artifact.status] ??
+        props.artifact.status.replaceAll('_', ' '),
+);
+
 function cancelDocument(): void {
-    cancellation.post(cancel.url(props.artifact.artifact_reference));
+    cancellation.confirmed = true;
+    cancellation.post(cancel.url(props.artifact.artifact_reference), {
+        onFinish: () => {
+            cancelOpen.value = false;
+        },
+    });
+}
+function retryDocument(): void {
+    retryForm.confirmed = true;
+    retryForm.post(retry.url(props.artifact.artifact_reference), {
+        onFinish: () => {
+            retryOpen.value = false;
+        },
+    });
+}
+function submitHold(): void {
+    retention.held = !props.artifact.held;
+    retention.post(hold.url(props.artifact.artifact_reference), {
+        onSuccess: () => {
+            retention.confirmed = false;
+            holdOpen.value = false;
+        },
+    });
 }
 </script>
 <template>
     <Head title="Financial document" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                {{
-                    artifact.kind === 'statement'
-                        ? 'Customer statement'
-                        : 'Report export'
-                }}
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ artifact.artifact_reference }} ·
-                {{ artifact.format.toUpperCase() }}
-            </p>
-        </div>
-        <Card
-            ><CardContent class="grid gap-4 pt-6 text-sm">
-                <p role="status">{{ artifact.status.replaceAll('_', ' ') }}</p>
-                <p v-if="artifact.superseded_by">
-                    Superseded by
-                    <Link
-                        class="underline"
-                        :href="show(artifact.superseded_by)"
-                        >{{ artifact.superseded_by }}</Link
-                    >.
-                </p>
-                <p v-if="artifact.manifest.supersedes_reference">
-                    Supersedes
-                    <Link
-                        class="underline"
-                        :href="show(artifact.manifest.supersedes_reference)"
-                        >{{ artifact.manifest.supersedes_reference }}</Link
-                    >. The earlier issued document remains preserved.
-                </p>
-                <p>
-                    Captured {{ artifact.manifest.captured_at }} for
-                    {{ artifact.manifest.business_name }}
-                </p>
-                <p v-if="artifact.expires_at">
-                    Download expires {{ artifact.expires_at }}.
-                </p>
-                <p v-if="artifact.failure_code">
-                    The report was not created. The original data and request
-                    are kept.
-                </p>
-                <a
-                    v-if="artifact.download_url"
-                    :href="artifact.download_url"
-                    class="text-primary w-fit underline"
-                    >Download {{ artifact.format.toUpperCase() }}</a
+        <PageHeader
+            :title="
+                artifact.kind === 'statement'
+                    ? 'Customer statement'
+                    : 'Report export'
+            "
+            :description="`${artifact.format.toUpperCase()} file for ${artifact.manifest.business_name}.`"
+        >
+            <template #actions>
+                <Button v-if="artifact.download_url" as-child
+                    ><a :href="artifact.download_url"
+                        ><Download class="size-4" />Download
+                        {{ artifact.format.toUpperCase() }}</a
+                    ></Button
                 >
-                <form
+                <Button v-if="artifact.can_retry" @click="retryOpen = true"
+                    >Try again</Button
+                >
+                <Button
                     v-if="artifact.status === 'queued' && artifact.can_cancel"
-                    class="grid gap-3"
-                    @submit.prevent="cancelDocument"
+                    variant="outline"
+                    @click="cancelOpen = true"
+                    >Cancel</Button
                 >
-                    <label class="flex gap-3"
-                        ><input
-                            v-model="cancellation.confirmed"
-                            type="checkbox"
-                        />Cancel this queued document.</label
-                    ><Button
-                        class="w-fit"
-                        variant="outline"
-                        :disabled="
-                            cancellation.processing || !cancellation.confirmed
-                        "
-                        >Cancel generation</Button
-                    >
-                </form>
-                <form
-                    v-if="artifact.can_retry"
-                    class="grid gap-3"
-                    @submit.prevent="
-                        retryForm.post(retry.url(artifact.artifact_reference))
-                    "
-                >
-                    <label class="flex gap-3"
-                        ><input
-                            v-model="retryForm.confirmed"
-                            type="checkbox"
-                        />Retry generation from the same captured
-                        snapshot.</label
-                    >
-                    <Button
-                        class="w-fit"
-                        :disabled="retryForm.processing || !retryForm.confirmed"
-                        >Retry generation</Button
-                    >
-                    <p
-                        v-for="(error, key) in retryForm.errors"
-                        :key="key"
-                        class="text-destructive"
-                    >
-                        {{ error }}
+            </template>
+        </PageHeader>
+
+        <Card>
+            <CardContent class="space-y-5 text-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <p role="status">
+                        {{
+                            statusMessages[artifact.status] ??
+                            `Status: ${statusLabel}`
+                        }}
                     </p>
-                </form>
-                <p v-if="artifact.held">
-                    A retention hold keeps this report file after its download
-                    link expires.
-                </p>
-                <form
-                    v-if="artifact.can_hold"
-                    class="grid gap-3"
-                    @submit.prevent="
-                        retention.held = !artifact.held;
-                        retention.post(hold.url(artifact.artifact_reference), {
-                            onSuccess: () => {
-                                retention.confirmed = false;
-                            },
-                        });
+                    <Badge variant="secondary">{{ statusLabel }}</Badge>
+                </div>
+
+                <dl class="grid gap-4 sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground">Data from</dt>
+                        <dd class="mt-0.5 font-medium">
+                            {{ artifact.manifest.captured_at }}
+                        </dd>
+                    </div>
+                    <div v-if="artifact.expires_at">
+                        <dt class="text-muted-foreground">Link expires</dt>
+                        <dd class="mt-0.5 font-medium">
+                            {{ artifact.expires_at }}
+                        </dd>
+                    </div>
+                    <div v-if="artifact.held">
+                        <dt class="text-muted-foreground">Kept</dt>
+                        <dd class="mt-0.5 font-medium">
+                            Yes, after the link expires
+                        </dd>
+                    </div>
+                </dl>
+
+                <div
+                    v-if="
+                        artifact.superseded_by ||
+                        artifact.manifest.supersedes_reference
                     "
+                    class="bg-muted/40 grid gap-1 rounded-xl p-4"
                 >
-                    <label class="grid gap-1"
-                        >Retention reason<textarea
-                            v-model="retention.reason"
-                            maxlength="500"
-                            required
-                            class="rounded-md border p-2"
-                        />
-                    </label>
-                    <label class="flex gap-3"
-                        ><input
-                            v-model="retention.confirmed"
-                            type="checkbox"
-                        />Confirm
-                        {{ artifact.held ? 'release' : 'application' }} of the
-                        retention hold.</label
-                    >
-                    <Button
-                        class="w-fit"
-                        variant="outline"
-                        :disabled="retention.processing || !retention.confirmed"
-                        >{{
-                            artifact.held ? 'Release hold' : 'Apply hold'
-                        }}</Button
-                    >
-                    <p
-                        v-for="(error, key) in retention.errors"
-                        :key="key"
-                        class="text-destructive"
-                    >
-                        {{ error }}
+                    <p v-if="artifact.superseded_by">
+                        A newer version is available:
+                        <Link
+                            class="font-medium underline underline-offset-4"
+                            :href="show(artifact.superseded_by)"
+                            >{{ artifact.superseded_by }}</Link
+                        >.
                     </p>
-                </form>
-                <p
-                    v-for="(error, key) in cancellation.errors"
+                    <p v-if="artifact.manifest.supersedes_reference">
+                        This replaces
+                        <Link
+                            class="font-medium underline underline-offset-4"
+                            :href="show(artifact.manifest.supersedes_reference)"
+                            >{{ artifact.manifest.supersedes_reference }}</Link
+                        >. The earlier file is still kept.
+                    </p>
+                </div>
+
+                <div
+                    v-for="(error, key) in {
+                        ...cancellation.errors,
+                        ...retryForm.errors,
+                    }"
                     :key="key"
+                    role="alert"
                     class="text-destructive"
                 >
                     {{ error }}
-                </p>
-            </CardContent></Card
-        >
+                </div>
+
+                <Button
+                    v-if="artifact.can_hold"
+                    variant="outline"
+                    size="sm"
+                    @click="holdOpen = true"
+                    >{{
+                        artifact.held ? 'Stop keeping file' : 'Keep file'
+                    }}</Button
+                >
+
+                <MoreDetails>
+                    <dl
+                        class="text-muted-foreground grid gap-3 text-xs sm:grid-cols-2"
+                    >
+                        <div>
+                            <dt class="text-foreground">Reference</dt>
+                            <dd class="break-all">
+                                {{ artifact.artifact_reference }}
+                            </dd>
+                        </div>
+                        <div v-if="artifact.issued_at">
+                            <dt class="text-foreground">Created</dt>
+                            <dd>{{ artifact.issued_at }}</dd>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <dt class="text-foreground">Data fingerprint</dt>
+                            <dd class="break-all">
+                                {{ artifact.manifest.snapshot_hash }}
+                            </dd>
+                        </div>
+                        <div v-if="artifact.failure_code">
+                            <dt class="text-foreground">Error code</dt>
+                            <dd>{{ artifact.failure_code }}</dd>
+                        </div>
+                    </dl>
+                </MoreDetails>
+            </CardContent>
+        </Card>
     </div>
+
+    <Dialog v-model:open="cancelOpen">
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Cancel this file?</DialogTitle>
+                <DialogDescription
+                    >It has not started yet. You can request a new one
+                    later.</DialogDescription
+                >
+            </DialogHeader>
+            <DialogFooter>
+                <Button
+                    variant="outline"
+                    :disabled="cancellation.processing"
+                    @click="cancelOpen = false"
+                    >Keep it</Button
+                >
+                <Button
+                    variant="destructive"
+                    :disabled="cancellation.processing"
+                    @click="cancelDocument"
+                    >Cancel file</Button
+                >
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="retryOpen">
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Try again?</DialogTitle>
+                <DialogDescription
+                    >We will create the file again using the same saved
+                    data.</DialogDescription
+                >
+            </DialogHeader>
+            <DialogFooter>
+                <Button
+                    variant="outline"
+                    :disabled="retryForm.processing"
+                    @click="retryOpen = false"
+                    >Not now</Button
+                >
+                <Button :disabled="retryForm.processing" @click="retryDocument"
+                    >Try again</Button
+                >
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <FormSheet
+        v-if="artifact.can_hold"
+        v-model:open="holdOpen"
+        :title="artifact.held ? 'Stop keeping this file' : 'Keep this file'"
+        :description="
+            artifact.held
+                ? 'The file will be removed when its link expires.'
+                : 'The file stays stored after its download link expires.'
+        "
+    >
+        <form
+            id="retention-form"
+            class="grid gap-5"
+            @submit.prevent="submitHold"
+        >
+            <div class="grid gap-2">
+                <Label for="retention-reason">Reason</Label>
+                <textarea
+                    id="retention-reason"
+                    v-model="retention.reason"
+                    maxlength="500"
+                    required
+                    class="border-input bg-background focus-visible:ring-ring/30 min-h-24 w-full rounded-xl border px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2"
+                />
+            </div>
+            <div class="bg-muted/40 flex items-start gap-3 rounded-xl p-4">
+                <Checkbox
+                    id="retention-confirmed"
+                    v-model="retention.confirmed"
+                />
+                <Label for="retention-confirmed" class="leading-5">{{
+                    artifact.held
+                        ? 'Yes, stop keeping this file'
+                        : 'Yes, keep this file'
+                }}</Label>
+            </div>
+            <p
+                v-for="(error, key) in retention.errors"
+                :key="key"
+                role="alert"
+                class="text-destructive text-sm"
+            >
+                {{ error }}
+            </p>
+        </form>
+        <template #footer>
+            <Button
+                type="button"
+                variant="outline"
+                :disabled="retention.processing"
+                @click="holdOpen = false"
+                >Cancel</Button
+            >
+            <Button
+                type="submit"
+                form="retention-form"
+                :disabled="retention.processing || !retention.confirmed"
+                >{{ artifact.held ? 'Stop keeping' : 'Keep file' }}</Button
+            >
+        </template>
+    </FormSheet>
 </template>

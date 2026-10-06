@@ -42,11 +42,11 @@ onMounted(async () => {
     <Card class="w-full">
         <CardHeader>
             <CardTitle class="flex gap-3">
-                <LockKeyhole class="size-4" />2FA recovery codes
+                <LockKeyhole class="size-4" />Recovery codes
             </CardTitle>
             <CardDescription>
-                Use recovery codes to get access again if you lose your 2FA
-                device. Keep them in a secure password manager.
+                Use these to sign in if you lose your phone. Keep them somewhere
+                safe.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -58,8 +58,7 @@ onMounted(async () => {
                         :is="isRecoveryCodesVisible ? EyeOff : Eye"
                         class="size-4"
                     />
-                    {{ isRecoveryCodesVisible ? 'Hide' : 'View' }} recovery
-                    codes
+                    {{ isRecoveryCodesVisible ? 'Hide' : 'Show' }} codes
                 </Button>
 
                 <Form
@@ -75,7 +74,7 @@ onMounted(async () => {
                         type="submit"
                         :disabled="processing"
                     >
-                        <RefreshCw /> Regenerate codes
+                        <RefreshCw /> Get new codes
                     </Button>
                 </Form>
             </div>
@@ -111,9 +110,8 @@ onMounted(async () => {
                         </div>
                     </div>
                     <p class="text-muted-foreground text-xs select-none">
-                        You can use each recovery code once. After you use a
-                        code, it is removed. To get more codes, click
-                        <span class="font-bold">Regenerate codes</span> above.
+                        Each code works once. Need more? Choose
+                        <span class="font-medium">Get new codes</span>.
                     </p>
                 </div>
             </div>

@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { FileText } from '@lucide/vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import ReversalStatusBadge from '@/components/ReversalStatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { replacement } from '@/routes/reversals';
@@ -100,9 +113,37 @@ async function reviewCompensation(): Promise<void> {
     } catch {
         review.value = null;
         previewError.value =
-            'The full compensation could not be verified. Resolve its owner dependencies and review again.';
+            'We could not check the full amount to correct. Sort out the linked records, then try again.';
     }
 }
+const evidenceOpen = ref(false);
+const decisionOpen = computed({
+    get: () => action.value !== null,
+    set: (open: boolean) => {
+        if (!open) action.value = null;
+    },
+});
+const decisionCopy = {
+    approve: {
+        title: 'Approve this reversal?',
+        description: 'The original payment will be corrected.',
+        label: 'Reason for approving',
+        button: 'Approve',
+    },
+    reject: {
+        title: 'Reject this reversal?',
+        description: 'The original payment stays as it is.',
+        label: 'Reason for rejecting',
+        button: 'Reject',
+    },
+    cancel: {
+        title: 'Cancel this reversal?',
+        description:
+            'The request will be closed. The original payment stays as it is.',
+        label: 'Reason for cancelling',
+        button: 'Cancel request',
+    },
+} as const;
 const evidenceForm = useForm({ files: [] as File[] });
 const evidenceError = ref('');
 function chooseEvidence(event: Event): void {
@@ -113,7 +154,10 @@ function addEvidence(): void {
     evidenceForm.post(storeEvidence.url(props.reversal.id), {
         forceFormData: true,
         preserveScroll: true,
-        onSuccess: () => evidenceForm.reset(),
+        onSuccess: () => {
+            evidenceForm.reset();
+            evidenceOpen.value = false;
+        },
     });
 }
 async function openEvidence(file: number): Promise<void> {
@@ -129,7 +173,7 @@ async function openEvidence(file: number): Promise<void> {
         if (!response.ok) throw new Error('denied');
         window.location.assign((await response.json()).url);
     } catch {
-        evidenceError.value = 'This evidence file is not available to you.';
+        evidenceError.value = "This file isn't available to you.";
     }
 }
 const money = (kobo: number): string =>
@@ -163,81 +207,152 @@ function submit(): void {
 <template>
     <div class="flex flex-col gap-6">
         <Head :title="`Reversal ${reversal.id}`" />
-        <Link
-            v-if="can_replace"
-            :href="replacement.url(reversal.id)"
-            class="text-primary underline"
-            >Preview replacement from controlled funds</Link
+        <PageHeader
+            :title="`Reversal ${reversal.id}`"
+            :description="`${reversal.customer_name ?? 'Customer'} · for ${reversal.original_reference}`"
         >
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Reversal {{ reversal.id }}
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ reversal.customer_name }} · original
-                {{ reversal.original_reference }}
-            </p>
-        </div>
+            <template
+                v-if="can_approve || can_review || can_cancel || can_replace"
+                #actions
+            >
+                <Button
+                    v-if="can_approve"
+                    type="button"
+                    :disabled="previewHttp.processing"
+                    @click="reviewCompensation"
+                    >Review and approve</Button
+                >
+                <Button
+                    v-if="can_review"
+                    type="button"
+                    variant="outline"
+                    @click="choose('reject')"
+                    >Reject</Button
+                >
+                <Button
+                    v-if="can_cancel"
+                    type="button"
+                    variant="outline"
+                    @click="choose('cancel')"
+                    >Cancel request</Button
+                >
+                <Button v-if="can_replace" variant="outline" as-child
+                    ><Link :href="replacement.url(reversal.id)"
+                        >Record replacement</Link
+                    ></Button
+                >
+            </template>
+        </PageHeader>
+        <p
+            v-if="!can_approve && can_review"
+            class="text-muted-foreground -mt-2 text-sm"
+        >
+            You can approve once the full amount to correct has been checked.
+        </p>
+        <p v-if="previewError" role="alert" class="text-destructive text-sm">
+            {{ previewError }}
+        </p>
+
         <Card>
-            <CardHeader><CardTitle>Request state</CardTitle></CardHeader>
-            <CardContent class="grid gap-2 text-sm">
-                <p>{{ reversal.state.replaceAll('_', ' ') }}</p>
-                <p v-if="reversal.state === 'approved_no_money'">
-                    The full fee was already conceded. The correction keeps your
-                    existing refund. It records no more money movement.
-                </p>
-                <p>
-                    Original amount {{ money(reversal.original_amount_kobo) }}
-                </p>
-                <p>Requested {{ reversal.requested_at }}</p>
-                <p v-if="reversal.reviewed_at">
-                    Decided {{ reversal.reviewed_at }}
-                </p>
-                <p v-if="reversal.customer_explanation">
-                    {{ reversal.customer_explanation }}
-                </p>
+            <CardContent class="grid gap-5 text-sm">
+                <div class="flex flex-wrap items-center gap-2">
+                    <ReversalStatusBadge :state="reversal.state" />
+                </div>
                 <p
                     v-if="reversal.state === 'pending_review'"
-                    class="text-muted-foreground"
+                    class="text-muted-foreground -mt-2"
                 >
-                    The original transaction is still effective. No correction
-                    has posted.
+                    Nothing has changed yet. The original payment still stands.
+                </p>
+                <p
+                    v-if="reversal.state === 'approved_no_money'"
+                    class="text-muted-foreground -mt-2"
+                >
+                    The full fee was already refunded, so no more money moved.
+                    The earlier refund stays in place.
+                </p>
+                <dl class="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground">Original amount</dt>
+                        <dd class="text-lg font-semibold">
+                            {{ money(reversal.original_amount_kobo) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Requested</dt>
+                        <dd class="font-medium">{{ reversal.requested_at }}</dd>
+                    </div>
+                    <div v-if="reversal.reviewed_at">
+                        <dt class="text-muted-foreground">Decided</dt>
+                        <dd class="font-medium">{{ reversal.reviewed_at }}</dd>
+                    </div>
+                </dl>
+                <p
+                    v-if="reversal.customer_explanation"
+                    class="bg-muted rounded-xl p-4"
+                >
+                    {{ reversal.customer_explanation }}
                 </p>
             </CardContent>
         </Card>
-        <Card v-if="reversal.internal_reason || reversal.evidence_text">
-            <CardHeader><CardTitle>Staff evidence</CardTitle></CardHeader>
-            <CardContent class="grid gap-2 text-sm">
-                <p v-if="reversal.internal_reason">
-                    {{ reversal.internal_reason }}
-                </p>
-                <p v-if="reversal.evidence_text">
-                    {{ reversal.evidence_text }}
-                </p>
-            </CardContent>
-        </Card>
-        <Card v-if="evidence_files.length > 0 || can_add_evidence">
-            <CardHeader><CardTitle>Evidence files</CardTitle></CardHeader>
-            <CardContent class="grid gap-3 text-sm">
+
+        <Card
+            v-if="
+                reversal.internal_reason ||
+                reversal.evidence_text ||
+                evidence_files.length > 0 ||
+                can_add_evidence
+            "
+        >
+            <CardHeader
+                class="flex flex-row flex-wrap items-center justify-between gap-3"
+            >
+                <CardTitle>Evidence</CardTitle>
+                <Button
+                    v-if="can_add_evidence"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="evidenceOpen = true"
+                    >Add files</Button
+                >
+            </CardHeader>
+            <CardContent class="grid gap-4 text-sm">
+                <div
+                    v-if="reversal.internal_reason || reversal.evidence_text"
+                    class="grid gap-2"
+                >
+                    <p v-if="reversal.internal_reason">
+                        {{ reversal.internal_reason }}
+                    </p>
+                    <p v-if="reversal.evidence_text">
+                        {{ reversal.evidence_text }}
+                    </p>
+                </div>
                 <p
                     v-if="evidence_files.length === 0"
                     class="text-muted-foreground"
                 >
-                    No evidence file is attached.
+                    No files attached.
                 </p>
-                <ul v-else class="grid gap-2">
+                <ul v-else class="divide-border divide-y">
                     <li
                         v-for="file in evidence_files"
                         :key="file.id"
-                        class="flex flex-wrap items-center gap-3"
+                        class="flex flex-wrap items-center justify-between gap-3 py-2"
                     >
-                        <span
-                            >File {{ file.id }} · {{ file.type }} ·
-                            {{ Math.ceil(file.bytes / 1024) }} KB</span
-                        >
+                        <span class="flex items-center gap-2">
+                            <FileText class="text-muted-foreground size-4" />
+                            File {{ file.id }}
+                            <span class="text-muted-foreground"
+                                >{{ file.type }} ·
+                                {{ Math.ceil(file.bytes / 1024) }} KB</span
+                            >
+                        </span>
                         <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
+                            size="sm"
                             @click="openEvidence(file.id)"
                             >Open</Button
                         >
@@ -246,155 +361,174 @@ function submit(): void {
                 <p v-if="evidenceError" role="alert" class="text-destructive">
                     {{ evidenceError }}
                 </p>
-                <form
-                    v-if="can_add_evidence"
-                    class="grid gap-2"
-                    @submit.prevent="addEvidence"
+            </CardContent>
+        </Card>
+
+        <FormSheet
+            v-if="can_add_evidence"
+            v-model:open="evidenceOpen"
+            title="Add files"
+            description="Add up to 3 files in total. Photos or PDFs."
+        >
+            <form
+                id="reversal-evidence-form"
+                class="grid gap-3"
+                @submit.prevent="addEvidence"
+            >
+                <Label for="reversal-evidence-files">Files</Label>
+                <input
+                    id="reversal-evidence-files"
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    class="border-input bg-background rounded-md border p-2 text-sm"
+                    @change="chooseEvidence"
+                />
+                <div
+                    v-if="Object.keys(evidenceForm.errors).length"
+                    role="alert"
+                    class="text-destructive grid gap-1 text-sm"
                 >
-                    <Label for="reversal-evidence-files"
-                        >Add evidence (up to 3 files in total)</Label
-                    >
-                    <input
-                        id="reversal-evidence-files"
-                        type="file"
-                        multiple
-                        accept="image/jpeg,image/png,image/webp,application/pdf"
-                        class="border-input bg-background rounded-md border p-2"
-                        @change="chooseEvidence"
-                    />
-                    <Button
-                        class="w-fit"
-                        :disabled="
-                            evidenceForm.processing ||
-                            evidenceForm.files.length === 0
-                        "
-                        >Add evidence</Button
-                    >
-                    <p
-                        v-for="(error, key) in evidenceForm.errors"
-                        :key="key"
-                        role="alert"
-                        class="text-destructive"
-                    >
+                    <p v-for="(error, key) in evidenceForm.errors" :key="key">
                         {{ error }}
                     </p>
-                </form>
-            </CardContent>
-        </Card>
-        <Card v-if="can_review || can_cancel">
-            <CardHeader><CardTitle>Next action</CardTitle></CardHeader>
-            <CardContent class="grid gap-4">
-                <p
-                    v-if="!can_approve && can_review"
-                    class="text-muted-foreground text-sm"
-                >
-                    You cannot approve until the full compensation terms are
-                    verified.
-                </p>
-                <p
-                    v-if="previewError"
-                    role="alert"
-                    class="text-destructive text-sm"
-                >
-                    {{ previewError }}
-                </p>
-                <div
-                    v-if="review && action === 'approve'"
-                    class="grid gap-2 text-sm"
-                >
-                    <p>Full correction amount {{ money(review.gross_kobo) }}</p>
-                    <p v-if="review.summary.no_money === true">
-                        The full fee was already conceded. Approval keeps the
-                        existing refund and corrects the receipt history. It
-                        does not move more money or make a new allocation.
-                    </p>
-                    <p
-                        v-if="
-                            typeof review.summary.controlled_kobo === 'number'
-                        "
-                    >
-                        Amount available for replacement
-                        {{ money(review.summary.controlled_kobo) }}
-                    </p>
-                    <p
-                        v-if="
-                            typeof review.summary
-                                .consumed_external_concession_kobo ===
-                                'number' &&
-                            review.summary.consumed_external_concession_kobo > 0
-                        "
-                    >
-                        Existing fee refund preserved
-                        {{
-                            money(
-                                review.summary
-                                    .consumed_external_concession_kobo,
-                            )
-                        }}
-                    </p>
-                    <pre class="overflow-auto text-xs whitespace-pre-wrap">{{
-                        JSON.stringify(review.dependencies, null, 2)
-                    }}</pre>
                 </div>
-                <div class="flex gap-3">
-                    <Button
-                        v-if="can_approve"
-                        type="button"
-                        :disabled="previewHttp.processing"
-                        @click="reviewCompensation"
-                        >Review full compensation</Button
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="evidenceOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="reversal-evidence-form"
+                    :disabled="
+                        evidenceForm.processing ||
+                        evidenceForm.files.length === 0
+                    "
+                    >Add files</Button
+                >
+            </template>
+        </FormSheet>
+
+        <Dialog v-model:open="decisionOpen">
+            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-md">
+                <form v-if="action" class="grid gap-5" @submit.prevent="submit">
+                    <DialogHeader>
+                        <DialogTitle>{{
+                            decisionCopy[action].title
+                        }}</DialogTitle>
+                        <DialogDescription>{{
+                            decisionCopy[action].description
+                        }}</DialogDescription>
+                    </DialogHeader>
+                    <div
+                        v-if="review && action === 'approve'"
+                        class="grid gap-3 text-sm"
                     >
-                    <Button
-                        v-if="can_review"
-                        type="button"
-                        variant="outline"
-                        @click="choose('reject')"
-                        >Reject request</Button
+                        <div class="bg-muted/40 rounded-xl p-4">
+                            <p class="text-muted-foreground">
+                                Amount to correct
+                            </p>
+                            <p class="text-2xl font-semibold">
+                                {{ money(review.gross_kobo) }}
+                            </p>
+                        </div>
+                        <p v-if="review.summary.no_money === true">
+                            The full fee was already refunded. Approving keeps
+                            that refund and fixes the receipt history. No more
+                            money moves.
+                        </p>
+                        <dl class="divide-border divide-y">
+                            <div
+                                v-if="
+                                    typeof review.summary.controlled_kobo ===
+                                    'number'
+                                "
+                                class="flex justify-between gap-3 py-2"
+                            >
+                                <dt class="text-muted-foreground">
+                                    Available to replace
+                                </dt>
+                                <dd class="font-medium">
+                                    {{ money(review.summary.controlled_kobo) }}
+                                </dd>
+                            </div>
+                            <div
+                                v-if="
+                                    typeof review.summary
+                                        .consumed_external_concession_kobo ===
+                                        'number' &&
+                                    review.summary
+                                        .consumed_external_concession_kobo > 0
+                                "
+                                class="flex justify-between gap-3 py-2"
+                            >
+                                <dt class="text-muted-foreground">
+                                    Fee refund kept
+                                </dt>
+                                <dd class="font-medium">
+                                    {{
+                                        money(
+                                            review.summary
+                                                .consumed_external_concession_kobo,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <MoreDetails label="Linked records">
+                            <pre
+                                class="bg-muted/40 overflow-auto rounded-xl p-3 text-xs whitespace-pre-wrap"
+                                >{{
+                                    JSON.stringify(review.dependencies, null, 2)
+                                }}</pre>
+                        </MoreDetails>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="reversal-decision-reason">{{
+                            decisionCopy[action].label
+                        }}</Label>
+                        <Input
+                            id="reversal-decision-reason"
+                            v-model="form.decision_reason"
+                            required
+                            maxlength="500"
+                        />
+                        <div
+                            v-if="Object.keys(form.errors).length"
+                            role="alert"
+                            class="text-destructive grid gap-1 text-sm"
+                        >
+                            <p v-for="(error, key) in form.errors" :key="key">
+                                {{ error }}
+                            </p>
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-3 text-sm"
+                        ><input v-model="form.confirmed" type="checkbox" /> I
+                        confirm this decision.</label
                     >
-                    <Button
-                        v-if="can_cancel"
-                        type="button"
-                        variant="outline"
-                        @click="choose('cancel')"
-                        >Cancel request</Button
-                    >
-                </div>
-                <form v-if="action" class="grid gap-3" @submit.prevent="submit">
-                    <Label for="reversal-decision-reason">{{
-                        action === 'reject'
-                            ? 'Rejection reason'
-                            : action === 'approve'
-                              ? 'Approval reason'
-                              : 'Cancellation reason'
-                    }}</Label>
-                    <Input
-                        id="reversal-decision-reason"
-                        v-model="form.decision_reason"
-                        required
-                        maxlength="500"
-                    />
-                    <p
-                        v-if="form.errors.decision_reason"
-                        class="text-destructive text-sm"
-                    >
-                        {{ form.errors.decision_reason }}
-                    </p>
-                    <label class="flex items-center gap-2 text-sm"
-                        ><input v-model="form.confirmed" type="checkbox" />
-                        Confirm {{ action }}</label
-                    >
-                    <Button
-                        type="submit"
-                        :disabled="form.processing || !form.confirmed"
-                        >Save decision</Button
-                    >
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="decisionOpen = false"
+                            >Go back</Button
+                        >
+                        <Button
+                            type="submit"
+                            :variant="
+                                action === 'approve' ? 'default' : 'destructive'
+                            "
+                            :disabled="form.processing || !form.confirmed"
+                            >{{ decisionCopy[action].button }}</Button
+                        >
+                    </DialogFooter>
                 </form>
-            </CardContent>
-        </Card>
-        <Link
-            :href="reversalsIndex()"
-            class="text-primary w-fit text-sm underline"
-            >Back to reversals</Link
-        >
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

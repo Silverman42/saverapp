@@ -63,7 +63,9 @@ const emit = defineEmits<{
                     type="button"
                     variant="outline"
                     :aria-expanded="filtersOpen"
-                    aria-controls="directory-filters"
+                    :aria-controls="
+                        $slots.filters ? 'directory-filters' : undefined
+                    "
                     @click="emit('toggleFilters')"
                 >
                     <SlidersHorizontal class="size-4" />
@@ -84,7 +86,7 @@ const emit = defineEmits<{
         </div>
 
         <div
-            v-if="filtersOpen"
+            v-if="filtersOpen && $slots.filters"
             id="directory-filters"
             class="border-border mt-6 border-y py-5"
         >

@@ -8,7 +8,10 @@ import {
     show as customerShow,
 } from '@/routes/customers';
 import { update as updateCustomerStatus } from '@/routes/customers/status';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { RefreshCw } from '@lucide/vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -90,9 +93,28 @@ const form = useForm({
     customer_explanation: '',
 });
 
+const statusSheetOpen = ref(false);
+const lifecycleSheetOpen = ref(false);
+
+const textareaClass =
+    'border-input bg-background ring-offset-background focus-visible:ring-ring placeholder:text-muted-foreground min-h-24 w-full rounded-md border px-3 py-2 text-sm shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none';
+
+const checkLabels: Record<'passed' | 'blocked' | 'unavailable', string> = {
+    passed: 'Clear',
+    blocked: 'Needs action',
+    unavailable: "Can't check",
+};
+
+const targetLabel = (value: string): string =>
+    props.allowed_targets.find((target) => target.value === value)?.label ??
+    value;
+
 const submit = (): void => {
     form.patch(updateCustomerStatus(props.customer.id).url, {
         preserveScroll: true,
+        onSuccess: () => {
+            statusSheetOpen.value = false;
+        },
     });
 };
 
@@ -192,6 +214,7 @@ function submitLifecycle(retryOriginal = false): void {
             },
             onSuccess: () => {
                 outcomeUnknown.value = false;
+                lifecycleSheetOpen.value = false;
                 lifecycleForm.version = props.customer.version;
                 lifecycleForm.assignment_version =
                     props.customer.assignment_version;
@@ -205,6 +228,9 @@ function submitLifecycle(retryOriginal = false): void {
             onFinish: () => {
                 if (!lifecycleForm.hasErrors && !lifecycleForm.wasSuccessful)
                     outcomeUnknown.value = true;
+                if (outcomeUnknown.value) {
+                    lifecycleSheetOpen.value = false;
+                }
             },
         },
     );
@@ -217,14 +243,14 @@ async function lookupLifecycle(): Promise<void> {
                 attempt_reference: lifecycleForm.attempt_reference,
             }),
         )) as { status: string; version: number };
-        lookupNotice.value = `Confirmed original result: ${result.status}, version ${result.version}.`;
+        lookupNotice.value = `Last attempt result: ${result.status.replaceAll('_', ' ')}.`;
         outcomeUnknown.value = false;
         lifecycleForm.attempt_reference = crypto.randomUUID();
         lifecycleForm.reset('reason', 'customer_explanation', 'confirmed');
         router.reload();
     } catch {
         lookupNotice.value =
-            'No committed result could be verified. Retry the original operation with its retained reference and unchanged details.';
+            'We could not find a saved result. Try again with the same details.';
     }
 }
 
@@ -233,7 +259,7 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Customers', href: customersIndex() },
-            { title: 'Manage status', href: '#' },
+            { title: 'Status', href: '#' },
         ],
     },
 });
@@ -242,429 +268,468 @@ defineOptions({
 <template>
     <div class="mx-auto w-full max-w-4xl space-y-6">
         <Head :title="`Manage ${customer.name} status`" />
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Manage Customer status
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ customer.name }} · {{ customer.id }}
-            </p>
-        </div>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Current state</CardTitle>
-                    <CardDescription>
-                        Operational status and account access are managed
-                        separately.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent class="flex flex-wrap gap-2">
-                    <Badge variant="secondary">
-                        Customer: {{ customer.operational_status_label }}
-                    </Badge>
-                    <Badge variant="outline">
-                        Account: {{ customer.account_state_label }}
-                    </Badge>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Current Agent</CardTitle>
-                    <CardDescription v-if="customer.current_agent">
-                        {{ customer.current_agent.name }} ·
-                        {{ customer.current_agent.operational_status }} ·
-                        account
-                        {{ customer.current_agent.account_state ?? 'unknown' }}
-                    </CardDescription>
-                    <CardDescription v-else
-                        >No current Agent is assigned.</CardDescription
-                    >
-                </CardHeader>
-                <CardContent>
-                    <p
-                        :class="
-                            customer.current_agent?.is_eligible
-                                ? 'text-emerald-700 dark:text-emerald-300'
-                                : 'text-muted-foreground'
-                        "
-                        class="text-sm"
-                    >
-                        {{
-                            customer.current_agent?.is_eligible
-                                ? 'This Agent can service this Customer.'
-                                : (customer.current_agent
-                                      ?.eligibility_message ??
-                                  'Assign an eligible Agent before you activate this Customer.')
-                        }}
-                    </p>
-                </CardContent>
-            </Card>
-        </div>
+        <PageHeader title="Customer status" :description="customer.name">
+            <template #actions>
+                <Button
+                    v-if="customer.operational_status !== 'archived'"
+                    @click="statusSheetOpen = true"
+                    >Change status</Button
+                >
+                <Button
+                    :variant="isRestoration ? 'default' : 'outline'"
+                    :disabled="outcomeUnknown"
+                    @click="lifecycleSheetOpen = true"
+                    >{{ isRestoration ? 'Restore' : 'Archive' }}</Button
+                >
+            </template>
+        </PageHeader>
 
         <Card>
-            <CardHeader>
-                <CardTitle>{{
-                    isRestoration ? 'Restore to Inactive' : 'Archive Customer'
-                }}</CardTitle>
-                <CardDescription>
-                    {{
-                        isRestoration
-                            ? 'Restore operational participation to Inactive. Identity, account access, assignment and all prior archive history are retained.'
-                            : 'End operational participation after every financial check is verified clear. Identity, login access, assignment and history remain retained.'
-                    }}
-                </CardDescription>
-            </CardHeader>
-            <CardContent class="space-y-5">
-                <ul
-                    v-if="!isRestoration"
-                    class="space-y-3"
-                    aria-label="Archival checks"
+            <CardContent>
+                <dl class="grid gap-4 text-sm sm:grid-cols-3">
+                    <div>
+                        <dt class="text-muted-foreground">Status</dt>
+                        <dd class="mt-1">
+                            <Badge variant="secondary">{{
+                                customer.operational_status_label
+                            }}</Badge>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Account</dt>
+                        <dd class="mt-1">
+                            <Badge variant="outline">{{
+                                customer.account_state_label
+                            }}</Badge>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Agent</dt>
+                        <dd class="mt-1 font-medium">
+                            {{ customer.current_agent?.name ?? 'No agent' }}
+                        </dd>
+                    </div>
+                </dl>
+                <p
+                    class="mt-4 text-sm"
+                    :class="
+                        customer.current_agent?.is_eligible
+                            ? 'text-emerald-700 dark:text-emerald-300'
+                            : 'text-muted-foreground'
+                    "
                 >
+                    {{
+                        customer.current_agent?.is_eligible
+                            ? 'This agent can serve this customer.'
+                            : (customer.current_agent?.eligibility_message ??
+                              'Assign an agent who can serve this customer before you make them active.')
+                    }}
+                </p>
+            </CardContent>
+        </Card>
+
+        <div
+            v-if="outcomeUnknown"
+            role="alert"
+            class="space-y-3 rounded-xl border p-4 text-sm"
+        >
+            <p class="font-medium">We're not sure the last change was saved</p>
+            <p class="text-muted-foreground">
+                Check the result before you try again.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    type="button"
+                    :disabled="lookup.processing || lifecycleForm.processing"
+                    @click="lookupLifecycle"
+                    >Check result</Button
+                >
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="lifecycleForm.processing || lookup.processing"
+                    @click="submitLifecycle(true)"
+                    >Try again</Button
+                >
+            </div>
+        </div>
+        <p v-if="lookupNotice" role="status" class="text-sm">
+            {{ lookupNotice }}
+        </p>
+
+        <Card v-if="!isRestoration">
+            <CardHeader
+                class="flex flex-row flex-wrap items-start justify-between gap-3"
+            >
+                <div class="space-y-1.5">
+                    <CardTitle class="text-base">Before archiving</CardTitle>
+                    <CardDescription
+                        >All of these must be clear to archive.</CardDescription
+                    >
+                </div>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="lifecycleForm.processing || outcomeUnknown"
+                    @click="router.reload({ only: ['customer', 'lifecycle'] })"
+                    ><RefreshCw class="size-4" /> Refresh</Button
+                >
+            </CardHeader>
+            <CardContent class="space-y-3">
+                <ul class="divide-y" aria-label="Archival checks">
                     <li
                         v-for="check in lifecycle.checks"
                         :key="check.key"
-                        class="rounded-lg border p-3"
+                        class="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
-                        <div
-                            class="flex flex-wrap items-center justify-between gap-2"
-                        >
-                            <span class="font-medium">{{ check.label }}</span>
-                            <Badge variant="outline">{{ check.status }}</Badge>
+                        <div class="min-w-0 text-sm">
+                            <p class="font-medium">{{ check.label }}</p>
+                            <p
+                                v-if="check.status !== 'passed'"
+                                class="text-muted-foreground mt-0.5"
+                            >
+                                {{ check.message }}
+                            </p>
+                            <Link
+                                v-if="check.url && check.status !== 'passed'"
+                                :href="check.url"
+                                class="mt-1 inline-block text-sm font-medium underline underline-offset-4"
+                                >Open</Link
+                            >
                         </div>
-                        <p class="text-muted-foreground mt-1 text-sm">
-                            {{ check.message }}
-                        </p>
-                        <Link
-                            v-if="check.url && check.status !== 'passed'"
-                            :href="check.url"
-                            class="mt-2 inline-block text-sm underline"
-                            >Review owning workflow</Link
+                        <Badge
+                            :variant="
+                                check.status === 'passed'
+                                    ? 'outline'
+                                    : check.status === 'blocked'
+                                      ? 'destructive'
+                                      : 'secondary'
+                            "
+                            >{{ checkLabels[check.status] }}</Badge
                         >
                     </li>
                 </ul>
-                <p
-                    v-else-if="!customer.current_agent?.is_eligible"
-                    role="status"
-                    class="text-sm"
-                >
-                    An eligible current Agent is required. An Admin with
-                    reassignment permission must resolve the assignment
-                    separately.
-                </p>
                 <p
                     v-if="customer.operational_status === 'restricted'"
                     role="status"
                     class="text-sm"
                 >
-                    Resolve the Customer restriction before archival.
+                    Remove the restriction before you archive this customer.
                 </p>
-                <Button
-                    type="button"
-                    variant="outline"
-                    :disabled="lifecycleForm.processing || outcomeUnknown"
-                    @click="router.reload({ only: ['customer', 'lifecycle'] })"
-                    >Refresh checks</Button
-                >
-                <form class="space-y-4" @submit.prevent="submitLifecycle()">
-                    <div class="space-y-2">
-                        <Label for="lifecycle-reason">Internal reason</Label>
-                        <textarea
-                            id="lifecycle-reason"
-                            v-model="lifecycleForm.reason"
-                            required
-                            maxlength="500"
-                            :disabled="outcomeUnknown"
-                            class="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-sm"
-                        />
-                        <p
-                            v-if="lifecycleForm.errors.reason"
-                            class="text-destructive text-sm"
-                        >
-                            {{ lifecycleForm.errors.reason }}
-                        </p>
-                    </div>
-                    <div class="space-y-2">
-                        <Label for="lifecycle-explanation"
-                            >Customer-facing explanation</Label
-                        >
-                        <textarea
-                            id="lifecycle-explanation"
-                            v-model="lifecycleForm.customer_explanation"
-                            required
-                            maxlength="500"
-                            :disabled="outcomeUnknown"
-                            class="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-sm"
-                        />
-                        <p
-                            v-if="lifecycleForm.errors.customer_explanation"
-                            class="text-destructive text-sm"
-                        >
-                            {{ lifecycleForm.errors.customer_explanation }}
-                        </p>
-                    </div>
-                    <label class="flex items-start gap-3 text-sm">
-                        <input
-                            v-model="lifecycleForm.confirmed"
-                            type="checkbox"
-                            required
-                            :disabled="!lifecycleAllowed || outcomeUnknown"
-                            class="mt-1"
-                        />
-                        <span
-                            >I confirm {{ customer.operational_status_label }} →
-                            {{ isRestoration ? 'Inactive' : 'Archived' }}.
-                            Account access and financial history are
-                            retained.</span
-                        >
-                    </label>
-                    <p
-                        v-for="(error, field) in lifecycleForm.errors"
-                        :key="field"
-                        role="alert"
-                        class="text-destructive text-sm"
-                    >
-                        {{ error }}
-                    </p>
-                    <p v-if="outcomeUnknown" role="alert" class="text-sm">
-                        The result is uncertain. Check the original operation
-                        before submitting again.
-                    </p>
-                    <p class="text-muted-foreground text-xs break-all">
-                        Operation reference:
-                        {{ lifecycleForm.attempt_reference }}
-                    </p>
-                    <p v-if="lookupNotice" role="status" class="text-sm">
-                        {{ lookupNotice }}
-                    </p>
-                    <div class="flex flex-wrap gap-3">
-                        <Button
-                            type="submit"
-                            :disabled="
-                                !lifecycleAllowed ||
-                                !lifecycleForm.confirmed ||
-                                lifecycleForm.processing ||
-                                outcomeUnknown
-                            "
-                            >{{
-                                lifecycleForm.processing
-                                    ? 'Saving…'
-                                    : isRestoration
-                                      ? 'Restore to Inactive'
-                                      : 'Archive Customer'
-                            }}</Button
-                        >
-                        <Button
-                            type="button"
-                            variant="outline"
-                            :disabled="
-                                lookup.processing || lifecycleForm.processing
-                            "
-                            @click="lookupLifecycle"
-                            >Check original operation</Button
-                        >
-                        <Button
-                            v-if="outcomeUnknown"
-                            type="button"
-                            variant="outline"
-                            :disabled="
-                                lifecycleForm.processing || lookup.processing
-                            "
-                            @click="submitLifecycle(true)"
-                        >
-                            Retry original {{ lifecycleAction }} operation
-                        </Button>
-                    </div>
-                </form>
             </CardContent>
         </Card>
-
-        <Card v-if="customer.operational_status !== 'archived'">
-            <CardHeader>
-                <CardTitle>Change operational status</CardTitle>
-                <CardDescription>
-                    The status change does not change account access,
-                    credentials, sessions, assignment, or financial history.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <form class="space-y-5" @submit.prevent="submit">
-                    <div class="space-y-2">
-                        <Label for="target-status">New status</Label>
-                        <Select v-model="form.target_status"
-                            ><SelectTrigger
-                                id="target-status"
-                                class="h-11 w-full"
-                                ><SelectValue /></SelectTrigger
-                            ><SelectContent>
-                                <SelectItem
-                                    v-for="target in allowed_targets"
-                                    :key="target.value"
-                                    :value="target.value"
-                                >
-                                    {{ target.label }}
-                                </SelectItem>
-                            </SelectContent></Select
-                        >
-                        <p
-                            v-if="form.errors.target_status"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.target_status }}
-                        </p>
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="status-reason">Internal reason</Label>
-                        <textarea
-                            id="status-reason"
-                            v-model="form.reason"
-                            maxlength="500"
-                            rows="3"
-                            required
-                            class="border-input bg-background ring-offset-background focus-visible:ring-ring placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        />
-                        <p
-                            v-if="form.errors.reason"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.reason }}
-                        </p>
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="customer-explanation"
-                            >Explanation shown to the Customer</Label
-                        >
-                        <textarea
-                            id="customer-explanation"
-                            v-model="form.customer_explanation"
-                            maxlength="500"
-                            rows="3"
-                            required
-                            class="border-input bg-background ring-offset-background focus-visible:ring-ring placeholder:text-muted-foreground w-full rounded-md border px-3 py-2 text-sm shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        />
-                        <p
-                            v-if="form.errors.customer_explanation"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.customer_explanation }}
-                        </p>
-                    </div>
-
-                    <label class="flex items-start gap-3 text-sm">
-                        <input
-                            v-model="form.confirmed"
-                            type="checkbox"
-                            class="border-input text-primary focus-visible:ring-ring mt-0.5 size-4 rounded"
-                        />
-                        <span>
-                            I confirm the {{ form.target_status }} status change
-                            and understand its effect on Customer activity.
-                        </span>
-                    </label>
-                    <p
-                        v-if="form.errors.confirmed"
-                        class="text-destructive text-sm"
-                    >
-                        {{ form.errors.confirmed }}
-                    </p>
-
-                    <Alert>
-                        <AlertTitle
-                            >Financial details are unavailable</AlertTitle
-                        >
-                        <AlertDescription>
-                            <ul class="list-disc space-y-1 pl-5">
-                                <li>{{ financial_sections.summary }}</li>
-                                <li>{{ financial_sections.plans }}</li>
-                                <li>{{ financial_sections.collections }}</li>
-                                <li>{{ financial_sections.withdrawals }}</li>
-                            </ul>
-                        </AlertDescription>
-                    </Alert>
-
-                    <div class="flex flex-wrap gap-3">
-                        <Button type="submit" :disabled="form.processing">
-                            {{
-                                form.processing
-                                    ? 'Saving…'
-                                    : 'Confirm status change'
-                            }}
-                        </Button>
-                        <Link :href="customerShow(customer.id)">
-                            <Button type="button" variant="outline"
-                                >Cancel</Button
-                            >
-                        </Link>
-                    </div>
-                </form>
-            </CardContent>
-        </Card>
+        <p
+            v-else-if="!customer.current_agent?.is_eligible"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            To restore this customer, an admin who can change agents must first
+            give them an agent who can serve them.
+        </p>
 
         <Card>
             <CardHeader>
-                <CardTitle>Status history</CardTitle>
-                <CardDescription>
-                    Internal reasons are visible only to Admins with Customer
-                    management access.
-                </CardDescription>
+                <CardTitle class="text-base">History</CardTitle>
             </CardHeader>
             <CardContent>
                 <p
                     v-if="history.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    No status changes have been recorded.
+                    No status changes yet.
                 </p>
-                <ol v-else class="space-y-5">
+                <ol v-else class="divide-y">
                     <li
                         v-for="(entry, index) in history"
                         :key="`${entry.effective_at}-${index}`"
-                        class="border-border border-l-2 pl-4"
+                        class="space-y-1 py-3 text-sm first:pt-0 last:pb-0"
                     >
-                        <p class="text-sm font-medium">
-                            {{ entry.from_status }} → {{ entry.to_status }}
+                        <p class="font-medium">
+                            {{ entry.from_status }} to {{ entry.to_status }}
                         </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            {{ entry.effective_at }} (Africa/Lagos) ·
-                            {{ entry.changed_by }}
+                        <p class="text-muted-foreground text-xs">
+                            {{ entry.effective_at }} · {{ entry.changed_by }}
                         </p>
-                        <p class="mt-2 text-sm">
-                            Internal reason: {{ entry.reason }}
-                        </p>
+                        <p>Reason: {{ entry.reason }}</p>
                         <p
                             v-if="entry.customer_explanation"
-                            class="text-muted-foreground mt-1 text-sm"
+                            class="text-muted-foreground"
                         >
-                            Customer explanation:
-                            {{ entry.customer_explanation }}
+                            Told the customer: {{ entry.customer_explanation }}
                         </p>
-                        <ul
+                        <MoreDetails
                             v-if="entry.notifications.length > 0"
-                            class="mt-2 space-y-1 text-xs"
+                            label="Messages sent"
                         >
-                            <li
-                                v-for="(
-                                    notice, noticeIndex
-                                ) in entry.notifications"
-                                :key="noticeIndex"
-                            >
-                                {{ notice.audience }} · {{ notice.channel }} ·
-                                {{ notice.status }}
-                                <span
-                                    v-if="notice.failure_reason"
-                                    class="text-destructive"
+                            <ul class="space-y-1 text-xs">
+                                <li
+                                    v-for="(
+                                        notice, noticeIndex
+                                    ) in entry.notifications"
+                                    :key="noticeIndex"
+                                    class="capitalize"
                                 >
-                                    · {{ notice.failure_reason }}
-                                </span>
-                            </li>
-                        </ul>
+                                    {{ notice.audience }} ·
+                                    {{ notice.channel }} · {{ notice.status }}
+                                    <span
+                                        v-if="notice.failure_reason"
+                                        class="text-destructive normal-case"
+                                    >
+                                        · {{ notice.failure_reason }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </MoreDetails>
                     </li>
                 </ol>
+                <p class="text-muted-foreground mt-4 text-xs">
+                    Reasons are only shown to admins. Times are Lagos time.
+                </p>
             </CardContent>
         </Card>
+
+        <FormSheet
+            v-if="customer.operational_status !== 'archived'"
+            v-model:open="statusSheetOpen"
+            title="Change status"
+            description="This does not change their login, agent or money records."
+        >
+            <form id="status-form" class="space-y-5" @submit.prevent="submit">
+                <div class="space-y-2">
+                    <Label for="target-status">New status</Label>
+                    <Select v-model="form.target_status"
+                        ><SelectTrigger id="target-status" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent>
+                            <SelectItem
+                                v-for="target in allowed_targets"
+                                :key="target.value"
+                                :value="target.value"
+                            >
+                                {{ target.label }}
+                            </SelectItem>
+                        </SelectContent></Select
+                    >
+                    <p
+                        v-if="form.errors.target_status"
+                        class="text-destructive text-sm"
+                    >
+                        {{ form.errors.target_status }}
+                    </p>
+                </div>
+
+                <div class="space-y-2">
+                    <Label for="status-reason">Reason (staff only)</Label>
+                    <textarea
+                        id="status-reason"
+                        v-model="form.reason"
+                        maxlength="500"
+                        rows="3"
+                        required
+                        :class="textareaClass"
+                    />
+                    <p
+                        v-if="form.errors.reason"
+                        class="text-destructive text-sm"
+                    >
+                        {{ form.errors.reason }}
+                    </p>
+                </div>
+
+                <div class="space-y-2">
+                    <Label for="customer-explanation"
+                        >Message to the customer</Label
+                    >
+                    <textarea
+                        id="customer-explanation"
+                        v-model="form.customer_explanation"
+                        maxlength="500"
+                        rows="3"
+                        required
+                        :class="textareaClass"
+                    />
+                    <p
+                        v-if="form.errors.customer_explanation"
+                        class="text-destructive text-sm"
+                    >
+                        {{ form.errors.customer_explanation }}
+                    </p>
+                </div>
+
+                <label class="flex items-start gap-3 text-sm">
+                    <input
+                        v-model="form.confirmed"
+                        type="checkbox"
+                        class="border-input text-primary focus-visible:ring-ring mt-0.5 size-4 rounded"
+                    />
+                    <span>
+                        Change status to
+                        {{ targetLabel(form.target_status) }}.
+                    </span>
+                </label>
+                <p
+                    v-if="form.errors.confirmed"
+                    class="text-destructive text-sm"
+                >
+                    {{ form.errors.confirmed }}
+                </p>
+
+                <MoreDetails label="What stays the same">
+                    <ul
+                        class="text-muted-foreground list-disc space-y-1 pl-5 text-xs"
+                    >
+                        <li>{{ financial_sections.summary }}</li>
+                        <li>{{ financial_sections.plans }}</li>
+                        <li>{{ financial_sections.collections }}</li>
+                        <li>{{ financial_sections.withdrawals }}</li>
+                    </ul>
+                </MoreDetails>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="statusSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="status-form"
+                    :disabled="form.processing"
+                >
+                    {{ form.processing ? 'Saving…' : 'Save' }}
+                </Button>
+            </template>
+        </FormSheet>
+
+        <FormSheet
+            v-model:open="lifecycleSheetOpen"
+            :title="isRestoration ? 'Restore customer' : 'Archive customer'"
+            :description="
+                isRestoration
+                    ? 'They will be set to Inactive. Their login, agent and history stay the same.'
+                    : 'They will stop taking part. Their login, agent and history are kept.'
+            "
+        >
+            <form
+                id="lifecycle-form"
+                class="space-y-5"
+                @submit.prevent="submitLifecycle()"
+            >
+                <p
+                    v-if="!lifecycleAllowed"
+                    role="status"
+                    class="bg-muted rounded-lg p-3 text-sm"
+                >
+                    {{
+                        isRestoration
+                            ? 'This customer needs an agent who can serve them first.'
+                            : 'Clear every check on the page before you archive.'
+                    }}
+                </p>
+                <div class="space-y-2">
+                    <Label for="lifecycle-reason">Reason (staff only)</Label>
+                    <textarea
+                        id="lifecycle-reason"
+                        v-model="lifecycleForm.reason"
+                        required
+                        maxlength="500"
+                        :disabled="outcomeUnknown"
+                        :class="textareaClass"
+                    />
+                    <p
+                        v-if="lifecycleForm.errors.reason"
+                        class="text-destructive text-sm"
+                    >
+                        {{ lifecycleForm.errors.reason }}
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <Label for="lifecycle-explanation"
+                        >Message to the customer</Label
+                    >
+                    <textarea
+                        id="lifecycle-explanation"
+                        v-model="lifecycleForm.customer_explanation"
+                        required
+                        maxlength="500"
+                        :disabled="outcomeUnknown"
+                        :class="textareaClass"
+                    />
+                    <p
+                        v-if="lifecycleForm.errors.customer_explanation"
+                        class="text-destructive text-sm"
+                    >
+                        {{ lifecycleForm.errors.customer_explanation }}
+                    </p>
+                </div>
+                <label class="flex items-start gap-3 text-sm">
+                    <input
+                        v-model="lifecycleForm.confirmed"
+                        type="checkbox"
+                        required
+                        :disabled="!lifecycleAllowed || outcomeUnknown"
+                        class="mt-1"
+                    />
+                    <span
+                        >Change from {{ customer.operational_status_label }} to
+                        {{ isRestoration ? 'Inactive' : 'Archived' }}. Their
+                        login and money history are kept.</span
+                    >
+                </label>
+                <p
+                    v-for="(error, field) in lifecycleForm.errors"
+                    :key="field"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ error }}
+                </p>
+                <MoreDetails>
+                    <div class="space-y-3">
+                        <p class="text-muted-foreground text-xs break-all">
+                            Reference: {{ lifecycleForm.attempt_reference }}
+                        </p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            :disabled="
+                                lookup.processing || lifecycleForm.processing
+                            "
+                            @click="lookupLifecycle"
+                            >Check last attempt</Button
+                        >
+                    </div>
+                </MoreDetails>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="lifecycleSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="lifecycle-form"
+                    :variant="isRestoration ? 'default' : 'destructive'"
+                    :disabled="
+                        !lifecycleAllowed ||
+                        !lifecycleForm.confirmed ||
+                        lifecycleForm.processing ||
+                        outcomeUnknown
+                    "
+                    >{{
+                        lifecycleForm.processing
+                            ? 'Saving…'
+                            : isRestoration
+                              ? 'Restore'
+                              : 'Archive'
+                    }}</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

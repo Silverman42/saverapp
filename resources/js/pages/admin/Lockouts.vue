@@ -16,7 +16,10 @@ import {
 import { toast } from 'vue-sonner';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -97,7 +100,7 @@ defineOptions({
                 href: dashboard(),
             },
             {
-                title: 'Security lockouts',
+                title: 'Lockouts',
                 href: lockoutsIndex(),
             },
         ],
@@ -176,7 +179,7 @@ const submitUnlock = async () => {
             preserveScroll: true,
             onSuccess: () => {
                 closeUnlockDialog();
-                toast.success('Account restriction cleared successfully.');
+                toast.success('Account unlocked.');
             },
             onError: (errors) => {
                 serverErrors.value = errors as Record<string, string>;
@@ -186,7 +189,7 @@ const submitUnlock = async () => {
                     errors.verification_method ||
                     errors.reason ||
                     Object.values(errors)[0] ||
-                    'Failed to unlock account.';
+                    'Could not unlock the account. Please try again.';
                 toast.error(message as string);
             },
             onFinish: () => {
@@ -198,7 +201,7 @@ const submitUnlock = async () => {
 
 const formatDateTime = (isoString?: string | null): string => {
     if (!isoString) {
-        return '—';
+        return '-';
     }
     try {
         const date = new Date(isoString);
@@ -260,45 +263,40 @@ const resetFilters = (): void => {
     applyFilters();
 };
 
+const categoryLabels: Record<string, string> = {
+    password: 'Wrong password',
+    mfa: 'Wrong sign-in code',
+    recovery_code: 'Wrong recovery code',
+};
+const categoryLabel = (category: string): string =>
+    categoryLabels[category] ?? category.replaceAll('_', ' ');
+
 const restrictionState = (lock: LockItem): string => {
     if (lock.is_active) return 'Active';
     if (lock.unlocked_at) return 'Unlocked';
-    return 'Expired';
+    return 'Ended';
 };
 </script>
 
 <template>
-    <div class="flex flex-1 flex-col gap-6 font-sans">
-        <Head title="Security Lockouts & Abuse Monitoring" />
+    <div class="flex flex-1 flex-col gap-6">
+        <Head title="Lockouts" />
 
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <PageHeader
+            title="Lockouts"
+            description="People who are blocked from signing in after too many wrong tries."
         >
-            <div>
-                <!-- heading -->
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Security Lockouts
-                </h1>
-                <!-- heading end  -->
-                <!-- Subtext  -->
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    Monitor temporary sign-in restrictions and abuse counters.
-                    Unlock accounts manually when you have permission.
-                </p>
-                <!-- Subtext end -->
-            </div>
-
-            <div class="flex items-center gap-2">
-                <Button variant="outline" size="sm" @click="refreshData">
+            <template #actions>
+                <Button variant="outline" @click="refreshData">
                     <RefreshCw class="size-4" />
                     Refresh
                 </Button>
-            </div>
-        </div>
+            </template>
+        </PageHeader>
 
         <DirectoryPanel
-            title="Lockout records"
-            :description="`${locks.total} lockout record${locks.total === 1 ? '' : 's'} matching the current view.`"
+            title="Locked accounts"
+            :description="`${locks.total} record${locks.total === 1 ? '' : 's'}`"
             :search-value="filterForm.search"
             search-placeholder="Search name or email"
             :filters-open="filtersOpen"
@@ -310,41 +308,41 @@ const restrictionState = (lock: LockItem): string => {
         >
             <template #filters>
                 <div class="w-fit space-y-1.5">
-                    <Label for="lock-category" class="text-xs">Category</Label
+                    <Label for="lock-category" class="text-xs">Reason</Label
                     ><Select
                         v-model="filterForm.category"
                         @update:model-value="applyFilters"
                         ><SelectTrigger id="lock-category"
                             ><SelectValue
-                                placeholder="All categories" /></SelectTrigger
+                                placeholder="All reasons" /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="all">All categories</SelectItem
-                            ><SelectItem value="password">Password</SelectItem
-                            ><SelectItem value="mfa">MFA</SelectItem
+                            ><SelectItem value="all">All reasons</SelectItem
+                            ><SelectItem value="password"
+                                >Wrong password</SelectItem
+                            ><SelectItem value="mfa"
+                                >Wrong sign-in code</SelectItem
                             ><SelectItem value="recovery_code"
-                                >Recovery code</SelectItem
+                                >Wrong recovery code</SelectItem
                             ></SelectContent
                         ></Select
                     >
                 </div>
                 <div class="w-fit space-y-1.5">
-                    <Label for="lock-state" class="text-xs"
-                        >Restriction state</Label
+                    <Label for="lock-state" class="text-xs">Status</Label
                     ><Select
                         v-model="filterForm.state"
                         @update:model-value="applyFilters"
                         ><SelectTrigger id="lock-state"
                             ><SelectValue
-                                placeholder="All states" /></SelectTrigger
+                                placeholder="All statuses" /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="all">All states</SelectItem
-                            ><SelectItem value="active">Active</SelectItem
-                            ><SelectItem value="review"
-                                >Review required</SelectItem
+                            ><SelectItem value="all">All statuses</SelectItem
+                            ><SelectItem value="active">Locked now</SelectItem
+                            ><SelectItem value="review">Needs review</SelectItem
                             ><SelectItem value="unlocked"
-                                >Manually unlocked</SelectItem
+                                >Unlocked by an admin</SelectItem
                             ><SelectItem value="expired"
-                                >Expired</SelectItem
+                                >Ended</SelectItem
                             ></SelectContent
                         ></Select
                     >
@@ -352,181 +350,85 @@ const restrictionState = (lock: LockItem): string => {
             </template>
             <template #filter-summary
                 ><p class="text-muted-foreground text-xs">
-                    {{ locks.total }} record{{ locks.total === 1 ? '' : 's' }}
-                    match the current filters.
+                    {{ locks.total }} found
                 </p></template
             >
 
-            <div v-if="locks.data.length === 0" class="py-14 text-center">
-                <div
-                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
-                >
-                    <ShieldCheck class="size-5" />
-                </div>
-                <h3 class="mt-4 text-sm font-semibold">No lockouts found</h3>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    There are no authentication restrictions matching this view.
-                </p>
-            </div>
+            <EmptyState
+                v-if="locks.data.length === 0"
+                :icon="ShieldCheck"
+                title="No lockouts found"
+                description="No one is locked out right now, or nothing matches your filters."
+            />
             <div v-else class="space-y-3">
-                <DirectoryRow v-for="lock in locks.data" :key="lock.id"
-                    ><div
-                        class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(14rem,1.4fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(8rem,.7fr)_minmax(11rem,1fr)_auto]"
-                    >
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-semibold">
+                <DirectoryRow v-for="lock in locks.data" :key="lock.id">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-medium">
                                 {{ lock.user_name || lock.email }}
                             </p>
                             <p class="text-muted-foreground truncate text-xs">
                                 {{ lock.email }}
                             </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Category
-                            </p>
-                            <Badge
-                                :variant="
-                                    getCategoryBadgeVariant(lock.lock_category)
-                                "
-                                class="mt-1 capitalize"
-                                >{{
-                                    lock.lock_category.replace('_', ' ')
-                                }}</Badge
-                            >
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                State
-                            </p>
-                            <Badge
-                                :variant="
-                                    lock.is_active ? 'destructive' : 'secondary'
-                                "
-                                class="mt-1"
-                                >{{ restrictionState(lock) }}</Badge
-                            >
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Attempts
-                            </p>
-                            <p class="mt-1 text-sm">
-                                {{ lock.failed_attempts_count }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Locked at
-                            </p>
-                            <p class="mt-1 text-sm">
+                            <p class="text-muted-foreground mt-0.5 text-xs">
+                                {{ categoryLabel(lock.lock_category) }} ·
+                                {{ lock.failed_attempts_count }} tries ·
                                 {{ formatDateTime(lock.locked_at) }}
                             </p>
                         </div>
+                        <Badge
+                            :variant="
+                                lock.is_active ? 'destructive' : 'secondary'
+                            "
+                            >{{ restrictionState(lock) }}</Badge
+                        >
                         <Button
                             v-if="lock.can_unlock"
                             variant="outline"
                             size="sm"
                             @click="openUnlockDialog(lock)"
-                            ><Unlock class="size-3.5" /> Manual unlock</Button
-                        ><span v-else class="text-muted-foreground text-xs">{{
-                            lock.is_active ? 'Cannot unlock' : '—'
-                        }}</span>
+                            ><Unlock class="size-3.5" /> Unlock</Button
+                        >
                     </div>
-                    <div class="lg:hidden">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="truncate text-sm font-semibold">
-                                    {{ lock.user_name || lock.email }}
-                                </p>
-                                <p
-                                    class="text-muted-foreground truncate text-xs"
-                                >
-                                    {{ lock.email }}
-                                </p>
-                            </div>
-                            <Button
-                                v-if="lock.can_unlock"
-                                variant="outline"
-                                size="sm"
-                                @click="openUnlockDialog(lock)"
-                                >Unlock</Button
-                            >
-                        </div>
-                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Category
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getCategoryBadgeVariant(
-                                            lock.lock_category,
-                                        )
-                                    "
-                                    class="mt-1 capitalize"
-                                    >{{
-                                        lock.lock_category.replace('_', ' ')
-                                    }}</Badge
-                                >
+                    <MoreDetails label="Details" class="mt-2">
+                        <dl
+                            class="text-muted-foreground grid gap-2 text-xs sm:grid-cols-2"
+                        >
+                            <div class="sm:col-span-2">
+                                <dt class="text-foreground font-medium">Why</dt>
+                                <dd>{{ lock.reason }}</dd>
                             </div>
                             <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    State
-                                </p>
-                                <Badge
-                                    :variant="
-                                        lock.is_active
-                                            ? 'destructive'
-                                            : 'secondary'
-                                    "
-                                    class="mt-1"
-                                    >{{ restrictionState(lock) }}</Badge
-                                >
+                                <dt class="text-foreground font-medium">
+                                    Locked until
+                                </dt>
+                                <dd>{{ formatDateTime(lock.locked_until) }}</dd>
                             </div>
                             <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Attempts
-                                </p>
-                                <p class="mt-1">
-                                    {{ lock.failed_attempts_count }}
-                                </p>
+                                <dt class="text-foreground font-medium">
+                                    Device and network
+                                </dt>
+                                <dd>
+                                    {{ lock.device_context }} ·
+                                    {{ lock.masked_ip }}
+                                </dd>
                             </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Locked at
-                                </p>
-                                <p class="mt-1">
-                                    {{ formatDateTime(lock.locked_at) }}
-                                </p>
+                            <div v-if="lock.unlocked_at" class="sm:col-span-2">
+                                <dt class="text-foreground font-medium">
+                                    Unlocked
+                                </dt>
+                                <dd>
+                                    {{ formatDateTime(lock.unlocked_at) }}
+                                    <template v-if="lock.unlocked_by">
+                                        by {{ lock.unlocked_by }}</template
+                                    ><template v-if="lock.unlock_reason"
+                                        >: {{ lock.unlock_reason }}</template
+                                    >
+                                </dd>
                             </div>
-                            <div class="col-span-2">
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Reason
-                                </p>
-                                <p class="mt-1">{{ lock.reason }}</p>
-                            </div>
-                        </div>
-                    </div></DirectoryRow
-                >
+                        </dl>
+                    </MoreDetails>
+                </DirectoryRow>
             </div>
 
             <template #footer
@@ -536,11 +438,13 @@ const restrictionState = (lock: LockItem): string => {
                     <div
                         class="text-muted-foreground flex items-center gap-2 text-sm"
                     >
-                        Display
+                        Show
                         <Select
                             v-model="filterForm.per_page"
                             @update:model-value="applyFilters"
-                            ><SelectTrigger class="h-9 w-20"
+                            ><SelectTrigger
+                                class="h-9 w-20"
+                                aria-label="Rows per page"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem :value="15">15</SelectItem
@@ -575,9 +479,9 @@ const restrictionState = (lock: LockItem): string => {
                                 :href="locks.next_page_url"
                                 preserve-state
                                 preserve-scroll
-                                ><Button size="sm"
+                                ><Button variant="outline" size="sm"
                                     >Next <ChevronRight /></Button></Link
-                            ><Button v-else size="sm" disabled
+                            ><Button v-else variant="outline" size="sm" disabled
                                 >Next <ChevronRight
                             /></Button>
                         </div>
@@ -585,7 +489,6 @@ const restrictionState = (lock: LockItem): string => {
             ></template>
         </DirectoryPanel>
 
-        <!-- Manual Unlock Confirmation Dialog -->
         <Dialog
             :open="isUnlockDialogOpen"
             @update:open="
@@ -596,43 +499,33 @@ const restrictionState = (lock: LockItem): string => {
         >
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle class="flex items-center gap-2">
-                        <Unlock class="text-primary size-5" />
-                        Confirm Manual Unlock
-                    </DialogTitle>
+                    <DialogTitle>Unlock account</DialogTitle>
                     <DialogDescription>
-                        Manually clear the temporary restriction for
+                        Let
                         <strong>{{
                             selectedLock?.user_name || selectedLock?.email
-                        }}</strong
-                        >. This does not change passwords, MFA, permissions, or
-                        account status.
+                        }}</strong>
+                        sign in again. Their password and settings stay the
+                        same.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form @submit.prevent="submitUnlock" class="space-y-4 py-2">
-                    <div class="space-y-2">
-                        <Label>Restriction Category</Label>
-                        <div class="flex items-center gap-2">
-                            <Badge
-                                :variant="
-                                    getCategoryBadgeVariant(formState.category)
-                                "
-                                class="font-medium capitalize"
-                            >
-                                {{ formState.category.replace('_', ' ') }}
-                            </Badge>
-                            <span class="text-muted-foreground text-xs">
-                                Only this specific restriction will be cleared.
-                            </span>
-                        </div>
+                <form class="space-y-4 py-2" @submit.prevent="submitUnlock">
+                    <div class="flex flex-wrap items-center gap-2 text-sm">
+                        <span class="text-muted-foreground">Locked for:</span>
+                        <Badge
+                            :variant="
+                                getCategoryBadgeVariant(formState.category)
+                            "
+                        >
+                            {{ categoryLabel(formState.category) }}
+                        </Badge>
                         <InputError :message="serverErrors.category" />
                     </div>
 
                     <div class="space-y-2">
                         <Label for="verification-method"
-                            >Verification Method
-                            <span class="text-destructive">*</span></Label
+                            >How did you check it was them?</Label
                         >
                         <Select v-model="formState.verification_method">
                             <SelectTrigger
@@ -640,9 +533,7 @@ const restrictionState = (lock: LockItem): string => {
                                 class="w-full"
                                 aria-label="Verification method"
                             >
-                                <SelectValue
-                                    placeholder="Select verified method"
-                                />
+                                <SelectValue placeholder="Choose one" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem
@@ -668,24 +559,24 @@ const restrictionState = (lock: LockItem): string => {
                     </div>
 
                     <div class="space-y-2">
-                        <Label for="unlock-reason"
-                            >Verification Detail & Reason
-                            <span class="text-destructive">*</span></Label
-                        >
+                        <Label for="unlock-reason">What did you do?</Label>
                         <Input
                             id="unlock-reason"
                             v-model="formState.reason"
-                            placeholder="e.g. Identity verified via registered phone callback with customer"
+                            placeholder="e.g. Called them on their registered phone"
                             maxlength="255"
+                            aria-describedby="unlock-reason-help"
                             :class="{
                                 'border-destructive':
                                     v$.reason.$error || serverErrors.reason,
                             }"
                         />
-                        <p class="text-muted-foreground text-xs">
-                            Describe the verification steps you completed (5–255
-                            characters). Do not record secrets, credentials, or
-                            document contents.
+                        <p
+                            id="unlock-reason-help"
+                            class="text-muted-foreground text-xs"
+                        >
+                            At least 5 characters. Never write passwords or
+                            codes.
                         </p>
                         <InputError
                             v-if="v$.reason.$error"
@@ -697,12 +588,12 @@ const restrictionState = (lock: LockItem): string => {
                         />
                     </div>
 
-                    <DialogFooter class="mt-4 gap-2 sm:gap-0">
+                    <DialogFooter class="mt-4 gap-2">
                         <Button
                             type="button"
                             variant="outline"
-                            @click="closeUnlockDialog"
                             :disabled="isSubmitting"
+                            @click="closeUnlockDialog"
                         >
                             Cancel
                         </Button>
@@ -710,8 +601,8 @@ const restrictionState = (lock: LockItem): string => {
                             type="submit"
                             :disabled="isSubmitting || v$.$invalid"
                         >
-                            <Unlock class="mr-1.5 size-4" />
-                            Confirm Unlock
+                            <Unlock class="size-4" />
+                            Unlock
                         </Button>
                     </DialogFooter>
                 </form>

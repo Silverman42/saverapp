@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import {
     index as customersIndex,
@@ -11,6 +11,8 @@ import { update as changeOwnName } from '@/routes/customers/name';
 import { store as proposeCustomerName } from '@/routes/customers/name-corrections';
 import { self as changeOwnCustomerPhone } from '@/routes/customers/phone';
 import { store as correctCustomerPhone } from '@/routes/customers/phone-corrections';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -114,18 +116,34 @@ const submit = (): void => {
     });
 };
 
+const nameSheetOpen = ref(false);
+const phoneSheetOpen = ref(false);
+
+const textareaClass =
+    'border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none';
+
 const submitName = (): void => {
     const url = isCustomer.value
         ? changeOwnName(props.customer.id).url
         : proposeCustomerName(props.customer.id).url;
-    nameForm.post(url, { preserveScroll: true });
+    nameForm.post(url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            nameSheetOpen.value = false;
+        },
+    });
 };
 
 const submitPhone = (): void => {
     const url = isCustomer.value
         ? changeOwnCustomerPhone(props.customer.id).url
         : correctCustomerPhone(props.customer.id).url;
-    phoneForm.post(url, { preserveScroll: true });
+    phoneForm.post(url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            phoneSheetOpen.value = false;
+        },
+    });
 };
 
 defineOptions({
@@ -142,143 +160,101 @@ defineOptions({
 <template>
     <Head :title="`Edit ${customer.name}`" />
 
-    <div class="space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Edit Customer profile
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Change the permitted profile details for {{ customer.name }}.
-            </p>
-        </div>
+    <div class="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader title="Edit profile" :description="customer.name" />
 
         <Card>
-            <CardHeader
-                ><CardTitle>Name</CardTitle
-                ><CardDescription>{{
-                    isCustomer
-                        ? 'Confirm your name change with fresh authentication.'
-                        : 'For an active Customer, the new name is sent for Customer confirmation.'
-                }}</CardDescription></CardHeader
-            >
-            <form @submit.prevent="submitName">
-                <CardContent class="grid gap-4">
-                    <div class="grid gap-2">
-                        <Label for="customer-name">Full name</Label
-                        ><Input
-                            id="customer-name"
-                            v-model="nameForm.name"
-                            maxlength="150"
-                            required
-                        />
-                        <p
-                            v-if="nameForm.errors.name"
-                            class="text-destructive text-sm"
-                        >
-                            {{ nameForm.errors.name }}
-                        </p>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="name-reason">Reason</Label
-                        ><Input
-                            id="name-reason"
-                            v-model="nameForm.reason"
-                            maxlength="500"
-                            required
-                        />
-                        <p
-                            v-if="nameForm.errors.reason"
-                            class="text-destructive text-sm"
-                        >
-                            {{ nameForm.errors.reason }}
-                        </p>
-                    </div>
-                    <p
-                        v-if="nameFormProfileError"
-                        class="text-destructive text-sm"
+            <CardContent>
+                <dl class="divide-y text-sm">
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-3 pb-3"
                     >
-                        {{ nameFormProfileError }}
-                    </p>
-                    <Button type="submit" :disabled="nameForm.processing">{{
-                        isCustomer ? 'Update my name' : 'Submit name correction'
-                    }}</Button>
-                </CardContent>
-            </form>
-        </Card>
-
-        <Card v-if="customer.can_change_phone">
-            <CardHeader
-                ><CardTitle>Phone number</CardTitle
-                ><CardDescription>{{
-                    isCustomer
-                        ? 'Fresh authentication is required to update your phone number.'
-                        : 'Staff phone corrections are available before account activation and require a reason.'
-                }}</CardDescription></CardHeader
-            >
-            <form @submit.prevent="submitPhone">
-                <CardContent class="grid gap-4">
-                    <div class="grid gap-2">
-                        <Label for="customer-phone">Phone number</Label
-                        ><Input
-                            id="customer-phone"
-                            v-model="phoneForm.phone"
-                            type="tel"
-                            maxlength="50"
-                            required
-                        />
-                        <p
-                            v-if="phoneForm.errors.phone"
-                            class="text-destructive text-sm"
+                        <div>
+                            <dt class="text-muted-foreground">Name</dt>
+                            <dd class="mt-0.5 font-medium">
+                                {{ customer.name }}
+                            </dd>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="nameSheetOpen = true"
+                            >Change</Button
                         >
-                            {{ phoneForm.errors.phone }}
-                        </p>
                     </div>
-                    <div v-if="!isCustomer" class="grid gap-2">
-                        <Label for="phone-reason">Reason</Label
-                        ><Input
-                            id="phone-reason"
-                            v-model="phoneForm.reason"
-                            maxlength="500"
-                            required
-                        />
-                        <p
-                            v-if="phoneForm.errors.reason"
-                            class="text-destructive text-sm"
-                        >
-                            {{ phoneForm.errors.reason }}
-                        </p>
-                    </div>
-                    <p
-                        v-if="phoneFormProfileError || phoneForm.errors.version"
-                        class="text-destructive text-sm"
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-3 pt-3"
                     >
-                        {{ phoneFormProfileError || phoneForm.errors.version }}
-                    </p>
-                    <Button type="submit" :disabled="phoneForm.processing">{{
-                        phoneForm.processing ? 'Saving…' : 'Update phone number'
-                    }}</Button>
-                </CardContent>
-            </form>
+                        <div>
+                            <dt class="text-muted-foreground">Phone</dt>
+                            <dd class="mt-0.5 font-medium">
+                                {{ customer.phone }}
+                            </dd>
+                        </div>
+                        <Button
+                            v-if="customer.can_change_phone"
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="phoneSheetOpen = true"
+                            >Change</Button
+                        >
+                    </div>
+                </dl>
+            </CardContent>
         </Card>
 
         <form class="space-y-6" @submit.prevent="submit">
             <Card>
                 <CardHeader>
-                    <CardTitle>Personal details</CardTitle>
-                    <CardDescription
-                        >Name, phone, and email use their dedicated confirmation
-                        workflows.</CardDescription
-                    >
+                    <CardTitle class="text-base">Personal details</CardTitle>
                 </CardHeader>
                 <CardContent class="grid gap-5 sm:grid-cols-2">
+                    <div class="flex items-center gap-4 sm:col-span-2">
+                        <img
+                            v-if="customer.photo_url && !form.remove_photo"
+                            :src="customer.photo_url"
+                            :alt="customer.name"
+                            class="size-16 shrink-0 rounded-full object-cover"
+                        />
+                        <div class="grid min-w-0 flex-1 gap-2">
+                            <Label for="customer-photo">Photo</Label>
+                            <Input
+                                id="customer-photo"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                @change="onPhotoChange"
+                            />
+                            <p class="text-muted-foreground text-xs">
+                                JPEG, PNG or WebP, up to 5 MB.
+                            </p>
+                            <p
+                                v-if="form.errors.photo"
+                                class="text-destructive text-sm"
+                            >
+                                {{ form.errors.photo }}
+                            </p>
+                            <label
+                                v-if="customer.photo_url"
+                                class="flex items-center gap-2 text-sm"
+                                ><input
+                                    v-model="form.remove_photo"
+                                    type="checkbox"
+                                    @change="form.photo = null"
+                                />
+                                Remove current photo</label
+                            >
+                        </div>
+                    </div>
                     <div class="grid gap-2 sm:col-span-2">
                         <Label for="address">Address</Label>
                         <textarea
                             id="address"
                             v-model="form.address"
-                            rows="3"
+                            rows="2"
                             maxlength="500"
-                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                            :class="textareaClass"
                         />
                         <p
                             v-if="form.errors.address"
@@ -330,10 +306,10 @@ defineOptions({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Next of kin</CardTitle>
+                    <CardTitle class="text-base">Next of kin</CardTitle>
                     <CardDescription
-                        >Provide all required contact details, or leave every
-                        field blank to remove the contact.</CardDescription
+                        >Fill in all fields, or clear them all to
+                        remove.</CardDescription
                     >
                 </CardHeader>
                 <CardContent class="grid gap-5 sm:grid-cols-2">
@@ -381,16 +357,30 @@ defineOptions({
 
             <Card v-if="!isCustomer">
                 <CardHeader
-                    ><CardTitle>Staff-only details</CardTitle
+                    ><CardTitle class="text-base">Staff only</CardTitle
                     ><CardDescription
-                        >These fields are visible to authorized staff
-                        only.</CardDescription
+                        >The customer can't see these.</CardDescription
                     ></CardHeader
                 >
                 <CardContent class="grid gap-5">
                     <div class="grid gap-2">
-                        <Label for="internal-reference"
-                            >Internal reference</Label
+                        <Label for="notes">Notes</Label
+                        ><textarea
+                            id="notes"
+                            v-model="form.notes"
+                            rows="3"
+                            maxlength="2000"
+                            :class="textareaClass"
+                        />
+                        <p
+                            v-if="form.errors.notes"
+                            class="text-destructive text-sm"
+                        >
+                            {{ form.errors.notes }}
+                        </p>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="internal-reference">Reference</Label
                         ><Input
                             id="internal-reference"
                             v-model="form.internal_reference"
@@ -404,23 +394,7 @@ defineOptions({
                         </p>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="notes">Internal notes</Label
-                        ><textarea
-                            id="notes"
-                            v-model="form.notes"
-                            rows="4"
-                            maxlength="2000"
-                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        />
-                        <p
-                            v-if="form.errors.notes"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.notes }}
-                        </p>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="reason">Reason for staff-only changes</Label
+                        <Label for="reason">Reason for these changes</Label
                         ><Input
                             id="reason"
                             v-model="form.reason"
@@ -436,61 +410,161 @@ defineOptions({
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader
-                    ><CardTitle>Profile photo</CardTitle
-                    ><CardDescription
-                        >JPEG, PNG, or WebP. Maximum 5 MB and 4096 × 4096
-                        pixels.</CardDescription
-                    ></CardHeader
-                >
-                <CardContent class="grid gap-3">
-                    <img
-                        v-if="customer.photo_url && !form.remove_photo"
-                        :src="customer.photo_url"
-                        :alt="customer.name"
-                        class="h-20 w-20 rounded-full object-cover"
-                    />
-                    <Input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        @change="onPhotoChange"
-                    />
-                    <p
-                        v-if="form.errors.photo"
-                        class="text-destructive text-sm"
-                    >
-                        {{ form.errors.photo }}
-                    </p>
-                    <label
-                        v-if="customer.photo_url"
-                        class="flex items-center gap-2 text-sm"
-                        ><input
-                            v-model="form.remove_photo"
-                            type="checkbox"
-                            @change="form.photo = null"
-                        />
-                        Remove current photo</label
-                    >
-                </CardContent>
-            </Card>
-
-            <p
-                v-if="editFormProfileError || form.errors.version"
-                class="text-destructive text-sm"
+            <div
+                class="bg-background/95 sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3 border-t px-1 py-4 backdrop-blur"
             >
-                {{ editFormProfileError || form.errors.version }}
-            </p>
-            <div class="flex flex-wrap gap-3">
                 <Button type="submit" :disabled="form.processing">{{
-                    form.processing ? 'Saving…' : 'Save changes'
+                    form.processing ? 'Saving…' : 'Save'
                 }}</Button>
-                <Link :href="customerShow(customer.id)"
-                    ><Button type="button" variant="outline"
-                        >Cancel</Button
-                    ></Link
+                <Button as-child type="button" variant="outline">
+                    <Link :href="customerShow(customer.id)">Cancel</Link>
+                </Button>
+                <p
+                    v-if="editFormProfileError || form.errors.version"
+                    role="alert"
+                    class="text-destructive text-sm"
                 >
+                    {{ editFormProfileError || form.errors.version }}
+                </p>
             </div>
         </form>
+
+        <FormSheet
+            v-model:open="nameSheetOpen"
+            title="Change name"
+            :description="
+                isCustomer
+                    ? 'You will be asked to confirm it is you.'
+                    : 'For an active customer, they will be asked to confirm the new name.'
+            "
+        >
+            <form
+                id="name-form"
+                class="grid gap-5"
+                @submit.prevent="submitName"
+            >
+                <div class="grid gap-2">
+                    <Label for="customer-name">Full name</Label
+                    ><Input
+                        id="customer-name"
+                        v-model="nameForm.name"
+                        maxlength="150"
+                        required
+                    />
+                    <p
+                        v-if="nameForm.errors.name"
+                        class="text-destructive text-sm"
+                    >
+                        {{ nameForm.errors.name }}
+                    </p>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="name-reason">Reason</Label
+                    ><Input
+                        id="name-reason"
+                        v-model="nameForm.reason"
+                        maxlength="500"
+                        required
+                    />
+                    <p
+                        v-if="nameForm.errors.reason"
+                        class="text-destructive text-sm"
+                    >
+                        {{ nameForm.errors.reason }}
+                    </p>
+                </div>
+                <p
+                    v-if="nameFormProfileError"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ nameFormProfileError }}
+                </p>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="nameSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="name-form"
+                    :disabled="nameForm.processing"
+                    >{{ isCustomer ? 'Save' : 'Send for approval' }}</Button
+                >
+            </template>
+        </FormSheet>
+
+        <FormSheet
+            v-if="customer.can_change_phone"
+            v-model:open="phoneSheetOpen"
+            title="Change phone"
+            :description="
+                isCustomer
+                    ? 'You will be asked to confirm it is you.'
+                    : 'You can only change this before the customer sets up their account.'
+            "
+        >
+            <form
+                id="phone-form"
+                class="grid gap-5"
+                @submit.prevent="submitPhone"
+            >
+                <div class="grid gap-2">
+                    <Label for="customer-phone">Phone number</Label
+                    ><Input
+                        id="customer-phone"
+                        v-model="phoneForm.phone"
+                        type="tel"
+                        maxlength="50"
+                        required
+                    />
+                    <p
+                        v-if="phoneForm.errors.phone"
+                        class="text-destructive text-sm"
+                    >
+                        {{ phoneForm.errors.phone }}
+                    </p>
+                </div>
+                <div v-if="!isCustomer" class="grid gap-2">
+                    <Label for="phone-reason">Reason</Label
+                    ><Input
+                        id="phone-reason"
+                        v-model="phoneForm.reason"
+                        maxlength="500"
+                        required
+                    />
+                    <p
+                        v-if="phoneForm.errors.reason"
+                        class="text-destructive text-sm"
+                    >
+                        {{ phoneForm.errors.reason }}
+                    </p>
+                </div>
+                <p
+                    v-if="phoneFormProfileError || phoneForm.errors.version"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ phoneFormProfileError || phoneForm.errors.version }}
+                </p>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="phoneSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="phone-form"
+                    :disabled="phoneForm.processing"
+                    >{{ phoneForm.processing ? 'Saving…' : 'Save' }}</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

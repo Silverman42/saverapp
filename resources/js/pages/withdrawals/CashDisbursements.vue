@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { Coins } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
 import { preview as recoveryPreview } from '@/routes/cash-recoveries';
 import CashRecoveryPanel from '@/components/CashRecoveryPanel.vue';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -57,7 +63,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
-            { title: 'Cash payments', href: index() },
+            { title: 'Cash payouts', href: index() },
         ],
     },
 });
@@ -84,6 +90,25 @@ const selected = computed(
                 execution.execution_reference === selectedReference.value,
         ) ?? null,
 );
+const refundOpen = ref(false);
+const startOpen = ref(false);
+const attemptOpen = computed({
+    get: () => selected.value !== null,
+    set: (open: boolean) => {
+        if (!open) selectedReference.value = null;
+    },
+});
+const statusLabels: Record<string, string> = {
+    processing: 'In progress',
+    outcome_unknown: 'Waiting for receipt',
+    posted: 'Paid',
+    payment_failed: 'Not delivered',
+};
+const kindLabel = (kind: string): string =>
+    ({ fee_refund: 'Fee refund', earnings_draw: 'Earnings draw' })[kind] ??
+    kind.replaceAll('_', ' ');
+const statusLabel = (status: string): string =>
+    statusLabels[status] ?? status.replaceAll('_', ' ');
 const proof = useForm({ evidence: '', delivered: true, confirmed: false });
 const receipt = useForm({ confirmed: false });
 function choose(execution: Execution): void {
@@ -96,6 +121,7 @@ function begin(draw: boolean): void {
         start.execution_reference = crypto.randomUUID();
         start.confirmed = false;
         refundReference.value = '';
+        startOpen.value = false;
     };
     if (draw) start.post(startDraw.url(), { onSuccess });
     else
@@ -120,6 +146,7 @@ function entitlement(): void {
         onSuccess: () => {
             refund.refund_reference = crypto.randomUUID();
             refund.confirmed = false;
+            refundOpen.value = false;
         },
     });
 }
@@ -127,31 +154,102 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
 </script>
 <template>
     <div class="flex flex-col gap-6">
-        <Head title="Cash refunds and earnings draws" />
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Cash refunds and earnings draws
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Entitlement, controlled cash handoff, and receipt confirmation
-                are separate steps.
-            </p>
-        </div>
-        <p v-if="!enabled" class="text-muted-foreground text-sm">
-            Cash handoff is not available. It needs integrated acceptance first.
+        <Head title="Cash payouts" />
+        <PageHeader
+            title="Cash payouts"
+            description="Pay fee refunds and earnings in cash, then confirm receipt."
+        >
+            <template v-if="can_execute || can_refund" #actions>
+                <Button
+                    v-if="can_refund"
+                    type="button"
+                    :variant="can_execute ? 'outline' : 'default'"
+                    @click="refundOpen = true"
+                    >Approve refund</Button
+                >
+                <Button
+                    v-if="can_execute"
+                    type="button"
+                    :disabled="!enabled"
+                    @click="startOpen = true"
+                    >Start payout</Button
+                >
+            </template>
+        </PageHeader>
+        <p
+            v-if="!enabled"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            Cash payouts are not switched on yet.
         </p>
-        <Card v-if="can_refund"
-            ><CardHeader
-                ><CardTitle>Authorize a fee concession</CardTitle></CardHeader
-            ><CardContent>
-                <form class="grid max-w-xl gap-3" @submit.prevent="entitlement">
-                    <Label for="refund-obligation">Original paid fee</Label
+
+        <EmptyState
+            v-if="!executions.length"
+            :icon="Coins"
+            title="No cash payouts yet"
+            description="Payouts you start will show up here."
+        />
+        <Card v-else class="py-2">
+            <CardContent>
+                <ul class="divide-border divide-y" aria-label="Cash payouts">
+                    <li
+                        v-for="execution in executions"
+                        :key="execution.execution_reference"
+                        class="flex flex-wrap items-center justify-between gap-3 py-4 text-sm"
+                    >
+                        <div class="min-w-0 space-y-1">
+                            <p class="font-medium">
+                                {{ kindLabel(execution.kind) }} ·
+                                {{ money(execution.amount_kobo) }}
+                            </p>
+                            <Badge variant="secondary">{{
+                                statusLabel(execution.status)
+                            }}</Badge>
+                        </div>
+                        <Button
+                            v-if="
+                                [
+                                    'processing',
+                                    'outcome_unknown',
+                                    'posted',
+                                ].includes(execution.status)
+                            "
+                            variant="outline"
+                            size="sm"
+                            @click="choose(execution)"
+                            >Open</Button
+                        >
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+
+        <FormSheet
+            v-model:open="refundOpen"
+            title="Approve a fee refund"
+            description="Refund a fee the customer has already paid."
+        >
+            <form
+                id="refund-form"
+                class="grid gap-5"
+                @submit.prevent="entitlement"
+            >
+                <p
+                    v-if="!refund_enabled"
+                    role="status"
+                    class="bg-muted rounded-xl p-4 text-sm"
+                >
+                    Fee refunds are not switched on yet.
+                </p>
+                <div class="grid gap-2">
+                    <Label for="refund-obligation">Fee to refund</Label
                     ><Select v-model="obligation" required
                         ><SelectTrigger
                             id="refund-obligation"
                             class="h-11 w-full"
                             ><SelectValue
-                                placeholder="Choose retained paid fee" /></SelectTrigger
+                                placeholder="Choose a paid fee" /></SelectTrigger
                         ><SelectContent
                             ><SelectItem
                                 v-for="item in refundable_obligations"
@@ -159,23 +257,26 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                                 :value="String(item.id)"
                                 >{{ item.description }} · paid
                                 {{ money(item.settled_kobo) }}</SelectItem
-                            >
                             ></SelectContent
                         ></Select
                     >
-                    <Label for="refund-kind">Refund destination</Label
+                </div>
+                <div class="grid gap-2">
+                    <Label for="refund-kind">Refund to</Label
                     ><Select v-model="refund.kind"
                         ><SelectTrigger id="refund-kind" class="h-11 w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
                             ><SelectItem value="external"
-                                >External receipt: cash payable</SelectItem
+                                >Cash (fee was paid from outside
+                                savings)</SelectItem
                             ><SelectItem value="savings"
-                                >Savings-funded fee: restore savings</SelectItem
-                            >
+                                >Savings (fee was paid from savings)</SelectItem
                             ></SelectContent
                         ></Select
                     >
+                </div>
+                <div class="grid gap-2">
                     <Label for="refund-amount">Amount (NGN)</Label
                     ><Input
                         id="refund-amount"
@@ -183,50 +284,70 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                         required
                         inputmode="decimal"
                     />
-                    <Label for="refund-purpose">Concession reason</Label
+                </div>
+                <div class="grid gap-2">
+                    <Label for="refund-purpose">Reason</Label
                     ><Input
                         id="refund-purpose"
                         v-model="refund.reason"
                         required
                         maxlength="500"
                     />
-                    <p
-                        v-for="(error, key) in refund.errors"
-                        :key="key"
-                        class="text-destructive text-sm"
-                        role="alert"
-                    >
+                </div>
+                <label class="flex items-start gap-3 text-sm"
+                    ><input
+                        v-model="refund.confirmed"
+                        type="checkbox"
+                        class="mt-0.5"
+                    />I confirm this refund comes from business earnings and
+                    there is cash to cover it.</label
+                >
+                <div
+                    v-if="Object.keys(refund.errors).length"
+                    role="alert"
+                    class="text-destructive grid gap-1 text-sm"
+                >
+                    <p v-for="(error, key) in refund.errors" :key="key">
                         {{ error }}
                     </p>
-                    <label class="flex items-center gap-2 text-sm"
-                        ><input
-                            v-model="refund.confirmed"
-                            type="checkbox"
-                        />Confirm a concession of retained earnings, backed by
-                        free cash</label
-                    ><Button
-                        :disabled="
-                            !refund_enabled ||
-                            refund.processing ||
-                            !refund.confirmed
-                        "
-                        >Authorize entitlement</Button
-                    >
-                </form>
-            </CardContent></Card
-        >
-        <Card v-if="can_execute"
-            ><CardHeader><CardTitle>Start a cash payment</CardTitle></CardHeader
-            ><CardContent>
-                <form
-                    class="grid max-w-xl gap-3"
-                    @submit.prevent="begin(false)"
+                </div>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="refundOpen = false"
+                    >Cancel</Button
                 >
-                    <Label for="cash-refund">Approved refund payable</Label
+                <Button
+                    type="submit"
+                    form="refund-form"
+                    :disabled="
+                        !refund_enabled ||
+                        refund.processing ||
+                        !refund.confirmed
+                    "
+                    >Approve refund</Button
+                >
+            </template>
+        </FormSheet>
+
+        <FormSheet
+            v-model:open="startOpen"
+            title="Start a cash payout"
+            description="Pay an approved refund or draw business earnings."
+        >
+            <form
+                id="start-form"
+                class="grid gap-5"
+                @submit.prevent="begin(false)"
+            >
+                <div class="grid gap-2">
+                    <Label for="cash-refund">Approved refund</Label
                     ><Select v-model="refundReference"
                         ><SelectTrigger id="cash-refund" class="h-11 w-full"
                             ><SelectValue
-                                placeholder="Choose approved payable" /></SelectTrigger
+                                placeholder="Choose an approved refund" /></SelectTrigger
                         ><SelectContent
                             ><SelectItem
                                 v-for="item in refunds"
@@ -234,212 +355,198 @@ const money = (amount: number): string => `NGN ${(amount / 100).toFixed(2)}`;
                                 :value="item.refund_reference"
                                 >{{ item.refund_reference }} ·
                                 {{ money(item.amount_kobo) }}</SelectItem
-                            >
                             ></SelectContent
                         ></Select
                     >
+                </div>
+                <div v-if="can_draw" class="grid gap-2">
+                    <Label for="draw-amount"
+                        >Or draw earnings: amount (NGN)</Label
+                    ><Input
+                        id="draw-amount"
+                        v-model="start.amount_ngn"
+                        inputmode="decimal"
+                        aria-describedby="draw-amount-help"
+                    />
+                    <p
+                        id="draw-amount-help"
+                        class="text-muted-foreground text-xs"
+                    >
+                        Can't be more than earnings not yet drawn, or spare cash
+                        after what the business owes.
+                    </p>
+                </div>
+                <div class="grid gap-2">
                     <Label for="disbursement-proof"
-                        >Controlled cash source and recipient
-                        verification</Label
+                        >Where the cash comes from and how you checked the
+                        recipient</Label
                     ><Input
                         id="disbursement-proof"
                         v-model="start.evidence"
                         required
                         maxlength="1000"
                     />
-                    <template v-if="can_draw"
-                        ><Label for="draw-amount"
-                            >Business earnings draw amount (NGN)</Label
-                        ><Input
-                            id="draw-amount"
-                            v-model="start.amount_ngn"
-                            inputmode="decimal"
-                        />
-                        <p class="text-muted-foreground text-sm">
-                            A draw needs both permissions. A draw must not be
-                            more than undrawn earnings. It must not be more than
-                            free cash after liabilities and encumbrances.
-                        </p></template
-                    >
-                    <p
-                        v-for="(error, key) in start.errors"
-                        :key="key"
-                        class="text-destructive text-sm"
-                        role="alert"
-                    >
+                </div>
+                <label class="flex items-start gap-3 text-sm"
+                    ><input
+                        v-model="start.confirmed"
+                        type="checkbox"
+                        class="mt-0.5"
+                    />I confirm the amount and the recipient.</label
+                >
+                <div
+                    v-if="Object.keys(start.errors).length"
+                    role="alert"
+                    class="text-destructive grid gap-1 text-sm"
+                >
+                    <p v-for="(error, key) in start.errors" :key="key">
                         {{ error }}
                     </p>
-                    <label class="flex items-center gap-2 text-sm"
-                        ><input
-                            v-model="start.confirmed"
-                            type="checkbox"
-                        />Confirm the exact amount and recipient</label
-                    >
-                    <div class="flex flex-wrap gap-3">
-                        <Button
-                            :disabled="
-                                !enabled ||
-                                start.processing ||
-                                !start.confirmed ||
-                                !refundReference
-                            "
-                            >Start refund cash handoff</Button
-                        ><Button
-                            v-if="can_draw"
-                            type="button"
-                            variant="outline"
-                            :disabled="
-                                !enabled ||
-                                start.processing ||
-                                !start.confirmed ||
-                                !start.amount_ngn
-                            "
-                            @click="begin(true)"
-                            >Start business earnings draw</Button
-                        >
-                    </div>
-                </form>
-            </CardContent></Card
-        >
-        <Card
-            ><CardHeader><CardTitle>Cash attempts</CardTitle></CardHeader
-            ><CardContent class="grid gap-3">
-                <p
-                    v-if="!executions.length"
-                    class="text-muted-foreground text-sm"
-                >
-                    Your current scope has no cash attempts.
-                </p>
-                <div
-                    v-for="execution in executions"
-                    :key="execution.execution_reference"
-                    class="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm"
-                >
-                    <div>
-                        <p>
-                            {{ execution.kind.replaceAll('_', ' ') }} ·
-                            {{ money(execution.amount_kobo) }} ·
-                            {{ execution.status.replaceAll('_', ' ') }}
-                        </p>
-                        <p class="text-muted-foreground break-all">
-                            {{ execution.execution_reference }}
-                        </p>
-                    </div>
-                    <Button
-                        v-if="
-                            [
-                                'processing',
-                                'outcome_unknown',
-                                'posted',
-                            ].includes(execution.status)
-                        "
-                        variant="outline"
-                        @click="choose(execution)"
-                        >Open exact attempt</Button
-                    >
                 </div>
-                <div v-if="selected" class="grid gap-3 rounded-md border p-4">
-                    <p class="text-sm">
-                        {{ selected.execution_reference }} ·
-                        {{ money(selected.amount_kobo) }}
-                    </p>
-                    <form
-                        v-if="
-                            selected.can_attest &&
-                            selected.status === 'processing'
-                        "
-                        class="grid gap-3"
-                        @submit.prevent="record(true)"
-                    >
+            </form>
+            <template #footer>
+                <Button
+                    v-if="can_draw"
+                    type="button"
+                    variant="outline"
+                    :disabled="
+                        !enabled ||
+                        start.processing ||
+                        !start.confirmed ||
+                        !start.amount_ngn
+                    "
+                    @click="begin(true)"
+                    >Draw earnings</Button
+                >
+                <Button
+                    type="submit"
+                    form="start-form"
+                    :disabled="
+                        !enabled ||
+                        start.processing ||
+                        !start.confirmed ||
+                        !refundReference
+                    "
+                    >Pay refund</Button
+                >
+            </template>
+        </FormSheet>
+
+        <FormSheet
+            v-model:open="attemptOpen"
+            title="Cash payout"
+            :description="
+                selected
+                    ? `${kindLabel(selected.kind)} · ${money(selected.amount_kobo)}`
+                    : undefined
+            "
+        >
+            <div v-if="selected" class="grid gap-6">
+                <Badge variant="secondary">{{
+                    statusLabel(selected.status)
+                }}</Badge>
+                <form
+                    v-if="
+                        selected.can_attest && selected.status === 'processing'
+                    "
+                    class="grid gap-4"
+                    @submit.prevent="record(true)"
+                >
+                    <div class="grid gap-2">
                         <Label for="handoff-proof"
-                            >Custodian handoff evidence</Label
+                            >How the cash was handed over</Label
                         ><Input
                             id="handoff-proof"
                             v-model="proof.evidence"
                             required
                             maxlength="1000"
-                        /><label class="flex items-center gap-2 text-sm"
-                            ><input
-                                v-model="proof.confirmed"
-                                type="checkbox"
-                            />Confirm the recorded result for this exact
-                            attempt</label
-                        >
-                        <div class="flex flex-wrap gap-3">
-                            <Button
-                                :disabled="proof.processing || !proof.confirmed"
-                                >Record cash delivered</Button
-                            ><Button
-                                type="button"
-                                variant="outline"
-                                :disabled="proof.processing || !proof.confirmed"
-                                @click="record(false)"
-                                >Confirm definitive non-delivery</Button
-                            >
-                        </div>
-                        <p
-                            v-for="(error, key) in proof.errors"
-                            :key="key"
-                            role="alert"
-                            class="text-destructive text-sm"
-                        >
-                            {{ error }}
-                        </p>
-                    </form>
-                    <form
-                        v-if="
-                            selected.can_acknowledge &&
-                            selected.status === 'outcome_unknown'
-                        "
-                        class="grid gap-3"
-                        @submit.prevent="confirm"
+                        />
+                    </div>
+                    <label class="flex items-start gap-3 text-sm"
+                        ><input
+                            v-model="proof.confirmed"
+                            type="checkbox"
+                            class="mt-0.5"
+                        />I confirm what happened with this payout.</label
                     >
-                        <label class="flex items-center gap-2 text-sm"
-                            ><input
-                                v-model="receipt.confirmed"
-                                type="checkbox"
-                            />I personally received exactly
-                            {{ money(selected.amount_kobo) }} for this
-                            attempt</label
+                    <div class="flex flex-wrap gap-3">
+                        <Button :disabled="proof.processing || !proof.confirmed"
+                            >Cash delivered</Button
                         ><Button
-                            :disabled="receipt.processing || !receipt.confirmed"
-                            >Confirm receipt and post</Button
+                            type="button"
+                            variant="outline"
+                            :disabled="proof.processing || !proof.confirmed"
+                            @click="record(false)"
+                            >Not delivered</Button
                         >
-                        <p
-                            v-for="(error, key) in receipt.errors"
-                            :key="key"
-                            role="alert"
-                            class="text-destructive text-sm"
-                        >
+                    </div>
+                    <div
+                        v-if="Object.keys(proof.errors).length"
+                        role="alert"
+                        class="text-destructive grid gap-1 text-sm"
+                    >
+                        <p v-for="(error, key) in proof.errors" :key="key">
                             {{ error }}
                         </p>
-                    </form>
-                    <CashRecoveryPanel
-                        v-if="
-                            ['posted', 'outcome_unknown'].includes(
-                                selected.status,
-                            )
-                        "
-                        :key="selected.execution_reference"
-                        :preview-url="
-                            recoveryPreview.url({
-                                kind: 'disbursement',
-                                execution: selected.execution_reference,
-                            })
-                        "
-                        :record-url="
-                            recordReturn.url(selected.execution_reference)
-                        "
-                        :recoveries="selected.recoveries"
-                        :can-record="selected.can_attest"
-                        :can-confirm="selected.can_acknowledge"
-                    />
-                    <p class="text-muted-foreground text-sm">
-                        Missing or disputed handoff proof preserves this cash
-                        reservation and blocks another payment.
+                    </div>
+                </form>
+                <form
+                    v-if="
+                        selected.can_acknowledge &&
+                        selected.status === 'outcome_unknown'
+                    "
+                    class="grid gap-4"
+                    @submit.prevent="confirm"
+                >
+                    <label class="flex items-start gap-3 text-sm"
+                        ><input
+                            v-model="receipt.confirmed"
+                            type="checkbox"
+                            class="mt-0.5"
+                        />I received exactly
+                        {{ money(selected.amount_kobo) }} for this
+                        payout.</label
+                    ><Button
+                        class="w-fit"
+                        :disabled="receipt.processing || !receipt.confirmed"
+                        >Confirm receipt</Button
+                    >
+                    <div
+                        v-if="Object.keys(receipt.errors).length"
+                        role="alert"
+                        class="text-destructive grid gap-1 text-sm"
+                    >
+                        <p v-for="(error, key) in receipt.errors" :key="key">
+                            {{ error }}
+                        </p>
+                    </div>
+                </form>
+                <CashRecoveryPanel
+                    v-if="
+                        ['posted', 'outcome_unknown'].includes(selected.status)
+                    "
+                    :key="selected.execution_reference"
+                    :preview-url="
+                        recoveryPreview.url({
+                            kind: 'disbursement',
+                            execution: selected.execution_reference,
+                        })
+                    "
+                    :record-url="recordReturn.url(selected.execution_reference)"
+                    :recoveries="selected.recoveries"
+                    :can-record="selected.can_attest"
+                    :can-confirm="selected.can_acknowledge"
+                />
+                <p class="text-muted-foreground text-sm">
+                    If proof of handover is missing or disputed, the cash stays
+                    set aside and no other payout can start.
+                </p>
+                <MoreDetails>
+                    <p class="text-muted-foreground text-xs break-all">
+                        Reference {{ selected.execution_reference }}
                     </p>
-                </div>
-            </CardContent></Card
-        >
+                </MoreDetails>
+            </div>
+        </FormSheet>
     </div>
 </template>

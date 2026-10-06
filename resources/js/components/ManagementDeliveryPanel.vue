@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { router, useHttp, usePage } from '@inertiajs/vue3';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { RefreshCw } from '@lucide/vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -43,8 +46,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 function clear(): void {
     sequence++;
     result.value = null;
-    message.value =
-        'Delivery access could not be verified. Refresh to continue.';
+    message.value = 'We could not load messages. Refresh to try again.';
 }
 async function load(number = 1): Promise<void> {
     const current = ++sequence;
@@ -67,7 +69,7 @@ async function load(number = 1): Promise<void> {
         if (current !== sequence) return;
         result.value = null;
         message.value =
-            'Delivery information is unavailable or your access has changed.';
+            'Messages are not available right now, or your access has changed.';
         router.clearHistory();
     } finally {
         if (current === sequence) loading.value = false;
@@ -102,12 +104,27 @@ function date(value: string): string {
 
 <template>
     <Card v-if="allowed" aria-label="Delivery diagnostics">
-        <CardHeader>
-            <CardTitle>Delivery information</CardTitle>
-            <CardDescription
-                >Delivery is separate from the recorded change. An accepted
-                email does not show that the person received or read
-                it.</CardDescription
+        <CardHeader
+            class="flex flex-row flex-wrap items-start justify-between gap-3"
+        >
+            <div class="space-y-1.5">
+                <CardTitle class="text-base">Messages sent</CardTitle>
+                <CardDescription
+                    >Emails and texts we tried to send. Sent does not always
+                    mean read.</CardDescription
+                >
+            </div>
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                :disabled="loading"
+                @click="load(result?.current_page ?? 1)"
+                ><RefreshCw
+                    class="size-4"
+                    :class="loading ? 'animate-spin' : ''"
+                />
+                Refresh</Button
             >
         </CardHeader>
         <CardContent class="space-y-4">
@@ -123,81 +140,83 @@ function date(value: string): string {
                 role="status"
                 class="text-muted-foreground text-sm"
             >
-                Checking delivery information…
+                Loading messages…
             </p>
             <p
                 v-else-if="result?.data.length === 0"
                 class="text-muted-foreground text-sm"
             >
-                No delivery records are available.
+                No messages sent yet.
             </p>
-            <ul
+            <MoreDetails
                 v-else-if="result"
-                class="divide-y"
-                aria-label="Delivery records"
+                :label="`Show ${result.total} message${result.total === 1 ? '' : 's'}`"
             >
-                <li
-                    v-for="item in result.data"
-                    :key="item.reference"
-                    class="space-y-1 py-3 text-sm"
-                >
-                    <div
-                        class="flex flex-wrap items-center justify-between gap-2"
+                <ul class="divide-y" aria-label="Delivery records">
+                    <li
+                        v-for="item in result.data"
+                        :key="item.reference"
+                        class="space-y-1 py-3 text-sm"
                     >
-                        <span class="font-medium"
-                            >{{ item.purpose.replaceAll('_', ' ') }} ·
-                            {{ item.channel }}</span
-                        ><span>{{ item.status }}</span>
-                    </div>
-                    <p class="text-muted-foreground break-all">
-                        {{ item.reference }}
-                    </p>
-                    <p class="text-muted-foreground">
-                        {{ date(item.effective_at)
-                        }}<span v-if="item.attempt_count !== null">
-                            · {{ item.attempt_count }} recorded attempts</span
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
                         >
-                    </p>
-                    <p
-                        v-if="item.last_attempt_at"
-                        class="text-muted-foreground"
-                    >
-                        Last attempt: {{ date(item.last_attempt_at) }}
-                    </p>
-                    <p v-if="item.category" class="text-muted-foreground">
-                        {{ item.category.replaceAll('_', ' ') }}
-                    </p>
-                </li>
-            </ul>
-            <div class="flex flex-wrap items-center gap-3">
-                <Button
-                    type="button"
-                    variant="outline"
-                    :disabled="loading"
-                    @click="load(result?.current_page ?? 1)"
-                    >Refresh delivery information</Button
+                            <span class="font-medium capitalize"
+                                >{{ item.purpose.replaceAll('_', ' ') }} ·
+                                {{ item.channel }}</span
+                            ><Badge variant="outline" class="capitalize">{{
+                                item.status.replaceAll('_', ' ')
+                            }}</Badge>
+                        </div>
+                        <p class="text-muted-foreground">
+                            {{ date(item.effective_at)
+                            }}<span v-if="item.attempt_count !== null">
+                                · {{ item.attempt_count }}
+                                {{
+                                    item.attempt_count === 1 ? 'try' : 'tries'
+                                }}</span
+                            ><span v-if="item.last_attempt_at">
+                                · last try
+                                {{ date(item.last_attempt_at) }}</span
+                            >
+                        </p>
+                        <p
+                            v-if="item.category"
+                            class="text-muted-foreground capitalize"
+                        >
+                            {{ item.category.replaceAll('_', ' ') }}
+                        </p>
+                        <p class="text-muted-foreground text-xs break-all">
+                            Ref: {{ item.reference }}
+                        </p>
+                    </li>
+                </ul>
+                <div
+                    v-if="result.last_page > 1"
+                    class="flex flex-wrap items-center gap-3 pt-2"
                 >
-                <template v-if="result && result.last_page > 1"
-                    ><Button
+                    <Button
                         type="button"
                         variant="outline"
+                        size="sm"
                         :disabled="loading || result.current_page <= 1"
                         @click="load(result.current_page - 1)"
                         >Previous</Button
-                    ><span class="text-sm"
+                    ><span class="text-muted-foreground text-sm"
                         >Page {{ result.current_page }} of
                         {{ result.last_page }}</span
                     ><Button
                         type="button"
                         variant="outline"
+                        size="sm"
                         :disabled="
                             loading || result.current_page >= result.last_page
                         "
                         @click="load(result.current_page + 1)"
                         >Next</Button
-                    ></template
-                >
-            </div>
+                    >
+                </div>
+            </MoreDetails>
         </CardContent>
     </Card>
 </template>

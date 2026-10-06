@@ -46,8 +46,8 @@ defineOptions({
     <div class="space-y-6">
         <Heading
             variant="small"
-            title="Update password"
-            description="Use a long, random password to keep your account secure"
+            title="Password"
+            description="Use a long password you do not use anywhere else."
         />
 
         <Form

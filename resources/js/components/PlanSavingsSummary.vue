@@ -5,11 +5,11 @@ import type { PlanSavings } from '@/types/plan-savings';
 const props = defineProps<{ summary: PlanSavings }>();
 const positions = computed(() => [
     {
-        label: 'Customer savings across all cycles',
+        label: 'All savings for this customer',
         position: props.summary.customer,
     },
     {
-        label: 'Savings attributed to this cycle',
+        label: 'Savings in this plan',
         position: props.summary.cycle,
     },
 ]);
@@ -30,32 +30,32 @@ const asOf = computed(() =>
             <h3 class="font-medium">{{ item.label }}</h3>
             <dl class="grid gap-3 sm:grid-cols-3">
                 <div>
-                    <dt class="text-muted-foreground">
-                        Posted savings liability
-                    </dt>
+                    <dt class="text-muted-foreground">Savings balance</dt>
                     <dd class="font-medium">
-                        {{ item.position.liability ?? 'Unavailable' }}
+                        {{ item.position.liability ?? 'Not available' }}
                     </dd>
                 </div>
                 <div>
                     <dt class="text-muted-foreground">
-                        Live withdrawal reservations
+                        Set aside for withdrawals
                     </dt>
                     <dd class="font-medium">
-                        {{ item.position.reserved ?? 'Unavailable' }}
+                        {{ item.position.reserved ?? 'Not available' }}
                     </dd>
                 </div>
                 <div>
                     <dt class="text-muted-foreground">Available savings</dt>
                     <dd class="font-medium">
-                        {{ item.position.available ?? 'Unavailable' }}
+                        {{ item.position.available ?? 'Not available' }}
                     </dd>
                 </div>
             </dl>
-            <p class="text-muted-foreground">{{ item.position.message }}</p>
+            <p class="text-muted-foreground text-xs">
+                {{ item.position.message }}
+            </p>
         </section>
         <p v-if="asOf" class="text-muted-foreground text-xs">
-            As of {{ asOf }} UTC
+            Updated {{ asOf }} UTC
         </p>
     </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
 import {
@@ -11,18 +11,18 @@ import { maxLength, minLength, required } from '@vuelidate/validators';
 import {
     AlertCircle,
     AlertTriangle,
-    ArrowLeft,
-    Check,
     History,
-    MinusCircle,
-    PlusCircle,
-    RefreshCw,
-    Shield,
+    LifeBuoy,
+    MoreHorizontal,
+    Search,
     ShieldCheck,
 } from '@lucide/vue';
+import AdminInvitationPanel from '@/components/AdminInvitationPanel.vue';
+import type { AdminInvitationSummary } from '@/components/AdminInvitationPanel.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
-import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
-import DirectoryRow from '@/components/directory/DirectoryRow.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,8 +41,12 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import AdminInvitationPanel from '@/components/AdminInvitationPanel.vue';
-import type { AdminInvitationSummary } from '@/components/AdminInvitationPanel.vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { create as createRecovery } from '@/routes/admin/staff-recoveries';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -128,11 +132,11 @@ defineOptions({
                 href: dashboard(),
             },
             {
-                title: 'Admin access',
+                title: 'Admin team',
                 href: adminAccessIndex(),
             },
             {
-                title: 'Permissions detail',
+                title: 'Admin details',
                 href: '#',
             },
         ],
@@ -145,7 +149,7 @@ const reason = ref<string>('');
 const isConfirmed = ref<boolean>(false);
 const isConfirmDialogOpen = ref<boolean>(false);
 const concurrencyError = ref<string | null>(null);
-const historyFiltersOpen = ref(false);
+const saveErrors = ref<string[]>([]);
 const historyFilterForm = reactive<HistoryFilters>({
     ...props.history_filters,
 });
@@ -164,12 +168,6 @@ watch(
     (filters) => Object.assign(historyFilterForm, filters),
 );
 
-const activeHistoryFilterCount = computed(() => {
-    return historyFilterForm.action && historyFilterForm.action !== 'all'
-        ? 1
-        : 0;
-});
-
 const applyHistoryFilters = (): void => {
     const query: Record<string, string | number> = {};
     if (historyFilterForm.search)
@@ -183,11 +181,6 @@ const applyHistoryFilters = (): void => {
         {},
         { preserveState: true, preserveScroll: true, replace: true },
     );
-};
-
-const resetHistoryFilters = (): void => {
-    Object.assign(historyFilterForm, { search: '', action: '', per_page: 10 });
-    applyHistoryFilters();
 };
 
 // Form validations
@@ -221,13 +214,27 @@ const hasChanges = computed(() => {
     return grants.value.length > 0 || revocations.value.length > 0;
 });
 
-const togglePermission = (code: string) => {
-    if (selectedPermissions.value.includes(code)) {
+const changeCount = computed(
+    () => grants.value.length + revocations.value.length,
+);
+
+const touchesAdminManagement = computed(
+    () =>
+        grants.value.includes('admins.manage') ||
+        revocations.value.includes('admins.manage'),
+);
+
+const setPermission = (
+    code: string,
+    checked: boolean | 'indeterminate',
+): void => {
+    const isSelected = selectedPermissions.value.includes(code);
+    if (checked === true && !isSelected) {
+        selectedPermissions.value = [...selectedPermissions.value, code];
+    } else if (checked !== true && isSelected) {
         selectedPermissions.value = selectedPermissions.value.filter(
             (p) => p !== code,
         );
-    } else {
-        selectedPermissions.value.push(code);
     }
 };
 
@@ -237,21 +244,31 @@ const resetSelection = () => {
     isConfirmed.value = false;
     v$.value.$reset();
     concurrencyError.value = null;
+    saveErrors.value = [];
 };
 
-const openReviewDialog = async () => {
-    const isValid = await v$.value.$validate();
-    if (!isValid || !hasChanges.value) {
+const openReviewDialog = () => {
+    if (!hasChanges.value) {
         return;
     }
+    saveErrors.value = [];
     isConfirmDialogOpen.value = true;
 };
 
 const isSubmitting = ref(false);
 
+const confirmAndApply = async () => {
+    const isValid = await v$.value.$validate();
+    if (!isValid || !hasChanges.value) {
+        return;
+    }
+    applyChanges();
+};
+
 const applyChanges = () => {
     isSubmitting.value = true;
     concurrencyError.value = null;
+    saveErrors.value = [];
 
     router.put(
         `/admin/access/${props.admin.id}/permissions`,
@@ -270,15 +287,17 @@ const applyChanges = () => {
                 v$.value.$reset();
             },
             onError: (errors) => {
-                isConfirmDialogOpen.value = false;
                 if (errors.expected_permission_version) {
+                    isConfirmDialogOpen.value = false;
                     concurrencyError.value =
                         errors.expected_permission_version +
-                        ' Current permissions have been refreshed. Please review the updated state.';
+                        ' We loaded the latest permissions. Please check them again.';
                     selectedPermissions.value = [
                         ...props.admin.direct_permissions,
                     ];
+                    return;
                 }
+                saveErrors.value = Object.values(errors);
             },
             onFinish: () => {
                 isSubmitting.value = false;
@@ -290,51 +309,57 @@ const applyChanges = () => {
 const getPermissionDetails = (name: string) => {
     return props.catalogue.find((c) => c.name === name);
 };
+
+const permissionLabel = (name: string): string =>
+    getPermissionDetails(name)?.display_name || name;
+
+const formatDate = (value: string | null): string =>
+    value ? new Date(value).toLocaleString() : '-';
+
+const stateLabels: Record<string, string> = {
+    active: 'Active',
+    invited: 'Invited',
+    mfa_setup: 'Setting up',
+    suspended: 'Suspended',
+    deactivated: 'Deactivated',
+};
 </script>
 
 <template>
-    <Head :title="`Admin Access: ${admin.name}`" />
+    <Head :title="admin.name" />
 
     <div class="space-y-6">
-        <!-- Back Navigation & Header -->
-        <div class="flex items-center gap-4">
-            <Link :href="adminAccessIndex().url">
-                <Button variant="outline" size="icon" class="h-8 w-8">
-                    <ArrowLeft class="h-4 w-4" />
-                </Button>
-            </Link>
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    {{ admin.name }}
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    {{ admin.email }}
-                </p>
-            </div>
-            <div class="ml-auto flex items-center gap-2">
-                <Link
-                    v-if="canRequestRecovery"
-                    :href="createRecovery(admin.id).url"
-                >
-                    <Button variant="outline" size="sm"
-                        >Request account recovery</Button
-                    >
-                </Link>
-                <Badge variant="outline" class="font-mono text-xs">
-                    Version v{{ admin.permission_version }}
-                </Badge>
+        <PageHeader :title="admin.name" :description="admin.email">
+            <template #actions>
                 <Badge
                     :variant="
                         admin.account_state === 'active'
                             ? 'default'
                             : 'secondary'
                     "
-                    class="text-xs capitalize"
                 >
-                    {{ admin.account_state }}
+                    {{
+                        stateLabels[admin.account_state] ?? admin.account_state
+                    }}
                 </Badge>
-            </div>
-        </div>
+                <DropdownMenu :modal="false" v-if="canRequestRecovery">
+                    <DropdownMenuTrigger as-child>
+                        <Button variant="outline" size="sm">
+                            <MoreHorizontal class="size-4" />
+                            More
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem as-child>
+                            <Link :href="createRecovery(admin.id).url">
+                                <LifeBuoy class="size-4" />
+                                Help them get back in
+                            </Link>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </template>
+        </PageHeader>
 
         <AdminInvitationPanel
             v-if="invitation"
@@ -343,558 +368,280 @@ const getPermissionDetails = (name: string) => {
             :invitation="invitation"
         />
 
-        <!-- Self-view notice -->
         <div
             v-if="isSelf"
-            class="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-700 dark:text-blue-300"
+            class="bg-muted flex items-start gap-3 rounded-xl p-4 text-sm"
         >
-            <div class="flex items-start gap-3">
-                <ShieldCheck class="mt-0.5 h-5 w-5 shrink-0" />
-                <div>
-                    <p class="font-semibold">Self-Management Prohibition</p>
-                    <p class="mt-1 text-xs">
-                        You are viewing your own permissions. Administrators
-                        cannot grant or revoke their own permissions. Another
-                        authorized administrator must make changes.
-                    </p>
-                </div>
-            </div>
+            <ShieldCheck class="mt-0.5 size-4 shrink-0" />
+            <p>
+                This is your account. Another admin has to change your
+                permissions.
+            </p>
         </div>
 
-        <!-- Active Restrictions banner -->
         <div
             v-if="admin.restrictions.length > 0"
-            class="rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300"
+            class="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300"
         >
             <div class="flex items-start gap-3">
-                <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0" />
+                <AlertTriangle class="mt-0.5 size-4 shrink-0" />
                 <div>
-                    <p class="font-semibold">
-                        Active Authorization Restrictions
-                    </p>
-                    <ul class="mt-1 list-disc space-y-1 pl-4 text-xs">
+                    <p class="font-medium">Some permissions are on hold</p>
+                    <ul class="mt-1 space-y-1 text-xs">
                         <li v-for="res in admin.restrictions" :key="res.id">
-                            <strong>{{ res.restriction_type }}</strong> on
-                            <code>{{ res.permission_code }}</code> (expires:
+                            {{ permissionLabel(res.permission_code) }}:
+                            {{ res.restriction_type.replaceAll('_', ' ') }},
                             {{
                                 res.expires_at
-                                    ? new Date(res.expires_at).toLocaleString()
-                                    : 'Never'
-                            }})
+                                    ? `until ${formatDate(res.expires_at)}`
+                                    : 'no end date'
+                            }}
                         </li>
                     </ul>
                 </div>
             </div>
         </div>
 
-        <!-- Stale Concurrency Warning -->
         <div
             v-if="concurrencyError"
-            class="border-destructive/20 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm"
+            role="alert"
+            class="border-destructive/20 bg-destructive/10 text-destructive flex items-start gap-3 rounded-xl border p-4 text-sm"
         >
-            <div class="flex items-start gap-3">
-                <AlertCircle class="mt-0.5 h-5 w-5 shrink-0" />
-                <div>
-                    <p class="font-semibold">Version Conflict</p>
-                    <p class="mt-1 text-xs">{{ concurrencyError }}</p>
-                </div>
+            <AlertCircle class="mt-0.5 size-4 shrink-0" />
+            <div>
+                <p class="font-medium">
+                    Someone else changed these permissions
+                </p>
+                <p class="mt-1 text-xs">{{ concurrencyError }}</p>
             </div>
         </div>
 
-        <!-- Permission Editor (for authorized Admins managing other Admins) -->
+        <!-- Permission editor (for admins who can manage other admins) -->
         <Card v-if="canManage">
-            <CardHeader>
-                <div class="flex items-center justify-between">
-                    <div>
-                        <CardTitle>Permission Assignment</CardTitle>
-                        <CardDescription>
-                            Select a permission to grant it. Clear a permission
-                            to remove it. All changes save together.
-                        </CardDescription>
+            <CardHeader
+                class="flex flex-row flex-wrap items-start justify-between gap-3"
+            >
+                <div class="space-y-1">
+                    <CardTitle>Permissions</CardTitle>
+                    <CardDescription>
+                        Tick to give a permission. Untick to take it away.
+                    </CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="divide-border divide-y rounded-xl border">
+                    <div
+                        v-for="item in catalogue"
+                        :key="item.name"
+                        class="flex items-start gap-3 p-3"
+                        :class="
+                            selectedPermissions.includes(item.name)
+                                ? 'bg-primary/5'
+                                : ''
+                        "
+                    >
+                        <Checkbox
+                            :id="`perm-${item.name}`"
+                            class="mt-0.5"
+                            :model-value="
+                                selectedPermissions.includes(item.name)
+                            "
+                            @update:model-value="
+                                setPermission(item.name, $event)
+                            "
+                        />
+                        <Label
+                            :for="`perm-${item.name}`"
+                            class="min-w-0 flex-1 cursor-pointer flex-col items-start gap-0.5 font-normal"
+                        >
+                            <span
+                                class="flex flex-wrap items-center gap-2 text-sm font-medium"
+                            >
+                                {{ item.display_name }}
+                                <Badge
+                                    v-if="item.is_highest_risk"
+                                    variant="destructive"
+                                    class="px-1.5 py-0 text-[10px]"
+                                    >High risk</Badge
+                                >
+                            </span>
+                            <span
+                                class="text-muted-foreground line-clamp-2 text-xs"
+                                :title="item.description"
+                                >{{ item.description }}</span
+                            >
+                        </Label>
+                        <span
+                            v-if="grants.includes(item.name)"
+                            class="shrink-0 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                            >Adding</span
+                        >
+                        <span
+                            v-else-if="revocations.includes(item.name)"
+                            class="shrink-0 text-xs font-medium text-rose-600 dark:text-rose-400"
+                            >Removing</span
+                        >
                     </div>
-                    <div v-if="hasChanges" class="flex items-center gap-2">
+                </div>
+
+                <div
+                    v-if="hasChanges"
+                    class="bg-card sticky bottom-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 shadow-sm"
+                    role="status"
+                >
+                    <p class="text-sm">
+                        {{ changeCount }} unsaved change{{
+                            changeCount === 1 ? '' : 's'
+                        }}
+                    </p>
+                    <div class="flex gap-2">
                         <Button
                             variant="ghost"
                             size="sm"
                             @click="resetSelection"
+                            >Undo</Button
                         >
-                            Reset
-                        </Button>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardContent class="space-y-6">
-                <!-- Permission Grid -->
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <div
-                        v-for="item in catalogue"
-                        :key="item.name"
-                        :class="[
-                            'relative flex cursor-pointer flex-col justify-between rounded-lg border p-3 transition-colors',
-                            selectedPermissions.includes(item.name)
-                                ? 'border-primary bg-primary/5'
-                                : 'border-border hover:bg-muted/40',
-                            item.is_highest_risk
-                                ? 'ring-destructive/40 ring-1'
-                                : '',
-                        ]"
-                        @click="togglePermission(item.name)"
-                    >
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="space-y-1">
-                                <div class="flex items-center gap-2">
-                                    <span
-                                        class="text-foreground text-sm font-medium"
-                                    >
-                                        {{ item.display_name }}
-                                    </span>
-                                    <Badge
-                                        v-if="item.is_highest_risk"
-                                        variant="destructive"
-                                        class="px-1 py-0 text-[10px]"
-                                    >
-                                        Highest Risk
-                                    </Badge>
-                                </div>
-                                <p class="text-muted-foreground text-xs">
-                                    {{ item.description }}
-                                </p>
-                            </div>
-                            <div class="pt-0.5">
-                                <Checkbox
-                                    :model-value="
-                                        selectedPermissions.includes(item.name)
-                                    "
-                                    @update:model-value="
-                                        togglePermission(item.name)
-                                    "
-                                />
-                            </div>
-                        </div>
-
-                        <div
-                            class="mt-3 flex items-center justify-between text-[11px]"
-                        >
-                            <code class="text-muted-foreground font-mono">{{
-                                item.name
-                            }}</code>
-                            <div>
-                                <span
-                                    v-if="grants.includes(item.name)"
-                                    class="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400"
-                                >
-                                    <PlusCircle class="h-3.5 w-3.5" /> Will
-                                    Grant
-                                </span>
-                                <span
-                                    v-else-if="revocations.includes(item.name)"
-                                    class="inline-flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400"
-                                >
-                                    <MinusCircle class="h-3.5 w-3.5" /> Will
-                                    Revoke
-                                </span>
-                                <span
-                                    v-else-if="
-                                        selectedPermissions.includes(item.name)
-                                    "
-                                    class="text-muted-foreground"
-                                >
-                                    Active
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Changes Summary & Reason -->
-                <div
-                    v-if="hasChanges"
-                    class="bg-muted/20 space-y-4 rounded-lg border p-4"
-                >
-                    <div class="text-sm font-medium">
-                        Proposed Changes Summary
-                    </div>
-
-                    <div class="grid gap-3 text-xs sm:grid-cols-2">
-                        <!-- Grants -->
-                        <div
-                            class="rounded border border-emerald-500/20 bg-emerald-50/50 p-3 dark:bg-emerald-950/20"
-                        >
-                            <div
-                                class="mb-1 flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400"
-                            >
-                                <PlusCircle class="h-4 w-4" />
-                                Grants ({{ grants.length }})
-                            </div>
-                            <ul
-                                v-if="grants.length > 0"
-                                class="space-y-1 text-emerald-900 dark:text-emerald-200"
-                            >
-                                <li v-for="g in grants" :key="g">
-                                    +
-                                    {{
-                                        getPermissionDetails(g)?.display_name ||
-                                        g
-                                    }}
-                                </li>
-                            </ul>
-                            <p v-else class="text-muted-foreground italic">
-                                None
-                            </p>
-                        </div>
-
-                        <!-- Revocations -->
-                        <div
-                            class="rounded border border-rose-500/20 bg-rose-50/50 p-3 dark:bg-rose-950/20"
-                        >
-                            <div
-                                class="mb-1 flex items-center gap-1.5 font-semibold text-rose-700 dark:text-rose-400"
-                            >
-                                <MinusCircle class="h-4 w-4" />
-                                Revocations ({{ revocations.length }})
-                            </div>
-                            <ul
-                                v-if="revocations.length > 0"
-                                class="space-y-1 text-rose-900 dark:text-rose-200"
-                            >
-                                <li v-for="r in revocations" :key="r">
-                                    -
-                                    {{
-                                        getPermissionDetails(r)?.display_name ||
-                                        r
-                                    }}
-                                </li>
-                            </ul>
-                            <p v-else class="text-muted-foreground italic">
-                                None
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Highest risk warning -->
-                    <div
-                        v-if="
-                            grants.includes('admins.manage') ||
-                            revocations.includes('admins.manage')
-                        "
-                        class="border-destructive/30 bg-destructive/10 text-destructive rounded border p-3 text-xs"
-                    >
-                        <p class="flex items-center gap-1.5 font-semibold">
-                            <AlertTriangle class="h-4 w-4 shrink-0" />
-                            CRITICAL SECURITY ACTION: admins.manage
-                        </p>
-                        <p class="mt-1">
-                            You are modifying the
-                            <code>admins.manage</code> capability. This
-                            permission controls who can change administrator
-                            access and security rules. Make sure that this
-                            change is approved.
-                        </p>
-                    </div>
-
-                    <!-- Required Reason -->
-                    <div class="space-y-2">
-                        <Label for="reason">
-                            Reason for modification
-                            <span class="text-destructive">*</span>
-                        </Label>
-                        <Input
-                            id="reason"
-                            v-model="reason"
-                            placeholder="Explain why these permissions are being granted or revoked (1–500 chars)..."
-                            maxlength="500"
-                            :class="
-                                v$.reason.$error ? 'border-destructive' : ''
-                            "
-                        />
-                        <div
-                            class="text-muted-foreground flex justify-between text-xs"
-                        >
-                            <InputError
-                                v-if="v$.reason.$error"
-                                :message="
-                                    v$.reason.$errors[0].$message as string
-                                "
-                            />
-                            <span class="ml-auto">{{ reason.length }}/500</span>
-                        </div>
-                    </div>
-
-                    <!-- Confirmation checkbox -->
-                    <div class="flex items-start gap-2 pt-2">
-                        <Checkbox
-                            id="confirm_checkbox"
-                            :model-value="isConfirmed"
-                            @update:model-value="
-                                (val) => (isConfirmed = val === true)
-                            "
-                        />
-                        <div class="space-y-1">
-                            <Label
-                                for="confirm_checkbox"
-                                class="cursor-pointer text-xs font-normal"
-                            >
-                                I confirm that I have reviewed the
-                                before-and-after permissions and authorize this
-                                change.
-                            </Label>
-                            <InputError
-                                v-if="v$.isConfirmed.$error"
-                                message="You must acknowledge and confirm the change."
-                            />
-                        </div>
-                    </div>
-
-                    <div class="pt-2">
                         <Button
-                            type="button"
-                            :disabled="!hasChanges || isSubmitting"
+                            size="sm"
+                            :disabled="isSubmitting"
                             @click="openReviewDialog"
+                            >Review changes</Button
                         >
-                            Review &amp; Apply Changes
-                        </Button>
                     </div>
                 </div>
             </CardContent>
         </Card>
 
-        <!-- Current Permissions (Read-only view for self or when cannot manage) -->
+        <!-- Read-only view (own account, or no permission to manage) -->
         <Card v-else>
             <CardHeader>
-                <CardTitle>Assigned Direct Permissions</CardTitle>
-                <CardDescription>
-                    All permissions explicitly granted to this administrator
-                    account.
-                </CardDescription>
+                <CardTitle>Permissions</CardTitle>
             </CardHeader>
             <CardContent>
                 <div
                     v-if="admin.direct_permissions.length > 0"
-                    class="grid gap-3 sm:grid-cols-2"
+                    class="divide-border divide-y rounded-xl border"
                 >
                     <div
                         v-for="perm in admin.direct_permissions"
                         :key="perm"
-                        class="rounded-lg border p-3"
+                        class="p-3"
                     >
-                        <div class="text-foreground text-sm font-medium">
-                            {{
-                                getPermissionDetails(perm)?.display_name || perm
-                            }}
-                        </div>
-                        <p class="text-muted-foreground mt-1 text-xs">
+                        <p class="text-sm font-medium">
+                            {{ permissionLabel(perm) }}
+                        </p>
+                        <p
+                            class="text-muted-foreground mt-0.5 line-clamp-2 text-xs"
+                            :title="getPermissionDetails(perm)?.description"
+                        >
                             {{ getPermissionDetails(perm)?.description }}
                         </p>
-                        <code
-                            class="text-muted-foreground mt-2 block font-mono text-[11px]"
-                        >
-                            {{ perm }}
-                        </code>
                     </div>
                 </div>
-                <div
-                    v-else
-                    class="text-muted-foreground py-6 text-center text-sm"
-                >
-                    No granular permissions currently assigned. Operating with
-                    baseline Administrator access.
-                </div>
+                <p v-else class="text-muted-foreground text-sm">
+                    Basic admin access only. No extra permissions.
+                </p>
             </CardContent>
         </Card>
 
-        <DirectoryPanel
-            title="Permission change history"
-            :description="`${history.total} append-only record${history.total === 1 ? '' : 's'} for this administrator.`"
-            :search-value="historyFilterForm.search"
-            search-placeholder="Search permission or actor"
-            :filters-open="historyFiltersOpen"
-            :active-filter-count="activeHistoryFilterCount"
-            @update:search-value="historyFilterForm.search = $event"
-            @submit-search="applyHistoryFilters"
-            @toggle-filters="historyFiltersOpen = !historyFiltersOpen"
-            @reset-filters="resetHistoryFilters"
-        >
-            <template #filters
-                ><div class="w-fit space-y-1.5">
-                    <Label for="history-action" class="text-xs">Action</Label
-                    ><Select
+        <!-- History -->
+        <Card>
+            <CardHeader class="space-y-4">
+                <div>
+                    <CardTitle>Change history</CardTitle>
+                    <CardDescription
+                        >{{ history.total }} change{{
+                            history.total === 1 ? '' : 's'
+                        }}</CardDescription
+                    >
+                </div>
+                <form
+                    class="flex flex-row flex-wrap gap-3"
+                    aria-label="History filters"
+                    @submit.prevent="applyHistoryFilters"
+                >
+                    <div class="relative w-full sm:w-72">
+                        <Search
+                            class="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2"
+                        />
+                        <Input
+                            v-model="historyFilterForm.search"
+                            class="pl-10"
+                            placeholder="Search permission or person"
+                            aria-label="Search history"
+                        />
+                    </div>
+                    <Select
                         v-model="historyFilterForm.action"
                         @update:model-value="applyHistoryFilters"
-                        ><SelectTrigger id="history-action"
-                            ><SelectValue
-                                placeholder="All actions" /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem value="all">All actions</SelectItem
-                            ><SelectItem value="grant">Grant</SelectItem
-                            ><SelectItem value="revoke"
-                                >Revoke</SelectItem
-                            ></SelectContent
-                        ></Select
                     >
-                </div></template
-            >
-            <template #filter-summary
-                ><p class="text-muted-foreground text-xs">
-                    {{ history.total }} record{{
-                        history.total === 1 ? '' : 's'
-                    }}
-                    match the current filters.
-                </p></template
-            >
-            <div
-                v-if="history.data.length === 0"
-                class="text-muted-foreground py-10 text-center text-sm"
-            >
-                No permission change history matches this view.
-            </div>
-            <div v-else class="space-y-3">
-                <DirectoryRow v-for="entry in history.data" :key="entry.id"
-                    ><div
-                        class="hidden items-center gap-5 md:grid md:grid-cols-[minmax(10rem,1fr)_minmax(7rem,.55fr)_minmax(14rem,1.2fr)_minmax(9rem,.75fr)_minmax(12rem,1fr)_minmax(5rem,.4fr)]"
+                        <SelectTrigger
+                            id="history-action"
+                            class="w-fit"
+                            aria-label="Type of change"
+                            ><SelectValue placeholder="All changes"
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All changes</SelectItem>
+                            <SelectItem value="grant">Given</SelectItem>
+                            <SelectItem value="revoke">Removed</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </form>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <EmptyState
+                    v-if="history.data.length === 0"
+                    :icon="History"
+                    title="No changes found"
+                    description="Changes to this admin's permissions will show here."
+                />
+                <ul v-else class="divide-border divide-y">
+                    <li
+                        v-for="entry in history.data"
+                        :key="entry.id"
+                        class="flex flex-wrap items-start justify-between gap-3 py-3"
                     >
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Timestamp
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">
+                                {{ permissionLabel(entry.permission_code) }}
                             </p>
-                            <p class="mt-1 text-sm">
-                                {{
-                                    entry.created_at
-                                        ? new Date(
-                                              entry.created_at,
-                                          ).toLocaleString()
-                                        : '—'
-                                }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Action
-                            </p>
-                            <Badge
-                                :variant="
-                                    entry.action === 'grant'
-                                        ? 'default'
-                                        : 'destructive'
-                                "
-                                class="mt-1 uppercase"
-                                >{{ entry.action }}</Badge
-                            >
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Permission
-                            </p>
-                            <p class="mt-1 font-mono text-sm">
-                                {{ entry.permission_code }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Actor
-                            </p>
-                            <p class="mt-1 text-sm">{{ entry.actor_name }}</p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Reason
+                            <p class="text-muted-foreground mt-0.5 text-xs">
+                                By {{ entry.actor_name }} ·
+                                {{ formatDate(entry.created_at) }}
                             </p>
                             <p
-                                class="mt-1 truncate text-sm"
-                                :title="entry.reason || ''"
+                                v-if="entry.reason"
+                                class="text-muted-foreground mt-1 text-xs break-words"
                             >
-                                {{ entry.reason || '—' }}
+                                “{{ entry.reason }}”
                             </p>
                         </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Version
-                            </p>
-                            <p class="mt-1 text-sm">
-                                v{{ entry.permission_version }}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="md:hidden">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="text-sm font-semibold">
-                                    {{ entry.permission_code }}
-                                </p>
-                                <p class="text-muted-foreground text-xs">
-                                    {{
-                                        entry.created_at
-                                            ? new Date(
-                                                  entry.created_at,
-                                              ).toLocaleString()
-                                            : '—'
-                                    }}
-                                </p>
-                            </div>
-                            <Badge
-                                :variant="
-                                    entry.action === 'grant'
-                                        ? 'default'
-                                        : 'destructive'
-                                "
-                                class="uppercase"
-                                >{{ entry.action }}</Badge
-                            >
-                        </div>
-                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Actor
-                                </p>
-                                <p class="mt-1">{{ entry.actor_name }}</p>
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Version
-                                </p>
-                                <p class="mt-1">
-                                    v{{ entry.permission_version }}
-                                </p>
-                            </div>
-                            <div class="col-span-2">
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Reason
-                                </p>
-                                <p class="mt-1">{{ entry.reason || '—' }}</p>
-                            </div>
-                        </div>
-                    </div></DirectoryRow
-                >
-            </div>
-            <template #footer
-                ><div
-                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                        <Badge
+                            :variant="
+                                entry.action === 'grant'
+                                    ? 'default'
+                                    : 'destructive'
+                            "
+                            >{{
+                                entry.action === 'grant' ? 'Given' : 'Removed'
+                            }}</Badge
+                        >
+                    </li>
+                </ul>
+                <div
+                    class="flex flex-col gap-4 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                     <div
                         class="text-muted-foreground flex items-center gap-2 text-sm"
                     >
-                        Display
+                        Show
                         <Select
                             v-model="historyFilterForm.per_page"
                             @update:model-value="applyHistoryFilters"
-                            ><SelectTrigger class="h-9 w-20"
+                            ><SelectTrigger
+                                class="h-9 w-20"
+                                aria-label="Rows per page"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem :value="10">10</SelectItem
@@ -927,86 +674,163 @@ const getPermissionDetails = (name: string) => {
                                 :href="history.next_page_url"
                                 preserve-state
                                 preserve-scroll
-                                ><Button size="sm">Next</Button></Link
-                            ><Button v-else size="sm" disabled>Next</Button>
+                                ><Button variant="outline" size="sm"
+                                    >Next</Button
+                                ></Link
+                            ><Button v-else variant="outline" size="sm" disabled
+                                >Next</Button
+                            >
                         </div>
                     </div>
-                </div></template
-            >
-        </DirectoryPanel>
+                </div>
+            </CardContent>
+        </Card>
 
-        <!-- Final Confirmation Modal Dialog -->
+        <MoreDetails>
+            <dl class="grid gap-4 text-sm sm:grid-cols-3">
+                <div>
+                    <dt class="text-muted-foreground text-xs">
+                        Permission version
+                    </dt>
+                    <dd class="mt-1">v{{ admin.permission_version }}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground text-xs">Added on</dt>
+                    <dd class="mt-1">{{ formatDate(admin.created_at) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground text-xs">
+                        Permissions in use
+                    </dt>
+                    <dd class="mt-1">
+                        {{ admin.effective_permissions.length }}
+                    </dd>
+                </div>
+            </dl>
+        </MoreDetails>
+
+        <!-- Save changes dialog -->
         <Dialog
             :open="isConfirmDialogOpen"
             @update:open="isConfirmDialogOpen = $event"
         >
             <DialogContent class="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Confirm Permission Update</DialogTitle>
-                    <DialogDescription>
-                        You are modifying access rights for
-                        <strong>{{ admin.name }}</strong
-                        >.
-                    </DialogDescription>
-                </DialogHeader>
+                <form class="space-y-5" @submit.prevent="confirmAndApply">
+                    <DialogHeader>
+                        <DialogTitle>Save permission changes</DialogTitle>
+                        <DialogDescription>
+                            For <strong>{{ admin.name }}</strong
+                            >.
+                        </DialogDescription>
+                    </DialogHeader>
 
-                <div class="space-y-4 py-3 text-xs">
-                    <div v-if="grants.length > 0" class="space-y-1">
-                        <span
-                            class="font-semibold text-emerald-600 dark:text-emerald-400"
-                            >Permissions to Grant:</span
-                        >
-                        <ul class="list-disc space-y-0.5 pl-4">
-                            <li v-for="g in grants" :key="g">
-                                {{ getPermissionDetails(g)?.display_name || g }}
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div v-if="revocations.length > 0" class="space-y-1">
-                        <span
-                            class="font-semibold text-rose-600 dark:text-rose-400"
-                            >Permissions to Revoke:</span
-                        >
-                        <ul class="list-disc space-y-0.5 pl-4">
-                            <li v-for="r in revocations" :key="r">
-                                {{ getPermissionDetails(r)?.display_name || r }}
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div class="space-y-1 border-t pt-2">
-                        <span class="font-semibold">Recorded Reason:</span>
-                        <p class="text-muted-foreground italic">{{ reason }}</p>
+                    <div class="space-y-3 text-sm">
+                        <div v-if="grants.length > 0">
+                            <p
+                                class="font-medium text-emerald-600 dark:text-emerald-400"
+                            >
+                                Adding
+                            </p>
+                            <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                                <li v-for="g in grants" :key="g">
+                                    {{ permissionLabel(g) }}
+                                </li>
+                            </ul>
+                        </div>
+                        <div v-if="revocations.length > 0">
+                            <p
+                                class="font-medium text-rose-600 dark:text-rose-400"
+                            >
+                                Removing
+                            </p>
+                            <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                                <li v-for="r in revocations" :key="r">
+                                    {{ permissionLabel(r) }}
+                                </li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div
-                        class="bg-muted text-muted-foreground rounded p-2 text-[11px]"
+                        v-if="touchesAdminManagement"
+                        role="alert"
+                        class="border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-2 rounded-lg border p-3 text-xs"
                     >
-                        Target current version:
-                        <code>v{{ admin.permission_version }}</code> &rarr;
-                        resulting version:
-                        <code>v{{ admin.permission_version + 1 }}</code
-                        >.
+                        <AlertTriangle class="size-4 shrink-0" />
+                        <p>
+                            This changes who can manage admins and security.
+                            Make sure it is approved.
+                        </p>
                     </div>
-                </div>
 
-                <DialogFooter class="gap-2 sm:gap-0">
-                    <Button
-                        variant="outline"
-                        :disabled="isSubmitting"
-                        @click="isConfirmDialogOpen = false"
+                    <div class="grid gap-2">
+                        <Label for="reason">Reason</Label>
+                        <Input
+                            id="reason"
+                            v-model="reason"
+                            placeholder="Why are you making this change?"
+                            maxlength="500"
+                            :class="
+                                v$.reason.$error ? 'border-destructive' : ''
+                            "
+                        />
+                        <div
+                            class="text-muted-foreground flex justify-between text-xs"
+                        >
+                            <InputError
+                                v-if="v$.reason.$error"
+                                message="Please add a reason."
+                            />
+                            <span class="ml-auto">{{ reason.length }}/500</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-2">
+                        <Checkbox
+                            id="confirm_checkbox"
+                            :model-value="isConfirmed"
+                            @update:model-value="
+                                (val) => (isConfirmed = val === true)
+                            "
+                        />
+                        <div class="space-y-1">
+                            <Label
+                                for="confirm_checkbox"
+                                class="cursor-pointer text-sm font-normal"
+                            >
+                                I have checked these changes.
+                            </Label>
+                            <InputError
+                                v-if="v$.isConfirmed.$error"
+                                message="Tick this box to continue."
+                            />
+                        </div>
+                    </div>
+
+                    <div
+                        v-if="saveErrors.length"
+                        role="alert"
+                        class="text-destructive space-y-1 text-xs"
                     >
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="default"
-                        :disabled="isSubmitting"
-                        @click="applyChanges"
-                    >
-                        Confirm &amp; Apply
-                    </Button>
-                </DialogFooter>
+                        <p v-for="error in saveErrors" :key="error">
+                            {{ error }}
+                        </p>
+                    </div>
+
+                    <DialogFooter class="gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            :disabled="isSubmitting"
+                            @click="isConfirmDialogOpen = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" :disabled="isSubmitting">
+                            Save changes
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     </div>

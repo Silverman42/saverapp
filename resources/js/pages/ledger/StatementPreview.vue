@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { FileText, ReceiptText } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
 import {
@@ -10,8 +15,11 @@ import {
 import { show as showArtifact } from '@/routes/financial-artifacts';
 import { show as showTransaction } from '@/routes/transactions';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -87,6 +95,19 @@ function issue(): void {
 }
 const from = ref(props.from);
 const to = ref(props.to);
+const issueOpen = ref(false);
+const replaceableStatements = computed(() =>
+    props.issued_statements.filter(
+        (statement) => statement.status === 'ready' && !statement.superseded,
+    ),
+);
+function optionalMoney(kobo: number | null | undefined): string {
+    return kobo == null ? 'Not available' : money(kobo);
+}
+function typeLabel(value: string): string {
+    const words = value.replaceAll('_', ' ');
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 function refresh(): void {
     router.get(
@@ -110,218 +131,331 @@ function money(kobo: number): string {
 <template>
     <Head :title="`Statement preview · ${customer.name}`" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Statement preview
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This shows posted savings activity for {{ customer.name }}. This
-                preview is not an issued statement.
-            </p>
-        </div>
+        <PageHeader
+            title="Statement"
+            :description="`Savings activity for ${customer.name}.`"
+        >
+            <template v-if="preview.status === 'ready'" #actions>
+                <Button @click="issueOpen = true"
+                    ><FileText class="size-4" />Create PDF</Button
+                >
+            </template>
+        </PageHeader>
+
         <form
             class="flex flex-row flex-wrap items-end gap-4"
+            aria-label="Statement period"
             @submit.prevent="refresh"
         >
-            <DatePicker id="statement-from" v-model="from" class="w-fit" />
-            <DatePicker id="statement-to" v-model="to" class="w-fit" />
-            <Button type="submit">Preview period</Button>
+            <div class="grid w-fit gap-2">
+                <Label for="statement-from">From</Label>
+                <DatePicker
+                    id="statement-from"
+                    v-model="from"
+                    aria-label="From"
+                    class="w-fit"
+                />
+            </div>
+            <div class="grid w-fit gap-2">
+                <Label for="statement-to">To</Label>
+                <DatePicker
+                    id="statement-to"
+                    v-model="to"
+                    aria-label="To"
+                    class="w-fit"
+                />
+            </div>
+            <Button type="submit" variant="outline">Show</Button>
         </form>
+
+        <EmptyState
+            v-if="preview.status === 'unavailable'"
+            :icon="ReceiptText"
+            title="Statement not available right now"
+            :description="
+                preview.message ??
+                'We are still checking the records. Please try again soon.'
+            "
+        />
+        <template v-else>
+            <Card>
+                <CardHeader>
+                    <CardTitle
+                        >{{ preview.from }} to {{ preview.to }}</CardTitle
+                    >
+                </CardHeader>
+                <CardContent class="space-y-5">
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <div class="bg-muted/40 rounded-xl p-4">
+                            <p class="text-muted-foreground text-sm">
+                                Starting balance
+                            </p>
+                            <p class="mt-1 text-xl font-semibold">
+                                {{ money(preview.opening_kobo ?? 0) }}
+                            </p>
+                        </div>
+                        <div class="bg-muted/40 rounded-xl p-4">
+                            <p class="text-muted-foreground text-sm">
+                                Change in period
+                            </p>
+                            <p class="mt-1 text-xl font-semibold">
+                                {{ money(preview.activity_kobo ?? 0) }}
+                            </p>
+                        </div>
+                        <div class="bg-muted/40 rounded-xl p-4">
+                            <p class="text-muted-foreground text-sm">
+                                Ending balance
+                            </p>
+                            <p class="mt-1 text-xl font-semibold">
+                                {{ money(preview.closing_kobo ?? 0) }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="text-sm font-medium">Right now</h3>
+                        <dl class="grid gap-4 text-sm sm:grid-cols-3">
+                            <div>
+                                <dt class="text-muted-foreground">Available</dt>
+                                <dd class="font-medium">
+                                    {{
+                                        optionalMoney(
+                                            preview.current_available_kobo,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    Set aside for withdrawals
+                                </dt>
+                                <dd class="font-medium">
+                                    {{
+                                        optionalMoney(
+                                            preview.current_reserved_kobo,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    Unpaid fees
+                                </dt>
+                                <dd class="font-medium">
+                                    {{
+                                        optionalMoney(preview.unpaid_fees_kobo)
+                                    }}
+                                    <span
+                                        class="text-muted-foreground block text-xs font-normal"
+                                        >Not taken from savings</span
+                                    >
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <MoreDetails
+                        v-if="preview.type_totals?.length"
+                        label="Totals by type"
+                    >
+                        <table class="w-full text-left text-sm">
+                            <thead class="text-muted-foreground text-xs">
+                                <tr>
+                                    <th scope="col" class="py-2 font-medium">
+                                        Type
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        class="py-2 text-right font-medium"
+                                    >
+                                        Count
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        class="py-2 text-right font-medium"
+                                    >
+                                        Savings
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        class="py-2 text-right font-medium"
+                                    >
+                                        Fees
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <tr
+                                    v-for="total in preview.type_totals"
+                                    :key="total.type"
+                                >
+                                    <td class="py-2">
+                                        {{ typeLabel(total.type) }}
+                                    </td>
+                                    <td class="py-2 text-right">
+                                        {{ total.count }}
+                                    </td>
+                                    <td class="py-2 text-right">
+                                        {{ money(total.savings_effect_kobo) }}
+                                    </td>
+                                    <td class="py-2 text-right">
+                                        {{ money(total.fee_amount_kobo) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </MoreDetails>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle>Activity</CardTitle></CardHeader>
+                <CardContent class="space-y-4">
+                    <p
+                        v-if="!preview.lines?.length"
+                        class="text-muted-foreground text-sm"
+                    >
+                        No savings activity in this period.
+                    </p>
+                    <ul v-else class="divide-y">
+                        <li
+                            v-for="line in preview.lines"
+                            :key="line.reference"
+                            class="flex flex-wrap items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                        >
+                            <div class="grid gap-0.5 text-sm">
+                                <span class="font-medium">{{
+                                    typeLabel(line.type)
+                                }}</span>
+                                <span class="text-muted-foreground text-xs"
+                                    >{{ line.occurred_on }} ·
+                                    <Link
+                                        :href="showTransaction(line.reference)"
+                                        class="underline underline-offset-4"
+                                        >{{ line.reference }}</Link
+                                    ></span
+                                >
+                            </div>
+                            <span class="text-sm font-medium">{{
+                                money(line.savings_effect_kobo)
+                            }}</span>
+                        </li>
+                    </ul>
+                    <MoreDetails label="About this statement">
+                        <p class="text-muted-foreground text-xs">
+                            This is a preview, not an official statement. Dates
+                            use {{ preview.timezone }}. Includes records up to
+                            {{ preview.cutoff_at }} (position
+                            {{ preview.ledger_watermark }}).
+                        </p>
+                    </MoreDetails>
+                </CardContent>
+            </Card>
+        </template>
+
+        <Card v-if="issued_statements.length">
+            <CardHeader><CardTitle>Past statements</CardTitle></CardHeader>
+            <CardContent>
+                <ul class="divide-y">
+                    <li
+                        v-for="statement in issued_statements"
+                        :key="statement.artifact_reference"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    >
+                        <div class="grid gap-0.5 text-sm">
+                            <Link
+                                :href="
+                                    showArtifact(statement.artifact_reference)
+                                "
+                                class="font-medium underline-offset-4 hover:underline"
+                                >{{ statement.artifact_reference }}</Link
+                            >
+                            <span
+                                v-if="statement.issued_at"
+                                class="text-muted-foreground text-xs"
+                                >{{ statement.issued_at }}</span
+                            >
+                        </div>
+                        <Badge variant="secondary" class="capitalize">{{
+                            statement.superseded ? 'Replaced' : statement.status
+                        }}</Badge>
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+
+        <Link
+            :href="showCustomer(customer.id)"
+            class="text-primary w-fit text-sm underline underline-offset-4"
+            >Back to customer</Link
+        >
+    </div>
+
+    <FormSheet
+        v-if="preview.status === 'ready'"
+        v-model:open="issueOpen"
+        title="Create PDF statement"
+        :description="`For ${preview.from} to ${preview.to}.`"
+    >
         <form
-            v-if="preview.status === 'ready'"
-            class="flex flex-wrap items-center gap-4"
+            id="issue-statement-form"
+            class="grid gap-5"
             @submit.prevent="issue"
         >
-            <label
-                v-if="
-                    issued_statements.some(
-                        (statement) =>
-                            statement.status === 'ready' &&
-                            !statement.superseded,
-                    )
-                "
-                class="grid gap-1 text-sm"
-                >Supersede an issued statement for this period
+            <div v-if="replaceableStatements.length" class="grid gap-2">
+                <Label for="statement-supersedes"
+                    >Replace an earlier PDF?</Label
+                >
                 <Select
                     :model-value="issuance.supersedes_reference || '__new'"
                     @update:model-value="
                         issuance.supersedes_reference =
                             $event === '__new' ? '' : String($event ?? '')
                     "
-                    ><SelectTrigger class="h-11 w-fit"
+                    ><SelectTrigger id="statement-supersedes" class="w-full"
                         ><SelectValue /></SelectTrigger
                     ><SelectContent
                         ><SelectItem value="__new"
-                            >Issue a new statement</SelectItem
+                            >No, create a new one</SelectItem
                         ><SelectItem
-                            v-for="statement in issued_statements.filter(
-                                (statement) =>
-                                    statement.status === 'ready' &&
-                                    !statement.superseded,
-                            )"
+                            v-for="statement in replaceableStatements"
                             :key="statement.artifact_reference"
                             :value="statement.artifact_reference"
                             >{{ statement.artifact_reference }}</SelectItem
                         ></SelectContent
                     ></Select
                 >
-            </label>
-            <label class="flex gap-3 text-sm"
-                ><input v-model="issuance.confirmed" type="checkbox" />I confirm
-                issuance of this period's statement at the verified
-                cutoff.</label
-            >
-            <Button :disabled="issuance.processing || !issuance.confirmed"
-                >Issue PDF statement</Button
-            >
+            </div>
+            <div class="bg-muted/40 flex items-start gap-3 rounded-xl p-4">
+                <Checkbox
+                    id="statement-confirmed"
+                    v-model="issuance.confirmed"
+                />
+                <Label for="statement-confirmed" class="leading-5"
+                    >Create the official statement for this period</Label
+                >
+            </div>
             <p
                 v-for="(error, key) in issuance.errors"
                 :key="key"
+                role="alert"
                 class="text-destructive text-sm"
             >
                 {{ error }}
             </p>
         </form>
-        <div v-if="issued_statements.length" class="grid gap-2">
-            <p class="font-medium">Statement history</p>
-            <Link
-                v-for="statement in issued_statements"
-                :key="statement.artifact_reference"
-                :href="showArtifact(statement.artifact_reference)"
-                class="text-primary text-sm underline"
-                >{{ statement.artifact_reference }} ·
-                {{
-                    statement.superseded ? 'superseded' : statement.status
-                }}</Link
+        <template #footer>
+            <Button
+                type="button"
+                variant="outline"
+                :disabled="issuance.processing"
+                @click="issueOpen = false"
+                >Cancel</Button
             >
-        </div>
-        <Card v-if="preview.status === 'unavailable'">
-            <CardContent class="pt-6">
-                <p class="font-medium">Statement preview unavailable</p>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    {{
-                        preview.message ??
-                        'Verify the ledger. Then the statement totals show.'
-                    }}
-                </p>
-            </CardContent>
-        </Card>
-        <template v-else>
-            <p class="text-muted-foreground text-sm">
-                {{ preview.from }} through {{ preview.to }} ·
-                {{ preview.timezone }} · ledger cutoff {{ preview.cutoff_at }}
-            </p>
-            <Card>
-                <CardContent class="grid gap-4 pt-6 text-sm sm:grid-cols-3">
-                    <div>
-                        <p class="text-muted-foreground">Opening savings</p>
-                        <p class="font-medium">
-                            {{ money(preview.opening_kobo ?? 0) }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground">Net period activity</p>
-                        <p class="font-medium">
-                            {{ money(preview.activity_kobo ?? 0) }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground">Closing savings</p>
-                        <p class="font-medium">
-                            {{ money(preview.closing_kobo ?? 0) }}
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardContent class="grid gap-4 pt-6 text-sm sm:grid-cols-3">
-                    <div>
-                        <p class="text-muted-foreground">
-                            Current live withdrawal reservations
-                        </p>
-                        <p>
-                            {{
-                                preview.current_reserved_kobo == null
-                                    ? 'Unavailable'
-                                    : money(preview.current_reserved_kobo)
-                            }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground">
-                            Current available savings
-                        </p>
-                        <p>
-                            {{
-                                preview.current_available_kobo == null
-                                    ? 'Unavailable'
-                                    : money(preview.current_available_kobo)
-                            }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-muted-foreground">
-                            Unpaid fees (separate from savings)
-                        </p>
-                        <p>
-                            {{
-                                preview.unpaid_fees_kobo == null
-                                    ? 'Unavailable'
-                                    : money(preview.unpaid_fees_kobo)
-                            }}
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-            <Card v-if="preview.type_totals?.length">
-                <CardContent class="grid gap-2 pt-6 text-sm">
-                    <p class="font-medium">Activity by type</p>
-                    <p v-for="total in preview.type_totals" :key="total.type">
-                        {{ total.type.replaceAll('_', ' ') }} ·
-                        {{ total.count }} · savings effect
-                        {{ money(total.savings_effect_kobo) }} · fees
-                        {{ money(total.fee_amount_kobo) }}
-                    </p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardContent class="pt-6">
-                    <p
-                        v-if="!preview.lines?.length"
-                        class="text-muted-foreground text-sm"
-                    >
-                        No posted savings activity in this period.
-                    </p>
-                    <ul v-else class="divide-y">
-                        <li
-                            v-for="line in preview.lines"
-                            :key="line.reference"
-                            class="flex flex-wrap items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
-                        >
-                            <div class="grid gap-1 text-sm">
-                                <Link
-                                    :href="showTransaction(line.reference)"
-                                    class="font-medium underline"
-                                    >{{ line.reference }}</Link
-                                >
-                                <span class="text-muted-foreground"
-                                    >{{ line.type }} · occurred
-                                    {{ line.occurred_on }} · posted
-                                    {{ line.committed_at }} UTC</span
-                                >
-                            </div>
-                            <span class="text-sm">{{
-                                money(line.savings_effect_kobo)
-                            }}</span>
-                        </li>
-                    </ul>
-                </CardContent>
-            </Card>
+            <Button
+                type="submit"
+                form="issue-statement-form"
+                :disabled="issuance.processing || !issuance.confirmed"
+                >Create PDF</Button
+            >
         </template>
-        <Link
-            :href="showCustomer(customer.id)"
-            class="text-primary w-fit text-sm underline"
-            >Back to Customer</Link
-        >
-    </div>
+    </FormSheet>
 </template>

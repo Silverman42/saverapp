@@ -10,6 +10,11 @@ import {
 } from '@lucide/vue';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import InviteAdminForm from '@/components/InviteAdminForm.vue';
+import type { GrantablePermission } from '@/components/InviteAdminForm.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -46,10 +51,16 @@ type PaginatedAdmins = {
     prev_page_url: string | null;
 };
 type Filters = { search: string; account_state: string; per_page: number };
+type InviteFormData = {
+    attempt_reference: string;
+    permissions: GrantablePermission[];
+};
 
 const props = defineProps<{
     admins: PaginatedAdmins;
     canManage: boolean;
+    isFresh?: boolean;
+    inviteForm?: InviteFormData | null;
     filters: Filters;
 }>();
 
@@ -57,7 +68,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
-            { title: 'Admin access', href: adminAccessIndex() },
+            { title: 'Admin team', href: adminAccessIndex() },
         ],
     },
 });
@@ -98,33 +109,61 @@ const getBadgeVariant = (
         : ['suspended', 'deactivated'].includes(state)
           ? 'destructive'
           : 'secondary';
+const stateLabels: Record<string, string> = {
+    active: 'Active',
+    invited: 'Invited',
+    mfa_setup: 'Setting up',
+    suspended: 'Suspended',
+    deactivated: 'Deactivated',
+};
+const stateLabel = (state: string): string =>
+    stateLabels[state] ?? state.replaceAll('_', ' ');
+
+const inviteOpen = ref(false);
+const inviteLoading = ref(false);
+const openInvite = (): void => {
+    inviteOpen.value = true;
+    if (props.inviteForm) {
+        return;
+    }
+    router.reload({
+        only: ['inviteForm'],
+        onStart: () => {
+            inviteLoading.value = true;
+        },
+        onFinish: () => {
+            inviteLoading.value = false;
+        },
+    });
+};
 </script>
 
 <template>
-    <Head title="Administrator Access" />
+    <Head title="Admin team" />
     <div class="space-y-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Administrator Access
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    View all system administrators and their current
-                    responsibilities.
-                </p>
-            </div>
-            <Link v-if="canManage" :href="invitationsCreate()">
-                <Button>
-                    <MailPlus class="mr-2 size-4" />
-                    Invite Administrator
+        <PageHeader
+            title="Admin team"
+            description="See who has admin access and what they can do."
+        >
+            <template v-if="canManage" #actions>
+                <Button v-if="isFresh" @click="openInvite">
+                    <MailPlus class="size-4" />
+                    Invite admin
                 </Button>
-            </Link>
-        </div>
+                <Button v-else as-child>
+                    <Link :href="invitationsCreate()">
+                        <MailPlus class="size-4" />
+                        Invite admin
+                    </Link>
+                </Button>
+            </template>
+        </PageHeader>
+
         <DirectoryPanel
-            title="Administrators"
-            :description="`${admins.total} administrator${admins.total === 1 ? '' : 's'} matching the current directory view.`"
+            title="Admins"
+            :description="`${admins.total} admin${admins.total === 1 ? '' : 's'}`"
             :search-value="filterForm.search"
-            search-placeholder="Search administrators"
+            search-placeholder="Search by name or email"
             :filters-open="filtersOpen"
             :active-filter-count="activeFilterCount"
             @update:search-value="filterForm.search = $event"
@@ -135,18 +174,19 @@ const getBadgeVariant = (
             <template #filters
                 ><div class="w-fit space-y-1.5">
                     <Label for="admin-account-state" class="text-xs"
-                        >Account state</Label
+                        >Status</Label
                     ><Select
                         v-model="filterForm.account_state"
                         @update:model-value="applyFilters"
                         ><SelectTrigger id="admin-account-state"
                             ><SelectValue
-                                placeholder="All account states" /></SelectTrigger
+                                placeholder="All statuses" /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="all">All states</SelectItem
+                            ><SelectItem value="all">All statuses</SelectItem
                             ><SelectItem value="active">Active</SelectItem
                             ><SelectItem value="invited">Invited</SelectItem
-                            ><SelectItem value="mfa_setup">MFA setup</SelectItem
+                            ><SelectItem value="mfa_setup"
+                                >Setting up</SelectItem
                             ><SelectItem value="suspended">Suspended</SelectItem
                             ><SelectItem value="deactivated"
                                 >Deactivated</SelectItem
@@ -157,38 +197,26 @@ const getBadgeVariant = (
             >
             <template #filter-summary
                 ><p class="text-muted-foreground text-xs">
-                    {{ admins.total }} administrator{{
-                        admins.total === 1 ? '' : 's'
-                    }}
-                    match the current filters.
+                    {{ admins.total }} found
                 </p></template
             >
-            <div v-if="admins.data.length === 0" class="py-14 text-center">
-                <div
-                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
-                >
-                    <UsersRound class="size-5" />
-                </div>
-                <h3 class="mt-4 text-sm font-semibold">
-                    No administrators found
-                </h3>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    Adjust the search or filters to find an administrator.
-                </p>
-            </div>
+            <EmptyState
+                v-if="admins.data.length === 0"
+                :icon="UsersRound"
+                title="No admins found"
+                description="Try a different search or clear the filters."
+            />
             <div v-else class="space-y-3">
-                <DirectoryRow v-for="admin in admins.data" :key="admin.id"
-                    ><div
-                        class="hidden items-center gap-5 lg:grid lg:grid-cols-[minmax(15rem,1.5fr)_minmax(8rem,.7fr)_minmax(6rem,.55fr)_minmax(16rem,1.3fr)_auto]"
-                    >
-                        <div class="flex min-w-0 items-center gap-3">
+                <DirectoryRow v-for="admin in admins.data" :key="admin.id">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex min-w-0 flex-1 items-center gap-3">
                             <span
-                                class="bg-accent text-accent-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
+                                class="bg-accent text-accent-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
                                 ><UserIcon class="size-4"
                             /></span>
                             <div class="min-w-0">
                                 <div class="flex items-center gap-2">
-                                    <p class="truncate text-sm font-semibold">
+                                    <p class="truncate text-sm font-medium">
                                         {{ admin.name }}
                                     </p>
                                     <Badge
@@ -203,112 +231,27 @@ const getBadgeVariant = (
                                 >
                                     {{ admin.email }}
                                 </p>
+                                <p
+                                    class="text-muted-foreground mt-0.5 truncate text-xs"
+                                >
+                                    {{
+                                        admin.summary.join(', ') ||
+                                        'Basic access'
+                                    }}
+                                </p>
                             </div>
                         </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Status
-                            </p>
-                            <Badge
-                                :variant="getBadgeVariant(admin.account_state)"
-                                class="mt-1 capitalize"
-                                >{{
-                                    admin.account_state.replace('_', ' ')
-                                }}</Badge
-                            >
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Version
-                            </p>
-                            <p class="mt-1 text-sm">
-                                v{{ admin.permission_version }}
-                            </p>
-                        </div>
-                        <div>
-                            <p
-                                class="text-muted-foreground text-[11px] font-medium uppercase"
-                            >
-                                Responsibilities
-                            </p>
-                            <p class="mt-1 truncate text-sm">
-                                {{ admin.summary.join(', ') || 'None' }}
-                            </p>
-                        </div>
-                        <Link :href="adminAccessShow(admin.id).url"
-                            ><Button variant="outline" size="sm"
-                                >{{ admin.can_manage ? 'Manage' : 'View' }}
-                                <ChevronRight class="size-3.5" /></Button
-                        ></Link>
-                    </div>
-                    <div class="lg:hidden">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="flex min-w-0 items-center gap-3">
-                                <span
-                                    class="bg-accent text-accent-foreground flex size-11 shrink-0 items-center justify-center rounded-full"
-                                    ><UserIcon class="size-4"
-                                /></span>
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold">
-                                        {{ admin.name }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground truncate text-xs"
-                                    >
-                                        {{ admin.email }}
-                                    </p>
-                                </div>
-                            </div>
+                        <Badge :variant="getBadgeVariant(admin.account_state)">
+                            {{ stateLabel(admin.account_state) }}
+                        </Badge>
+                        <Button variant="outline" size="sm" as-child>
                             <Link :href="adminAccessShow(admin.id).url"
-                                ><Button variant="outline" size="sm">{{
-                                    admin.can_manage ? 'Manage' : 'View'
-                                }}</Button></Link
-                            >
-                        </div>
-                        <div class="mt-4 grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Status
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getBadgeVariant(admin.account_state)
-                                    "
-                                    class="mt-1 capitalize"
-                                    >{{
-                                        admin.account_state.replace('_', ' ')
-                                    }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Version
-                                </p>
-                                <p class="mt-1">
-                                    v{{ admin.permission_version }}
-                                </p>
-                            </div>
-                            <div class="col-span-2">
-                                <p
-                                    class="text-muted-foreground text-[10px] font-medium uppercase"
-                                >
-                                    Responsibilities
-                                </p>
-                                <p class="mt-1">
-                                    {{ admin.summary.join(', ') || 'None' }}
-                                </p>
-                            </div>
-                        </div>
-                    </div></DirectoryRow
-                >
+                                >{{ admin.can_manage ? 'Manage' : 'View' }}
+                                <ChevronRight class="size-3.5"
+                            /></Link>
+                        </Button>
+                    </div>
+                </DirectoryRow>
             </div>
             <template #footer
                 ><div
@@ -317,11 +260,13 @@ const getBadgeVariant = (
                     <div
                         class="text-muted-foreground flex items-center gap-2 text-sm"
                     >
-                        Display
+                        Show
                         <Select
                             v-model="filterForm.per_page"
                             @update:model-value="applyFilters"
-                            ><SelectTrigger class="h-9 w-20"
+                            ><SelectTrigger
+                                class="h-9 w-20"
+                                aria-label="Rows per page"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem :value="15">15</SelectItem
@@ -356,14 +301,39 @@ const getBadgeVariant = (
                                 :href="admins.next_page_url"
                                 preserve-state
                                 preserve-scroll
-                                ><Button size="sm"
+                                ><Button variant="outline" size="sm"
                                     >Next <ChevronRight /></Button></Link
-                            ><Button v-else size="sm" disabled
+                            ><Button v-else variant="outline" size="sm" disabled
                                 >Next <ChevronRight
                             /></Button>
                         </div>
                     </div></div
             ></template>
         </DirectoryPanel>
+
+        <FormSheet
+            v-if="canManage && isFresh"
+            v-model:open="inviteOpen"
+            title="Invite admin"
+            description="They set their own password and sign-in code."
+        >
+            <div
+                v-if="inviteLoading || !inviteForm"
+                class="space-y-3"
+                aria-label="Loading invite form"
+            >
+                <div
+                    v-for="n in 4"
+                    :key="n"
+                    class="bg-muted h-10 animate-pulse rounded-lg motion-reduce:animate-none"
+                />
+            </div>
+            <InviteAdminForm
+                v-else
+                :key="inviteForm.attempt_reference"
+                :attempt-reference="inviteForm.attempt_reference"
+                :permissions="inviteForm.permissions"
+            />
+        </FormSheet>
     </div>
 </template>

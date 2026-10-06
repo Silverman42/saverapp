@@ -25,10 +25,10 @@ const asOf = computed(() =>
                 <dd class="font-medium">{{ metric.display }}</dd>
             </div>
         </dl>
-        <p v-else class="font-medium">Unavailable</p>
+        <p v-else class="font-medium">Not available</p>
         <p class="text-muted-foreground">{{ summary.message }}</p>
         <p v-if="asOf" class="text-muted-foreground text-xs">
-            As of {{ asOf }} UTC
+            Updated {{ asOf }} UTC
         </p>
     </div>
 </template>

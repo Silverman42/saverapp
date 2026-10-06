@@ -27,7 +27,7 @@ class AdminAccessController extends Controller
     /**
      * Display the Admin access directory.
      */
-    public function index(Request $request, AuthorizationService $authService): Response
+    public function index(Request $request, AuthorizationService $authService, FreshAuthenticationService $freshService): Response
     {
         $currentAdmin = $request->user();
         $canManageAdmins = $currentAdmin ? $authService->allows($currentAdmin, AdminPermission::AdminsManage) : false;
@@ -88,6 +88,8 @@ class AdminAccessController extends Controller
         return Inertia::render('admin/access/Index', [
             'admins' => $admins,
             'canManage' => $canManageAdmins,
+            'isFresh' => $canManageAdmins && $currentAdmin !== null && $freshService->isFresh($currentAdmin, $request),
+            'inviteForm' => Inertia::optional(fn (): ?array => $canManageAdmins ? AdminInvitationController::formProps() : null),
             'filters' => [
                 'search' => $search,
                 'account_state' => $accountState,

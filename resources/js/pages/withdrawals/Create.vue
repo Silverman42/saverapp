@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import FeeQuoteSummary from '@/components/FeeQuoteSummary.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import type { FeeDisclosure } from '@/types/fee-disclosure';
 import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -90,6 +100,7 @@ const previewHttp = useHttp({
     internal_notes: '',
 });
 const quote = ref<Quote | null>(null);
+const reviewOpen = ref(false);
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 watch(
@@ -135,6 +146,7 @@ async function review(): Promise<void> {
         form.assignment_version = result.assignment_version;
         form.plan_version = result.plan_version;
         form.business_version = result.business_version;
+        reviewOpen.value = true;
     } catch {
         quote.value = null;
     }
@@ -148,240 +160,341 @@ function submit(): void {
 <template>
     <Head title="Request withdrawal" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Request withdrawal
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Make a review request for {{ customer.name }} from one savings
-                cycle.
-            </p>
-        </div>
-        <Card v-if="methods.length === 0"
-            ><CardContent class="pt-6"
-                ><p class="text-sm">
-                    You cannot make requests now. A payout method must first
-                    have approved execution, destination, custody, and evidence
-                    controls.
-                </p></CardContent
-            ></Card
+        <PageHeader
+            title="Request withdrawal"
+            :description="`Ask for a withdrawal from ${customer.name}'s savings.`"
+        />
+        <p
+            v-if="methods.length === 0"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
         >
-        <Card v-else
-            ><CardHeader><CardTitle>Request terms</CardTitle></CardHeader
-            ><CardContent class="grid gap-4 sm:grid-cols-2">
-                <div class="grid gap-2">
-                    <Label for="withdrawal-plan">Source cycle</Label
-                    ><Select v-model="form.plan_id"
-                        ><SelectTrigger id="withdrawal-plan" class="h-11 w-full"
-                            ><SelectValue /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem
-                                v-for="plan in plans"
-                                :key="plan.id"
-                                :value="plan.id"
-                                >{{ plan.id }} · {{ plan.status }}</SelectItem
-                            >
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div class="grid gap-2">
-                    <Label for="withdrawal-type">Type</Label
-                    ><Select v-model="form.type"
-                        ><SelectTrigger id="withdrawal-type" class="h-11 w-full"
-                            ><SelectValue /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem value="partial">Partial</SelectItem
-                            ><SelectItem value="full"
-                                >Full cycle savings</SelectItem
-                            ><SelectItem value="end_of_cycle"
-                                >End of cycle</SelectItem
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div class="grid gap-2">
-                    <Label for="withdrawal-gross"
-                        >Gross savings debit (NGN)</Label
-                    ><Input
-                        id="withdrawal-gross"
-                        v-model="form.gross_ngn"
-                        inputmode="decimal"
-                        placeholder="1000.00"
-                    />
-                </div>
-                <div class="grid gap-2">
-                    <Label for="withdrawal-method">Method</Label
-                    ><Select v-model="form.method"
-                        ><SelectTrigger
-                            id="withdrawal-method"
-                            class="h-11 w-full"
-                            ><SelectValue /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem
-                                v-if="methods.includes('cash')"
-                                value="cash"
-                                >Cash</SelectItem
-                            ><SelectItem
-                                v-if="methods.includes('bank_transfer')"
-                                value="bank_transfer"
-                                >Bank transfer</SelectItem
-                            >
-                            ></SelectContent
-                        ></Select
-                    >
-                </div>
-                <div
-                    v-if="form.method === 'bank_transfer'"
-                    class="grid gap-2 sm:col-span-2"
+            You can't request withdrawals yet. No payout method is set up.
+        </p>
+        <Card v-else class="max-w-3xl">
+            <CardHeader><CardTitle>Withdrawal details</CardTitle></CardHeader>
+            <CardContent>
+                <form
+                    class="grid gap-5 sm:grid-cols-2"
+                    @submit.prevent="review"
                 >
-                    <Label for="withdrawal-destination"
-                        >Verified bank destination</Label
-                    >
-                    <Select
-                        v-if="bank_destinations.length > 0"
-                        v-model="form.destination_reference"
-                        ><SelectTrigger
-                            id="withdrawal-destination"
-                            class="h-11 w-full"
-                            ><SelectValue /></SelectTrigger
-                        ><SelectContent
-                            ><SelectItem
-                                v-for="destination in bank_destinations"
-                                :key="destination.reference"
-                                :value="destination.reference"
-                                >{{ destination.label }}</SelectItem
-                            >
-                            ></SelectContent
-                        ></Select
-                    >
-                    <p v-else class="text-sm">
-                        This Customer has no verified bank destination.
-                        <Link
-                            :href="payoutDestinations(customer.id)"
-                            class="text-primary underline"
-                            >Register one for review</Link
-                        >.
-                    </p>
-                </div>
-                <p v-else class="text-sm sm:col-span-2">
-                    The Customer gets the cash personally. The Customer then
-                    acknowledges the payment.
-                </p>
-                <div class="grid gap-2 sm:col-span-2">
-                    <Label for="withdrawal-reason"
-                        >Customer-visible reason</Label
-                    ><Input
-                        id="withdrawal-reason"
-                        v-model="form.reason"
-                        maxlength="500"
-                    />
-                </div>
-                <div class="grid gap-2 sm:col-span-2">
-                    <Label for="withdrawal-notes"
-                        >Internal notes (optional)</Label
-                    ><Input
-                        id="withdrawal-notes"
-                        v-model="form.internal_notes"
-                        maxlength="1000"
-                    />
-                </div>
-                <Button
-                    type="button"
-                    class="w-fit"
-                    :disabled="previewHttp.processing"
-                    @click="review"
-                    >Review request</Button
-                >
-                <p
-                    v-for="(error, key) in previewHttp.errors"
-                    :key="key"
-                    class="text-destructive text-sm"
-                >
-                    {{ error }}
-                </p>
-            </CardContent></Card
-        >
-        <Card v-if="quote"
-            ><CardHeader
-                ><CardTitle
-                    >Confirm gross debit and net payout</CardTitle
-                ></CardHeader
-            ><CardContent class="grid gap-4 text-sm"
-                ><div class="grid gap-3 sm:grid-cols-4">
-                    <p>
-                        Gross savings debit<br /><strong>{{
-                            money(quote.gross_kobo)
-                        }}</strong>
-                    </p>
-                    <p>
-                        Withdrawal deduction<br /><strong>{{
-                            money(quote.deduction_kobo)
-                        }}</strong
-                        ><span
-                            v-if="quote.deduction_description"
-                            class="text-muted-foreground block"
-                            >{{ quote.deduction_description }}</span
+                    <div class="grid gap-2">
+                        <Label for="withdrawal-plan">Savings plan</Label
+                        ><Select v-model="form.plan_id"
+                            ><SelectTrigger
+                                id="withdrawal-plan"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem
+                                    v-for="plan in plans"
+                                    :key="plan.id"
+                                    :value="plan.id"
+                                    >{{ plan.id }} ·
+                                    {{ plan.status }}</SelectItem
+                                ></SelectContent
+                            ></Select
                         >
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="withdrawal-type">Type</Label
+                        ><Select v-model="form.type"
+                            ><SelectTrigger
+                                id="withdrawal-type"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem value="partial"
+                                    >Part of the savings</SelectItem
+                                ><SelectItem value="full"
+                                    >All savings in this cycle</SelectItem
+                                ><SelectItem value="end_of_cycle"
+                                    >End of cycle</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="withdrawal-gross">Amount (NGN)</Label
+                        ><Input
+                            id="withdrawal-gross"
+                            v-model="form.gross_ngn"
+                            inputmode="decimal"
+                            placeholder="1000.00"
+                            aria-describedby="withdrawal-gross-help"
+                        />
+                        <p
+                            id="withdrawal-gross-help"
+                            class="text-muted-foreground text-xs"
+                        >
+                            Any fees come out of this amount.
+                        </p>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="withdrawal-method">Pay by</Label
+                        ><Select v-model="form.method"
+                            ><SelectTrigger
+                                id="withdrawal-method"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem
+                                    v-if="methods.includes('cash')"
+                                    value="cash"
+                                    >Cash</SelectItem
+                                ><SelectItem
+                                    v-if="methods.includes('bank_transfer')"
+                                    value="bank_transfer"
+                                    >Bank transfer</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                    </div>
+                    <div
+                        v-if="form.method === 'bank_transfer'"
+                        class="grid gap-2 sm:col-span-2"
+                    >
+                        <Label for="withdrawal-destination">Bank account</Label>
+                        <Select
+                            v-if="bank_destinations.length > 0"
+                            v-model="form.destination_reference"
+                            ><SelectTrigger
+                                id="withdrawal-destination"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem
+                                    v-for="destination in bank_destinations"
+                                    :key="destination.reference"
+                                    :value="destination.reference"
+                                    >{{ destination.label }}</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                        <p v-else class="text-sm">
+                            This customer has no checked bank account yet.
+                            <Link
+                                :href="payoutDestinations(customer.id)"
+                                class="text-primary underline"
+                                >Add one</Link
+                            >.
+                        </p>
+                    </div>
+                    <p
+                        v-else
+                        class="text-muted-foreground text-sm sm:col-span-2"
+                    >
+                        The customer collects the cash in person, then confirms
+                        they got it.
                     </p>
-                    <p>
-                        Total fee included in this payout<br /><strong>{{
-                            money(quote.fee_kobo)
-                        }}</strong>
-                    </p>
-                    <p>
-                        Net payout<br /><strong>{{
-                            money(quote.net_kobo)
-                        }}</strong>
-                    </p>
+                    <div class="grid gap-2 sm:col-span-2">
+                        <Label for="withdrawal-reason"
+                            >Reason (the customer will see this)</Label
+                        ><Input
+                            id="withdrawal-reason"
+                            v-model="form.reason"
+                            maxlength="500"
+                        />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <MoreDetails label="Add a private note">
+                            <div class="grid gap-2">
+                                <Label for="withdrawal-notes"
+                                    >Private note (optional)</Label
+                                ><Input
+                                    id="withdrawal-notes"
+                                    v-model="form.internal_notes"
+                                    maxlength="1000"
+                                />
+                                <p class="text-muted-foreground text-xs">
+                                    Only staff can see this.
+                                </p>
+                            </div>
+                        </MoreDetails>
+                    </div>
+                    <div
+                        v-if="
+                            Object.keys(previewHttp.errors).length ||
+                            (!reviewOpen && Object.keys(form.errors).length)
+                        "
+                        role="alert"
+                        class="text-destructive grid gap-1 text-sm sm:col-span-2"
+                    >
+                        <p
+                            v-for="(error, key) in previewHttp.errors"
+                            :key="key"
+                        >
+                            {{ error }}
+                        </p>
+                        <template v-if="!reviewOpen">
+                            <p
+                                v-for="(error, key) in form.errors"
+                                :key="`form-${key}`"
+                            >
+                                {{ error }}
+                            </p>
+                        </template>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <Button type="submit" :disabled="previewHttp.processing"
+                            >Review request</Button
+                        >
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
+
+        <Dialog v-model:open="reviewOpen">
+            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Check and submit</DialogTitle>
+                    <DialogDescription>
+                        Submitting sets this money aside while it is reviewed.
+                        The customer is not paid yet.
+                    </DialogDescription>
+                </DialogHeader>
+                <div v-if="quote" class="grid gap-5 text-sm">
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground">Customer receives</p>
+                        <p class="text-2xl font-semibold">
+                            {{ money(quote.net_kobo) }}
+                        </p>
+                        <p class="text-muted-foreground mt-1">
+                            To {{ quote.destination_mask }}
+                        </p>
+                    </div>
+                    <dl class="divide-border divide-y">
+                        <div class="flex justify-between gap-3 py-2">
+                            <dt class="text-muted-foreground">
+                                Taken from savings
+                            </dt>
+                            <dd class="font-medium">
+                                {{ money(quote.gross_kobo) }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3 py-2">
+                            <dt class="text-muted-foreground">Fees</dt>
+                            <dd class="font-medium">
+                                {{ money(quote.fee_kobo) }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3 py-2">
+                            <dt class="text-muted-foreground">
+                                Withdrawal charge
+                                <span
+                                    v-if="quote.deduction_description"
+                                    class="block text-xs"
+                                    >{{ quote.deduction_description }}</span
+                                >
+                            </dt>
+                            <dd class="font-medium">
+                                {{ money(quote.deduction_kobo) }}
+                            </dd>
+                        </div>
+                    </dl>
+                    <MoreDetails label="Fees and balance">
+                        <div class="grid gap-4">
+                            <FeeQuoteSummary
+                                :disclosure="quote.fee_disclosure"
+                            />
+                            <dl class="grid gap-2 sm:grid-cols-2">
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Total savings
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            money(quote.position.liability_kobo)
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Already set aside
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            money(
+                                                quote.position
+                                                    .reservations_kobo,
+                                            )
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Available
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            money(quote.position.available_kobo)
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        Available in this plan
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            money(
+                                                quote.position
+                                                    .cycle_available_kobo,
+                                            )
+                                        }}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </MoreDetails>
+                    <div class="grid gap-3">
+                        <label class="flex items-start gap-3"
+                            ><input
+                                v-model="form.instruction_attested"
+                                type="checkbox"
+                                class="mt-0.5"
+                            />
+                            The customer asked for this amount, payment method
+                            and account.</label
+                        ><label class="flex items-start gap-3"
+                            ><input
+                                v-model="form.confirmed"
+                                type="checkbox"
+                                class="mt-0.5"
+                            />
+                            I have checked the details above.</label
+                        >
+                    </div>
+                    <div
+                        v-if="Object.keys(form.errors).length"
+                        role="alert"
+                        class="text-destructive grid gap-1"
+                    >
+                        <p v-for="(error, key) in form.errors" :key="key">
+                            {{ error }}
+                        </p>
+                    </div>
                 </div>
-                <FeeQuoteSummary :disclosure="quote.fee_disclosure" />
-                <p>
-                    Current liability
-                    {{ money(quote.position.liability_kobo) }} · reserved
-                    {{ money(quote.position.reservations_kobo) }} · available
-                    {{ money(quote.position.available_kobo) }}. Source cycle
-                    available {{ money(quote.position.cycle_available_kobo) }}.
-                </p>
-                <p>
-                    Destination {{ quote.destination_mask }}. This request
-                    reserves gross savings for review. It does not pay the
-                    Customer.
-                </p>
-                <label class="flex gap-3"
-                    ><input
-                        v-model="form.instruction_attested"
-                        type="checkbox"
-                    />
-                    I attest that the Customer instructed this amount, method,
-                    and destination.</label
-                ><label class="flex gap-3"
-                    ><input v-model="form.confirmed" type="checkbox" /> I
-                    confirm the request terms above.</label
-                ><Button
-                    type="button"
-                    class="w-fit"
-                    :disabled="
-                        form.processing ||
-                        !form.confirmed ||
-                        !form.instruction_attested
-                    "
-                    @click="submit"
-                    >Submit for review</Button
-                >
-                <p
-                    v-for="(error, key) in form.errors"
-                    :key="key"
-                    class="text-destructive"
-                >
-                    {{ error }}
-                </p></CardContent
-            ></Card
-        >
-        <Link
-            :href="withdrawalsIndex()"
-            class="text-primary w-fit text-sm underline"
-            >Back to withdrawals</Link
-        >
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="reviewOpen = false"
+                        >Go back</Button
+                    >
+                    <Button
+                        type="button"
+                        :disabled="
+                            !quote ||
+                            form.processing ||
+                            !form.confirmed ||
+                            !form.instruction_attested
+                        "
+                        @click="submit"
+                        >Submit request</Button
+                    >
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

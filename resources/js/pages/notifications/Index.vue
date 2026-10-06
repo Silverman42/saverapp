@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router, useHttp, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import { Bell, RefreshCw, Search, SlidersHorizontal } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -70,13 +74,14 @@ watch(
         ) {
             visible.value = null;
             message.value =
-                'The system cannot verify notification access. Refresh the page to try again.';
+                "We couldn't check your access to notifications. Refresh the page to try again.";
         } else if (
             notificationSyncState.scope &&
             notificationSyncState.scope !== props.inbox.scope
         ) {
             visible.value = null;
-            message.value = 'Your access changed. Refreshing notifications.';
+            message.value =
+                'Your access changed. Loading your notifications again.';
             visit();
         }
     },
@@ -94,11 +99,12 @@ function visit(cursor?: string): void {
         preserveScroll: true,
         preserveState: true,
         onHttpException: () => {
-            message.value = 'Notifications are unavailable. Refresh to retry.';
+            message.value =
+                "Notifications can't load right now. Refresh to try again.";
         },
         onNetworkError: () => {
             message.value =
-                'Notifications could not be synchronized. Refresh to retry.';
+                "We couldn't load notifications. Check your connection and refresh.";
         },
         onFinish: () => {
             loading.value = false;
@@ -114,7 +120,7 @@ async function mark(notice: InboxNotice): Promise<void> {
     } catch {
         visible.value = null;
         message.value =
-            'This notice changed or became unavailable. Refresh to retry.';
+            'This notification changed or is no longer available. Refresh to try again.';
     }
 }
 async function markCurrentPage(): Promise<void> {
@@ -125,8 +131,53 @@ async function markCurrentPage(): Promise<void> {
         visit();
     } catch {
         visible.value = null;
-        message.value = 'This page changed. Refresh before marking it read.';
+        message.value = 'New notifications arrived. Refresh, then try again.';
     }
+}
+const filtersOpen = ref(false);
+const activeFilterCount = computed(
+    () =>
+        [
+            filters.value.category,
+            filters.value.action_required,
+            filters.value.from,
+            filters.value.to,
+        ].filter(Boolean).length +
+        (filters.value.status && filters.value.status !== 'current' ? 1 : 0) +
+        (filters.value.page_size && filters.value.page_size !== 25 ? 1 : 0),
+);
+const hasFilters = computed(
+    () =>
+        Boolean(filters.value.search) ||
+        filters.value.read === 'unread' ||
+        Boolean(
+            filters.value.category ||
+            filters.value.action_required ||
+            filters.value.from ||
+            filters.value.to,
+        ) ||
+        Boolean(filters.value.status && filters.value.status !== 'current'),
+);
+const categoryLabels: Record<string, string> = {
+    account: 'Account',
+    financial: 'Money',
+    plan: 'Plan',
+};
+function applyFromSheet(): void {
+    filtersOpen.value = false;
+    visit();
+}
+function resetFilters(): void {
+    filters.value = {
+        ...filters.value,
+        category: '',
+        action_required: '',
+        status: 'current',
+        from: '',
+        to: '',
+        page_size: 25,
+    };
+    applyFromSheet();
 }
 function date(value: string): string {
     return new Intl.DateTimeFormat('en-NG', {
@@ -138,120 +189,179 @@ function date(value: string): string {
 </script>
 
 <template>
-    <div class="space-y-6">
+    <div class="flex flex-col gap-6">
         <Head title="Notifications" />
-        <header>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Notifications
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This page shows your authorized account and business notices.
-                Times use the {{ timezone }} time zone.
-            </p>
-        </header>
-        <form class="flex flex-row flex-wrap gap-4" @submit.prevent="visit()">
-            <div class="w-fit space-y-1.5">
+        <PageHeader
+            title="Notifications"
+            description="Updates about your account, savings and business."
+        >
+            <template #actions>
+                <Button
+                    variant="outline"
+                    :disabled="
+                        !visible?.items.length || bulk.processing || loading
+                    "
+                    @click="markCurrentPage"
+                    >Mark page as read</Button
+                >
+                <Button
+                    variant="outline"
+                    :disabled="loading"
+                    aria-label="Refresh notifications"
+                    @click="visit()"
+                    ><RefreshCw
+                        class="size-4"
+                        :class="loading ? 'animate-spin' : ''"
+                    />
+                    Refresh</Button
+                >
+            </template>
+        </PageHeader>
+        <form
+            class="flex flex-row flex-wrap items-end gap-4"
+            aria-label="Notification filters"
+            @submit.prevent="visit()"
+        >
+            <div class="w-fit space-y-2">
                 <Label for="notice-search">Search</Label
                 ><Input
                     id="notice-search"
                     v-model="filters.search"
-                    placeholder="Title, summary or reference"
+                    placeholder="Title, message or reference"
                     maxlength="160"
                 />
             </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-read">Read state</Label
-                ><Select v-model="filters.read"
+            <div class="w-fit space-y-2">
+                <Label for="notice-read">Show</Label
+                ><Select v-model="filters.read" @update:model-value="visit()"
                     ><SelectTrigger id="notice-read" class="h-11 w-fit"
                         ><SelectValue /></SelectTrigger
                     ><SelectContent
                         ><SelectItem value="all">All</SelectItem
                         ><SelectItem value="unread"
-                            >Unread</SelectItem
+                            >Unread only</SelectItem
                         ></SelectContent
                     ></Select
                 >
             </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-category">Category</Label
-                ><Select
-                    :model-value="filters.category || '__all'"
-                    @update:model-value="
-                        filters.category =
-                            $event === '__all' ? '' : String($event ?? '')
-                    "
-                    ><SelectTrigger id="notice-category" class="h-11 w-fit"
-                        ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                        ><SelectItem value="__all">All categories</SelectItem
-                        ><SelectItem value="account"
-                            >Account and lifecycle</SelectItem
-                        ><SelectItem value="financial">Financial</SelectItem
-                        ><SelectItem value="plan"
-                            >Plan</SelectItem
-                        ></SelectContent
-                    ></Select
-                >
-            </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-action">Action</Label
-                ><Select
-                    :model-value="filters.action_required || '__all'"
-                    @update:model-value="
-                        filters.action_required =
-                            $event === '__all' ? '' : String($event ?? '')
-                    "
-                    ><SelectTrigger id="notice-action" class="h-11 w-fit"
-                        ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                        ><SelectItem value="__all">All notices</SelectItem
-                        ><SelectItem value="1">Action required</SelectItem
-                        ><SelectItem value="0"
-                            >Informational</SelectItem
-                        ></SelectContent
-                    ></Select
-                >
-            </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-status">Status</Label
-                ><Select v-model="filters.status"
-                    ><SelectTrigger id="notice-status" class="h-11 w-fit"
-                        ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                        ><SelectItem value="current">Current</SelectItem
-                        ><SelectItem value="expired">Expired action</SelectItem
-                        ><SelectItem value="superseded"
-                            >Superseded</SelectItem
-                        ></SelectContent
-                    ></Select
-                >
-            </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-from">From</Label
-                ><DatePicker id="notice-from" v-model="filters.from" />
-            </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-to">To</Label
-                ><DatePicker id="notice-to" v-model="filters.to" />
-            </div>
-            <div class="w-fit space-y-1.5">
-                <Label for="notice-size">Rows</Label
-                ><Select
-                    :model-value="String(filters.page_size ?? 25)"
-                    @update:model-value="filters.page_size = Number($event)"
-                    ><SelectTrigger id="notice-size" class="h-11 w-fit"
-                        ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                        ><SelectItem value="25">25</SelectItem
-                        ><SelectItem value="50">50</SelectItem
-                        ><SelectItem value="100">100</SelectItem></SelectContent
-                    ></Select
-                >
-            </div>
-            <Button type="submit" class="self-end" :disabled="loading"
-                >Apply filters</Button
+            <Button type="submit" variant="outline" :disabled="loading"
+                ><Search class="size-4" /> Search</Button
             >
+            <Button type="button" variant="outline" @click="filtersOpen = true">
+                <SlidersHorizontal class="size-4" />
+                Filters
+                <span
+                    v-if="activeFilterCount > 0"
+                    class="bg-primary text-primary-foreground inline-flex size-5 items-center justify-center rounded-full text-[11px]"
+                    >{{ activeFilterCount }}</span
+                >
+            </Button>
         </form>
+
+        <FormSheet
+            v-model:open="filtersOpen"
+            title="Filters"
+            description="Narrow down which notifications you see."
+        >
+            <div class="grid gap-5">
+                <div class="grid gap-2">
+                    <Label for="notice-category">Type</Label
+                    ><Select
+                        :model-value="filters.category || '__all'"
+                        @update:model-value="
+                            filters.category =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger id="notice-category" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all">All types</SelectItem
+                            ><SelectItem value="account">Account</SelectItem
+                            ><SelectItem value="financial">Money</SelectItem
+                            ><SelectItem value="plan"
+                                >Plan</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid gap-2">
+                    <Label for="notice-action">Needs action</Label
+                    ><Select
+                        :model-value="filters.action_required || '__all'"
+                        @update:model-value="
+                            filters.action_required =
+                                $event === '__all' ? '' : String($event ?? '')
+                        "
+                        ><SelectTrigger id="notice-action" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="__all">All</SelectItem
+                            ><SelectItem value="1">Needs action</SelectItem
+                            ><SelectItem value="0"
+                                >For your information</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid gap-2">
+                    <Label for="notice-status">Status</Label
+                    ><Select v-model="filters.status"
+                        ><SelectTrigger id="notice-status" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="current">Current</SelectItem
+                            ><SelectItem value="expired"
+                                >Action expired</SelectItem
+                            ><SelectItem value="superseded"
+                                >Replaced by a newer one</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="grid gap-2">
+                        <Label for="notice-from">From</Label
+                        ><DatePicker id="notice-from" v-model="filters.from" />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="notice-to">To</Label
+                        ><DatePicker id="notice-to" v-model="filters.to" />
+                    </div>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="notice-size">Per page</Label
+                    ><Select
+                        :model-value="String(filters.page_size ?? 25)"
+                        @update:model-value="filters.page_size = Number($event)"
+                        ><SelectTrigger id="notice-size" class="h-11 w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem value="25">25</SelectItem
+                            ><SelectItem value="50">50</SelectItem
+                            ><SelectItem value="100"
+                                >100</SelectItem
+                            ></SelectContent
+                        ></Select
+                    >
+                </div>
+            </div>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="loading"
+                    @click="resetFilters"
+                    >Clear</Button
+                >
+                <Button
+                    type="button"
+                    :disabled="loading"
+                    @click="applyFromSheet"
+                    >Show results</Button
+                >
+            </template>
+        </FormSheet>
+
         <p
             v-for="error in errors"
             :key="String(error)"
@@ -260,95 +370,119 @@ function date(value: string): string {
         >
             {{ error }}
         </p>
-        <div class="flex flex-wrap items-center gap-3">
-            <Button variant="outline" :disabled="loading" @click="visit()"
-                >Refresh</Button
-            >
-            <Button
-                variant="outline"
-                :disabled="!visible?.items.length || bulk.processing || loading"
-                @click="markCurrentPage"
-                >Mark current page read</Button
-            >
-            <span v-if="visible" class="text-muted-foreground text-sm"
-                >{{ visible.unread_count }} unread at this view’s cutoff</span
-            >
-        </div>
-        <p v-if="message" role="status" class="text-muted-foreground">
+        <p v-if="message" role="status" class="bg-muted rounded-xl p-4 text-sm">
             {{ message }}
+        </p>
+        <p
+            v-else-if="visible"
+            role="status"
+            aria-live="polite"
+            class="text-muted-foreground -mt-2 text-sm"
+        >
+            {{ visible.unread_count }} unread
         </p>
         <div
             v-if="loading"
             role="status"
             aria-label="Loading notifications"
-            class="bg-muted h-32 animate-pulse rounded-xl"
+            class="bg-muted h-32 animate-pulse rounded-2xl motion-reduce:animate-none"
         />
         <template v-else-if="visible">
-            <p
+            <EmptyState
                 v-if="!visible.items.length"
-                class="text-muted-foreground"
-                role="status"
-            >
-                {{
-                    Object.entries(filters).some(
-                        ([key, value]) =>
-                            !['page_size', 'read', 'status'].includes(key) &&
-                            value,
-                    ) ||
-                    filters.read === 'unread' ||
-                    (filters.status && filters.status !== 'current')
-                        ? 'No notifications match these filters.'
-                        : 'No notifications.'
-                }}
-            </p>
-            <ul v-else class="space-y-3" aria-label="Notifications">
-                <li v-for="notice in visible.items" :key="notice.id">
-                    <Card
-                        ><CardContent
-                            class="flex flex-col gap-3 pt-5 sm:flex-row sm:items-start sm:justify-between"
+                :icon="Bell"
+                :title="
+                    hasFilters
+                        ? 'No notifications match'
+                        : 'No notifications yet'
+                "
+                :description="
+                    hasFilters
+                        ? 'Try a different search or clear your filters.'
+                        : 'You will see updates here when something happens.'
+                "
+            />
+            <Card v-else class="py-2">
+                <CardContent>
+                    <ul
+                        class="divide-border divide-y"
+                        aria-label="Notifications"
+                    >
+                        <li
+                            v-for="notice in visible.items"
+                            :key="notice.id"
+                            class="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"
                         >
-                            <div class="min-w-0 space-y-2">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <Badge variant="secondary">{{
-                                        notice.category
-                                    }}</Badge
-                                    ><Badge v-if="!notice.read_at">Unread</Badge
-                                    ><Badge
-                                        v-if="notice.action_required"
-                                        variant="outline"
-                                        >Action required</Badge
-                                    ><Badge
-                                        v-if="notice.visibility !== 'current'"
-                                        variant="outline"
-                                        >{{
-                                            notice.visibility === 'expired'
-                                                ? 'Expired action'
-                                                : 'Superseded'
-                                        }}</Badge
+                            <div class="flex min-w-0 gap-3">
+                                <span
+                                    class="mt-2 size-2 shrink-0 rounded-full"
+                                    :class="
+                                        notice.read_at
+                                            ? 'bg-transparent'
+                                            : 'bg-primary'
+                                    "
+                                    aria-hidden="true"
+                                />
+                                <div class="min-w-0 space-y-1">
+                                    <h2
+                                        :class="
+                                            notice.read_at
+                                                ? 'font-normal'
+                                                : 'font-medium'
+                                        "
                                     >
+                                        <Link
+                                            :href="show(notice.id)"
+                                            class="rounded underline-offset-4 hover:underline focus-visible:outline-2"
+                                            >{{ notice.title }}</Link
+                                        ><span
+                                            v-if="!notice.read_at"
+                                            class="sr-only"
+                                        >
+                                            (unread)</span
+                                        >
+                                    </h2>
+                                    <p class="text-muted-foreground text-sm">
+                                        {{ notice.summary }}
+                                    </p>
+                                    <div
+                                        class="text-muted-foreground flex flex-wrap items-center gap-2 pt-1 text-xs"
+                                    >
+                                        <span>{{
+                                            categoryLabels[notice.category] ??
+                                            notice.category
+                                        }}</span>
+                                        <span aria-hidden="true">·</span>
+                                        <time :datetime="notice.effective_at">{{
+                                            date(notice.effective_at)
+                                        }}</time>
+                                        <template v-if="notice.reference">
+                                            <span aria-hidden="true">·</span>
+                                            <span>{{ notice.reference }}</span>
+                                        </template>
+                                        <Badge
+                                            v-if="notice.action_required"
+                                            variant="default"
+                                            >Needs action</Badge
+                                        >
+                                        <Badge
+                                            v-if="
+                                                notice.visibility !== 'current'
+                                            "
+                                            variant="outline"
+                                            >{{
+                                                notice.visibility === 'expired'
+                                                    ? 'Action expired'
+                                                    : 'Replaced'
+                                            }}</Badge
+                                        >
+                                    </div>
                                 </div>
-                                <h2 class="font-medium">
-                                    <Link
-                                        :href="show(notice.id)"
-                                        class="rounded underline-offset-4 hover:underline focus-visible:outline-2"
-                                        >{{ notice.title }}</Link
-                                    >
-                                </h2>
-                                <p class="text-muted-foreground text-sm">
-                                    {{ notice.summary }}
-                                </p>
-                                <p v-if="notice.reference" class="text-sm">
-                                    {{ notice.reference }}
-                                </p>
-                                <time
-                                    :datetime="notice.effective_at"
-                                    class="text-muted-foreground text-xs"
-                                    >{{ date(notice.effective_at) }}</time
-                                >
                             </div>
                             <Button
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
+                                class="self-start"
                                 :disabled="marking.processing"
                                 :aria-label="`${notice.read_at ? 'Mark unread' : 'Mark read'}: ${notice.title}`"
                                 @click="mark(notice)"
@@ -356,13 +490,14 @@ function date(value: string): string {
                                     notice.read_at ? 'Mark unread' : 'Mark read'
                                 }}</Button
                             >
-                        </CardContent></Card
-                    >
-                </li>
-            </ul>
+                        </li>
+                    </ul>
+                </CardContent>
+            </Card>
             <Button
                 v-if="visible.next_cursor"
                 variant="outline"
+                class="w-fit"
                 :disabled="loading"
                 @click="visit(visible.next_cursor ?? undefined)"
                 >Next page</Button

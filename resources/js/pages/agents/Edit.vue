@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { dashboard } from '@/routes';
 import {
     index as agentsIndex,
@@ -9,11 +9,13 @@ import {
 } from '@/routes/agents';
 import { self as changeOwnAgentPhone } from '@/routes/agents/phone';
 import { store as correctAgentPhone } from '@/routes/agents/phone-corrections';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
-    CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
@@ -75,11 +77,18 @@ const submit = (): void => {
     });
 };
 
+const phoneSheetOpen = ref(false);
+
 const submitPhone = (): void => {
     const url = isAgent
         ? changeOwnAgentPhone(props.agent.id).url
         : correctAgentPhone(props.agent.id).url;
-    phoneForm.post(url, { preserveScroll: true });
+    phoneForm.post(url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            phoneSheetOpen.value = false;
+        },
+    });
 };
 
 defineOptions({
@@ -97,80 +106,32 @@ defineOptions({
     <Head :title="`Edit ${agent.name}`" />
 
     <div class="space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Edit Agent profile
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Update permitted profile details for {{ agent.name }}.
-            </p>
-        </div>
+        <PageHeader title="Edit profile" :description="agent.name" />
 
-        <Card v-if="agent.can_change_phone">
-            <CardHeader
-                ><CardTitle>Phone number</CardTitle
-                ><CardDescription>{{
-                    isAgent
-                        ? 'Enter your password and authenticator code again.'
-                        : 'You can correct a staff phone number only before account activation. Give a reason.'
-                }}</CardDescription></CardHeader
-            >
-            <form @submit.prevent="submitPhone">
-                <CardContent class="grid gap-4">
-                    <div class="grid gap-2">
-                        <Label for="agent-phone">Phone number</Label
-                        ><Input
-                            id="agent-phone"
-                            v-model="phoneForm.phone"
-                            type="tel"
-                            maxlength="50"
-                            required
-                        />
-                        <p
-                            v-if="phoneForm.errors.phone"
-                            class="text-destructive text-sm"
-                        >
-                            {{ phoneForm.errors.phone }}
-                        </p>
-                    </div>
-                    <div v-if="!isAgent" class="grid gap-2">
-                        <Label for="phone-reason">Reason</Label
-                        ><Input
-                            id="phone-reason"
-                            v-model="phoneForm.reason"
-                            maxlength="500"
-                            required
-                        />
-                        <p
-                            v-if="phoneForm.errors.reason"
-                            class="text-destructive text-sm"
-                        >
-                            {{ phoneForm.errors.reason }}
-                        </p>
-                    </div>
-                    <p
-                        v-if="phoneFormProfileError || phoneForm.errors.version"
-                        class="text-destructive text-sm"
-                    >
-                        {{ phoneFormProfileError || phoneForm.errors.version }}
-                    </p>
-                    <Button type="submit" :disabled="phoneForm.processing">{{
-                        phoneForm.processing ? 'Saving…' : 'Update phone number'
-                    }}</Button>
-                </CardContent>
-            </form>
-        </Card>
-
-        <form class="space-y-6" @submit.prevent="submit">
+        <form class="max-w-3xl" @submit.prevent="submit">
             <Card>
-                <CardHeader
-                    ><CardTitle>Profile details</CardTitle
-                    ><CardDescription
-                        >Phone and email use dedicated security
-                        workflows.</CardDescription
-                    ></CardHeader
-                >
+                <CardHeader>
+                    <CardTitle>Profile</CardTitle>
+                </CardHeader>
                 <CardContent class="grid gap-5 sm:grid-cols-2">
+                    <div
+                        v-if="agent.can_change_phone"
+                        class="bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 sm:col-span-2"
+                    >
+                        <div>
+                            <p class="text-muted-foreground text-xs">
+                                Phone number
+                            </p>
+                            <p class="text-sm font-medium">{{ agent.phone }}</p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="phoneSheetOpen = true"
+                            >Change</Button
+                        >
+                    </div>
                     <div v-if="!isAgent" class="grid gap-2">
                         <Label for="name">Full name</Label
                         ><Input id="name" v-model="form.name" maxlength="150" />
@@ -181,24 +142,8 @@ defineOptions({
                             {{ form.errors.name }}
                         </p>
                     </div>
-                    <div class="grid gap-2">
-                        <Label for="address">Address</Label
-                        ><textarea
-                            id="address"
-                            v-model="form.address"
-                            rows="3"
-                            maxlength="500"
-                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        />
-                        <p
-                            v-if="form.errors.address"
-                            class="text-destructive text-sm"
-                        >
-                            {{ form.errors.address }}
-                        </p>
-                    </div>
                     <div v-if="!isAgent" class="grid gap-2">
-                        <Label for="employment-date">Engagement date</Label
+                        <Label for="employment-date">Start date</Label
                         ><DatePicker
                             id="employment-date"
                             v-model="form.employment_date"
@@ -211,15 +156,70 @@ defineOptions({
                             {{ form.errors.employment_date }}
                         </p>
                     </div>
+                    <div class="grid gap-2 sm:col-span-2">
+                        <Label for="address">Address</Label
+                        ><textarea
+                            id="address"
+                            v-model="form.address"
+                            rows="2"
+                            maxlength="500"
+                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        />
+                        <p
+                            v-if="form.errors.address"
+                            class="text-destructive text-sm"
+                        >
+                            {{ form.errors.address }}
+                        </p>
+                    </div>
+                    <div class="grid gap-2 sm:col-span-2">
+                        <Label for="agent-photo">Photo</Label>
+                        <div class="flex items-center gap-4">
+                            <img
+                                v-if="agent.photo_url && !form.remove_photo"
+                                :src="agent.photo_url"
+                                :alt="agent.name"
+                                class="size-14 shrink-0 rounded-full object-cover"
+                            />
+                            <Input
+                                id="agent-photo"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                @change="onPhotoChange"
+                            />
+                        </div>
+                        <p class="text-muted-foreground text-xs">
+                            JPEG, PNG or WebP, up to 5 MB.
+                        </p>
+                        <p
+                            v-if="form.errors.photo"
+                            class="text-destructive text-sm"
+                        >
+                            {{ form.errors.photo }}
+                        </p>
+                        <label
+                            v-if="agent.photo_url"
+                            class="flex items-center gap-2 text-sm"
+                            ><input
+                                v-model="form.remove_photo"
+                                type="checkbox"
+                                @change="form.photo = null"
+                            />
+                            Remove current photo</label
+                        >
+                    </div>
                     <div v-if="!isAgent" class="grid gap-2 sm:col-span-2">
-                        <Label for="notes">Internal notes</Label
+                        <Label for="notes">Notes</Label
                         ><textarea
                             id="notes"
                             v-model="form.notes"
-                            rows="4"
+                            rows="3"
                             maxlength="2000"
-                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-24 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                         />
+                        <p class="text-muted-foreground text-xs">
+                            Only admins can see these.
+                        </p>
                         <p
                             v-if="form.errors.notes"
                             class="text-destructive text-sm"
@@ -228,12 +228,15 @@ defineOptions({
                         </p>
                     </div>
                     <div v-if="!isAgent" class="grid gap-2 sm:col-span-2">
-                        <Label for="reason">Reason for staff-only changes</Label
+                        <Label for="reason">Reason for change</Label
                         ><Input
                             id="reason"
                             v-model="form.reason"
                             maxlength="500"
                         />
+                        <p class="text-muted-foreground text-xs">
+                            Needed if you change the name, start date or notes.
+                        </p>
                         <p
                             v-if="form.errors.reason"
                             class="text-destructive text-sm"
@@ -242,63 +245,96 @@ defineOptions({
                         </p>
                     </div>
                 </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader
-                    ><CardTitle>Profile photo</CardTitle
-                    ><CardDescription
-                        >JPEG, PNG, or WebP. Maximum 5 MB and 4096 × 4096
-                        pixels.</CardDescription
-                    ></CardHeader
+                <CardFooter
+                    class="flex flex-col items-stretch gap-3 border-t pt-6"
                 >
-                <CardContent class="grid gap-3">
-                    <img
-                        v-if="agent.photo_url && !form.remove_photo"
-                        :src="agent.photo_url"
-                        :alt="agent.name"
-                        class="h-20 w-20 rounded-full object-cover"
-                    />
-                    <Input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        @change="onPhotoChange"
-                    />
                     <p
-                        v-if="form.errors.photo"
+                        v-if="editFormProfileError || form.errors.version"
+                        role="alert"
                         class="text-destructive text-sm"
                     >
-                        {{ form.errors.photo }}
+                        {{ editFormProfileError || form.errors.version }}
                     </p>
-                    <label
-                        v-if="agent.photo_url"
-                        class="flex items-center gap-2 text-sm"
-                        ><input
-                            v-model="form.remove_photo"
-                            type="checkbox"
-                            @change="form.photo = null"
-                        />
-                        Remove current photo</label
-                    >
-                </CardContent>
+                    <div class="flex justify-end gap-2">
+                        <Button as-child type="button" variant="outline">
+                            <Link :href="agentShow(agent.id)">Cancel</Link>
+                        </Button>
+                        <Button type="submit" :disabled="form.processing">{{
+                            form.processing ? 'Saving…' : 'Save changes'
+                        }}</Button>
+                    </div>
+                </CardFooter>
             </Card>
-
-            <p
-                v-if="editFormProfileError || form.errors.version"
-                class="text-destructive text-sm"
-            >
-                {{ editFormProfileError || form.errors.version }}
-            </p>
-            <div class="flex flex-wrap gap-3">
-                <Button type="submit" :disabled="form.processing">{{
-                    form.processing ? 'Saving…' : 'Save changes'
-                }}</Button>
-                <Link :href="agentShow(agent.id)"
-                    ><Button type="button" variant="outline"
-                        >Cancel</Button
-                    ></Link
-                >
-            </div>
         </form>
+
+        <FormSheet
+            v-if="agent.can_change_phone"
+            v-model:open="phoneSheetOpen"
+            title="Change phone number"
+            :description="
+                isAgent
+                    ? 'You will need to enter your password and authenticator code again.'
+                    : 'You can only fix a phone number before the agent activates their account.'
+            "
+        >
+            <form
+                id="phone-form"
+                class="grid gap-5"
+                @submit.prevent="submitPhone"
+            >
+                <div class="grid gap-2">
+                    <Label for="agent-phone">Phone number</Label
+                    ><Input
+                        id="agent-phone"
+                        v-model="phoneForm.phone"
+                        type="tel"
+                        maxlength="50"
+                        required
+                    />
+                    <p
+                        v-if="phoneForm.errors.phone"
+                        class="text-destructive text-sm"
+                    >
+                        {{ phoneForm.errors.phone }}
+                    </p>
+                </div>
+                <div v-if="!isAgent" class="grid gap-2">
+                    <Label for="phone-reason">Reason</Label
+                    ><Input
+                        id="phone-reason"
+                        v-model="phoneForm.reason"
+                        maxlength="500"
+                        required
+                    />
+                    <p
+                        v-if="phoneForm.errors.reason"
+                        class="text-destructive text-sm"
+                    >
+                        {{ phoneForm.errors.reason }}
+                    </p>
+                </div>
+                <p
+                    v-if="phoneFormProfileError || phoneForm.errors.version"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ phoneFormProfileError || phoneForm.errors.version }}
+                </p>
+            </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    @click="phoneSheetOpen = false"
+                    >Cancel</Button
+                >
+                <Button
+                    type="submit"
+                    form="phone-form"
+                    :disabled="phoneForm.processing"
+                    >{{ phoneForm.processing ? 'Saving…' : 'Save' }}</Button
+                >
+            </template>
+        </FormSheet>
     </div>
 </template>

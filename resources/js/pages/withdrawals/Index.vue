@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { Card, CardContent } from '@/components/ui/card';
+import { WalletCards } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import WithdrawalStatusBadge from '@/components/WithdrawalStatusBadge.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -55,54 +61,51 @@ const money = (kobo: number): string =>
 function applyFilter(): void {
     router.get(withdrawalsIndex.url({ query: { state: state.value } }));
 }
+function onStateChange(value: unknown): void {
+    state.value = value === '__all' ? '' : String(value ?? '');
+    applyFilter();
+}
 </script>
 
 <template>
     <Head title="Withdrawals" />
     <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">Withdrawals</h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                This list shows requests and reservations in your permitted
-                Customer scope. Approval does not mean payment.
-            </p>
-        </div>
-        <Card v-if="!new_requests_available"
-            ><CardContent class="pt-6"
-                ><p class="text-sm">
-                    Payout methods need approved executor, custody, and evidence
-                    contracts. You cannot make new requests now.
-                </p></CardContent
-            ></Card
+        <PageHeader
+            title="Withdrawals"
+            description="Track withdrawal requests and where each one is."
+        />
+        <p
+            v-if="!new_requests_available"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
         >
+            New withdrawal requests are paused until payout setup is finished.
+        </p>
         <div class="flex flex-row flex-wrap items-end gap-4">
             <div class="grid w-fit gap-2">
-                <label for="withdrawal-state" class="text-sm font-medium"
-                    >State</label
-                ><Select
+                <Label for="withdrawal-state">Status</Label>
+                <Select
                     :model-value="state || '__all'"
-                    @update:model-value="
-                        state = $event === '__all' ? '' : String($event ?? '')
-                    "
+                    @update:model-value="onStateChange"
                     ><SelectTrigger id="withdrawal-state" class="h-11 w-fit"
                         ><SelectValue /></SelectTrigger
                     ><SelectContent
-                        ><SelectItem value="__all">All states</SelectItem
+                        ><SelectItem value="__all">All statuses</SelectItem
                         ><SelectItem value="pending_review"
-                            >Pending review</SelectItem
+                            >Waiting for review</SelectItem
                         ><SelectItem value="approved"
-                            >Approved, awaiting payout</SelectItem
+                            >Approved, not paid yet</SelectItem
                         ><SelectItem value="payout_processing"
-                            >Payout processing</SelectItem
+                            >Paying out</SelectItem
                         ><SelectItem value="outcome_unknown"
-                            >Outcome unknown</SelectItem
+                            >Checking payment</SelectItem
                         ><SelectItem value="payment_failed"
                             >Payment failed</SelectItem
-                        ><SelectItem value="posted">Posted</SelectItem
+                        ><SelectItem value="posted">Paid</SelectItem
                         ><SelectItem
                             v-if="role !== 'customer'"
                             value="needs_reconciliation"
-                            >Needs reconciliation</SelectItem
+                            >Needs checking</SelectItem
                         ><SelectItem value="rejected">Rejected</SelectItem
                         ><SelectItem value="cancelled">Cancelled</SelectItem
                         ><SelectItem value="expired"
@@ -111,67 +114,71 @@ function applyFilter(): void {
                     ></Select
                 >
             </div>
-            <Button type="button" variant="outline" @click="applyFilter"
-                >Apply filter</Button
-            >
         </div>
-        <Card
-            ><CardContent class="pt-6"
-                ><p
-                    v-if="requests.data.length === 0"
-                    class="text-muted-foreground text-sm"
-                >
-                    No withdrawal requests match this scope and filter.
-                </p>
-                <ul v-else class="divide-y">
+        <EmptyState
+            v-if="requests.data.length === 0"
+            :icon="WalletCards"
+            title="No withdrawals found"
+            :description="
+                state
+                    ? 'Try a different status to see more requests.'
+                    : 'Withdrawal requests will show up here.'
+            "
+        />
+        <Card v-else class="py-2">
+            <CardContent>
+                <ul class="divide-border divide-y">
                     <li
                         v-for="item in requests.data"
                         :key="item.id"
-                        class="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+                        class="flex flex-wrap items-center justify-between gap-3 py-4"
                     >
-                        <div class="grid gap-1">
+                        <div class="min-w-0 space-y-1">
                             <Link
                                 :href="showWithdrawal(item.id)"
-                                class="font-medium underline"
-                                >{{ item.id }}</Link
-                            ><span class="text-muted-foreground text-sm"
-                                >{{ item.customer_name }} · {{ item.plan_id }} ·
-                                {{ item.type }} ·
-                                {{ item.method.replaceAll('_', ' ') }}</span
-                            ><span class="text-sm"
-                                >{{ item.state.replaceAll('_', ' ')
-                                }}<span v-if="item.held">
-                                    · On hold<span v-if="item.hold_reason"
+                                class="font-medium underline-offset-4 hover:underline"
+                                >{{ item.customer_name }}</Link
+                            >
+                            <p class="text-muted-foreground text-xs">
+                                {{ item.id }} · {{ item.plan_id }} ·
+                                {{ item.method.replaceAll('_', ' ') }} ·
+                                {{ item.submitted_at }}
+                            </p>
+                            <div class="flex flex-wrap items-center gap-2 pt-1">
+                                <WithdrawalStatusBadge :state="item.state" />
+                                <Badge v-if="item.held" variant="outline"
+                                    >On hold<template v-if="item.hold_reason"
                                         >:
                                         {{
                                             item.hold_reason.replaceAll(
                                                 '_',
                                                 ' ',
                                             )
-                                        }}</span
-                                    ></span
-                                ></span
-                            >
+                                        }}</template
+                                    ></Badge
+                                >
+                            </div>
                         </div>
-                        <div class="grid gap-1 text-sm">
-                            <span>Gross {{ money(item.gross_kobo) }}</span
-                            ><span>Net payout {{ money(item.net_kobo) }}</span>
+                        <div class="text-right">
+                            <p class="font-medium">
+                                {{ money(item.net_kobo) }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                of {{ money(item.gross_kobo) }} withdrawn
+                            </p>
                         </div>
                     </li>
-                </ul></CardContent
-            ></Card
+                </ul>
+            </CardContent>
+        </Card>
+        <div
+            v-if="requests.prev_page_url || requests.next_page_url"
+            class="flex gap-3"
         >
-        <div class="flex gap-4 text-sm">
-            <Link
-                v-if="requests.prev_page_url"
-                :href="requests.prev_page_url"
-                class="underline"
-                >Previous</Link
-            ><Link
-                v-if="requests.next_page_url"
-                :href="requests.next_page_url"
-                class="underline"
-                >Next</Link
+            <Button v-if="requests.prev_page_url" variant="outline" as-child
+                ><Link :href="requests.prev_page_url">Previous</Link></Button
+            ><Button v-if="requests.next_page_url" variant="outline" as-child
+                ><Link :href="requests.next_page_url">Next</Link></Button
             >
         </div>
     </div>

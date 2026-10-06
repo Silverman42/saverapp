@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MoreDetails from '@/components/MoreDetails.vue';
 import PlanSavingsSummary from '@/components/PlanSavingsSummary.vue';
 import type { PlanSavings } from '@/types/plan-savings';
 
@@ -7,20 +8,17 @@ defineProps<{ summary: PlanSavings }>();
 
 <template>
     <div class="space-y-1 text-xs">
-        <p class="font-medium">Recorded savings and reservations</p>
+        <p class="font-medium">Savings</p>
         <p>
-            Cycle available:
-            <strong>{{ summary.cycle.available ?? 'Unavailable' }}</strong>
+            Available in this plan:
+            <strong>{{ summary.cycle.available ?? 'Not available' }}</strong>
         </p>
         <p>
-            Customer available across all cycles:
-            {{ summary.customer.available ?? 'Unavailable' }}
+            Available across all plans:
+            {{ summary.customer.available ?? 'Not available' }}
         </p>
-        <details>
-            <summary class="cursor-pointer underline underline-offset-4">
-                Savings totals and timestamp
-            </summary>
-            <PlanSavingsSummary :summary="summary" class="mt-3" />
-        </details>
+        <MoreDetails label="Savings breakdown">
+            <PlanSavingsSummary :summary="summary" />
+        </MoreDetails>
     </div>
 </template>

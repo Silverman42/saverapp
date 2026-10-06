@@ -2,6 +2,7 @@
 import { HttpResponseError } from '@inertiajs/core';
 import { Link, router, useHttp, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
+import MoreDetails from '@/components/MoreDetails.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -312,7 +313,7 @@ function clearAttempt(pending: Attempt): boolean {
     } catch {
         storageBlocked.value = true;
         message.value =
-            'The saved attempt could not be verified and cleared. No new application can be submitted safely.';
+            'We could not clear the saved payment. New payments from savings are turned off for now.';
         return false;
     }
 }
@@ -324,13 +325,12 @@ function recordOutcome(saved: Outcome, pending: Attempt): void {
         !boundedText(saved.posting_reference, 100)
     ) {
         message.value =
-            'The application outcome is still unknown. Check again before another application.';
+            'We still do not know if the payment went through. Check again before trying another.';
         return;
     }
     outcome.value = saved;
     if (clearAttempt(pending)) {
-        message.value =
-            'Fee applied successfully. The full unpaid balance is settled.';
+        message.value = 'Fee paid from savings. Nothing is left to pay.';
     }
     router.reload({ only: ['summary', 'obligations'] });
 }
@@ -361,7 +361,7 @@ function resolveAttempt(result: AttemptResult, pending: Attempt): boolean {
         needsFreshAuthentication.value = false;
         open.value = false;
         message.value =
-            'The original application attempt is cancelled. Delayed requests cannot post it. You may review current savings again.';
+            'The payment was stopped. Nothing was taken from savings. You can start again.';
         router.reload({ only: ['summary', 'obligations'] });
     }
     return true;
@@ -372,7 +372,7 @@ function attemptError(error: unknown): void {
         error instanceof HttpResponseError && error.response.status === 423;
     message.value = errorMessage(
         error,
-        'The application outcome remains unknown. Keep this reference; check its outcome or stop it safely before a new review.',
+        'We do not know if the payment went through. Check its status or stop it before trying again.',
     );
 }
 
@@ -392,7 +392,7 @@ async function checkOutcome(): Promise<void> {
         );
         if (!resolveAttempt(result, pending))
             message.value =
-                'The application is prepared with no recorded outcome. Retry its original instructions or stop it safely before reviewing again.';
+                'The payment has not gone through yet. Try again or stop it.';
     } catch (error) {
         if (
             error instanceof HttpResponseError &&
@@ -415,7 +415,7 @@ async function checkOutcome(): Promise<void> {
                     legacyError.response.status === 404
                 )
                     message.value =
-                        'No recorded outcome is available. Keep the original attempt and retry its saved instructions, or stop it safely before a new review.';
+                        'We found no record of this payment. Try again or stop it.';
             }
         } else attemptError(error);
     }
@@ -442,7 +442,7 @@ async function stopApplication(): Promise<void> {
             cancelAttempt.url(pending.obligation),
         );
         if (!result) {
-            message.value = `${Object.values(cancelRequest.errors).flat().join(' ')} The original attempt remains retained. Check its outcome or stop it safely before a new review.`;
+            message.value = `${Object.values(cancelRequest.errors).flat().join(' ')} The payment is still saved. Check its status or stop it before trying again.`;
             return;
         }
         if (!resolveAttempt(result, pending))
@@ -464,7 +464,7 @@ async function loadSources(): Promise<void> {
         if (generation === sequence)
             message.value = errorMessage(
                 error,
-                'Savings sources are unavailable. Try loading them again.',
+                'We could not load the savings plans. Try again.',
             );
     }
 }
@@ -505,12 +505,12 @@ onMounted(() => {
             submitted.value = Object.freeze({ ...pending.commit });
         }
         message.value = submitted.value
-            ? 'A submitted fee application needs an outcome check. Only its original saved instructions can be retried.'
-            : 'This older saved attempt retains its reference only. Check its outcome or stop it safely; retrying its original instructions is unavailable.';
+            ? 'A payment from savings is not confirmed yet. Check its status.'
+            : 'An older payment from savings is not confirmed yet. Check its status or stop it.';
     } catch {
         storageBlocked.value = true;
         message.value =
-            'Saved fee application recovery is unavailable. No new application can be submitted safely. Ask an Admin to verify its history.';
+            'Your browser cannot save payments right now, so paying from savings is turned off. Ask an admin to check the fee history.';
     }
 });
 
@@ -540,7 +540,7 @@ async function requestReview(): Promise<void> {
         if (generation === sequence)
             message.value = errorMessage(
                 error,
-                'The fee review is unavailable. Check the selected savings source.',
+                'We could not check this payment. Check the plan you picked.',
             );
     }
 }
@@ -561,7 +561,7 @@ async function sendApplication(): Promise<void> {
     } catch {
         storageBlocked.value = true;
         message.value =
-            'The original saved instructions could not be verified. Check the outcome; no application can be resubmitted safely.';
+            'We could not confirm the saved payment details. Check its status. It cannot be sent again.';
         return;
     }
     try {
@@ -575,7 +575,7 @@ async function sendApplication(): Promise<void> {
             prepareAttempt.url(pending.obligation),
         );
         if (!prepared) {
-            message.value = `${Object.values(prepareRequest.errors).flat().join(' ')} The original attempt remains retained. Check its outcome or stop it safely before a new review.`;
+            message.value = `${Object.values(prepareRequest.errors).flat().join(' ')} The payment is still saved. Check its status or stop it before trying again.`;
             return;
         }
         if (resolveAttempt(prepared, pending)) return;
@@ -598,7 +598,7 @@ async function sendApplication(): Promise<void> {
             error instanceof HttpResponseError && error.response.status === 423;
         message.value = errorMessage(
             error,
-            'The response was interrupted. Check the saved outcome before another application.',
+            'The connection dropped. Check the status before trying again.',
         );
     }
 }
@@ -620,7 +620,7 @@ async function confirmApplication(): Promise<void> {
     ) {
         review.value = null;
         confirmed.value = false;
-        message.value = 'This review expired. Review current savings again.';
+        message.value = 'This check has expired. Please check again.';
         return;
     }
     const reference = newOperationReference();
@@ -641,8 +641,7 @@ async function confirmApplication(): Promise<void> {
     if (!validIdentity(pending) || !validCommit(commit, reference)) {
         review.value = null;
         confirmed.value = false;
-        message.value =
-            'The reviewed instructions are incomplete. Review current savings again.';
+        message.value = 'Some details are missing. Please check again.';
         return;
     }
     attempt.value = { obligation: pending.obligation, reference };
@@ -657,7 +656,7 @@ async function confirmApplication(): Promise<void> {
     } catch {
         storageBlocked.value = true;
         message.value =
-            'Your browser could not retain the original instructions. Submission is blocked until saved attempt recovery is available.';
+            'Your browser could not save this payment, so it was not sent. Try another browser or turn off private mode.';
         return;
     }
     await sendApplication();
@@ -668,22 +667,22 @@ async function confirmApplication(): Promise<void> {
     <div>
         <div
             v-if="attempt || storageBlocked"
-            class="mb-4 rounded-lg border p-4"
+            class="bg-muted mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4"
             role="status"
         >
             <p class="text-sm">
                 {{
                     storageBlocked
                         ? message
-                        : 'A submitted fee application needs an outcome check.'
+                        : 'A payment from savings is not confirmed yet.'
                 }}
             </p>
             <Button
-                class="mt-3"
+                size="sm"
                 variant="outline"
                 :disabled="busy"
                 @click="open = true"
-                >Check fee application</Button
+                >Check status</Button
             >
         </div>
         <Dialog :open="open" @update:open="!busy && (open = $event)">
@@ -694,37 +693,35 @@ async function confirmApplication(): Promise<void> {
                 @interact-outside="busy && $event.preventDefault()"
             >
                 <DialogHeader>
-                    <DialogTitle>Apply fee from savings</DialogTitle>
+                    <DialogTitle>Pay fee from savings</DialogTitle>
                     <DialogDescription>
                         <template v-if="activeSelection"
                             >{{ activeSelection.customer_name }} ·
-                            {{ activeSelection.rule_name }}.</template
-                        >
-                        Select the agreed savings cycle and review the full
-                        unpaid fee before confirming.
+                            {{ activeSelection.rule_name }}.
+                        </template>
+                        Pick the plan the customer agreed to pay from.
                     </DialogDescription>
                 </DialogHeader>
                 <p
                     v-if="message"
-                    class="text-sm"
+                    class="bg-muted rounded-lg p-3 text-sm"
                     role="status"
                     aria-live="polite"
                 >
                     {{ message }}
                 </p>
                 <div v-if="outcome" class="space-y-2 rounded-lg border p-4">
-                    <p class="font-medium">Fee application posted</p>
-                    <p class="text-sm break-all">
-                        Reference: {{ outcome.posting_reference }}
-                    </p>
+                    <p class="font-medium">Fee paid</p>
+                    <MoreDetails>
+                        <p class="text-muted-foreground text-xs break-all">
+                            Reference: {{ outcome.posting_reference }}
+                        </p>
+                    </MoreDetails>
                 </div>
-                <div v-else-if="attempt" class="space-y-3">
+                <div v-else-if="attempt" class="space-y-4">
                     <p class="text-muted-foreground text-sm">
-                        Check the saved outcome first. Then change the
-                        instructions or submit a new application.
-                    </p>
-                    <p class="text-xs break-all">
-                        Attempt: {{ attempt.reference }}
+                        Check the status first. You can then try again or stop
+                        this payment.
                     </p>
                     <p
                         v-for="(error, field) in commitRequest.errors"
@@ -733,37 +730,48 @@ async function confirmApplication(): Promise<void> {
                     >
                         {{ error }}
                     </p>
-                    <p class="text-muted-foreground text-sm">
-                        Stopping does not undo a recorded application. Before a
-                        new review, the server checks for a completed request
-                        and blocks delayed requests.
-                    </p>
-                    <Button
-                        variant="outline"
-                        :disabled="busy || storageBlocked"
-                        @click="stopApplication"
-                        >Stop pending application</Button
-                    >
-                    <Button :disabled="busy" @click="checkOutcome">{{
-                        statusRequest.processing
-                            ? 'Checking…'
-                            : 'Check saved outcome'
-                    }}</Button>
-                    <Button
-                        v-if="submitted"
-                        variant="outline"
-                        :disabled="busy || !canPost || storageBlocked"
-                        @click="sendApplication"
-                        >Retry the same application</Button
-                    >
-                    <Button
-                        v-if="needsFreshAuthentication"
-                        as-child
-                        variant="outline"
-                        ><Link :href="freshAuthentication()"
-                            >Confirm password and authenticator</Link
-                        ></Button
-                    >
+                    <div class="flex flex-wrap gap-2">
+                        <Button :disabled="busy" @click="checkOutcome">{{
+                            statusRequest.processing
+                                ? 'Checking…'
+                                : 'Check status'
+                        }}</Button>
+                        <Button
+                            v-if="submitted"
+                            variant="outline"
+                            :disabled="busy || !canPost || storageBlocked"
+                            @click="sendApplication"
+                            >Try again</Button
+                        >
+                        <Button
+                            variant="outline"
+                            :disabled="busy || storageBlocked"
+                            @click="stopApplication"
+                            >Stop payment</Button
+                        >
+                        <Button
+                            v-if="needsFreshAuthentication"
+                            as-child
+                            variant="outline"
+                            ><Link :href="freshAuthentication()"
+                                >Confirm it's you</Link
+                            ></Button
+                        >
+                    </div>
+                    <MoreDetails>
+                        <div
+                            class="text-muted-foreground space-y-1 text-xs leading-5"
+                        >
+                            <p class="break-all">
+                                Reference: {{ attempt.reference }}
+                            </p>
+                            <p>
+                                Stopping cannot undo a payment that already went
+                                through. We check this before you can start
+                                again.
+                            </p>
+                        </div>
+                    </MoreDetails>
                 </div>
                 <form
                     v-else-if="activeSelection && !storageBlocked"
@@ -772,13 +780,13 @@ async function confirmApplication(): Promise<void> {
                 >
                     <fieldset :disabled="busy" class="space-y-4">
                         <div class="space-y-1.5">
-                            <Label for="fee-savings-cycle">Savings cycle</Label>
+                            <Label for="fee-savings-cycle">Savings plan</Label>
                             <Select v-model="previewRequest.plan_id">
                                 <SelectTrigger
                                     id="fee-savings-cycle"
+                                    class="w-full"
                                     aria-describedby="fee-savings-cycle-error"
-                                    ><SelectValue
-                                        placeholder="Select a savings cycle"
+                                    ><SelectValue placeholder="Choose a plan"
                                 /></SelectTrigger>
                                 <SelectContent
                                     ><SelectItem
@@ -801,7 +809,7 @@ async function confirmApplication(): Promise<void> {
                                 v-if="sourceRequest.processing"
                                 class="text-muted-foreground animate-pulse text-sm"
                             >
-                                Loading savings cycles…
+                                Loading plans…
                             </p>
                             <Button
                                 v-if="
@@ -809,31 +817,14 @@ async function confirmApplication(): Promise<void> {
                                 "
                                 type="button"
                                 variant="outline"
+                                size="sm"
                                 @click="loadSources"
-                                >Reload savings cycles</Button
+                                >Load plans</Button
                             >
-                        </div>
-                        <div class="space-y-1.5">
-                            <Label for="fee-savings-reason"
-                                >Internal reason</Label
-                            >
-                            <Input
-                                id="fee-savings-reason"
-                                v-model="previewRequest.reason"
-                                required
-                                maxlength="500"
-                                aria-describedby="fee-savings-reason-error"
-                            />
-                            <p
-                                id="fee-savings-reason-error"
-                                class="text-destructive text-xs"
-                            >
-                                {{ previewRequest.errors.reason }}
-                            </p>
                         </div>
                         <div class="space-y-1.5">
                             <Label for="fee-savings-description"
-                                >Customer explanation</Label
+                                >Note for the customer</Label
                             >
                             <Input
                                 id="fee-savings-description"
@@ -849,58 +840,95 @@ async function confirmApplication(): Promise<void> {
                                 {{ previewRequest.errors.customer_description }}
                             </p>
                         </div>
+                        <div class="space-y-1.5">
+                            <Label for="fee-savings-reason"
+                                >Reason (staff only)</Label
+                            >
+                            <Input
+                                id="fee-savings-reason"
+                                v-model="previewRequest.reason"
+                                required
+                                maxlength="500"
+                                aria-describedby="fee-savings-reason-error"
+                            />
+                            <p
+                                id="fee-savings-reason-error"
+                                class="text-destructive text-xs"
+                            >
+                                {{ previewRequest.errors.reason }}
+                            </p>
+                        </div>
                         <Button
+                            v-if="!review"
                             type="submit"
-                            variant="outline"
                             :disabled="!previewRequest.plan_id"
                             >{{
                                 previewRequest.processing
-                                    ? 'Reviewing…'
-                                    : 'Review fee application'
+                                    ? 'Checking…'
+                                    : 'Continue'
                             }}</Button
                         >
                     </fieldset>
                     <div v-if="review" class="space-y-4 rounded-lg border p-4">
                         <p class="font-medium">
-                            {{ selectedCycle?.name }} · {{ review.plan_id }}
+                            Check before paying: {{ selectedCycle?.name }}
                         </p>
                         <dl class="grid grid-cols-2 gap-3 text-sm">
-                            <dt>Posted cycle savings</dt>
-                            <dd class="text-right font-mono">
-                                {{ review.display.liability }}
-                            </dd>
-                            <dt>Live reservations</dt>
-                            <dd class="text-right font-mono">
-                                {{ review.display.reservations }}
-                            </dd>
-                            <dt>Available cycle savings</dt>
-                            <dd class="text-right font-mono">
-                                {{ review.display.available }}
-                            </dd>
-                            <dt>Full fee to apply</dt>
-                            <dd class="text-right font-mono">
+                            <dt class="text-muted-foreground">Fee to pay</dt>
+                            <dd class="text-right font-medium">
                                 {{ review.display.fee }}
                             </dd>
-                            <dt>Remaining savings</dt>
-                            <dd class="text-right font-mono">
-                                {{ review.display.remaining }}
+                            <dt class="text-muted-foreground">
+                                Savings available now
+                            </dt>
+                            <dd class="text-right">
+                                {{ review.display.available }}
                             </dd>
-                            <dt>Available cycle savings after application</dt>
-                            <dd class="text-right font-mono">
+                            <dt class="text-muted-foreground">
+                                Savings available after
+                            </dt>
+                            <dd class="text-right">
                                 {{ review.display.available_after }}
                             </dd>
-                            <dt>Remaining unpaid fee</dt>
-                            <dd class="text-right font-mono">₦0.00</dd>
+                            <dt class="text-muted-foreground">
+                                Fee left to pay
+                            </dt>
+                            <dd class="text-right">₦0.00</dd>
                         </dl>
-                        <p class="text-muted-foreground text-xs">
-                            Posting date {{ review.occurred_on }} ·
-                            {{ review.business_timezone }}. Review expires
-                            {{
-                                new Date(
-                                    review.quote_expires_at,
-                                ).toLocaleTimeString()
-                            }}.
-                        </p>
+                        <MoreDetails>
+                            <dl
+                                class="text-muted-foreground grid grid-cols-2 gap-2 text-xs"
+                            >
+                                <dt>Plan ID</dt>
+                                <dd class="text-right">{{ review.plan_id }}</dd>
+                                <dt>Total savings on plan</dt>
+                                <dd class="text-right">
+                                    {{ review.display.liability }}
+                                </dd>
+                                <dt>Savings on hold</dt>
+                                <dd class="text-right">
+                                    {{ review.display.reservations }}
+                                </dd>
+                                <dt>Total savings after</dt>
+                                <dd class="text-right">
+                                    {{ review.display.remaining }}
+                                </dd>
+                                <dt>Date</dt>
+                                <dd class="text-right">
+                                    {{ review.occurred_on }} ({{
+                                        review.business_timezone
+                                    }})
+                                </dd>
+                                <dt>Check valid until</dt>
+                                <dd class="text-right">
+                                    {{
+                                        new Date(
+                                            review.quote_expires_at,
+                                        ).toLocaleTimeString()
+                                    }}
+                                </dd>
+                            </dl>
+                        </MoreDetails>
                         <div class="flex items-start gap-3">
                             <Checkbox
                                 id="fee-savings-confirm"
@@ -913,8 +941,8 @@ async function confirmApplication(): Promise<void> {
                             <Label
                                 for="fee-savings-confirm"
                                 class="leading-relaxed"
-                                >I confirm the Customer's agreed source and
-                                explanation and the full fee shown above.</Label
+                                >The customer agreed to pay this fee from this
+                                plan.</Label
                             >
                         </div>
                         <p
@@ -927,7 +955,7 @@ async function confirmApplication(): Promise<void> {
                             type="button"
                             :disabled="busy || !confirmed || !canPost"
                             @click="confirmApplication"
-                            >Confirm fee application</Button
+                            >Pay fee</Button
                         >
                     </div>
                 </form>
@@ -936,9 +964,7 @@ async function confirmApplication(): Promise<void> {
                         variant="outline"
                         :disabled="busy"
                         @click="open = false"
-                        >{{
-                            attempt || storageBlocked ? 'Hide' : 'Close'
-                        }}</Button
+                        >Close</Button
                     >
                 </DialogFooter>
             </DialogContent>

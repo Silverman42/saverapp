@@ -4,6 +4,7 @@ import { onMounted, ref, watch } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import PageHeader from '@/components/PageHeader.vue';
 import { notificationSyncState } from '@/composables/useNotificationSync';
 import { dashboard } from '@/routes';
 import { index, open, read } from '@/routes/notifications';
@@ -52,7 +53,7 @@ watch(
         ) {
             visible.value = null;
             message.value =
-                'This notice is unavailable or your access changed. Return to the inbox to refresh.';
+                'This notification is no longer available, or your access changed. Go back to your notifications to refresh.';
         }
     },
 );
@@ -71,12 +72,17 @@ async function mark(readState: boolean): Promise<void> {
     } catch {
         visible.value = null;
         message.value =
-            'This notice changed or became unavailable. Refresh to retry.';
+            'This notification changed or is no longer available. Refresh to try again.';
     }
 }
 onMounted(() => {
     if (!props.notification.read_at) void mark(true);
 });
+const categoryLabels: Record<string, string> = {
+    account: 'Account',
+    financial: 'Money',
+    plan: 'Plan',
+};
 function date(value: string): string {
     return new Intl.DateTimeFormat('en-NG', {
         dateStyle: 'medium',
@@ -87,66 +93,64 @@ function date(value: string): string {
 </script>
 
 <template>
-    <div class="space-y-6">
+    <div class="flex flex-col gap-6">
         <Head title="Notification" />
-        <header>
-            <h1 class="text-[25px] font-medium tracking-tight">Notification</h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                A notice records an outcome. Each action still needs your
-                current permissions.
-            </p>
-        </header>
-        <p v-if="message" role="status">{{ message }}</p>
-        <Card v-if="visible"
-            ><CardContent class="space-y-4 pt-6">
-                <div class="flex flex-wrap gap-2">
-                    <Badge variant="secondary">{{ visible.category }}</Badge
-                    ><Badge v-if="visible.action_required" variant="outline"
-                        >Action required</Badge
+        <PageHeader :title="visible?.title ?? 'Notification'">
+            <template #actions>
+                <Button
+                    v-if="visible"
+                    variant="outline"
+                    :disabled="http.processing"
+                    @click="mark(visible.read_at !== null ? false : true)"
+                    >{{ visible.read_at ? 'Mark unread' : 'Mark read' }}</Button
+                >
+            </template>
+        </PageHeader>
+        <p v-if="message" role="status" class="bg-muted rounded-xl p-4 text-sm">
+            {{ message }}
+        </p>
+        <Card v-if="visible" class="max-w-3xl">
+            <CardContent class="space-y-5">
+                <div class="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{{
+                        categoryLabels[visible.category] ?? visible.category
+                    }}</Badge
+                    ><Badge v-if="visible.action_required">Needs action</Badge
                     ><Badge
                         v-if="visible.visibility !== 'current'"
                         variant="outline"
                         >{{
                             visible.visibility === 'expired'
-                                ? 'Expired action'
-                                : 'Superseded'
+                                ? 'Action expired'
+                                : 'Replaced by a newer one'
                         }}</Badge
-                    ><Badge variant="outline">{{
-                        visible.read_at ? 'Read' : 'Unread'
-                    }}</Badge>
-                </div>
-                <h2 class="text-xl font-medium">{{ visible.title }}</h2>
-                <p>{{ visible.summary }}</p>
-                <p
-                    v-if="visible.reference"
-                    class="text-muted-foreground text-sm"
-                >
-                    {{ visible.reference }}
-                </p>
-                <time
-                    :datetime="visible.effective_at"
-                    class="text-muted-foreground block text-sm"
-                    >{{ date(visible.effective_at) }} ({{ timezone }})</time
-                >
-                <div class="flex flex-wrap gap-3">
-                    <Button v-if="visible.has_destination" as-child
-                        ><Link :href="open(visible.id)"
-                            >Open current record</Link
-                        ></Button
-                    ><Button
-                        variant="outline"
-                        :disabled="http.processing"
-                        @click="mark(visible.read_at !== null ? false : true)"
-                        >{{
-                            visible.read_at ? 'Mark unread' : 'Mark read'
-                        }}</Button
                     >
+                    <span class="sr-only">{{
+                        visible.read_at ? 'Read' : 'Unread'
+                    }}</span>
                 </div>
-            </CardContent></Card
-        >
+                <p class="leading-relaxed">{{ visible.summary }}</p>
+                <div
+                    class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm"
+                >
+                    <time
+                        :datetime="visible.effective_at"
+                        :title="`Time zone: ${timezone}`"
+                        >{{ date(visible.effective_at) }}</time
+                    >
+                    <template v-if="visible.reference">
+                        <span aria-hidden="true">·</span>
+                        <span>{{ visible.reference }}</span>
+                    </template>
+                </div>
+                <Button v-if="visible.has_destination" as-child
+                    ><Link :href="open(visible.id)">Open record</Link></Button
+                >
+            </CardContent>
+        </Card>
         <div class="flex gap-3">
-            <Button as-child variant="outline"
-                ><Link :href="index()">Back to inbox</Link></Button
+            <Button as-child variant="ghost"
+                ><Link :href="index()">Back to notifications</Link></Button
             ><Button v-if="!visible" variant="outline" @click="router.reload()"
                 >Refresh</Button
             >

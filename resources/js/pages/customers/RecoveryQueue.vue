@@ -2,6 +2,11 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { dashboard } from '@/routes';
 import { show } from '@/routes/customers/recovery';
+import { ShieldCheck } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 defineProps<{
     recoveries: {
@@ -26,47 +31,46 @@ defineOptions({
 <template>
     <div class="space-y-6">
         <Head title="Customer recovery review" />
-        <header>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Customer recovery review
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                Review verification before approving new account access.
-            </p>
-        </header>
-        <Card
-            ><CardContent class="pt-6"
-                ><p
-                    v-if="!recoveries.data.length"
-                    class="text-muted-foreground text-sm"
-                >
-                    No Customer recovery requests.
-                </p>
+        <PageHeader
+            title="Account recovery requests"
+            description="Check each request before giving new account access."
+        />
+        <EmptyState
+            v-if="!recoveries.data.length"
+            :icon="ShieldCheck"
+            title="No requests"
+            description="New account recovery requests will show up here."
+        />
+        <Card v-else>
+            <CardContent>
                 <ul class="divide-y">
                     <li
                         v-for="recovery in recoveries.data"
                         :key="recovery.reference"
-                        class="flex flex-wrap items-center justify-between gap-3 py-4"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
-                        <div>
+                        <div class="min-w-0">
                             <p class="font-medium">
                                 {{ recovery.customer_reference }}
                             </p>
-                            <p class="text-muted-foreground text-sm">
-                                {{ recovery.state.replaceAll('_', ' ') }} ·
-                                version {{ recovery.version }}
-                            </p>
+                            <Badge variant="secondary" class="mt-1 capitalize">
+                                {{ recovery.state.replaceAll('_', ' ') }}
+                            </Badge>
                         </div>
-                        <Link
-                            :href="show.url(recovery.customer_reference)"
-                            class="text-sm underline"
-                            >Review recovery</Link
-                        >
+                        <Button as-child variant="outline" size="sm">
+                            <Link :href="show.url(recovery.customer_reference)"
+                                >Review</Link
+                            >
+                        </Button>
                     </li>
-                </ul></CardContent
-            ></Card
+                </ul>
+            </CardContent>
+        </Card>
+        <nav
+            v-if="recoveries.links.length > 3"
+            aria-label="Recovery pages"
+            class="flex flex-wrap gap-2"
         >
-        <nav aria-label="Recovery pages" class="flex flex-wrap gap-3">
             <template
                 v-for="(link, position) in recoveries.links"
                 :key="position"
@@ -75,6 +79,7 @@ defineOptions({
                     :href="link.url"
                     :aria-current="link.active ? 'page' : undefined"
                     class="rounded-md border px-3 py-2 text-sm"
+                    :class="link.active ? 'bg-accent font-medium' : ''"
                     >{{
                         link.label.replace(/&laquo;|&raquo;/g, '').trim()
                     }}</Link

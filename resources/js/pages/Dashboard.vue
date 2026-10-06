@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage, usePoll } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
-import { RefreshCw } from '@lucide/vue';
+import { ArrowRight, Inbox, RefreshCw, SlidersHorizontal } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -115,24 +113,24 @@ const allOption = '__all';
 const fromAllOption = (value: unknown): string =>
     value === allOption ? '' : String(value ?? '');
 const titles: Record<string, string> = {
-    portfolio: 'Current portfolio',
-    savings: 'Savings position',
-    collections: 'Receipt activity',
-    schedule: 'Plan progress and today’s schedule',
-    requests: 'Requests awaiting review',
-    activity: 'Recent posted activity',
-    custody: 'Cash custody and reconciliation',
-    financial_movements: 'Posted financial movements',
-    financial_cash_position: 'Business cash and encumbrances',
-    incidents: 'Payout and ledger incidents',
-    gated: 'Additional metrics',
+    portfolio: 'Customers and plans',
+    savings: 'Savings',
+    collections: 'Payments received',
+    schedule: 'Today’s schedule',
+    requests: 'Waiting for review',
+    activity: 'Recent activity',
+    custody: 'Cash on hand',
+    financial_movements: 'Money in and out',
+    financial_cash_position: 'Business cash',
+    incidents: 'Issues to check',
+    gated: 'More numbers',
 };
 const heading = computed(
     () =>
         ({
-            customer: 'Your savings overview',
-            agent: 'Your collection overview',
-            admin: 'Business operations overview',
+            customer: 'Your savings',
+            agent: 'Your collections',
+            admin: 'Business overview',
         })[props.dashboard.role],
 );
 const route = computed(
@@ -224,6 +222,26 @@ function applyFilters(): void {
         },
     );
 }
+const filtersOpen = ref(false);
+const activeFilterCount = computed(
+    () =>
+        [
+            filters.value.customer_status,
+            filters.value.plan_status,
+            filters.value.agent_basis,
+        ].filter(Boolean).length + (filters.value.page_size !== 25 ? 1 : 0),
+);
+const statusLabels: Record<Section['status'], string> = {
+    Current: 'Up to date',
+    Stale: 'May be out of date',
+    Rebuilding: 'Updating',
+    Unavailable: 'Not available',
+    Partial: 'Partly loaded',
+};
+function applyFromSheet(): void {
+    filtersOpen.value = false;
+    applyFilters();
+}
 function resetFilters(): void {
     filters.value = filterValues({
         period: 'today',
@@ -231,6 +249,7 @@ function resetFilters(): void {
         to: props.filters.to,
         page_size: 25,
     });
+    filtersOpen.value = false;
     applyFilters();
 }
 </script>
@@ -238,37 +257,44 @@ function resetFilters(): void {
 <template>
     <Head title="Dashboard" />
     <div class="flex flex-1 flex-col gap-6">
-        <div class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <Badge variant="outline" class="mb-3"
-                    >{{ dashboard.role }} dashboard</Badge
+        <PageHeader
+            :title="heading"
+            :description="
+                dashboard.role === 'customer'
+                    ? 'See how your savings are growing.'
+                    : 'A quick look at what is happening today.'
+            "
+        >
+            <template #actions>
+                <Button variant="outline" :disabled="pending" @click="refresh"
+                    ><RefreshCw
+                        class="size-4"
+                        :class="pending ? 'animate-spin' : ''"
+                    />
+                    Refresh</Button
                 >
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    {{ heading }}
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    This page shows savings, activity and current work from
-                    their source records.
-                </p>
-            </div>
-            <Button variant="outline" :disabled="pending" @click="refresh"
-                ><RefreshCw class="size-4" /> Refresh</Button
-            >
-        </div>
+            </template>
+        </PageHeader>
+
         <form
-            class="flex flex-row flex-wrap items-end gap-4"
+            class="flex flex-row flex-wrap items-end gap-3"
             aria-label="Dashboard filters"
             @submit.prevent="applyFilters"
         >
             <div class="w-fit space-y-2">
-                <Label for="period">Activity period</Label>
-                <Select v-model="filters.period">
+                <Label for="period">Period</Label>
+                <Select
+                    v-model="filters.period"
+                    @update:model-value="
+                        $event !== 'custom' ? applyFilters() : undefined
+                    "
+                >
                     <SelectTrigger id="period"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="today">Today</SelectItem>
                         <SelectItem value="week">This week</SelectItem>
                         <SelectItem value="month">This month</SelectItem>
-                        <SelectItem value="custom">Custom dates</SelectItem>
+                        <SelectItem value="custom">Pick dates</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -278,132 +304,147 @@ function resetFilters(): void {
                     ><DatePicker id="from" v-model="filters.from" />
                 </div>
                 <div class="w-fit space-y-2">
-                    <Label for="to">To (up to 366 dates)</Label
+                    <Label for="to">To</Label
                     ><DatePicker id="to" v-model="filters.to" />
                 </div>
+                <Button type="submit" :disabled="pending">Show</Button>
             </template>
-            <div v-if="dashboard.role !== 'customer'" class="w-fit space-y-2">
-                <Label for="customer-status">Customer status</Label>
-                <Select
-                    :model-value="filters.customer_status || allOption"
-                    @update:model-value="
-                        filters.customer_status = fromAllOption($event)
-                    "
+            <Button type="button" variant="outline" @click="filtersOpen = true">
+                <SlidersHorizontal class="size-4" />
+                Filters
+                <span
+                    v-if="activeFilterCount > 0"
+                    class="bg-primary text-primary-foreground inline-flex size-5 items-center justify-center rounded-full text-[11px]"
+                    >{{ activeFilterCount }}</span
                 >
-                    <SelectTrigger id="customer-status"
-                        ><SelectValue
-                    /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem :value="allOption">Non-archived</SelectItem>
-                        <SelectItem
-                            v-for="status in [
-                                'active',
-                                'inactive',
-                                'restricted',
-                                'archived',
-                            ]"
-                            :key="status"
-                            :value="status"
-                        >
-                            {{ status }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-            <div class="w-fit space-y-2">
-                <Label for="plan-status">Plan status</Label>
-                <Select
-                    :model-value="filters.plan_status || allOption"
-                    @update:model-value="
-                        filters.plan_status = fromAllOption($event)
-                    "
-                >
-                    <SelectTrigger id="plan-status"
-                        ><SelectValue
-                    /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem :value="allOption"
-                            >All plan states</SelectItem
-                        >
-                        <SelectItem
-                            v-for="status in [
-                                'active',
-                                'paused',
-                                'completed',
-                                'closed',
-                                'cancelled',
-                            ]"
-                            :key="status"
-                            :value="status"
-                        >
-                            {{ status }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-            <template v-if="dashboard.role === 'admin'">
-                <div class="w-fit space-y-2">
-                    <Label for="agent-basis">Agent attribution</Label>
+            </Button>
+        </form>
+
+        <FormSheet
+            v-model:open="filtersOpen"
+            title="Filters"
+            description="Narrow down what the dashboard shows."
+        >
+            <div class="grid gap-5">
+                <div v-if="dashboard.role !== 'customer'" class="grid gap-2">
+                    <Label for="customer-status">Customer status</Label>
                     <Select
-                        :model-value="filters.agent_basis || allOption"
+                        :model-value="filters.customer_status || allOption"
                         @update:model-value="
-                            filters.agent_basis = fromAllOption($event)
+                            filters.customer_status = fromAllOption($event)
                         "
                     >
-                        <SelectTrigger id="agent-basis"
+                        <SelectTrigger id="customer-status" class="w-full"
                             ><SelectValue
                         /></SelectTrigger>
                         <SelectContent>
                             <SelectItem :value="allOption"
-                                >Business-wide</SelectItem
+                                >All except archived</SelectItem
                             >
-                            <SelectItem value="current"
-                                >Current Agent</SelectItem
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                            <SelectItem value="restricted"
+                                >Restricted</SelectItem
                             >
-                            <SelectItem value="recording"
-                                >Recording Agent</SelectItem
-                            >
+                            <SelectItem value="archived">Archived</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
-                <div v-if="filters.agent_basis" class="w-fit space-y-2">
-                    <Label for="agent-ref">Agent reference</Label
-                    ><Input
-                        id="agent-ref"
-                        v-model="filters.agent"
-                        placeholder="AGT-…"
-                    />
+                <div class="grid gap-2">
+                    <Label for="plan-status">Plan status</Label>
+                    <Select
+                        :model-value="filters.plan_status || allOption"
+                        @update:model-value="
+                            filters.plan_status = fromAllOption($event)
+                        "
+                    >
+                        <SelectTrigger id="plan-status" class="w-full"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem :value="allOption"
+                                >All plans</SelectItem
+                            >
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="paused">Paused</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
-            </template>
-            <div class="w-fit space-y-2">
-                <Label for="page-size">Rows shown</Label
-                ><Select
-                    :model-value="String(filters.page_size)"
-                    @update:model-value="filters.page_size = Number($event)"
-                >
-                    <SelectTrigger id="page-size"
-                        ><SelectValue
-                    /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem
-                            v-for="size in [25, 50, 100]"
-                            :key="size"
-                            :value="String(size)"
+                <template v-if="dashboard.role === 'admin'">
+                    <div class="grid gap-2">
+                        <Label for="agent-basis">Agent</Label>
+                        <Select
+                            :model-value="filters.agent_basis || allOption"
+                            @update:model-value="
+                                filters.agent_basis = fromAllOption($event)
+                            "
                         >
-                            {{ size }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
+                            <SelectTrigger id="agent-basis" class="w-full"
+                                ><SelectValue
+                            /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem :value="allOption"
+                                    >All agents</SelectItem
+                                >
+                                <SelectItem value="current"
+                                    >Customer’s current agent</SelectItem
+                                >
+                                <SelectItem value="recording"
+                                    >Agent who recorded it</SelectItem
+                                >
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div v-if="filters.agent_basis" class="grid gap-2">
+                        <Label for="agent-ref">Agent ID</Label
+                        ><Input
+                            id="agent-ref"
+                            v-model="filters.agent"
+                            placeholder="AGT-…"
+                        />
+                    </div>
+                </template>
+                <div class="grid gap-2">
+                    <Label for="page-size">Rows per list</Label
+                    ><Select
+                        :model-value="String(filters.page_size)"
+                        @update:model-value="filters.page_size = Number($event)"
+                    >
+                        <SelectTrigger id="page-size" class="w-full"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem
+                                v-for="size in [25, 50, 100]"
+                                :key="size"
+                                :value="String(size)"
+                            >
+                                {{ size }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
-            <Button type="submit" :disabled="pending">Apply</Button
-            ><Button
-                type="button"
-                variant="outline"
-                :disabled="pending"
-                @click="resetFilters"
-                >Reset</Button
-            >
-        </form>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="pending"
+                    @click="resetFilters"
+                    >Clear</Button
+                >
+                <Button
+                    type="button"
+                    :disabled="pending"
+                    @click="applyFromSheet"
+                    >Show results</Button
+                >
+            </template>
+        </FormSheet>
+
         <div
             v-if="Object.keys(page.props.errors).length"
             role="alert"
@@ -415,29 +456,32 @@ function resetFilters(): void {
         </div>
         <p
             v-if="dashboard.role === 'agent' && !scopeSummary.can_collect"
-            class="border-border rounded-xl border p-4 text-sm"
+            class="bg-muted rounded-xl p-4 text-sm"
         >
-            Your account is read-only for collection work. You can view
-            permitted records.
+            You can view records, but you can’t record payments right now.
         </p>
-        <div
+        <p
             role="status"
             aria-live="polite"
-            class="text-muted-foreground text-xs"
+            class="text-muted-foreground -mt-2 text-xs"
         >
             <template v-if="visible"
-                >{{ pending ? 'Refreshing…' : 'As of' }}
-                {{ visible.manifest.cutoff }} ·
-                {{ visible.manifest.timezone }} · Activity
-                {{ props.filters.from }}–{{ props.filters.to }}</template
+                >{{ pending ? 'Refreshing…' : 'Updated' }}
+                {{ visible.manifest.cutoff }}</template
             >
-            <template v-else>Refreshing your permitted scope…</template>
-        </div>
+            <template v-else>Loading…</template>
+        </p>
         <div
             v-if="!visible"
-            class="bg-muted min-h-40 animate-pulse rounded-2xl motion-reduce:animate-none"
+            class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
             aria-label="Dashboard loading"
-        />
+        >
+            <div
+                v-for="n in 3"
+                :key="n"
+                class="bg-muted h-32 animate-pulse rounded-2xl motion-reduce:animate-none"
+            />
+        </div>
         <template v-else>
             <section
                 v-for="(section, code) in visible.sections"
@@ -446,25 +490,15 @@ function resetFilters(): void {
             >
                 <Card>
                     <CardHeader
-                        class="flex flex-row flex-wrap items-start justify-between gap-3"
+                        class="flex flex-row flex-wrap items-center justify-between gap-3"
                     >
-                        <div>
-                            <CardTitle :id="`section-${code}`">{{
-                                titles[code]
-                            }}</CardTitle
-                            ><CardDescription
-                                v-if="section.note"
-                                class="mt-1.5 max-w-3xl"
-                                >{{ section.note }}</CardDescription
-                            >
-                        </div>
+                        <CardTitle :id="`section-${code}`">{{
+                            titles[code]
+                        }}</CardTitle>
                         <Badge
-                            :variant="
-                                section.status === 'Current'
-                                    ? 'outline'
-                                    : 'secondary'
-                            "
-                            >{{ section.status }}</Badge
+                            v-if="section.status !== 'Current'"
+                            variant="secondary"
+                            >{{ statusLabels[section.status] }}</Badge
                         >
                     </CardHeader>
                     <CardContent class="space-y-5">
@@ -476,45 +510,43 @@ function resetFilters(): void {
                         </p>
                         <div
                             v-if="section.metrics.length"
-                            class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
                         >
-                            <div
+                            <component
+                                :is="metric.drill_down ? Link : 'div'"
                                 v-for="metric in section.metrics"
                                 :key="metric.code"
-                                class="border-border rounded-xl border p-4"
+                                :href="metric.drill_down ?? undefined"
+                                :aria-label="
+                                    metric.drill_down
+                                        ? `View report for ${metric.title}`
+                                        : undefined
+                                "
+                                class="bg-muted/40 group flex flex-col justify-between gap-3 rounded-xl p-4 transition-colors"
+                                :class="
+                                    metric.drill_down
+                                        ? 'hover:bg-accent/60 focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+                                        : ''
+                                "
                             >
                                 <p class="text-muted-foreground text-sm">
                                     {{ metric.title }}
                                 </p>
-                                <p
-                                    class="mt-2 text-2xl font-semibold break-words"
-                                    :aria-label="`${metric.display} ${metric.unit === 'NGN' ? 'NGN' : ''}`"
+                                <div
+                                    class="flex items-end justify-between gap-2"
                                 >
-                                    {{ metric.display }}
-                                </p>
-                                <p
-                                    class="text-muted-foreground mt-2 text-xs leading-5"
-                                >
-                                    {{ metric.definition }}
-                                </p>
-                                <p class="text-muted-foreground mt-2 text-xs">
-                                    {{ metric.source }} ·
-                                    {{ metric.date_basis }}
-                                </p>
-                                <Link
-                                    v-if="metric.drill_down"
-                                    :href="metric.drill_down"
-                                    class="mt-3 inline-block text-sm font-medium underline-offset-4 hover:underline"
-                                    :aria-label="`View report for ${metric.title}`"
-                                    >View report</Link
-                                >
-                                <p
-                                    v-else
-                                    class="text-muted-foreground mt-3 text-xs"
-                                >
-                                    {{ metric.drill_down_reason }}
-                                </p>
-                            </div>
+                                    <p
+                                        class="text-2xl font-semibold break-words"
+                                        :aria-label="`${metric.display} ${metric.unit === 'NGN' ? 'NGN' : ''}`"
+                                    >
+                                        {{ metric.display }}
+                                    </p>
+                                    <ArrowRight
+                                        v-if="metric.drill_down"
+                                        class="text-muted-foreground group-hover:text-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+                                    />
+                                </div>
+                            </component>
                         </div>
                         <div
                             v-if="section.rows?.length"
@@ -525,10 +557,10 @@ function resetFilters(): void {
                                 :key="row.reference ?? row.plan_id"
                                 class="flex flex-wrap items-center justify-between gap-3 py-3"
                             >
-                                <div>
+                                <div class="min-w-0">
                                     <Link
                                         :href="row.href"
-                                        class="text-primary text-sm font-medium underline-offset-4 hover:underline"
+                                        class="text-sm font-medium underline-offset-4 hover:underline"
                                         >{{
                                             row.reference ??
                                             row.name ??
@@ -536,7 +568,7 @@ function resetFilters(): void {
                                         }}</Link
                                     >
                                     <p
-                                        class="text-muted-foreground mt-1 text-xs"
+                                        class="text-muted-foreground mt-0.5 text-xs"
                                     >
                                         {{ row.type ?? row.customer_id }} ·
                                         {{
@@ -549,60 +581,63 @@ function resetFilters(): void {
                                 <div class="flex flex-wrap items-center gap-3">
                                     <span class="text-sm font-medium">{{
                                         row.amount ?? row.remaining
-                                    }}</span
-                                    ><Link
+                                    }}</span>
+                                    <Button
                                         v-if="
                                             code === 'schedule' &&
                                             scopeSummary.can_collect &&
                                             row.can_record_cash &&
                                             row.customer_id
                                         "
-                                        :href="
-                                            createCollection(row.customer_id)
-                                                .url
-                                        "
-                                        class="text-primary text-sm underline"
-                                        >Record cash</Link
+                                        as-child
+                                        size="sm"
+                                        variant="outline"
+                                        ><Link
+                                            :href="
+                                                createCollection(
+                                                    row.customer_id,
+                                                ).url
+                                            "
+                                            >Record cash</Link
+                                        ></Button
                                     >
                                 </div>
                             </div>
                         </div>
-                        <p
+                        <EmptyState
                             v-else-if="
                                 section.rows && section.status !== 'Unavailable'
                             "
-                            class="text-muted-foreground text-sm"
-                        >
-                            No matching records at this cutoff.
-                        </p>
+                            :icon="Inbox"
+                            title="Nothing here yet"
+                            description="Items will show up here when there is activity."
+                        />
                         <div v-if="section.trend" class="space-y-3">
                             <h3 class="text-sm font-medium">
-                                Savings received trend ·
-                                {{ section.trend_from }}–{{ section.trend_to }}
+                                Savings received, last 30 days
                             </h3>
-                            <p class="text-muted-foreground text-xs">
-                                The owner keeps the received dates. Values are
-                                exact NGN amounts. Dates with no posted receipt
-                                do not show.
-                            </p>
                             <div
                                 class="max-h-64 overflow-y-auto rounded-xl border"
                             >
                                 <table class="w-full text-left text-sm">
                                     <caption class="sr-only">
-                                        Savings received by receipt date, last
-                                        30 days
+                                        Savings received by date, last 30 days
                                     </caption>
-                                    <thead>
+                                    <thead
+                                        class="text-muted-foreground text-xs"
+                                    >
                                         <tr>
-                                            <th scope="col" class="p-3">
-                                                Received date
+                                            <th
+                                                scope="col"
+                                                class="p-3 font-medium"
+                                            >
+                                                Date
                                             </th>
                                             <th
                                                 scope="col"
-                                                class="p-3 text-right"
+                                                class="p-3 text-right font-medium"
                                             >
-                                                Savings (NGN)
+                                                Amount (NGN)
                                             </th>
                                         </tr>
                                     </thead>
@@ -627,29 +662,42 @@ function resetFilters(): void {
                                                 colspan="2"
                                                 class="text-muted-foreground p-3"
                                             >
-                                                No posted receipts in this trend
-                                                period.
+                                                No savings received in the last
+                                                30 days.
                                             </td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-                        <div v-if="section.href" class="space-y-1">
-                            <Link
-                                :href="section.href"
-                                class="text-primary text-sm underline"
-                                >View all {{ section.total }} transactions</Link
+                        <Link
+                            v-if="section.href"
+                            :href="section.href"
+                            class="inline-flex items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
+                            >See all {{ section.total }} transactions
+                            <ArrowRight class="size-4"
+                        /></Link>
+                        <MoreDetails
+                            v-if="section.metrics.length || section.note"
+                            label="About these numbers"
+                        >
+                            <div
+                                class="text-muted-foreground space-y-3 text-xs leading-5"
                             >
-                            <p class="text-muted-foreground text-xs">
-                                {{ section.link_note }}
-                            </p>
-                        </div>
-                        <p class="text-muted-foreground text-xs">
-                            As of {{ section.cutoff }} · Ledger watermark
-                            {{ section.ledger_watermark }} · Projection
-                            {{ section.projection_version }}
-                        </p>
+                                <p v-if="section.note">{{ section.note }}</p>
+                                <dl class="space-y-2">
+                                    <div
+                                        v-for="metric in section.metrics"
+                                        :key="metric.code"
+                                    >
+                                        <dt class="text-foreground font-medium">
+                                            {{ metric.title }}
+                                        </dt>
+                                        <dd>{{ metric.definition }}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </MoreDetails>
                     </CardContent>
                 </Card>
             </section>

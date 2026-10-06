@@ -15,7 +15,17 @@ import {
     completeOffboarding,
     returnToService,
 } from '@/actions/App/Http/Controllers/AgentLifecycleController';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
     Card,
@@ -25,6 +35,7 @@ import {
     CardContent,
 } from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { ShieldCheck } from '@lucide/vue';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -95,13 +106,22 @@ const props = defineProps<{
     history: History[];
 }>();
 const labels: Record<Action, string> = {
-    suspend: 'Suspend account',
-    restore: 'Restore account access',
+    suspend: 'Suspend access',
+    restore: 'Restore access',
     'start-offboarding': 'Start offboarding',
-    'transfer-owner': 'Transfer case ownership',
+    'transfer-owner': 'Change case owner',
     'cancel-offboarding': 'Cancel offboarding',
-    'complete-offboarding': 'Complete offboarding',
-    return: 'Reactivate existing Agent',
+    'complete-offboarding': 'Finish offboarding',
+    return: 'Bring back agent',
+};
+const summaries: Record<Action, string> = {
+    suspend: 'Stop them signing in right away.',
+    restore: 'Let them sign in again.',
+    'start-offboarding': 'Begin the process for an agent who is leaving.',
+    'transfer-owner': 'Hand this case to another admin.',
+    'cancel-offboarding': 'Stop the offboarding process.',
+    'complete-offboarding': 'Close the case and turn off the account.',
+    return: 'Rehire an agent who left before.',
 };
 const endpoints = {
     suspend,
@@ -126,19 +146,19 @@ const form = useForm({
 const consequences = computed(() => {
     switch (action.value) {
         case 'suspend':
-            return 'This action stops all application access immediately. Operational status, assignments, credentials, savings and financial history do not change. The system revokes all old sessions and trusted devices.';
+            return 'They can’t sign in or use the app until access is restored. All their sessions and trusted devices are signed out. Their status, customers, savings records and history stay the same.';
         case 'start-offboarding':
-            return 'This action creates one offboarding case. It sets readiness to Inactive and suspends account access. Current assignments and financial responsibilities stay for authorized review.';
+            return 'This opens an offboarding case. Their status becomes Inactive and their sign-in is suspended. Their customers and money responsibilities stay in place for review.';
         case 'restore':
-            return `This action sets account access to ${props.restoration_state ?? 'unavailable'}. Operational status stays ${props.agent.operational_status}. If both states permit Customer work, the Agent can work on current assignments again. Old sessions stay revoked.`;
+            return `Their account access becomes ${props.restoration_state ?? 'unavailable'}. Their status stays ${props.agent.operational_status}. If both allow it, they can work with their customers again. They will need to sign in again.`;
         case 'return':
-            return `This action keeps the Agent identity and prior cases. Account access changes to ${props.restoration_state ?? 'unavailable'}. Readiness stays Inactive until a separate approval. Former Customers do not return to this Agent.`;
+            return `They come back with the same profile and past cases. Account access becomes ${props.restoration_state ?? 'unavailable'}. Their status stays Inactive until it is approved separately. Their former customers don’t come back to them.`;
         case 'transfer-owner':
-            return 'This action changes the accountable case owner. It does not transfer Customers. It does not settle money or approve pending requests.';
+            return 'This changes who is responsible for the case. It doesn’t move customers, settle money or approve waiting requests.';
         case 'cancel-offboarding':
-            return 'This action closes the case as Cancelled. Account access stays Suspended. Readiness stays Inactive. Completed handovers and financial resolutions do not change.';
+            return 'This closes the case as cancelled. Sign-in stays suspended and status stays Inactive. Finished handovers and money settlements stay as they are.';
         case 'complete-offboarding':
-            return 'This action deactivates account access and completes the case. All authoritative gates must pass again first. Identity, archived assignments and historical attribution do not change.';
+            return 'This turns off their account and closes the case. All checks must pass again first. Their profile, past customers and the records they made stay unchanged.';
     }
 });
 const disabled = computed(
@@ -166,10 +186,28 @@ watch(
             : (props.allowed_actions[0] ?? 'suspend');
     },
 );
+const dialogOpen = ref(false);
+const openAction = (item: Action): void => {
+    action.value = item;
+    form.confirmed = false;
+    form.clearErrors();
+    dialogOpen.value = true;
+};
+const isActionBlocked = (item: Action): boolean =>
+    !props.fresh_authentication ||
+    (item === 'complete-offboarding' && !props.completion.eligible);
+const hasOpenCase = computed(() =>
+    props.allowed_actions.includes('complete-offboarding'),
+);
+const readable = (value: string): string => {
+    const text = value.replace('agent.', '').replaceAll('_', ' ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+};
 const submit = (): void => {
     form.post(endpoints[action.value](props.agent.id).url, {
         preserveScroll: true,
         onSuccess: () => {
+            dialogOpen.value = false;
             form.reset('reason', 'agent_explanation', 'confirmed');
             form.attempt_reference = crypto.randomUUID();
         },
@@ -180,102 +218,260 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Agents', href: agentsIndex() },
-            { title: 'Access and offboarding', href: '#' },
+            { title: 'Account access', href: '#' },
         ],
     },
 });
 </script>
 
 <template>
-    <Head :title="`Manage ${agent.name} access`" />
-    <div class="mx-auto w-full max-w-4xl space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Agent access and offboarding
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ agent.name }} · {{ agent.id }}
-            </p>
-        </div>
-        <Card
-            ><CardHeader
-                ><CardTitle>Current state</CardTitle
-                ><CardDescription
-                    >Account access and operational readiness use different
-                    procedures.</CardDescription
-                ></CardHeader
-            ><CardContent class="space-y-4"
-                ><div class="flex flex-wrap gap-2">
-                    <Badge variant="outline"
-                        >Account: {{ agent.account_state }}</Badge
-                    ><Badge variant="secondary"
-                        >Readiness: {{ agent.operational_status }}</Badge
-                    ><Badge v-if="props.case" variant="outline"
-                        >Case #{{ props.case.id }}:
-                        {{ props.case.status }}</Badge
-                    >
-                </div>
-                <p class="text-muted-foreground text-sm">
-                    Assigned Customers: Active
-                    {{ agent.assignment_counts.active ?? 0 }} · Inactive
-                    {{ agent.assignment_counts.inactive ?? 0 }} · Restricted
-                    {{ agent.assignment_counts.restricted ?? 0 }} · Archived
-                    {{ agent.assignment_counts.archived ?? 0 }}
-                </p>
-                <Link :href="editStatus(agent.id)"
-                    ><Button variant="outline"
-                        >Manage operational readiness</Button
-                    ></Link
-                ></CardContent
-            ></Card
+    <Head :title="`Account access: ${agent.name}`" />
+    <div class="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader
+            title="Account access"
+            :description="`Suspend, restore or offboard ${agent.name}.`"
         >
+            <template #actions>
+                <Button as-child variant="outline">
+                    <Link :href="editStatus(agent.id)">Change status</Link>
+                </Button>
+            </template>
+        </PageHeader>
+
+        <div
+            v-if="!fresh_authentication"
+            role="status"
+            class="bg-muted flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <div class="flex items-start gap-3">
+                <ShieldCheck
+                    class="text-muted-foreground mt-0.5 size-5 shrink-0"
+                />
+                <div>
+                    <p class="text-sm font-medium">Confirm it’s you first</p>
+                    <p class="text-muted-foreground text-sm">
+                        Enter your password and authenticator code. This lasts
+                        10 minutes.
+                    </p>
+                </div>
+            </div>
+            <Button as-child variant="outline" class="shrink-0">
+                <Link :href="show(agent.id, { query: { verify: 1 } })"
+                    >Confirm identity</Link
+                >
+            </Button>
+        </div>
+
         <Alert v-if="restoration_blocker"
-            ><AlertTitle>Access restoration blocked</AlertTitle
+            ><AlertTitle>Access can’t be restored yet</AlertTitle
             ><AlertDescription>{{
                 restoration_blocker
             }}</AlertDescription></Alert
         >
-        <Card
-            ><CardHeader
-                ><CardTitle>Lifecycle action</CardTitle
-                ><CardDescription
-                    >You must verify your password and authenticator again. Do
-                    this within ten minutes.</CardDescription
-                ></CardHeader
-            ><CardContent>
-                <Link
-                    v-if="!fresh_authentication"
-                    :href="show(agent.id, { query: { verify: 1 } })"
-                    ><Button variant="outline" class="mb-5"
-                        >Verify password and authenticator</Button
-                    ></Link
-                >
-                <form class="space-y-5" @submit.prevent="submit">
-                    <div class="space-y-2">
-                        <Label for="lifecycle-action">Action</Label>
-                        <Select v-model="action">
-                            <SelectTrigger id="lifecycle-action" class="w-full"
-                                ><SelectValue
-                            /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem
-                                    v-for="item in allowed_actions"
-                                    :key="item"
-                                    :value="item"
-                                >
-                                    {{ labels[item] }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Alert
-                        ><AlertTitle>{{ labels[action] }}</AlertTitle
-                        ><AlertDescription>{{
-                            consequences
-                        }}</AlertDescription></Alert
+
+        <Card>
+            <CardHeader><CardTitle>Right now</CardTitle></CardHeader>
+            <CardContent class="space-y-3">
+                <div class="flex flex-wrap gap-2">
+                    <Badge variant="outline"
+                        >Account: {{ readable(agent.account_state) }}</Badge
+                    ><Badge variant="secondary"
+                        >Status: {{ readable(agent.operational_status) }}</Badge
+                    ><Badge v-if="props.case" variant="outline"
+                        >Offboarding: {{ readable(props.case.status) }}</Badge
                     >
+                </div>
+                <p class="text-muted-foreground text-sm">
+                    Customers: {{ agent.assignment_counts.active ?? 0 }} active
+                    · {{ agent.assignment_counts.inactive ?? 0 }} inactive ·
+                    {{ agent.assignment_counts.restricted ?? 0 }} restricted ·
+                    {{ agent.assignment_counts.archived ?? 0 }} archived
+                </p>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader
+                ><CardTitle>What do you want to do?</CardTitle></CardHeader
+            >
+            <CardContent>
+                <p
+                    v-if="!allowed_actions.length"
+                    class="text-muted-foreground text-sm"
+                >
+                    There is nothing you can change right now.
+                </p>
+                <ul v-else class="divide-border -my-3 divide-y">
+                    <li
+                        v-for="item in allowed_actions"
+                        :key="item"
+                        class="flex flex-wrap items-center justify-between gap-3 py-3"
+                    >
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium">
+                                {{ labels[item] }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                <template
+                                    v-if="
+                                        item === 'complete-offboarding' &&
+                                        !completion.eligible
+                                    "
+                                    >Finish the checks below first.</template
+                                >
+                                <template v-else>{{
+                                    summaries[item]
+                                }}</template>
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="isActionBlocked(item)"
+                            @click="openAction(item)"
+                            >{{ labels[item] }}</Button
+                        >
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+
+        <Card v-if="hasOpenCase">
+            <CardHeader
+                ><CardTitle>Before offboarding can finish</CardTitle
+                ><CardDescription
+                    >Until every check passes, the case stays open and sign-in
+                    stays suspended.</CardDescription
+                ></CardHeader
+            >
+            <CardContent>
+                <ul class="divide-border -my-3 divide-y">
+                    <li
+                        v-for="check in completion.checks"
+                        :key="check.key"
+                        class="space-y-1 py-3"
+                    >
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <p class="text-sm font-medium">{{ check.label }}</p>
+                            <Badge
+                                :variant="
+                                    check.status === 'passed'
+                                        ? 'secondary'
+                                        : 'outline'
+                                "
+                                >{{ readable(check.status) }}</Badge
+                            >
+                        </div>
+                        <p class="text-muted-foreground text-sm">
+                            {{ check.message }}
+                        </p>
+                        <Link
+                            v-if="check.url"
+                            :href="check.url"
+                            class="text-primary inline-block text-sm underline-offset-4 hover:underline"
+                            >Open</Link
+                        >
+                    </li>
+                </ul>
+            </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader><CardTitle>History</CardTitle></CardHeader>
+            <CardContent class="space-y-4">
+                <p v-if="!history.length" class="text-muted-foreground text-sm">
+                    No changes yet.
+                </p>
+                <ol v-else class="divide-border -my-3 divide-y">
+                    <li
+                        v-for="entry in history"
+                        :key="entry.id"
+                        class="space-y-1 py-3"
+                    >
+                        <div
+                            class="flex flex-wrap items-baseline justify-between gap-2"
+                        >
+                            <p class="text-sm font-medium">
+                                {{ readable(entry.event_type) }}
+                            </p>
+                            <p class="text-muted-foreground text-xs">
+                                {{ entry.effective_at }}
+                            </p>
+                        </div>
+                        <p class="text-sm">Reason: {{ entry.reason }}</p>
+                        <p class="text-sm">
+                            Message to agent: {{ entry.agent_explanation }}
+                        </p>
+                        <MoreDetails label="Details" class="pt-1">
+                            <div
+                                class="text-muted-foreground space-y-1 text-xs"
+                            >
+                                <p>
+                                    Account:
+                                    {{ readable(entry.from_account_state) }} →
+                                    {{ readable(entry.to_account_state) }}
+                                </p>
+                                <p>
+                                    Status:
+                                    {{
+                                        readable(entry.from_operational_status)
+                                    }}
+                                    →
+                                    {{ readable(entry.to_operational_status) }}
+                                </p>
+                                <p v-if="entry.case_id">
+                                    Case #{{ entry.case_id }}
+                                </p>
+                                <p
+                                    v-for="(
+                                        notice, index
+                                    ) in entry.notifications"
+                                    :key="index"
+                                >
+                                    {{ notice.audience_type }} ·
+                                    {{ notice.channel }} · {{ notice.status
+                                    }}<span v-if="notice.failure_reason"
+                                        >: {{ notice.failure_reason }}</span
+                                    >
+                                </p>
+                            </div>
+                        </MoreDetails>
+                    </li>
+                </ol>
+                <MoreDetails v-if="!hasOpenCase" label="Offboarding checks">
+                    <ul class="divide-border divide-y text-sm">
+                        <li
+                            v-for="check in completion.checks"
+                            :key="check.key"
+                            class="flex flex-wrap justify-between gap-2 py-2"
+                        >
+                            <span>{{ check.label }}</span>
+                            <span class="text-muted-foreground">{{
+                                readable(check.status)
+                            }}</span>
+                        </li>
+                    </ul>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
+
+        <Dialog v-model:open="dialogOpen">
+            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{{ labels[action] }}</DialogTitle>
+                    <DialogDescription>{{ consequences }}</DialogDescription>
+                </DialogHeader>
+                <form
+                    id="lifecycle-form"
+                    class="space-y-5"
+                    @submit.prevent="submit"
+                >
                     <div v-if="action === 'transfer-owner'" class="space-y-2">
-                        <Label for="case-owner">Accountable owner</Label>
+                        <Label for="case-owner">New case owner</Label>
                         <Select
                             :model-value="
                                 form.owner_user_id === null
@@ -302,7 +498,7 @@ defineOptions({
                         </Select>
                     </div>
                     <div class="space-y-2">
-                        <Label for="lifecycle-reason">Internal reason</Label
+                        <Label for="lifecycle-reason">Reason</Label
                         ><textarea
                             id="lifecycle-reason"
                             v-model="form.reason"
@@ -311,10 +507,13 @@ defineOptions({
                             rows="3"
                             class="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2"
                         />
+                        <p class="text-muted-foreground text-xs">
+                            Only managers see this.
+                        </p>
                     </div>
                     <div class="space-y-2">
                         <Label for="lifecycle-explanation"
-                            >Explanation shown to the Agent</Label
+                            >Message to the agent</Label
                         ><textarea
                             id="lifecycle-explanation"
                             v-model="form.agent_explanation"
@@ -330,10 +529,7 @@ defineOptions({
                             type="checkbox"
                             required
                             class="mt-0.5 size-4"
-                        /><span
-                            >I confirm this action and the consequences
-                            displayed above.</span
-                        ></label
+                        /><span>I understand what this will do.</span></label
                     >
                     <div
                         v-if="Object.keys(form.errors).length"
@@ -344,112 +540,29 @@ defineOptions({
                             {{ message }}
                         </p>
                     </div>
-                    <Button type="submit" :disabled="disabled">{{
-                        form.processing ? 'Saving…' : labels[action]
-                    }}</Button>
                 </form>
-            </CardContent></Card
-        >
-        <Card
-            ><CardHeader
-                ><CardTitle>Offboarding completion checks</CardTitle
-                ><CardDescription
-                    >If evidence is not available, the case stays open. Account
-                    access stays suspended. Archived assignments can
-                    stay.</CardDescription
-                ></CardHeader
-            ><CardContent
-                ><ul class="space-y-4">
-                    <li
-                        v-for="check in completion.checks"
-                        :key="check.key"
-                        class="border-border rounded-md border p-4"
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="dialogOpen = false"
+                        >Cancel</Button
                     >
-                        <div
-                            class="flex flex-wrap items-center justify-between gap-2"
-                        >
-                            <p class="text-sm font-medium">{{ check.label }}</p>
-                            <Badge
-                                :variant="
-                                    check.status === 'passed'
-                                        ? 'secondary'
-                                        : 'outline'
-                                "
-                                >{{ check.status }}</Badge
-                            >
-                        </div>
-                        <p class="text-muted-foreground mt-2 text-sm">
-                            {{ check.message }}
-                        </p>
-                        <Link
-                            v-if="check.url"
-                            :href="check.url"
-                            class="text-primary mt-2 inline-block text-sm underline"
-                            >Open authorized workflow</Link
-                        >
-                    </li>
-                </ul></CardContent
-            ></Card
-        >
-        <Card
-            ><CardHeader
-                ><CardTitle>Lifecycle history</CardTitle
-                ><CardDescription
-                    >This list shows the latest 50 events. Only authorized
-                    managers can see internal reasons and delivery
-                    outcomes.</CardDescription
-                ></CardHeader
-            ><CardContent
-                ><p
-                    v-if="!history.length"
-                    class="text-muted-foreground text-sm"
-                >
-                    No lifecycle events recorded.
-                </p>
-                <ol v-else class="space-y-5">
-                    <li
-                        v-for="entry in history"
-                        :key="entry.id"
-                        class="border-border border-l-2 pl-4"
+                    <Button
+                        type="submit"
+                        form="lifecycle-form"
+                        :variant="
+                            ['suspend', 'complete-offboarding'].includes(action)
+                                ? 'destructive'
+                                : 'default'
+                        "
+                        :disabled="disabled"
+                        >{{
+                            form.processing ? 'Saving…' : labels[action]
+                        }}</Button
                     >
-                        <p class="text-sm font-medium">
-                            {{
-                                entry.event_type
-                                    .replace('agent.', '')
-                                    .replaceAll('_', ' ')
-                            }}
-                        </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
-                            {{ entry.effective_at }} · Case
-                            {{ entry.case_id ?? '—' }}
-                        </p>
-                        <p class="mt-2 text-sm">
-                            Account: {{ entry.from_account_state }} →
-                            {{ entry.to_account_state }} · Readiness:
-                            {{ entry.from_operational_status }} →
-                            {{ entry.to_operational_status }}
-                        </p>
-                        <p class="mt-2 text-sm">
-                            Internal reason: {{ entry.reason }}
-                        </p>
-                        <p class="mt-1 text-sm">
-                            Agent explanation: {{ entry.agent_explanation }}
-                        </p>
-                        <p
-                            v-for="(notice, index) in entry.notifications"
-                            :key="index"
-                            class="text-muted-foreground mt-1 text-xs"
-                        >
-                            {{ notice.audience_type }} · {{ notice.channel }} ·
-                            {{ notice.status
-                            }}<span v-if="notice.failure_reason"
-                                >: {{ notice.failure_reason }}</span
-                            >
-                        </p>
-                    </li>
-                </ol></CardContent
-            ></Card
-        >
-        <ManagementDeliveryPanel subject="agent" :reference="agent.id" />
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

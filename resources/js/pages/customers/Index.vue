@@ -2,6 +2,9 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, UserPlus, Users } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import ModuleOverview from '@/components/directory/ModuleOverview.vue';
@@ -108,21 +111,27 @@ const activeFilterCount = computed(
 
 const overviewMetrics = computed(() => [
     {
-        label: 'Total customers',
+        label: 'Customers',
         value: props.overview.total,
-        description: 'Registered in the selected period',
+        description: 'Added in this period',
     },
     {
-        label: 'Active customers',
+        label: 'Active',
         value: props.overview.active,
-        description: 'Currently able to transact',
+        description: 'Can save and withdraw',
     },
     {
-        label: 'Restricted customers',
+        label: 'Restricted',
         value: props.overview.restricted,
-        description: 'Currently under an operational restriction',
+        description: 'Limited for now',
     },
 ]);
+
+const gridColumns = computed(() =>
+    props.viewer_type === 'admin'
+        ? 'lg:grid-cols-[minmax(13rem,1.6fr)_repeat(4,minmax(0,1fr))]'
+        : 'lg:grid-cols-[minmax(13rem,1.6fr)_repeat(3,minmax(0,1fr))]',
+);
 
 const query = (): Record<string, string | number> => {
     const params: Record<string, string | number> = {
@@ -160,7 +169,13 @@ const updateOverviewPeriod = (value: unknown): void => {
     applyFilters();
 };
 
+const applyFromSheet = (): void => {
+    filtersOpen.value = false;
+    applyFilters();
+};
+
 const resetFilters = (): void => {
+    filtersOpen.value = false;
     Object.assign(filterForm, {
         search: '',
         operational_status: '',
@@ -173,14 +188,6 @@ const resetFilters = (): void => {
         direction: 'desc',
         per_page: 25,
     });
-    applyFilters();
-};
-
-const updateDateFilter = (
-    field: 'registered_from' | 'registered_to',
-    value: string,
-): void => {
-    filterForm[field] = value;
     applyFilters();
 };
 
@@ -222,30 +229,20 @@ const getAccountBadgeVariant = (
     <Head title="Customer Directory" />
 
     <div class="space-y-6">
-        <div
-            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        <PageHeader
+            title="Customers"
+            description="Find a customer, see their status and open their profile."
         >
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    Customers
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    Manage customer accounts, invitations, and operational
-                    status.
-                </p>
-            </div>
-            <Link v-if="can_register" :href="customersCreate().url">
-                <Button>
-                    <UserPlus class="mr-1.5 size-4" /> Register Customer
+            <template #actions>
+                <Button v-if="can_register" as-child>
+                    <Link :href="customersCreate().url"
+                        ><UserPlus class="size-4" /> Add customer</Link
+                    >
                 </Button>
-            </Link>
-        </div>
+            </template>
+        </PageHeader>
 
-        <ModuleOverview
-            title="Customer Overview"
-            description="Monitor customer accounts, activity, and restrictions."
-            :metrics="overviewMetrics"
-        >
+        <ModuleOverview title="Overview" :metrics="overviewMetrics">
             <template #actions>
                 <Select
                     :model-value="overviewPeriod"
@@ -269,25 +266,169 @@ const getAccountBadgeVariant = (
         </ModuleOverview>
 
         <DirectoryPanel
-            title="Customers"
-            :description="`${customers.total} customer${customers.total === 1 ? '' : 's'} matching the current directory view.`"
+            title="All customers"
+            :description="`${customers.total} customer${customers.total === 1 ? '' : 's'}`"
             :search-value="filterForm.search"
-            search-placeholder="Search customers"
-            :filters-open="filtersOpen"
+            search-placeholder="Search by name, phone or email"
+            :filters-open="false"
             :active-filter-count="activeFilterCount"
             @update:search-value="filterForm.search = $event"
             @submit-search="applyFilters"
-            @toggle-filters="filtersOpen = !filtersOpen"
+            @toggle-filters="filtersOpen = true"
             @reset-filters="resetFilters"
         >
-            <template #filters>
-                <div class="w-fit space-y-1.5">
-                    <Label for="customer-status" class="text-xs"
-                        >Operational status</Label
-                    ><Select
-                        v-model="filterForm.operational_status"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="customer-status"
+            <EmptyState
+                v-if="customers.data.length === 0"
+                :icon="Users"
+                title="No customers found"
+                :description="
+                    activeFilterCount > 0 || filterForm.search
+                        ? 'Try a different search or clear the filters.'
+                        : 'Customers you add will show up here.'
+                "
+            >
+                <Button
+                    v-if="activeFilterCount > 0 || filterForm.search"
+                    variant="outline"
+                    @click="resetFilters"
+                    >Clear filters</Button
+                >
+            </EmptyState>
+
+            <div v-else class="space-y-2">
+                <div
+                    class="text-muted-foreground hidden gap-5 px-5 text-xs lg:grid"
+                    :class="gridColumns"
+                    aria-hidden="true"
+                >
+                    <span>Customer</span>
+                    <span v-if="viewer_type === 'admin'">Agent</span>
+                    <span>Status</span>
+                    <span>Phone</span>
+                    <span>Added</span>
+                </div>
+                <Link
+                    v-for="customer in customers.data"
+                    :key="customer.id"
+                    :href="customersShow(customer.id).url"
+                    class="group block rounded-2xl focus-visible:outline-none"
+                >
+                    <DirectoryRow
+                        class="group-focus-visible:border-primary group-focus-visible:bg-accent/35"
+                    >
+                        <div
+                            class="grid grid-cols-1 gap-3 lg:items-center lg:gap-5"
+                            :class="gridColumns"
+                        >
+                            <div class="flex min-w-0 items-center gap-3">
+                                <Avatar class="size-10 shrink-0"
+                                    ><AvatarImage
+                                        v-if="customer.photo_url"
+                                        :src="customer.photo_url"
+                                        :alt="customer.name"
+                                    /><AvatarFallback>{{
+                                        getInitials(customer.name)
+                                    }}</AvatarFallback></Avatar
+                                >
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium">
+                                        {{ customer.name }}
+                                    </p>
+                                    <p
+                                        class="text-muted-foreground truncate text-xs"
+                                    >
+                                        {{ customer.email || customer.phone }}
+                                    </p>
+                                </div>
+                            </div>
+                            <p
+                                v-if="viewer_type === 'admin'"
+                                class="text-muted-foreground lg:text-foreground text-sm"
+                            >
+                                <span class="lg:hidden">Agent: </span
+                                >{{
+                                    customer.assigned_agent?.name || 'No agent'
+                                }}
+                            </p>
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <Badge
+                                    :variant="
+                                        getOperationalBadgeVariant(
+                                            customer.operational_status,
+                                        )
+                                    "
+                                    >{{
+                                        customer.operational_status_label
+                                    }}</Badge
+                                >
+                                <Badge
+                                    v-if="customer.account_state !== 'active'"
+                                    :variant="
+                                        getAccountBadgeVariant(
+                                            customer.account_state,
+                                        )
+                                    "
+                                    >{{ customer.account_state_label }}</Badge
+                                >
+                            </div>
+                            <p class="hidden text-sm lg:block">
+                                {{ customer.phone }}
+                            </p>
+                            <p
+                                class="text-muted-foreground lg:text-foreground text-xs lg:text-sm"
+                            >
+                                <span class="lg:hidden">Added </span
+                                >{{ customer.registered_at || '-' }}
+                            </p>
+                        </div>
+                    </DirectoryRow>
+                </Link>
+            </div>
+
+            <template #footer>
+                <div
+                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <span class="text-muted-foreground text-xs"
+                        >Page {{ customers.current_page }} of
+                        {{ customers.last_page }}</span
+                    >
+                    <div class="flex gap-2">
+                        <Link
+                            v-if="customers.prev_page_url"
+                            :href="customers.prev_page_url"
+                            preserve-state
+                            preserve-scroll
+                            ><Button variant="outline" size="sm"
+                                ><ChevronLeft /> Previous</Button
+                            ></Link
+                        ><Button v-else variant="outline" size="sm" disabled
+                            ><ChevronLeft /> Previous</Button
+                        ><Link
+                            v-if="customers.next_page_url"
+                            :href="customers.next_page_url"
+                            preserve-state
+                            preserve-scroll
+                            ><Button variant="outline" size="sm"
+                                >Next <ChevronRight /></Button></Link
+                        ><Button v-else variant="outline" size="sm" disabled
+                            >Next <ChevronRight
+                        /></Button>
+                    </div>
+                </div>
+            </template>
+        </DirectoryPanel>
+
+        <FormSheet
+            v-model:open="filtersOpen"
+            title="Filters"
+            description="Narrow down the customer list."
+        >
+            <div class="grid gap-5">
+                <div class="grid gap-2">
+                    <Label for="customer-status">Status</Label
+                    ><Select v-model="filterForm.operational_status"
+                        ><SelectTrigger id="customer-status" class="w-full"
                             ><SelectValue
                                 placeholder="All statuses" /></SelectTrigger
                         ><SelectContent
@@ -302,20 +443,20 @@ const getAccountBadgeVariant = (
                         ></Select
                     >
                 </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="customer-account-state" class="text-xs"
-                        >Account state</Label
-                    ><Select
-                        v-model="filterForm.account_state"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="customer-account-state"
+                <div class="grid gap-2">
+                    <Label for="customer-account-state">Account</Label
+                    ><Select v-model="filterForm.account_state"
+                        ><SelectTrigger
+                            id="customer-account-state"
+                            class="w-full"
                             ><SelectValue
-                                placeholder="All account states" /></SelectTrigger
+                                placeholder="All accounts" /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="all">All states</SelectItem
+                            ><SelectItem value="all">All accounts</SelectItem
                             ><SelectItem value="active">Active</SelectItem
                             ><SelectItem value="invited">Invited</SelectItem
-                            ><SelectItem value="mfa_setup">MFA setup</SelectItem
+                            ><SelectItem value="mfa_setup"
+                                >Setting up sign-in</SelectItem
                             ><SelectItem value="suspended">Suspended</SelectItem
                             ><SelectItem value="deactivated"
                                 >Deactivated</SelectItem
@@ -323,13 +464,10 @@ const getAccountBadgeVariant = (
                         ></Select
                     >
                 </div>
-                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5">
-                    <Label for="customer-agent" class="text-xs"
-                        >Assigned agent</Label
-                    ><Select
-                        v-model="filterForm.assigned_agent"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="customer-agent"
+                <div v-if="viewer_type === 'admin'" class="grid gap-2">
+                    <Label for="customer-agent">Agent</Label
+                    ><Select v-model="filterForm.assigned_agent"
+                        ><SelectTrigger id="customer-agent" class="w-full"
                             ><SelectValue
                                 placeholder="All agents" /></SelectTrigger
                         ><SelectContent
@@ -343,330 +481,62 @@ const getAccountBadgeVariant = (
                         ></Select
                     >
                 </div>
-                <div v-if="viewer_type === 'admin'" class="w-fit space-y-1.5">
-                    <Label for="customer-agent-eligibility" class="text-xs"
-                        >Agent eligibility</Label
-                    ><Select
-                        v-model="filterForm.agent_eligibility"
-                        @update:model-value="applyFilters"
-                        ><SelectTrigger id="customer-agent-eligibility"
-                            ><SelectValue
-                                placeholder="Any eligibility" /></SelectTrigger
+                <div v-if="viewer_type === 'admin'" class="grid gap-2">
+                    <Label for="customer-agent-eligibility"
+                        >Agent can serve them</Label
+                    ><Select v-model="filterForm.agent_eligibility"
+                        ><SelectTrigger
+                            id="customer-agent-eligibility"
+                            class="w-full"
+                            ><SelectValue placeholder="Any" /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="all">Any eligibility</SelectItem
-                            ><SelectItem value="eligible">Eligible</SelectItem
+                            ><SelectItem value="all">Any</SelectItem
+                            ><SelectItem value="eligible">Yes</SelectItem
                             ><SelectItem value="ineligible"
-                                >Ineligible</SelectItem
+                                >No</SelectItem
                             ></SelectContent
                         ></Select
                     >
                 </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="customer-registered-from" class="text-xs"
-                        >Registered from</Label
-                    ><DatePicker
-                        id="customer-registered-from"
-                        :model-value="filterForm.registered_from"
-                        @update:model-value="
-                            updateDateFilter('registered_from', $event)
-                        "
-                    />
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="grid gap-2">
+                        <Label for="customer-registered-from">Added from</Label
+                        ><DatePicker
+                            id="customer-registered-from"
+                            v-model="filterForm.registered_from"
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="customer-registered-to">Added to</Label
+                        ><DatePicker
+                            id="customer-registered-to"
+                            v-model="filterForm.registered_to"
+                        />
+                    </div>
                 </div>
-                <div class="w-fit space-y-1.5">
-                    <Label for="customer-registered-to" class="text-xs"
-                        >Registered to</Label
-                    ><DatePicker
-                        id="customer-registered-to"
-                        :model-value="filterForm.registered_to"
-                        @update:model-value="
-                            updateDateFilter('registered_to', $event)
-                        "
-                    />
-                </div>
-            </template>
-
-            <template #filter-summary
-                ><p class="text-muted-foreground text-xs">
-                    {{ customers.total }} customer{{
-                        customers.total === 1 ? '' : 's'
-                    }}
-                    match the current filters.
-                </p></template
-            >
-
-            <div v-if="customers.data.length === 0" class="py-14 text-center">
-                <div
-                    class="bg-muted text-muted-foreground mx-auto flex size-12 items-center justify-center rounded-2xl"
-                >
-                    <Users class="size-5" />
-                </div>
-                <h3 class="mt-4 text-sm font-semibold">No customers found</h3>
-                <p class="text-muted-foreground mt-1 text-sm">
-                    Adjust the search or filters to find a customer record.
-                </p>
-            </div>
-
-            <div v-else class="space-y-3">
-                <Link
-                    v-for="customer in customers.data"
-                    :key="customer.id"
-                    :href="customersShow(customer.id).url"
-                    class="group block rounded-2xl focus-visible:outline-none"
-                >
-                    <DirectoryRow
-                        class="group-focus-visible:border-primary group-focus-visible:bg-accent/35"
+                <div class="grid gap-2">
+                    <Label for="customer-per-page">Rows per page</Label
+                    ><Select v-model="filterForm.per_page"
+                        ><SelectTrigger id="customer-per-page" class="w-full"
+                            ><SelectValue /></SelectTrigger
+                        ><SelectContent
+                            ><SelectItem :value="25">25</SelectItem
+                            ><SelectItem :value="50">50</SelectItem
+                            ><SelectItem :value="100"
+                                >100</SelectItem
+                            ></SelectContent
+                        ></Select
                     >
-                        <div
-                            class="hidden items-center gap-5 lg:grid"
-                            :class="
-                                viewer_type === 'admin'
-                                    ? 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(5,minmax(0,1fr))]'
-                                    : 'lg:grid-cols-[minmax(13rem,1.5fr)_repeat(4,minmax(0,1fr))]'
-                            "
-                        >
-                            <div class="flex min-w-0 items-center gap-3">
-                                <Avatar class="size-11 shrink-0"
-                                    ><AvatarImage
-                                        v-if="customer.photo_url"
-                                        :src="customer.photo_url"
-                                        :alt="customer.name"
-                                    /><AvatarFallback>{{
-                                        getInitials(customer.name)
-                                    }}</AvatarFallback></Avatar
-                                >
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold">
-                                        {{ customer.name }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground truncate text-xs"
-                                    >
-                                        {{ customer.email || customer.phone }}
-                                    </p>
-                                </div>
-                            </div>
-                            <div v-if="viewer_type === 'admin'">
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Assigned agent
-                                </p>
-                                <p class="mt-1 text-sm">
-                                    {{
-                                        customer.assigned_agent?.name ||
-                                        'Unassigned'
-                                    }}
-                                </p>
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Operational status
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getOperationalBadgeVariant(
-                                            customer.operational_status,
-                                        )
-                                    "
-                                    class="mt-1"
-                                    >{{
-                                        customer.operational_status_label
-                                    }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Account state
-                                </p>
-                                <Badge
-                                    :variant="
-                                        getAccountBadgeVariant(
-                                            customer.account_state,
-                                        )
-                                    "
-                                    class="mt-1"
-                                    >{{ customer.account_state_label }}</Badge
-                                >
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Phone
-                                </p>
-                                <p class="mt-1 text-sm">{{ customer.phone }}</p>
-                            </div>
-                            <div>
-                                <p
-                                    class="text-muted-foreground text-[11px] font-medium uppercase"
-                                >
-                                    Registered
-                                </p>
-                                <p class="mt-1 text-sm">
-                                    {{ customer.registered_at || '—' }}
-                                </p>
-                            </div>
-                        </div>
-                        <div class="lg:hidden">
-                            <div class="flex min-w-0 items-center gap-3">
-                                <Avatar class="size-11 shrink-0"
-                                    ><AvatarImage
-                                        v-if="customer.photo_url"
-                                        :src="customer.photo_url"
-                                        :alt="customer.name"
-                                    /><AvatarFallback>{{
-                                        getInitials(customer.name)
-                                    }}</AvatarFallback></Avatar
-                                >
-                                <div class="min-w-0">
-                                    <p class="truncate text-sm font-semibold">
-                                        {{ customer.name }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground truncate text-xs"
-                                    >
-                                        {{ customer.email || customer.phone }}
-                                    </p>
-                                </div>
-                            </div>
-                            <div
-                                class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm"
-                            >
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Status
-                                    </p>
-                                    <Badge
-                                        :variant="
-                                            getOperationalBadgeVariant(
-                                                customer.operational_status,
-                                            )
-                                        "
-                                        class="mt-1"
-                                        >{{
-                                            customer.operational_status_label
-                                        }}</Badge
-                                    >
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Account
-                                    </p>
-                                    <Badge
-                                        :variant="
-                                            getAccountBadgeVariant(
-                                                customer.account_state,
-                                            )
-                                        "
-                                        class="mt-1"
-                                        >{{
-                                            customer.account_state_label
-                                        }}</Badge
-                                    >
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Phone
-                                    </p>
-                                    <p class="mt-1">{{ customer.phone }}</p>
-                                </div>
-                                <div>
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Registered
-                                    </p>
-                                    <p class="mt-1">
-                                        {{ customer.registered_at || '—' }}
-                                    </p>
-                                </div>
-                                <div
-                                    v-if="viewer_type === 'admin'"
-                                    class="col-span-2"
-                                >
-                                    <p
-                                        class="text-muted-foreground text-[10px] font-medium uppercase"
-                                    >
-                                        Assigned agent
-                                    </p>
-                                    <p class="mt-1">
-                                        {{
-                                            customer.assigned_agent?.name ||
-                                            'Unassigned'
-                                        }}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </DirectoryRow>
-                </Link>
+                </div>
             </div>
-
             <template #footer>
-                <div
-                    class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                <Button type="button" variant="outline" @click="resetFilters"
+                    >Clear</Button
                 >
-                    <div
-                        class="text-muted-foreground flex items-center gap-2 text-sm"
-                    >
-                        Display
-                        <Select
-                            v-model="filterForm.per_page"
-                            @update:model-value="applyFilters"
-                            ><SelectTrigger class="h-9 w-20"
-                                ><SelectValue /></SelectTrigger
-                            ><SelectContent
-                                ><SelectItem :value="25">25</SelectItem
-                                ><SelectItem :value="50">50</SelectItem
-                                ><SelectItem :value="100"
-                                    >100</SelectItem
-                                ></SelectContent
-                            ></Select
-                        >
-                        per page
-                    </div>
-                    <div
-                        class="flex items-center justify-between gap-3 sm:justify-end"
-                    >
-                        <span class="text-muted-foreground text-xs"
-                            >Page {{ customers.current_page }} of
-                            {{ customers.last_page }}</span
-                        >
-                        <div class="flex gap-2">
-                            <Link
-                                v-if="customers.prev_page_url"
-                                :href="customers.prev_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button variant="outline" size="sm"
-                                    ><ChevronLeft /> Prev</Button
-                                ></Link
-                            ><Button v-else variant="outline" size="sm" disabled
-                                ><ChevronLeft /> Prev</Button
-                            ><Link
-                                v-if="customers.next_page_url"
-                                :href="customers.next_page_url"
-                                preserve-state
-                                preserve-scroll
-                                ><Button size="sm"
-                                    >Next <ChevronRight /></Button></Link
-                            ><Button v-else size="sm" disabled
-                                >Next <ChevronRight
-                            /></Button>
-                        </div>
-                    </div>
-                </div>
+                <Button type="button" @click="applyFromSheet"
+                    >Show results</Button
+                >
             </template>
-        </DirectoryPanel>
+        </FormSheet>
     </div>
 </template>

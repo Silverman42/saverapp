@@ -1,42 +1,44 @@
 <script setup lang="ts">
-import { Head, Link, useForm, useHttp } from "@inertiajs/vue3";
-import { HttpResponseError } from "@inertiajs/core";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { newOperationReference } from "@/lib/operation-reference";
-import CollectionEvidencePanel from "@/components/CollectionEvidencePanel.vue";
-import InputError from "@/components/InputError.vue";
+import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
+import { HttpResponseError } from '@inertiajs/core';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { newOperationReference } from '@/lib/operation-reference';
+import CollectionEvidencePanel from '@/components/CollectionEvidencePanel.vue';
+import InputError from '@/components/InputError.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import type {
     CollectionMethod,
     PaymentEvidence,
-} from "@/types/collection-evidence";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/types/collection-evidence';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "@/components/ui/select";
-import { dashboard } from "@/routes";
+} from '@/components/ui/select';
+import { dashboard } from '@/routes';
 import {
     index as collectionsIndex,
     show as showReceipt,
-} from "@/routes/collections";
-import { show as showAttempt } from "@/routes/collections/attempts";
+} from '@/routes/collections';
+import { show as showAttempt } from '@/routes/collections/attempts';
 import {
     preview as previewCollection,
     store as storeCollection,
-} from "@/routes/customers/collections";
+} from '@/routes/customers/collections';
 import {
     preview as previewReplacement,
     store as storeReplacement,
-} from "@/routes/reversals/replacement";
-import { timeOptions } from "@/routes/customers/collections";
+} from '@/routes/reversals/replacement';
+import { timeOptions } from '@/routes/customers/collections';
 
 type Preview = {
     replacement_fingerprint?: string;
@@ -94,12 +96,13 @@ const props = withDefaults(
         initial_evidence: null,
     },
 );
-const FEE_ONLY = "__fee_only";
+const FEE_ONLY = '__fee_only';
+const isLate = computed(() => form.received_date < props.today);
 const paymentChoice = ref(
-    props.initial_evidence || !props.cash_enabled ? "evidence" : "cash",
+    props.initial_evidence || !props.cash_enabled ? 'evidence' : 'cash',
 );
 const selectedEvidence = ref<PaymentEvidence | null>(null);
-const evidenceNotice = ref("");
+const evidenceNotice = ref('');
 const evidenceCustomer = computed(() => ({
     id: props.customer.id,
     resource_id: props.customer.resource_id ?? 0,
@@ -110,83 +113,81 @@ function selectEvidence(proof: PaymentEvidence | null): void {
     selectedEvidence.value = proof;
     form.method =
         proof?.method_key ??
-        (paymentChoice.value === "evidence"
-            ? (props.collection_methods[0]?.method_key ?? "transfer")
-            : "cash");
+        (paymentChoice.value === 'evidence'
+            ? (props.collection_methods[0]?.method_key ?? 'transfer')
+            : 'cash');
     form.collection_method_version_id =
         proof?.collection_method_version_id ?? null;
     form.evidence_reference = proof?.evidence_reference ?? null;
-    evidenceNotice.value = "";
+    evidenceNotice.value = '';
     if (proof) form.received_date = proof.received_date;
 }
 watch(paymentChoice, () => selectEvidence(null));
 const crossZone = computed(
     () =>
         props.plans.find((plan) => plan.id === form.plan_id)?.timezone !==
-            props.business_timezone && form.plan_id !== "",
+            props.business_timezone && form.plan_id !== '',
 );
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: "Dashboard", href: dashboard() },
-            { title: "Collections", href: collectionsIndex() },
-            { title: "Record collection", href: "#" },
+            { title: 'Dashboard', href: dashboard() },
+            { title: 'Collections', href: collectionsIndex() },
+            { title: 'Record collection', href: '#' },
         ],
     },
 });
 
 const form = useForm({
     attempt_reference: newOperationReference(),
-    method: "cash" as "cash" | "transfer" | "pos" | "other",
+    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    preview_fingerprint: "",
-    replacement_fingerprint: "",
+    preview_fingerprint: '',
+    replacement_fingerprint: '',
     customer_version: 0,
     assignment_version: 0,
     business_version: 0,
-    plan_id: props.plans[0]?.id ?? "",
+    plan_id: props.plans[0]?.id ?? '',
     plan_version: null as number | null,
     received_date: props.today,
-    received_local_time: "",
-    received_utc_offset: "",
-    savings_ngn: "",
+    received_local_time: '',
+    received_utc_offset: '',
+    savings_ngn: '',
     fees: props.fee_obligations.map((fee) => ({
         obligation_id: fee.id,
-        amount_ngn: "",
+        amount_ngn: '',
     })),
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: "",
-    notes: "",
+    late_reason: '',
+    notes: '',
     confirmed: false,
 });
 const previewHttp = useHttp({
-    method: "cash" as "cash" | "transfer" | "pos" | "other",
+    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    plan_id: "",
-    received_date: "",
-    received_local_time: "",
-    received_utc_offset: "",
-    savings_ngn: "",
+    plan_id: '',
+    received_date: '',
+    received_local_time: '',
+    received_utc_offset: '',
+    savings_ngn: '',
     fees: [] as Array<{ obligation_id: number; amount_ngn: string }>,
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: "",
-    notes: "",
+    late_reason: '',
+    notes: '',
 });
 const preview = ref<Preview | null>(null);
 const accessUnavailable = ref(false);
-const reviewMessage = ref("");
+const reviewMessage = ref('');
 const reviewNotice = ref<HTMLElement | null>(null);
 const timeOptionsHttp = useHttp({});
 const reviewBusy = computed(
     () => previewHttp.processing || timeOptionsHttp.processing,
 );
 const reviewBusyLabel = computed(() =>
-    timeOptionsHttp.processing
-        ? "Checking received time…"
-        : "Reviewing allocation and tender…",
+    timeOptionsHttp.processing ? 'Checking time…' : 'Checking…',
 );
 function validationError(field: string): string | undefined {
     return (
@@ -199,7 +200,7 @@ function feeValidationError(obligationId: number): string | undefined {
         (fee) => fee.obligation_id === obligationId,
     );
     const submittedIndex = form.fees
-        .filter((fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0")
+        .filter((fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0')
         .findIndex((fee) => fee.obligation_id === obligationId);
     return (
         (previewHttp.errors as Record<string, string | undefined>)[
@@ -208,14 +209,14 @@ function feeValidationError(obligationId: number): string | undefined {
         (form.errors as Record<string, string | undefined>)[
             `fees.${submittedIndex}.amount_ngn`
         ] ??
-        validationError("fees") ??
-        validationError("amount")
+        validationError('fees') ??
+        validationError('amount')
     );
 }
 const validOffsets = ref<Array<{ offset: string; received_at_utc: string }>>(
     [],
 );
-const timeNotice = ref("");
+const timeNotice = ref('');
 const customSlots = ref<
     Array<{ slot_id: number; due_date: string; capacity_kobo: number }>
 >([]);
@@ -223,16 +224,16 @@ const submissionPending = ref(false);
 const outcomeUnknown = ref(false);
 const attemptLookup = useHttp({});
 const recoveredReceipt = ref<string | null>(null);
-const lookupNotice = ref("");
+const lookupNotice = ref('');
 const retryAllowed = ref(false);
 const pendingAttemptStorageKey = `collection-pending-attempt:${props.customer.id}`;
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function reportReviewFailure(error: unknown): void {
     preview.value = null;
-    form.preview_fingerprint = "";
-    form.replacement_fingerprint = "";
+    form.preview_fingerprint = '';
+    form.replacement_fingerprint = '';
     form.confirmed = false;
     if (
         error instanceof HttpResponseError &&
@@ -240,23 +241,23 @@ function reportReviewFailure(error: unknown): void {
     ) {
         accessUnavailable.value = true;
         selectedEvidence.value = null;
-        evidenceNotice.value = "";
+        evidenceNotice.value = '';
         customSlots.value = [];
         validOffsets.value = [];
-        timeNotice.value = "";
+        timeNotice.value = '';
         previewHttp.defaults({
-            method: "cash",
+            method: 'cash',
             collection_method_version_id: null,
             evidence_reference: null,
-            plan_id: "",
-            received_date: "",
-            received_local_time: "",
-            received_utc_offset: "",
-            savings_ngn: "",
+            plan_id: '',
+            received_date: '',
+            received_local_time: '',
+            received_utc_offset: '',
+            savings_ngn: '',
             fees: [],
             allocations: [],
-            late_reason: "",
-            notes: "",
+            late_reason: '',
+            notes: '',
         });
         previewHttp.reset();
         previewHttp.response = null;
@@ -265,33 +266,33 @@ function reportReviewFailure(error: unknown): void {
         timeOptionsHttp.clearErrors();
         form.clearErrors();
         if (!outcomeUnknown.value && !submissionPending.value) {
-            form.method = "cash";
+            form.method = 'cash';
             form.collection_method_version_id = null;
             form.evidence_reference = null;
             form.customer_version = 0;
             form.assignment_version = 0;
             form.business_version = 0;
-            form.plan_id = "";
+            form.plan_id = '';
             form.plan_version = null;
-            form.received_date = "";
-            form.received_local_time = "";
-            form.received_utc_offset = "";
-            form.savings_ngn = "";
+            form.received_date = '';
+            form.received_local_time = '';
+            form.received_utc_offset = '';
+            form.savings_ngn = '';
             form.fees = [];
             form.allocations = [];
-            form.late_reason = "";
-            form.notes = "";
+            form.late_reason = '';
+            form.notes = '';
         }
         retryAllowed.value = false;
         recoveredReceipt.value = null;
-        lookupNotice.value = "";
+        lookupNotice.value = '';
         reviewMessage.value =
-            "This receipt form is no longer available with your current access. Return to Collections to open an available record. No money was submitted by this review.";
+            'You no longer have access to this customer. Nothing was recorded. Go back to Collections.';
     } else {
         reviewMessage.value =
             error instanceof HttpResponseError
-                ? "Receipt review could not be completed. Your draft is retained. No money was submitted by this review. Try reviewing again before recording the receipt."
-                : "Receipt review could not reach the server. Your draft is retained. No money was submitted by this review. Check your connection and review again.";
+                ? 'We could not check this payment. Your details are kept and nothing was recorded. Try again.'
+                : 'We could not reach the server. Your details are kept and nothing was recorded. Check your connection and try again.';
     }
     void nextTick(() => reviewNotice.value?.focus());
 }
@@ -327,7 +328,7 @@ onMounted(() => {
             form.attempt_reference = reference;
             outcomeUnknown.value = true;
             lookupNotice.value =
-                "This attempt needs a result check before any money is recorded again.";
+                'Check your last attempt before recording this payment again.';
         }
     } catch {
         // A fresh form remains usable when tab storage is unavailable.
@@ -338,8 +339,8 @@ watch(
     () => [form.plan_id, form.received_date, form.received_local_time],
     () => {
         validOffsets.value = [];
-        form.received_utc_offset = "";
-        timeNotice.value = "";
+        form.received_utc_offset = '';
+        timeNotice.value = '';
     },
 );
 
@@ -360,7 +361,7 @@ watch(
     ],
     () => {
         preview.value = null;
-        form.preview_fingerprint = "";
+        form.preview_fingerprint = '';
         form.confirmed = false;
     },
 );
@@ -369,8 +370,7 @@ async function resolveTime(): Promise<boolean> {
     if (accessUnavailable.value) return false;
     if (!crossZone.value) return true;
     if (!form.received_local_time) {
-        timeNotice.value =
-            "Enter the actual business-local time when this payment was received.";
+        timeNotice.value = 'Enter the time the money was received.';
         return false;
     }
     try {
@@ -388,9 +388,9 @@ async function resolveTime(): Promise<boolean> {
         if (!result) return false;
         validOffsets.value = result.options;
         if (result.options.length === 0) {
-            form.received_utc_offset = "";
+            form.received_utc_offset = '';
             timeNotice.value =
-                "This local time did not occur in the business timezone. Choose another time.";
+                'That time did not happen because of a clock change. Pick another time.';
             return false;
         }
         if (
@@ -399,13 +399,13 @@ async function resolveTime(): Promise<boolean> {
             )
         ) {
             form.received_utc_offset =
-                result.options.length === 1 ? result.options[0]!.offset : "";
+                result.options.length === 1 ? result.options[0]!.offset : '';
         }
         timeNotice.value =
             result.options.length > 1 && !form.received_utc_offset
-                ? "This local time occurred twice. Choose the offset that matches when the payment was received."
-                : "";
-        return form.received_utc_offset !== "";
+                ? 'That time happened twice because of a clock change. Pick the right one below.'
+                : '';
+        return form.received_utc_offset !== '';
     } catch (error) {
         reportReviewFailure(error);
         return false;
@@ -420,18 +420,18 @@ async function review(): Promise<void> {
         form.processing
     )
         return;
-    reviewMessage.value = "";
+    reviewMessage.value = '';
     preview.value = null;
-    form.preview_fingerprint = "";
-    form.replacement_fingerprint = "";
+    form.preview_fingerprint = '';
+    form.replacement_fingerprint = '';
     form.confirmed = false;
     if (
         !props.replacement_reversal &&
-        paymentChoice.value === "evidence" &&
+        paymentChoice.value === 'evidence' &&
         !selectedEvidence.value
     ) {
         evidenceNotice.value =
-            "Select matching, independently verified evidence before reviewing this receipt.";
+            'Choose checked payment proof before you continue.';
         return;
     }
     if (!(await resolveTime())) return;
@@ -443,16 +443,16 @@ async function review(): Promise<void> {
     previewHttp.received_date = form.received_date;
     previewHttp.received_local_time = crossZone.value
         ? form.received_local_time
-        : "";
+        : '';
     previewHttp.received_utc_offset = crossZone.value
         ? form.received_utc_offset
-        : "";
-    previewHttp.savings_ngn = form.savings_ngn || "0";
+        : '';
+    previewHttp.savings_ngn = form.savings_ngn || '0';
     previewHttp.fees = form.fees.filter(
-        (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
+        (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
     );
     previewHttp.allocations = form.allocations.filter(
-        (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
+        (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
     );
     previewHttp.late_reason = form.late_reason;
     previewHttp.notes = form.notes;
@@ -464,7 +464,7 @@ async function review(): Promise<void> {
         )) as Preview | undefined;
         if (!result) return;
         preview.value = result;
-        form.replacement_fingerprint = result.replacement_fingerprint ?? "";
+        form.replacement_fingerprint = result.replacement_fingerprint ?? '';
         form.preview_fingerprint = result.preview_fingerprint;
         form.customer_version = result.customer_version;
         form.assignment_version = result.assignment_version;
@@ -485,7 +485,7 @@ function customizeAllocation(): void {
                 preview.value?.allocations.find(
                     (item) => item.slot_id === slot.slot_id,
                 )?.amount_kobo ?? 0;
-            return amount > 0 ? (amount / 100).toFixed(2) : "";
+            return amount > 0 ? (amount / 100).toFixed(2) : '';
         })(),
     }));
 }
@@ -500,7 +500,7 @@ function submit(retryOriginal = false): void {
     )
         return;
     submissionPending.value = true;
-    lookupNotice.value = "";
+    lookupNotice.value = '';
     retryAllowed.value = false;
     rememberAttempt();
     form.transform((data) => ({
@@ -508,15 +508,15 @@ function submit(retryOriginal = false): void {
             Object.entries(data).filter(
                 ([key]) =>
                     props.replacement_reversal ||
-                    key !== "replacement_fingerprint",
+                    key !== 'replacement_fingerprint',
             ),
         ),
-        savings_ngn: data.savings_ngn || "0",
+        savings_ngn: data.savings_ngn || '0',
         fees: data.fees.filter(
-            (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
+            (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
         ),
         allocations: data.allocations.filter(
-            (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
+            (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
         ),
     })).post(
         props.replacement_reversal
@@ -556,10 +556,10 @@ async function lookupAttempt(): Promise<void> {
             }),
         )) as { status: string; receipt_reference: string };
         recoveredReceipt.value =
-            result.status === "posted" ? result.receipt_reference : null;
+            result.status === 'posted' ? result.receipt_reference : null;
         lookupNotice.value = recoveredReceipt.value
-            ? "The original receipt was posted."
-            : "The lookup did not confirm a result. Check again before retrying.";
+            ? 'The payment was recorded.'
+            : 'We could not confirm it yet. Check again before trying again.';
     } catch (error) {
         recoveredReceipt.value = null;
         if (
@@ -568,62 +568,55 @@ async function lookupAttempt(): Promise<void> {
         ) {
             try {
                 retryAllowed.value =
-                    JSON.parse(error.response.data)?.status === "unresolved";
+                    JSON.parse(error.response.data)?.status === 'unresolved';
             } catch {
                 retryAllowed.value = false;
             }
         }
         lookupNotice.value = retryAllowed.value
-            ? "No posted receipt was found for this reference. You can retry the original details."
-            : "The lookup could not confirm the result. Keep this reference and check again.";
+            ? 'It was not recorded. You can try again with the same details.'
+            : 'We could not check it. Keep this page open and try again.';
     }
 }
 </script>
 
 <template>
     <Head title="Record collection" />
-    <div class="flex flex-col gap-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                {{
-                    replacement_reversal && !accessUnavailable
-                        ? "Apply controlled receipt replacement"
-                        : "Record collection"
-                }}
-            </h1>
-            <p
-                v-if="
-                    !accessUnavailable &&
-                    replacement_reversal &&
-                    typeof replacement_controlled_kobo === 'number'
-                "
-                role="status"
-            >
-                Allocate the remaining controlled amount
-                {{ money(replacement_controlled_kobo) }} once. No new physical
-                tender is received.
-            </p>
-            <p
-                v-else-if="replacement_reversal && !accessUnavailable"
-                role="alert"
-            >
-                The remaining controlled amount is unavailable. Reload before
-                allocating funds.
-            </p>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                <template v-if="accessUnavailable">
-                    You must have current access to review a receipt.
-                </template>
-                <template v-else>
-                    {{
-                        replacement_reversal
-                            ? "Review the replacement allocation for"
-                            : "Confirm money actually received from"
-                    }}
-                    {{ customer.name }}.
-                </template>
-            </p>
-        </div>
+    <div class="mx-auto flex w-full max-w-3xl flex-col gap-6">
+        <PageHeader
+            :title="
+                replacement_reversal && !accessUnavailable
+                    ? 'Replace receipt'
+                    : 'Record payment'
+            "
+            :description="
+                accessUnavailable
+                    ? 'You no longer have access to this form.'
+                    : replacement_reversal
+                      ? `Choose where the money goes for ${customer.name}.`
+                      : `From ${customer.name}.`
+            "
+        />
+        <p
+            v-if="
+                !accessUnavailable &&
+                replacement_reversal &&
+                typeof replacement_controlled_kobo === 'number'
+            "
+            role="status"
+            class="bg-muted -mt-2 rounded-xl p-4 text-sm"
+        >
+            Amount to place: {{ money(replacement_controlled_kobo) }}. You can
+            place it once. No new money is collected.
+        </p>
+        <p
+            v-else-if="replacement_reversal && !accessUnavailable"
+            role="alert"
+            class="text-destructive -mt-2 text-sm"
+        >
+            We could not load the amount to place. Refresh the page first.
+        </p>
+
         <div
             v-if="reviewMessage"
             ref="reviewNotice"
@@ -635,15 +628,14 @@ async function lookupAttempt(): Promise<void> {
             <Alert variant="destructive" role="presentation">
                 <AlertTitle>{{
                     accessUnavailable
-                        ? "Receipt form unavailable"
-                        : "Receipt review unavailable"
+                        ? 'Form not available'
+                        : 'Could not check payment'
                 }}</AlertTitle>
                 <AlertDescription class="grid gap-2">
                     <p>{{ reviewMessage }}</p>
                     <p v-if="accessUnavailable && outcomeUnknown">
-                        You must check the result of the earlier attempt. The
-                        system kept its original reference. You must have
-                        current access to check its result.
+                        Your last attempt still needs checking. You need access
+                        to this customer to check it.
                     </p>
                     <Link
                         v-if="accessUnavailable"
@@ -658,31 +650,33 @@ async function lookupAttempt(): Promise<void> {
             v-if="reviewBusy && !accessUnavailable"
             role="status"
             aria-live="polite"
+            class="text-muted-foreground text-sm"
         >
             {{
                 timeOptionsHttp.processing
-                    ? "Checking the received time before reviewing this receipt. Wait for the result."
-                    : "Reviewing the allocation and tender. Wait for the preview before recording this receipt."
+                    ? 'Checking the time. Please wait.'
+                    : 'Checking the payment. Please wait.'
             }}
         </p>
         <p
             v-if="submissionPending && !accessUnavailable"
             role="status"
             aria-live="polite"
+            class="text-muted-foreground text-sm"
         >
-            Recording receipt. Wait for the result before trying again.
+            Recording payment. Please wait.
         </p>
         <Alert v-if="outcomeUnknown && !accessUnavailable">
-            <AlertTitle>Submission outcome unknown</AlertTitle>
-            <AlertDescription class="grid gap-2"
-                >Keep this attempt open and look up its original reference
-                before trying again: {{ form.attempt_reference }}.<Button
+            <AlertTitle>We are not sure it was saved</AlertTitle>
+            <AlertDescription class="grid gap-3">
+                <p>Check first, so the payment is not recorded twice.</p>
+                <Button
                     type="button"
                     variant="outline"
                     class="w-fit"
                     :disabled="attemptLookup.processing"
                     @click="lookupAttempt"
-                    >Check original attempt</Button
+                    >Check status</Button
                 >
                 <p v-if="lookupNotice" role="status" aria-live="polite">
                     {{ lookupNotice }}
@@ -690,9 +684,9 @@ async function lookupAttempt(): Promise<void> {
                 <Link
                     v-if="recoveredReceipt"
                     :href="showReceipt(recoveredReceipt)"
-                    class="underline"
+                    class="w-fit underline"
                     @click="forgetAttempt"
-                    >Open posted receipt {{ recoveredReceipt }}</Link
+                    >Open receipt {{ recoveredReceipt }}</Link
                 ><Button
                     v-else-if="retryAllowed && preview"
                     type="button"
@@ -702,72 +696,101 @@ async function lookupAttempt(): Promise<void> {
                         submissionPending || form.processing || !form.confirmed
                     "
                     @click="submit(true)"
-                    >Retry original attempt</Button
+                    >Try again</Button
                 ><span v-else-if="retryAllowed"
-                    >Re-enter the receipt details below and review them before
-                    retrying this reference.</span
-                ></AlertDescription
-            >
+                    >Enter the payment details again, check them, then try
+                    again.</span
+                >
+                <p class="text-muted-foreground text-xs break-all">
+                    Reference: {{ form.attempt_reference }}
+                </p>
+            </AlertDescription>
         </Alert>
-        <div
-            v-if="!replacement_reversal && !accessUnavailable"
-            class="grid gap-3"
-        >
-            <Label for="payment-choice">Payment method</Label>
-            <Select
-                v-model="paymentChoice"
-                :disabled="
-                    submissionPending ||
-                    outcomeUnknown ||
-                    form.processing ||
-                    reviewBusy
-                "
-            >
-                <SelectTrigger id="payment-choice"
-                    ><SelectValue
-                /></SelectTrigger>
-                <SelectContent>
-                    <SelectItem v-if="cash_enabled" value="cash"
-                        >Cash</SelectItem
+
+        <Card v-if="!replacement_reversal && !accessUnavailable">
+            <CardHeader>
+                <CardTitle class="flex items-center gap-3"
+                    ><span
+                        class="bg-accent text-accent-foreground inline-flex size-6 items-center justify-center rounded-full text-xs"
+                        aria-hidden="true"
+                        >1</span
+                    >How did they pay?</CardTitle
+                >
+            </CardHeader>
+            <CardContent class="grid gap-4">
+                <div class="grid gap-2">
+                    <Label for="payment-choice">Payment method</Label>
+                    <Select
+                        v-model="paymentChoice"
+                        :disabled="
+                            submissionPending ||
+                            outcomeUnknown ||
+                            form.processing ||
+                            reviewBusy
+                        "
                     >
-                    <SelectItem
-                        v-if="collection_methods.length || initial_evidence"
-                        value="evidence"
+                        <SelectTrigger
+                            id="payment-choice"
+                            class="w-full sm:w-72"
+                            ><SelectValue
+                        /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-if="cash_enabled" value="cash"
+                                >Cash</SelectItem
+                            >
+                            <SelectItem
+                                v-if="
+                                    collection_methods.length ||
+                                    initial_evidence
+                                "
+                                value="evidence"
+                            >
+                                Transfer or POS (with proof)
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p
+                        v-if="!collection_methods.length"
+                        class="text-muted-foreground text-xs"
                     >
-                        Verified noncash payment
-                    </SelectItem>
-                </SelectContent>
-            </Select>
-            <p
-                v-if="!collection_methods.length"
-                class="text-muted-foreground text-sm"
-            >
-                Noncash collection methods are not available now.
-            </p>
-            <CollectionEvidencePanel
-                v-if="paymentChoice === 'evidence'"
-                :customer="evidenceCustomer"
-                :methods="collection_methods"
-                :today="today"
-                :initial-reference="initial_evidence"
-                :disabled="
-                    submissionPending ||
-                    outcomeUnknown ||
-                    form.processing ||
-                    reviewBusy
-                "
-                @selected="selectEvidence"
-            />
-            <p
-                v-if="evidenceNotice"
-                role="alert"
-                class="text-destructive text-sm"
-            >
-                {{ evidenceNotice }}
-            </p>
-        </div>
+                        Transfer and POS are not set up yet.
+                    </p>
+                </div>
+                <CollectionEvidencePanel
+                    v-if="paymentChoice === 'evidence'"
+                    :customer="evidenceCustomer"
+                    :methods="collection_methods"
+                    :today="today"
+                    :initial-reference="initial_evidence"
+                    :disabled="
+                        submissionPending ||
+                        outcomeUnknown ||
+                        form.processing ||
+                        reviewBusy
+                    "
+                    @selected="selectEvidence"
+                />
+                <p
+                    v-if="evidenceNotice"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ evidenceNotice }}
+                </p>
+            </CardContent>
+        </Card>
+
         <Card v-if="!accessUnavailable">
-            <CardHeader><CardTitle>Receipt details</CardTitle></CardHeader>
+            <CardHeader>
+                <CardTitle class="flex items-center gap-3"
+                    ><span
+                        v-if="!replacement_reversal"
+                        class="bg-accent text-accent-foreground inline-flex size-6 items-center justify-center rounded-full text-xs"
+                        aria-hidden="true"
+                        >2</span
+                    >Amount</CardTitle
+                >
+            </CardHeader>
             <CardContent
                 ><fieldset
                     :disabled="
@@ -778,6 +801,7 @@ async function lookupAttempt(): Promise<void> {
                     "
                     class="grid gap-5 sm:grid-cols-2"
                 >
+                    <legend class="sr-only">Payment amount</legend>
                     <div class="grid gap-2">
                         <Label for="collection-plan">Plan</Label>
                         <Select
@@ -803,7 +827,7 @@ async function lookupAttempt(): Promise<void> {
                             /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem :value="FEE_ONLY"
-                                    >Fee payment only</SelectItem
+                                    >No plan (fees only)</SelectItem
                                 >
                                 <SelectItem
                                     v-for="plan in plans"
@@ -821,12 +845,10 @@ async function lookupAttempt(): Promise<void> {
                         />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="collection-date"
-                            >Date money was received</Label
-                        >
+                        <Label for="collection-date">Date received</Label>
                         <DatePicker
                             id="collection-date"
-                            aria-label="Date money was received"
+                            aria-label="Date received"
                             v-model="form.received_date"
                             :error-message="validationError('received_date')"
                         />
@@ -837,13 +859,13 @@ async function lookupAttempt(): Promise<void> {
                     </div>
                     <div v-if="crossZone" class="grid gap-2 sm:col-span-2">
                         <Label for="collection-time"
-                            >Actual time received in
-                            {{ business_timezone }}</Label
+                            >Time received ({{ business_timezone }})</Label
                         >
                         <Input
                             id="collection-time"
                             v-model="form.received_local_time"
                             type="time"
+                            class="w-fit"
                             :aria-invalid="
                                 Boolean(validationError('received_local_time'))
                             "
@@ -858,12 +880,13 @@ async function lookupAttempt(): Promise<void> {
                             role="alert"
                             :message="validationError('received_local_time')"
                         />
-                        <p class="text-muted-foreground text-sm">
+                        <p class="text-muted-foreground text-xs">
                             This plan uses
                             {{
                                 plans.find((plan) => plan.id === form.plan_id)
                                     ?.timezone
-                            }}. The time sets the slot date.
+                            }}
+                            time, so we need the time to pick the right day.
                         </p>
                         <p
                             v-if="timeNotice"
@@ -873,9 +896,7 @@ async function lookupAttempt(): Promise<void> {
                             {{ timeNotice }}
                         </p>
                         <div v-if="validOffsets.length > 1" class="grid gap-2">
-                            <Label for="collection-offset"
-                                >UTC offset at the time received</Label
-                            >
+                            <Label for="collection-offset">Which time?</Label>
                             <Select
                                 :model-value="
                                     form.received_utc_offset || undefined
@@ -890,8 +911,7 @@ async function lookupAttempt(): Promise<void> {
                                 <SelectTrigger
                                     id="collection-offset"
                                     class="w-full"
-                                    ><SelectValue
-                                        placeholder="Choose the correct occurrence"
+                                    ><SelectValue placeholder="Choose one"
                                 /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem
@@ -906,15 +926,16 @@ async function lookupAttempt(): Promise<void> {
                             </Select>
                         </div>
                     </div>
-                    <div class="grid gap-2">
+                    <div class="grid gap-2 sm:col-span-2">
                         <Label for="collection-savings"
-                            >Savings received (NGN)</Label
+                            >Savings amount (NGN)</Label
                         >
                         <Input
                             id="collection-savings"
                             v-model="form.savings_ngn"
                             inputmode="decimal"
                             placeholder="2000.00"
+                            class="h-12 text-lg sm:w-72"
                             :aria-invalid="
                                 Boolean(
                                     validationError('savings_ngn') ||
@@ -938,36 +959,55 @@ async function lookupAttempt(): Promise<void> {
                         />
                     </div>
                     <div
-                        v-for="(fee, index) in fee_obligations"
-                        :key="fee.id"
-                        class="grid gap-2"
+                        v-if="fee_obligations.length"
+                        class="grid gap-4 border-t pt-4 sm:col-span-2 sm:grid-cols-2"
                     >
-                        <Label :for="`collection-fee-${fee.id}`"
-                            >{{ fee.description }} · due
-                            {{ money(fee.outstanding_kobo) }}</Label
+                        <p class="text-sm font-medium sm:col-span-2">
+                            Fees owed
+                            <span class="text-muted-foreground font-normal"
+                                >(leave empty if not paying now)</span
+                            >
+                        </p>
+                        <div
+                            v-for="(fee, index) in fee_obligations"
+                            :key="fee.id"
+                            class="grid gap-2"
                         >
-                        <Input
-                            :id="`collection-fee-${fee.id}`"
-                            v-model="form.fees[index]!.amount_ngn"
-                            inputmode="decimal"
-                            placeholder="0.00"
-                            :aria-invalid="Boolean(feeValidationError(fee.id))"
-                            :aria-describedby="
-                                feeValidationError(fee.id)
-                                    ? `collection-fee-${fee.id}-error`
-                                    : undefined
-                            "
-                        />
-                        <InputError
-                            :id="`collection-fee-${fee.id}-error`"
-                            role="alert"
-                            :message="feeValidationError(fee.id)"
-                        />
+                            <Label :for="`collection-fee-${fee.id}`"
+                                >{{ fee.description }} (owes
+                                {{ money(fee.outstanding_kobo) }})</Label
+                            >
+                            <Input
+                                :id="`collection-fee-${fee.id}`"
+                                v-model="form.fees[index]!.amount_ngn"
+                                inputmode="decimal"
+                                placeholder="0.00"
+                                :aria-invalid="
+                                    Boolean(feeValidationError(fee.id))
+                                "
+                                :aria-describedby="
+                                    feeValidationError(fee.id)
+                                        ? `collection-fee-${fee.id}-error`
+                                        : undefined
+                                "
+                            />
+                            <InputError
+                                :id="`collection-fee-${fee.id}-error`"
+                                role="alert"
+                                :message="feeValidationError(fee.id)"
+                            />
+                        </div>
                     </div>
-                    <div class="grid gap-2 sm:col-span-2">
+                    <div
+                        v-if="
+                            isLate ||
+                            form.late_reason ||
+                            validationError('late_reason')
+                        "
+                        class="grid gap-2 sm:col-span-2"
+                    >
                         <Label for="collection-late"
-                            >Late recording reason, if received before
-                            today</Label
+                            >Why is this being recorded late?</Label
                         >
                         <Input
                             id="collection-late"
@@ -988,36 +1028,50 @@ async function lookupAttempt(): Promise<void> {
                             :message="validationError('late_reason')"
                         />
                     </div>
-                    <div class="grid gap-2 sm:col-span-2">
-                        <Label for="collection-notes"
-                            >Customer-visible note</Label
-                        >
-                        <Input
-                            id="collection-notes"
-                            v-model="form.notes"
-                            maxlength="500"
-                            :aria-invalid="Boolean(validationError('notes'))"
-                            :aria-describedby="
-                                validationError('notes')
-                                    ? 'collection-notes-error'
-                                    : undefined
-                            "
-                        />
-                        <InputError
-                            id="collection-notes-error"
-                            role="alert"
-                            :message="validationError('notes')"
-                        />
-                    </div>
                     <div class="sm:col-span-2">
+                        <MoreDetails
+                            label="More options"
+                            :default-open="
+                                Boolean(form.notes || validationError('notes'))
+                            "
+                        >
+                            <div class="grid gap-2">
+                                <Label for="collection-notes"
+                                    >Note for the customer</Label
+                                >
+                                <Input
+                                    id="collection-notes"
+                                    v-model="form.notes"
+                                    maxlength="500"
+                                    :aria-invalid="
+                                        Boolean(validationError('notes'))
+                                    "
+                                    :aria-describedby="
+                                        validationError('notes')
+                                            ? 'collection-notes-error'
+                                            : undefined
+                                    "
+                                />
+                                <p class="text-muted-foreground text-xs">
+                                    The customer can see this note.
+                                </p>
+                                <InputError
+                                    id="collection-notes-error"
+                                    role="alert"
+                                    :message="validationError('notes')"
+                                />
+                            </div>
+                        </MoreDetails>
+                    </div>
+                    <div v-if="!preview" class="border-t pt-4 sm:col-span-2">
                         <Button
                             type="button"
+                            size="lg"
+                            class="w-full sm:w-auto"
                             :disabled="reviewBusy"
                             @click="review"
                             >{{
-                                reviewBusy
-                                    ? reviewBusyLabel
-                                    : "Review allocation and tender"
+                                reviewBusy ? reviewBusyLabel : 'Check amounts'
                             }}</Button
                         >
                         <p
@@ -1032,137 +1086,51 @@ async function lookupAttempt(): Promise<void> {
                 </fieldset></CardContent
             >
         </Card>
-        <div
-            v-if="!accessUnavailable && Object.keys(form.errors).length"
-            role="alert"
-            class="text-destructive grid gap-1 text-sm"
-        >
-            <p v-for="(error, key) in form.errors" :key="key">{{ error }}</p>
-            <p>Review the current details before recording money again.</p>
-        </div>
-        <Card v-if="preview && !accessUnavailable">
-            <CardHeader
-                ><CardTitle>Confirm payment received</CardTitle></CardHeader
-            >
-            <CardContent class="flex flex-col gap-4">
-                <p role="status" aria-live="polite" class="text-sm">
-                    Preview ready. Savings {{ money(preview.savings_kobo) }} ·
-                    fees {{ money(preview.fees_kobo) }} · total tender
-                    {{ money(preview.tender_kobo) }}
-                </p>
+
+        <Card v-if="form.allocations.length && !accessUnavailable">
+            <CardHeader>
+                <CardTitle>Choose days</CardTitle>
                 <p class="text-muted-foreground text-sm">
-                    The received date uses {{ preview.timezone }}. This action
-                    records Customer savings and
-                    {{ preview.method_context.method_label }} custody.
-                    {{
-                        preview.method_context.custody_account_code ===
-                        "payment_clearing_ngn"
-                            ? "Clearing stays pending until an independent bank settlement."
-                            : ""
-                    }}
+                    Enter an amount for each day you want to pay. Leave the rest
+                    empty, then check again.
                 </p>
-                <p
-                    v-if="preview.received_at_utc"
-                    class="text-muted-foreground text-sm"
-                >
-                    Received at {{ form.received_local_time }}
-                    {{ preview.timezone }} ({{ form.received_utc_offset }};
-                    {{ preview.received_at_utc }} UTC). In the plan’s
-                    {{ preview.plan_timezone }} timezone, the date is
-                    {{ preview.plan_received_date }}.
-                </p>
-                <ul class="grid gap-2 text-sm">
-                    <li v-for="slot in preview.allocations" :key="slot.slot_id">
-                        {{ slot.due_date }} · {{ money(slot.amount_kobo) }}
-                    </li>
-                </ul>
-                <Button
-                    v-if="
-                        preview.slot_options.length > 1 &&
-                        form.allocations.length === 0
-                    "
-                    type="button"
-                    variant="outline"
-                    class="w-fit"
-                    :disabled="
-                        submissionPending || outcomeUnknown || form.processing
-                    "
-                    @click="customizeAllocation"
-                    >Change slot allocation</Button
-                >
-                <label class="flex items-start gap-3 text-sm"
-                    ><input
-                        v-model="form.confirmed"
-                        type="checkbox"
-                        :disabled="
-                            submissionPending ||
-                            (outcomeUnknown && !retryAllowed) ||
-                            form.processing
-                        "
-                    />
-                    I confirm that this payment was received and the split above
-                    is correct.</label
-                >
-                <div class="flex gap-3">
-                    <Button
-                        type="button"
-                        :disabled="
-                            submissionPending ||
-                            form.processing ||
-                            outcomeUnknown ||
-                            !form.confirmed
-                        "
-                        @click="submit()"
-                        >Record receipt</Button
-                    ><Link
-                        v-if="!submissionPending && !outcomeUnknown"
-                        :href="collectionsIndex()"
-                        class="text-muted-foreground self-center text-sm underline"
-                        >Cancel</Link
+            </CardHeader>
+            <CardContent class="grid gap-4">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div
+                        v-for="item in form.allocations"
+                        :key="item.slot_id"
+                        class="grid gap-2"
                     >
-                </div>
-            </CardContent>
-        </Card>
-        <Card v-if="form.allocations.length && !accessUnavailable"
-            ><CardHeader
-                ><CardTitle>Custom slot allocation</CardTitle></CardHeader
-            ><CardContent class="grid gap-3"
-                ><p class="text-muted-foreground text-sm">
-                    Enter an amount for each slot that you chose. Leave the
-                    other slots empty. Then review again.
-                </p>
-                <div
-                    v-for="item in form.allocations"
-                    :key="item.slot_id"
-                    class="grid max-w-xs gap-2"
-                >
-                    <Label :for="`slot-${item.slot_id}`"
-                        >{{
-                            customSlots.find(
-                                (slot) => slot.slot_id === item.slot_id,
-                            )?.due_date
-                        }}
-                        · up to
-                        {{
-                            money(
+                        <Label :for="`slot-${item.slot_id}`"
+                            >{{
                                 customSlots.find(
                                     (slot) => slot.slot_id === item.slot_id,
-                                )?.capacity_kobo ?? 0,
-                            )
-                        }}</Label
-                    ><Input
-                        :id="`slot-${item.slot_id}`"
-                        v-model="item.amount_ngn"
-                        inputmode="decimal"
-                        :disabled="
-                            submissionPending ||
-                            outcomeUnknown ||
-                            form.processing
-                        "
-                        placeholder="0.00"
-                    />
+                                )?.due_date
+                            }}
+                            (up to
+                            {{
+                                money(
+                                    customSlots.find(
+                                        (slot) => slot.slot_id === item.slot_id,
+                                    )?.capacity_kobo ?? 0,
+                                )
+                            }})</Label
+                        ><Input
+                            :id="`slot-${item.slot_id}`"
+                            v-model="item.amount_ngn"
+                            inputmode="decimal"
+                            :disabled="
+                                submissionPending ||
+                                outcomeUnknown ||
+                                form.processing
+                            "
+                            placeholder="0.00"
+                        />
+                    </div>
                 </div>
                 <Button
+                    v-if="!preview"
                     type="button"
                     class="w-fit"
                     :disabled="
@@ -1171,13 +1139,155 @@ async function lookupAttempt(): Promise<void> {
                         outcomeUnknown
                     "
                     @click="review"
-                    >{{
-                        reviewBusy
-                            ? reviewBusyLabel
-                            : "Review custom allocation"
-                    }}</Button
-                ></CardContent
-            ></Card
+                    >{{ reviewBusy ? reviewBusyLabel : 'Check again' }}</Button
+                >
+            </CardContent>
+        </Card>
+
+        <div
+            v-if="!accessUnavailable && Object.keys(form.errors).length"
+            role="alert"
+            class="text-destructive grid gap-1 text-sm"
         >
+            <p v-for="(error, key) in form.errors" :key="key">{{ error }}</p>
+            <p>Check the details and try again.</p>
+        </div>
+
+        <Card v-if="preview && !accessUnavailable" class="border-primary/30">
+            <CardHeader>
+                <CardTitle class="flex items-center gap-3"
+                    ><span
+                        v-if="!replacement_reversal"
+                        class="bg-accent text-accent-foreground inline-flex size-6 items-center justify-center rounded-full text-xs"
+                        aria-hidden="true"
+                        >3</span
+                    >Check and record</CardTitle
+                >
+            </CardHeader>
+            <CardContent class="flex flex-col gap-5">
+                <div
+                    role="status"
+                    aria-live="polite"
+                    class="grid gap-3 sm:grid-cols-3"
+                >
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Total</p>
+                        <p class="mt-1 text-2xl font-semibold">
+                            {{ money(preview.tender_kobo) }}
+                        </p>
+                    </div>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Savings</p>
+                        <p class="mt-1 text-lg font-medium">
+                            {{ money(preview.savings_kobo) }}
+                        </p>
+                    </div>
+                    <div class="bg-muted/40 rounded-xl p-4">
+                        <p class="text-muted-foreground text-sm">Fees</p>
+                        <p class="mt-1 text-lg font-medium">
+                            {{ money(preview.fees_kobo) }}
+                        </p>
+                    </div>
+                </div>
+                <div v-if="preview.allocations.length">
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                    >
+                        <h3 class="text-sm font-medium">Days this pays for</h3>
+                        <Button
+                            v-if="
+                                preview.slot_options.length > 1 &&
+                                form.allocations.length === 0
+                            "
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            :disabled="
+                                submissionPending ||
+                                outcomeUnknown ||
+                                form.processing
+                            "
+                            @click="customizeAllocation"
+                            >Change days</Button
+                        >
+                    </div>
+                    <ul class="mt-2 divide-y text-sm">
+                        <li
+                            v-for="slot in preview.allocations"
+                            :key="slot.slot_id"
+                            class="flex justify-between gap-3 py-2"
+                        >
+                            <span>{{ slot.due_date }}</span>
+                            <span class="font-medium">{{
+                                money(slot.amount_kobo)
+                            }}</span>
+                        </li>
+                    </ul>
+                </div>
+                <MoreDetails>
+                    <div
+                        class="text-muted-foreground grid gap-2 text-xs leading-5"
+                    >
+                        <p>
+                            Paid by {{ preview.method_context.method_label }}.
+                            Dates use the {{ preview.timezone }} time zone.
+                        </p>
+                        <p
+                            v-if="
+                                preview.method_context.custody_account_code ===
+                                'payment_clearing_ngn'
+                            "
+                        >
+                            This stays pending until the bank deposit is
+                            checked.
+                        </p>
+                        <p v-if="preview.received_at_utc">
+                            Received at {{ form.received_local_time }}
+                            {{ preview.timezone }} ({{
+                                form.received_utc_offset
+                            }}, {{ preview.received_at_utc }} UTC). In the
+                            plan’s {{ preview.plan_timezone }} time zone, the
+                            date is {{ preview.plan_received_date }}.
+                        </p>
+                    </div>
+                </MoreDetails>
+                <label class="flex items-start gap-3 text-sm"
+                    ><input
+                        v-model="form.confirmed"
+                        type="checkbox"
+                        class="mt-0.5"
+                        :disabled="
+                            submissionPending ||
+                            (outcomeUnknown && !retryAllowed) ||
+                            form.processing
+                        "
+                    />
+                    I received this money and the amounts above are
+                    correct.</label
+                >
+                <div
+                    class="flex flex-col-reverse gap-3 border-t pt-4 sm:flex-row sm:items-center"
+                >
+                    <Button
+                        type="button"
+                        size="lg"
+                        class="w-full sm:w-auto"
+                        :disabled="
+                            submissionPending ||
+                            form.processing ||
+                            outcomeUnknown ||
+                            !form.confirmed
+                        "
+                        @click="submit()"
+                        >Record payment</Button
+                    ><Link
+                        v-if="!submissionPending && !outcomeUnknown"
+                        :href="collectionsIndex()"
+                        class="text-muted-foreground text-center text-sm underline-offset-4 hover:underline"
+                        >Cancel</Link
+                    >
+                </div>
+            </CardContent>
+        </Card>
     </div>
 </template>

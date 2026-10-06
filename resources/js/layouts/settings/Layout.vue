@@ -32,7 +32,7 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
     <div>
         <Heading
             title="Settings"
-            description="Manage your profile and account settings"
+            description="Your profile, security and display settings."
         />
 
         <div class="flex flex-col gap-8 lg:flex-row lg:gap-10">

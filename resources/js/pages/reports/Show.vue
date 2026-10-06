@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage, usePoll, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import { Download, Inbox, RefreshCw, SlidersHorizontal } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,20 +66,20 @@ const pending = ref(false);
 const notice = ref('');
 const filters = ref<ReportFilters>({ ...props.filters });
 const secondaryTitles: Record<string, string> = {
-    primary: 'Report results',
-    recorded_activity: 'Recorded receipt activity',
-    business_cash: 'Business cash custody',
-    batch_reconciliation: 'Cash batch reconciliation',
-    external_receipts: 'External fee receipts',
-    fee_obligations: 'Outstanding fee obligations',
-    custody_batches: 'Cash batches needing reconciliation',
-    refund_payables: 'Refund payables',
-    payout_incidents: 'Payout and ledger incidents',
-    posted_payouts: 'Posted payouts',
+    primary: 'Results',
+    recorded_activity: 'Payments recorded',
+    business_cash: 'Business cash',
+    batch_reconciliation: 'Cash batch checks',
+    external_receipts: 'Fees paid in cash',
+    fee_obligations: 'Unpaid fees',
+    custody_batches: 'Cash batches to check',
+    refund_payables: 'Refunds owed',
+    payout_incidents: 'Payout issues',
+    posted_payouts: 'Payouts made',
     fee_applications: 'Fees paid from savings',
     fee_refunds: 'Fee refunds',
-    other_deductions: 'Other savings deductions',
-    funding_progress: 'Current plan funding progress',
+    other_deductions: 'Other deductions',
+    funding_progress: 'Plan progress',
 };
 const statuses = ['active', 'inactive', 'restricted', 'archived'];
 const planStatuses = ['active', 'paused', 'completed', 'closed', 'cancelled'];
@@ -132,7 +138,7 @@ watch(
 function clearOnFailure(): void {
     visible.value = null;
     notice.value =
-        'The system cannot verify the report. Refresh to start a new run.';
+        'We could not load this report. Select Refresh to try again.';
 }
 usePoll(5000, {
     only: ['scopeSummary'],
@@ -172,76 +178,139 @@ function next(cursor: string | null): void {
     if (cursor) visit({ ...props.filters, cursor });
 }
 function cell(value: string | number | boolean | null | undefined): string {
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined) return '-';
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     return String(value);
+}
+const filtersOpen = ref(false);
+const exportOpen = ref(false);
+const filterLabels: Record<string, string> = {
+    customer: 'Customer ID',
+    customer_status: 'Customer status',
+    plan: 'Plan ID',
+    plan_status: 'Plan status',
+    state: 'Status',
+    agent: 'Agent ID',
+    agent_basis: 'Agent',
+};
+const agentBasisLabels: Record<string, string> = {
+    current: 'Customer’s current agent',
+    recording: 'Agent who recorded it',
+    custody: 'Agent holding the cash',
+};
+const sectionStatusLabels: Record<string, string> = {
+    Partial: 'Partly complete',
+    Unavailable: 'Not available',
+    'Too large': 'Too many results',
+};
+const summaries: Record<string, string> = {
+    'customer-summary': 'Each customer’s current savings.',
+    contributions: 'Payments received, by date.',
+    withdrawals: 'Withdrawal requests and payouts.',
+    fees: 'Fees charged, paid and still owed.',
+    'collection-performance': 'How much was collected, by date.',
+    reconciliation: 'Cash held by agents and the business.',
+    'agent-performance': 'Each agent’s customers and collections.',
+    plans: 'Plans, their status and progress.',
+    exceptions: 'Items that need attention.',
+};
+function humanize(value: string): string {
+    const words = value.replaceAll('_', ' ').replaceAll('-', ' ');
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+const activeFilterCount = computed(
+    () =>
+        availableFilters.value.filter((field) =>
+            Boolean(props.filters[field as keyof ReportFilters]),
+        ).length +
+        (props.filters.group ? 1 : 0) +
+        ((props.filters.page_size ?? 25) !== 25 ? 1 : 0),
+);
+function applyFromSheet(): void {
+    filtersOpen.value = false;
+    apply();
+}
+function clearSheetFilters(): void {
+    for (const field of availableFilters.value) {
+        (filters.value as Record<string, unknown>)[field] = '';
+    }
+    filters.value.group = '';
+    filters.value.page_size = 25;
+    filtersOpen.value = false;
+    apply();
 }
 </script>
 
 <template>
     <div class="space-y-6">
         <Head :title="definition.title" />
-        <header class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <h1 class="text-[25px] font-medium tracking-tight">
-                    {{ definition.title }}
-                </h1>
-                <p class="text-muted-foreground mt-1.5 text-sm">
-                    {{ definition.basis }}
-                </p>
-            </div>
-            <div class="flex gap-2">
+        <PageHeader
+            :title="definition.title"
+            :description="summaries[definition.code] ?? definition.basis"
+        >
+            <template #actions>
                 <Button variant="outline" :disabled="pending" @click="refresh"
-                    >Refresh report</Button
+                    ><RefreshCw
+                        class="size-4"
+                        :class="pending ? 'animate-spin' : ''"
+                    />Refresh</Button
                 >
                 <Button
                     v-if="definition.export_available"
-                    variant="outline"
-                    :disabled="exportForm.processing || !exportForm.confirmed"
-                    @click="createExport('csv')"
-                    >Export CSV</Button
+                    @click="exportOpen = true"
+                    ><Download class="size-4" />Download</Button
                 >
-                <Button
-                    v-if="definition.export_available"
-                    variant="outline"
-                    :disabled="exportForm.processing || !exportForm.confirmed"
-                    @click="createExport('pdf')"
-                    >Export PDF</Button
-                >
-            </div>
-        </header>
-        <label v-if="definition.export_available" class="flex gap-3 text-sm"
-            ><input v-model="exportForm.confirmed" type="checkbox" />I confirm a
-            private export using the displayed filters and disclosed
-            coverage.</label
+            </template>
+        </PageHeader>
+
+        <form
+            class="flex flex-row flex-wrap items-end gap-4"
+            aria-label="Report filters"
+            @submit.prevent="apply"
         >
-        <p
-            v-for="(error, key) in exportForm.errors"
-            :key="key"
-            class="text-destructive text-sm"
-        >
-            {{ error }}
-        </p>
-        <p id="export-reason" class="text-muted-foreground text-sm">
-            {{ definition.export_reason }}
-        </p>
-        <form class="space-y-4" @submit.prevent="apply">
-            <div class="flex flex-row flex-wrap gap-4">
-                <div v-if="definition.activity" class="w-fit space-y-2">
+            <template v-if="definition.activity">
+                <div class="w-fit space-y-2">
                     <Label for="report-from">From</Label
-                    ><DatePicker id="report-from" v-model="filters.from" />
+                    ><DatePicker
+                        id="report-from"
+                        v-model="filters.from"
+                        aria-label="From"
+                    />
                 </div>
-                <div v-if="definition.activity" class="w-fit space-y-2">
+                <div class="w-fit space-y-2">
                     <Label for="report-to">To</Label
-                    ><DatePicker id="report-to" v-model="filters.to" />
+                    ><DatePicker
+                        id="report-to"
+                        v-model="filters.to"
+                        aria-label="To"
+                    />
                 </div>
+                <Button type="submit" :disabled="pending">Show</Button>
+            </template>
+            <Button type="button" variant="outline" @click="filtersOpen = true">
+                <SlidersHorizontal class="size-4" />
+                Filters
+                <span
+                    v-if="activeFilterCount > 0"
+                    class="bg-primary text-primary-foreground inline-flex size-5 items-center justify-center rounded-full text-[11px]"
+                    >{{ activeFilterCount }}</span
+                >
+            </Button>
+        </form>
+
+        <FormSheet
+            v-model:open="filtersOpen"
+            title="Filters"
+            description="Narrow down what this report shows."
+        >
+            <div class="grid gap-5">
                 <div
                     v-for="field in availableFilters"
                     :key="field"
-                    class="w-fit space-y-2"
+                    class="grid gap-2"
                 >
                     <Label :for="`report-${field}`">{{
-                        field.replaceAll('_', ' ')
+                        filterLabels[field] ?? humanize(field)
                     }}</Label>
                     <Select
                         v-if="field === 'customer_status'"
@@ -250,9 +319,7 @@ function cell(value: string | number | boolean | null | undefined): string {
                             filters.customer_status =
                                 $event === '__all' ? '' : String($event ?? '')
                         "
-                        ><SelectTrigger
-                            :id="`report-${field}`"
-                            class="h-11 w-fit"
+                        ><SelectTrigger :id="`report-${field}`" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
                             ><SelectItem value="__all">All statuses</SelectItem
@@ -260,7 +327,7 @@ function cell(value: string | number | boolean | null | undefined): string {
                                 v-for="value in statuses"
                                 :key="value"
                                 :value="value"
-                                >{{ value }}</SelectItem
+                                >{{ humanize(value) }}</SelectItem
                             ></SelectContent
                         ></Select
                     >
@@ -271,18 +338,15 @@ function cell(value: string | number | boolean | null | undefined): string {
                             filters.plan_status =
                                 $event === '__all' ? '' : String($event ?? '')
                         "
-                        ><SelectTrigger
-                            :id="`report-${field}`"
-                            class="h-11 w-fit"
+                        ><SelectTrigger :id="`report-${field}`" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="__all"
-                                >All lifecycle states</SelectItem
+                            ><SelectItem value="__all">All statuses</SelectItem
                             ><SelectItem
                                 v-for="value in planStatuses"
                                 :key="value"
                                 :value="value"
-                                >{{ value }}</SelectItem
+                                >{{ humanize(value) }}</SelectItem
                             ></SelectContent
                         ></Select
                     >
@@ -293,18 +357,15 @@ function cell(value: string | number | boolean | null | undefined): string {
                             filters.state =
                                 $event === '__all' ? '' : String($event ?? '')
                         "
-                        ><SelectTrigger
-                            :id="`report-${field}`"
-                            class="h-11 w-fit"
+                        ><SelectTrigger :id="`report-${field}`" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="__all"
-                                >All workflow states</SelectItem
+                            ><SelectItem value="__all">All statuses</SelectItem
                             ><SelectItem
                                 v-for="value in workflowStates"
                                 :key="value"
                                 :value="value"
-                                >{{ value }}</SelectItem
+                                >{{ humanize(value) }}</SelectItem
                             ></SelectContent
                         ></Select
                     >
@@ -315,18 +376,17 @@ function cell(value: string | number | boolean | null | undefined): string {
                             filters.agent_basis =
                                 $event === '__all' ? '' : String($event ?? '')
                         "
-                        ><SelectTrigger
-                            :id="`report-${field}`"
-                            class="h-11 w-fit"
+                        ><SelectTrigger :id="`report-${field}`" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
-                            ><SelectItem value="__all"
-                                >Choose attribution</SelectItem
+                            ><SelectItem value="__all">Choose one</SelectItem
                             ><SelectItem
                                 v-for="value in agentBases"
                                 :key="value"
                                 :value="value"
-                                >{{ value }}</SelectItem
+                                >{{
+                                    agentBasisLabels[value] ?? humanize(value)
+                                }}</SelectItem
                             ></SelectContent
                         ></Select
                     >
@@ -334,22 +394,22 @@ function cell(value: string | number | boolean | null | undefined): string {
                         v-else-if="field === 'customer'"
                         :id="`report-${field}`"
                         v-model="filters.customer"
-                        placeholder="Customer public ID"
+                        placeholder="CUS-…"
                     />
                     <Input
                         v-else-if="field === 'plan'"
                         :id="`report-${field}`"
                         v-model="filters.plan"
-                        placeholder="Plan public ID"
+                        placeholder="Plan ID"
                     />
                     <Input
                         v-else-if="field === 'agent'"
                         :id="`report-${field}`"
                         v-model="filters.agent"
-                        placeholder="Agent public ID"
+                        placeholder="AGT-…"
                     />
                 </div>
-                <div v-if="definition.groups.length" class="w-fit space-y-2">
+                <div v-if="definition.groups.length" class="grid gap-2">
                     <Label for="report-group">Group by</Label
                     ><Select
                         :model-value="filters.group || '__all'"
@@ -357,7 +417,7 @@ function cell(value: string | number | boolean | null | undefined): string {
                             filters.group =
                                 $event === '__all' ? '' : String($event ?? '')
                         "
-                        ><SelectTrigger id="report-group" class="h-11 w-fit"
+                        ><SelectTrigger id="report-group" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
                             ><SelectItem value="__all">No grouping</SelectItem
@@ -365,17 +425,17 @@ function cell(value: string | number | boolean | null | undefined): string {
                                 v-for="value in definition.groups"
                                 :key="value"
                                 :value="value"
-                                >{{ value.replaceAll('_', ' ') }}</SelectItem
+                                >{{ humanize(value) }}</SelectItem
                             ></SelectContent
                         ></Select
                     >
                 </div>
-                <div class="w-fit space-y-2">
+                <div class="grid gap-2">
                     <Label for="report-size">Rows per page</Label
                     ><Select
                         :model-value="String(filters.page_size ?? 25)"
                         @update:model-value="filters.page_size = Number($event)"
-                        ><SelectTrigger id="report-size" class="h-11 w-fit"
+                        ><SelectTrigger id="report-size" class="w-full"
                             ><SelectValue /></SelectTrigger
                         ><SelectContent
                             ><SelectItem
@@ -387,135 +447,177 @@ function cell(value: string | number | boolean | null | undefined): string {
                         ></Select
                     >
                 </div>
-                <Button type="submit" class="self-end" :disabled="pending"
-                    >Apply filters</Button
+            </div>
+            <template #footer>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="pending"
+                    @click="clearSheetFilters"
+                    >Clear</Button
                 >
+                <Button
+                    type="button"
+                    :disabled="pending"
+                    @click="applyFromSheet"
+                    >Show results</Button
+                >
+            </template>
+        </FormSheet>
+
+        <FormSheet
+            v-if="definition.export_available"
+            v-model:open="exportOpen"
+            title="Download report"
+            description="Create a private file with the filters you chose."
+        >
+            <div class="grid gap-5">
+                <div class="bg-muted/40 flex items-start gap-3 rounded-xl p-4">
+                    <Checkbox
+                        id="export-confirmed"
+                        v-model="exportForm.confirmed"
+                        aria-describedby="export-reason"
+                    />
+                    <Label for="export-confirmed" class="leading-5"
+                        >I understand this file uses the filters shown and may
+                        not include everything.</Label
+                    >
+                </div>
+                <p
+                    v-for="(error, key) in exportForm.errors"
+                    :key="key"
+                    role="alert"
+                    class="text-destructive text-sm"
+                >
+                    {{ error }}
+                </p>
+                <MoreDetails label="About downloads">
+                    <p
+                        id="export-reason"
+                        class="text-muted-foreground text-xs leading-5"
+                    >
+                        {{ definition.export_reason }}
+                    </p>
+                </MoreDetails>
             </div>
-            <div
-                v-if="Object.keys(errors).length"
-                role="alert"
-                class="text-destructive text-sm"
-            >
-                <p v-for="(error, field) in errors" :key="field">{{ error }}</p>
-            </div>
-        </form>
+            <template #footer>
+                <Button
+                    variant="outline"
+                    :disabled="exportForm.processing || !exportForm.confirmed"
+                    @click="createExport('csv')"
+                    >Create CSV</Button
+                >
+                <Button
+                    :disabled="exportForm.processing || !exportForm.confirmed"
+                    @click="createExport('pdf')"
+                    >Create PDF</Button
+                >
+            </template>
+        </FormSheet>
+
+        <div
+            v-if="Object.keys(errors).length"
+            role="alert"
+            class="text-destructive text-sm"
+        >
+            <p v-for="(error, field) in errors" :key="field">{{ error }}</p>
+        </div>
         <p v-if="notice" role="status" class="text-muted-foreground text-sm">
             {{ notice }}
         </p>
-        <div
-            v-if="pending"
-            role="status"
-            aria-live="polite"
-            class="animate-pulse space-y-3"
-        >
-            <p>Loading report…</p>
-            <div class="bg-muted h-24 rounded-lg" />
+        <div v-if="pending" role="status" aria-live="polite" class="space-y-3">
+            <p class="sr-only">Loading report…</p>
+            <div
+                class="bg-muted h-32 animate-pulse rounded-2xl motion-reduce:animate-none"
+            />
+            <div
+                class="bg-muted h-48 animate-pulse rounded-2xl motion-reduce:animate-none"
+            />
         </div>
         <template v-else-if="visible">
-            <Card>
-                <CardContent class="space-y-2 pt-6 text-sm">
-                    <p>
-                        As of {{ visible.manifest.cutoff }} ·
-                        {{ visible.manifest.timezone }} ·
-                        {{ visible.manifest.currency }}
-                    </p>
-                    <p v-if="definition.activity">
-                        UTC boundaries: {{ visible.manifest.utc_start }} through
-                        {{ visible.manifest.utc_end_exclusive }} (exclusive).
-                    </p>
-                    <p>
-                        Definition version
-                        {{ visible.manifest.definition_version }} · Schema
-                        {{ visible.manifest.schema_version }} · Ledger
-                        {{ visible.manifest.owner_watermarks.ledger?.status }},
-                        version
-                        {{ visible.manifest.owner_watermarks.ledger?.version }},
-                        watermark
-                        {{
-                            visible.manifest.owner_watermarks.ledger?.watermark
-                        }}
-                    </p>
-                    <p
-                        :class="
-                            visible.manifest.drill_down &&
-                            !visible.manifest.drill_down.reconciled
-                                ? 'font-medium text-amber-700 dark:text-amber-400'
-                                : 'text-muted-foreground'
-                        "
-                        role="status"
-                    >
-                        {{ visible.manifest.drill_down_note }}
-                    </p>
-                </CardContent>
-            </Card>
+            <div class="-mt-2 space-y-2">
+                <p class="text-muted-foreground text-xs">
+                    Updated {{ visible.manifest.cutoff }}
+                </p>
+                <p
+                    v-if="
+                        visible.manifest.drill_down &&
+                        !visible.manifest.drill_down.reconciled
+                    "
+                    role="status"
+                    class="text-sm font-medium text-amber-700 dark:text-amber-400"
+                >
+                    {{ visible.manifest.drill_down_note }}
+                </p>
+            </div>
             <Card v-for="(section, code) in visible.sections" :key="code">
                 <CardHeader
-                    ><CardTitle class="flex items-center justify-between gap-3"
-                        >{{
-                            definition.code === 'fees' && code === 'primary'
-                                ? 'Obligation activity'
-                                : (secondaryTitles[code] ?? code)
-                        }}
-                        <Badge variant="secondary">{{
-                            section.status
-                        }}</Badge></CardTitle
-                    ></CardHeader
+                    class="flex flex-row flex-wrap items-center justify-between gap-3"
                 >
+                    <CardTitle>{{
+                        definition.code === 'fees' && code === 'primary'
+                            ? 'Fee activity'
+                            : (secondaryTitles[code] ?? humanize(String(code)))
+                    }}</CardTitle>
+                    <Badge
+                        v-if="section.status !== 'Current'"
+                        variant="secondary"
+                        >{{
+                            sectionStatusLabels[section.status] ??
+                            section.status
+                        }}</Badge
+                    >
+                </CardHeader>
                 <CardContent class="space-y-5">
-                    <p class="text-muted-foreground text-sm">
+                    <p
+                        v-if="
+                            section.status === 'Unavailable' ||
+                            section.status === 'Too large'
+                        "
+                        class="text-muted-foreground text-sm"
+                    >
                         {{ section.reason }}
                     </p>
-                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div
+                        v-if="section.metrics.length"
+                        class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                    >
                         <div
                             v-for="metric in section.metrics"
                             :key="metric.code"
-                            class="rounded-lg border p-4"
+                            class="bg-muted/40 rounded-xl p-4"
                         >
                             <p class="text-muted-foreground text-sm">
                                 {{ metric.title }}
                             </p>
-                            <p class="mt-2 text-2xl font-medium tabular-nums">
+                            <p
+                                class="mt-2 text-2xl font-semibold break-words tabular-nums"
+                            >
                                 {{ metric.display }}
                             </p>
-                            <details class="text-muted-foreground mt-2 text-xs">
-                                <summary class="cursor-pointer">
-                                    Definition and basis
-                                </summary>
-                                <p class="mt-2">
-                                    {{ metric.definition }}
-                                    {{ metric.scope_note }}
-                                </p>
-                                <p>
-                                    {{ metric.source }} ·
-                                    {{ metric.date_basis }}
-                                </p>
-                            </details>
                         </div>
                     </div>
                     <p
-                        v-if="section.total !== null"
+                        v-if="section.total !== null && section.total > 0"
                         class="text-muted-foreground text-sm"
                     >
-                        {{ section.total }} records across the full authorized
-                        result. Totals include all pages.
+                        {{ section.total }} records in total. Totals include
+                        every page.
                     </p>
                     <div
                         v-if="section.rows.length"
-                        class="overflow-x-auto rounded-lg border"
+                        class="overflow-x-auto rounded-xl border"
                         tabindex="0"
-                        :aria-label="`${definition.title} results, scroll horizontally if needed`"
+                        :aria-label="`${definition.title} results, scroll sideways if needed`"
                     >
                         <table class="w-full text-left text-sm">
                             <caption class="sr-only">
                                 {{
                                     definition.title
                                 }}
-                                —
-                                {{
-                                    definition.basis
-                                }}
+                                results
                             </caption>
-                            <thead class="bg-muted/50">
+                            <thead class="text-muted-foreground text-xs">
                                 <tr>
                                     <th
                                         v-for="(
@@ -528,7 +630,7 @@ function cell(value: string | number | boolean | null | undefined): string {
                                         {{ title }}
                                     </th>
                                     <th scope="col" class="p-3">
-                                        Owner record
+                                        <span class="sr-only">Details</span>
                                     </th>
                                 </tr>
                             </thead>
@@ -545,53 +647,53 @@ function cell(value: string | number | boolean | null | undefined): string {
                                     >
                                         {{ cell(row[field]) }}
                                     </td>
-                                    <td class="p-3">
+                                    <td class="p-3 text-right">
                                         <Link
                                             v-if="row.href"
                                             :href="row.href"
-                                            class="underline underline-offset-4"
-                                            >View record<span class="sr-only">
+                                            class="font-medium underline-offset-4 hover:underline"
+                                            >View<span class="sr-only">
                                                 {{
                                                     row.reference ??
                                                     row.customer
                                                 }}</span
                                             ></Link
-                                        ><span
-                                            v-else
-                                            class="text-muted-foreground"
-                                            >Unavailable</span
                                         >
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                    <p
+                    <EmptyState
                         v-else-if="section.total === 0"
                         role="status"
-                        class="text-muted-foreground text-sm"
-                    >
-                        No records in your authorized scope match these filters.
-                    </p>
+                        :icon="Inbox"
+                        title="Nothing to show"
+                        description="Nothing matches these filters. Try changing them."
+                    />
                     <div
                         v-if="section.groups.length"
-                        class="overflow-x-auto rounded-lg border"
+                        class="overflow-x-auto rounded-xl border"
                         tabindex="0"
-                        aria-label="Full-result grouped totals"
+                        aria-label="Totals by group"
                     >
                         <table class="w-full text-left text-sm">
                             <caption class="sr-only">
-                                Grouped totals across all pages
+                                Totals by group, across all pages
                             </caption>
-                            <thead class="bg-muted/50">
+                            <thead class="text-muted-foreground text-xs">
                                 <tr>
-                                    <th scope="col" class="p-3">Group</th>
-                                    <th scope="col" class="p-3">Records</th>
+                                    <th scope="col" class="p-3 font-medium">
+                                        Group
+                                    </th>
+                                    <th scope="col" class="p-3 font-medium">
+                                        Records
+                                    </th>
                                     <th
                                         v-for="metric in section.metrics"
                                         :key="metric.code"
                                         scope="col"
-                                        class="p-3"
+                                        class="p-3 font-medium"
                                     >
                                         {{ metric.title }}
                                     </th>
@@ -629,11 +731,107 @@ function cell(value: string | number | boolean | null | undefined): string {
                             @click="next(section.next_cursor)"
                             >Next page</Button
                         ><Button variant="ghost" @click="refresh"
-                            >Start a new run</Button
+                            >Back to first page</Button
                         >
                     </div>
+                    <MoreDetails
+                        v-if="
+                            section.metrics.length ||
+                            (section.reason &&
+                                section.status !== 'Unavailable' &&
+                                section.status !== 'Too large')
+                        "
+                        label="About these numbers"
+                    >
+                        <div
+                            class="text-muted-foreground space-y-3 text-xs leading-5"
+                        >
+                            <p
+                                v-if="
+                                    section.status !== 'Unavailable' &&
+                                    section.status !== 'Too large'
+                                "
+                            >
+                                {{ section.reason }}
+                            </p>
+                            <dl class="space-y-2">
+                                <div
+                                    v-for="metric in section.metrics"
+                                    :key="metric.code"
+                                >
+                                    <dt class="text-foreground font-medium">
+                                        {{ metric.title }}
+                                    </dt>
+                                    <dd>
+                                        {{ metric.definition }}
+                                        {{ metric.scope_note }}
+                                        {{ metric.source }} ·
+                                        {{ metric.date_basis }}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </MoreDetails>
                 </CardContent>
             </Card>
+            <MoreDetails label="About this report">
+                <dl
+                    class="text-muted-foreground grid gap-3 text-xs leading-5 sm:grid-cols-2"
+                >
+                    <div class="sm:col-span-2">
+                        <dt class="text-foreground">What it covers</dt>
+                        <dd>{{ definition.basis }}. {{ definition.reason }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-foreground">Time zone and currency</dt>
+                        <dd>
+                            {{ visible.manifest.timezone }} ·
+                            {{ visible.manifest.currency }}
+                        </dd>
+                    </div>
+                    <div v-if="definition.activity">
+                        <dt class="text-foreground">Exact time range (UTC)</dt>
+                        <dd>
+                            {{ visible.manifest.utc_start }} up to
+                            {{ visible.manifest.utc_end_exclusive }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-foreground">Versions</dt>
+                        <dd>
+                            Report {{ visible.manifest.definition_version }} ·
+                            Format {{ visible.manifest.schema_version }}
+                        </dd>
+                    </div>
+                    <div v-if="visible.manifest.owner_watermarks.ledger">
+                        <dt class="text-foreground">Records</dt>
+                        <dd>
+                            {{
+                                visible.manifest.owner_watermarks.ledger.status
+                            }}
+                            · version
+                            {{
+                                visible.manifest.owner_watermarks.ledger.version
+                            }}
+                            · position
+                            {{
+                                visible.manifest.owner_watermarks.ledger
+                                    .watermark
+                            }}
+                        </dd>
+                    </div>
+                    <div
+                        v-if="
+                            !visible.manifest.drill_down ||
+                            visible.manifest.drill_down.reconciled
+                        "
+                        class="sm:col-span-2"
+                    >
+                        <dt class="text-foreground">Note</dt>
+                        <dd>{{ visible.manifest.drill_down_note }}</dd>
+                    </div>
+                </dl>
+            </MoreDetails>
         </template>
     </div>
 </template>

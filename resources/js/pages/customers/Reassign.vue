@@ -5,6 +5,8 @@ import { computed, ref, watch } from 'vue';
 import { dashboard } from '@/routes';
 import { index, show } from '@/routes/customers';
 import { preview, store, operation } from '@/routes/customers/reassignment';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -87,7 +89,7 @@ async function loadPreview(): Promise<void> {
     } catch {
         review.value = null;
         message.value =
-            'Preview unavailable. Refresh and review current eligibility.';
+            'We could not check the handover. Refresh the page and try again.';
     }
 }
 async function submit(retryOriginal = false): Promise<void> {
@@ -103,15 +105,15 @@ async function submit(retryOriginal = false): Promise<void> {
         if (!result || form.hasErrors) {
             uncertain.value = false;
             sessionStorage.removeItem(key);
-            message.value = 'Review the validation errors before confirming.';
+            message.value = 'Please fix the errors below and try again.';
             return;
         }
         sessionStorage.removeItem(key);
         uncertain.value = false;
         message.value =
             result.status === 'unchanged'
-                ? 'The current assignment is unchanged.'
-                : 'Customer reassignment committed.';
+                ? 'Nothing changed. The customer already has this agent.'
+                : 'Agent changed.';
         form.attempt_reference = crypto.randomUUID();
         review.value = null;
         router.reload();
@@ -123,8 +125,8 @@ async function submit(retryOriginal = false): Promise<void> {
             sessionStorage.removeItem(key);
         }
         message.value = uncertain.value
-            ? 'The outcome is uncertain. Check the original reference before submitting again.'
-            : 'Reassignment was not committed. Review the errors and refresh the preview.';
+            ? 'We are not sure the change was saved. Check the result before trying again.'
+            : 'The agent was not changed. Fix the errors and check the handover again.';
     }
 }
 async function resolveOutcome(): Promise<void> {
@@ -135,7 +137,7 @@ async function resolveOutcome(): Promise<void> {
                 attempt_reference: form.attempt_reference,
             }),
         )) as { status: string };
-        message.value = `Original operation: ${result.status}.`;
+        message.value = `Result: ${result.status.replaceAll('_', ' ')}.`;
         uncertain.value = false;
         sessionStorage.removeItem(key);
         form.attempt_reference = crypto.randomUUID();
@@ -143,7 +145,7 @@ async function resolveOutcome(): Promise<void> {
         router.reload();
     } catch {
         message.value =
-            'No committed result could be confirmed. Retain this reference and check again before creating another operation.';
+            'We could not find a saved result yet. Wait a moment and check again before trying again.';
     }
 }
 defineOptions({
@@ -151,7 +153,7 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Customers', href: index() },
-            { title: 'Reassign Customer', href: '#' },
+            { title: 'Change agent', href: '#' },
         ],
     },
 });
@@ -159,80 +161,83 @@ defineOptions({
 <template>
     <div class="mx-auto max-w-3xl space-y-6">
         <Head title="Reassign Customer" />
-        <header>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Reassign Customer
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ customer.name }} · {{ customer.reference }}
-            </p>
-        </header>
-        <Card
-            ><CardHeader
-                ><CardTitle>Current service relationship</CardTitle
-                ><CardDescription
-                    >Customer participation and account access remain
-                    separate.</CardDescription
-                ></CardHeader
-            ><CardContent
-                ><dl class="grid gap-4 sm:grid-cols-3">
-                    <div>
-                        <dt class="text-muted-foreground text-sm">
-                            Current Agent
-                        </dt>
-                        <dd>{{ customer.agent_name ?? 'Unavailable' }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-muted-foreground text-sm">
-                            Customer status
-                        </dt>
-                        <dd>{{ customer.status }}</dd>
-                    </div>
-                    <div>
-                        <dt class="text-muted-foreground text-sm">
-                            Account access
-                        </dt>
-                        <dd>{{ customer.account_state }}</dd>
-                    </div>
-                </dl></CardContent
-            ></Card
+        <PageHeader title="Change agent" :description="customer.name">
+            <template #actions>
+                <Button as-child variant="outline">
+                    <Link :href="show.url(customer.reference)"
+                        >Back to customer</Link
+                    >
+                </Button>
+            </template>
+        </PageHeader>
+
+        <dl
+            class="bg-muted/40 grid gap-4 rounded-xl p-4 text-sm sm:grid-cols-3"
         >
+            <div>
+                <dt class="text-muted-foreground">Current agent</dt>
+                <dd class="mt-0.5 font-medium">
+                    {{ customer.agent_name ?? 'None' }}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Customer status</dt>
+                <dd class="mt-0.5 capitalize">{{ customer.status }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Account</dt>
+                <dd class="mt-0.5 capitalize">{{ customer.account_state }}</dd>
+            </div>
+        </dl>
+
         <p
             v-if="message"
             role="status"
             aria-live="polite"
-            class="rounded-lg border p-4 text-sm"
+            class="rounded-xl border p-4 text-sm"
         >
             {{ message }}
         </p>
-        <Card v-if="uncertain"
-            ><CardHeader
-                ><CardTitle>Verify the original outcome</CardTitle></CardHeader
-            ><CardContent class="space-y-4"
-                ><p class="text-sm break-all">
-                    Reference: {{ form.attempt_reference }}
-                </p>
-                <Button :disabled="lookup.processing" @click="resolveOutcome"
-                    >Check operation</Button
+
+        <Card v-if="uncertain">
+            <CardHeader>
+                <CardTitle class="text-base"
+                    >We're not sure the change was saved</CardTitle
                 >
-                <Button
-                    v-if="canRetryOriginal"
-                    variant="outline"
-                    :disabled="form.processing"
-                    @click="submit(true)"
-                    >Retry original operation</Button
-                ></CardContent
-            ></Card
-        >
-        <Card v-else
-            ><CardContent class="pt-6"
-                ><form class="space-y-5" @submit.prevent="submit()">
-                    <div>
-                        <Label for="replacement">Replacement Agent</Label
+                <CardDescription
+                    >Check the result before you try again.</CardDescription
+                >
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        :disabled="lookup.processing"
+                        @click="resolveOutcome"
+                        >Check result</Button
+                    >
+                    <Button
+                        v-if="canRetryOriginal"
+                        variant="outline"
+                        :disabled="form.processing"
+                        @click="submit(true)"
+                        >Try again</Button
+                    >
+                </div>
+                <MoreDetails>
+                    <p class="text-muted-foreground text-xs break-all">
+                        Reference: {{ form.attempt_reference }}
+                    </p>
+                </MoreDetails>
+            </CardContent>
+        </Card>
+
+        <Card v-else>
+            <CardContent>
+                <form class="space-y-5" @submit.prevent="submit()">
+                    <div class="space-y-2">
+                        <Label for="replacement">New agent</Label
                         ><Select v-model="targetAgentSelection"
-                            ><SelectTrigger
-                                id="replacement"
-                                class="mt-2 h-11 w-full"
+                            ><SelectTrigger id="replacement" class="h-11 w-full"
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent>
                                 <SelectItem
@@ -246,60 +251,92 @@ defineOptions({
                         >
                         <p
                             v-if="!agents.length"
-                            class="text-muted-foreground mt-2 text-sm"
+                            class="text-muted-foreground text-sm"
                         >
-                            No eligible replacement Agent is available.
+                            No other agent can take this customer right now.
                         </p>
                     </div>
                     <Button
+                        v-if="!review"
                         type="button"
-                        variant="outline"
                         :disabled="form.processing || !agents.length"
                         @click="loadPreview"
-                        >Review handover</Button
+                        >Continue</Button
                     >
-                    <div>
-                        <Label for="reason">Internal reason</Label
-                        ><Input
-                            id="reason"
-                            v-model="form.reason"
-                            required
-                            maxlength="500"
-                            class="mt-2"
-                        />
-                    </div>
-                    <div>
-                        <Label for="explanation"
-                            >Customer-facing explanation</Label
-                        ><textarea
-                            id="explanation"
-                            v-model="form.customer_explanation"
-                            required
-                            maxlength="500"
-                            class="border-input bg-background mt-2 min-h-24 w-full rounded-md border p-3"
-                        />
-                    </div>
-                    <div
-                        v-if="review"
-                        class="bg-muted space-y-3 rounded-lg p-4 text-sm"
-                    >
-                        <p>{{ review.message }}</p>
-                        <p>
-                            Pending withdrawals:
-                            {{ review.pending_withdrawals }} · Corrections:
-                            {{ review.pending_reversals }} · Recovery:
-                            {{ review.pending_recovery ? 'Present' : 'None' }} ·
-                            Name proposals: {{ review.name_proposals }}
-                        </p>
-                        <label class="flex items-start gap-3"
+
+                    <template v-if="review">
+                        <div
+                            class="bg-muted/50 space-y-3 rounded-xl p-4 text-sm"
+                        >
+                            <p>{{ review.message }}</p>
+                            <dl class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                <div>
+                                    <dt class="text-muted-foreground text-xs">
+                                        Withdrawals waiting
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{ review.pending_withdrawals }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground text-xs">
+                                        Reversals waiting
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{ review.pending_reversals }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground text-xs">
+                                        Account recovery
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{
+                                            review.pending_recovery
+                                                ? 'In progress'
+                                                : 'None'
+                                        }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground text-xs">
+                                        Name changes
+                                    </dt>
+                                    <dd class="font-medium">
+                                        {{ review.name_proposals }}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                        <div class="space-y-2">
+                            <Label for="reason">Reason (staff only)</Label
+                            ><Input
+                                id="reason"
+                                v-model="form.reason"
+                                required
+                                maxlength="500"
+                            />
+                        </div>
+                        <div class="space-y-2">
+                            <Label for="explanation"
+                                >Message to the customer</Label
+                            ><textarea
+                                id="explanation"
+                                v-model="form.customer_explanation"
+                                required
+                                maxlength="500"
+                                class="border-input bg-background min-h-24 w-full rounded-md border p-3 text-sm"
+                            />
+                        </div>
+                        <label class="flex items-start gap-3 text-sm"
                             ><input
                                 v-model="form.confirmed"
                                 type="checkbox"
                                 class="mt-1"
-                            />I confirm the immediate access change and
-                            handover.</label
+                            />The new agent takes over right away and the
+                            current agent loses access.</label
                         >
-                    </div>
+                    </template>
                     <ul
                         v-if="form.hasErrors"
                         role="alert"
@@ -309,21 +346,24 @@ defineOptions({
                             {{ error }}
                         </li>
                     </ul>
-                    <div class="flex flex-wrap gap-3">
+                    <div v-if="review" class="flex flex-wrap gap-2">
                         <Button
                             :disabled="
                                 form.processing || !review || !form.confirmed
                             "
-                            >Confirm reassignment</Button
-                        ><Link :href="show.url(customer.reference)"
-                            ><Button type="button" variant="outline"
-                                >Back to Customer</Button
-                            ></Link
+                            >Change agent</Button
+                        >
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            :disabled="form.processing"
+                            @click="loadPreview"
+                            >Check again</Button
                         >
                     </div>
-                </form></CardContent
-            ></Card
-        >
+                </form>
+            </CardContent>
+        </Card>
         <ManagementDeliveryPanel
             subject="customer"
             :reference="customer.reference"

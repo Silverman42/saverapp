@@ -4,7 +4,8 @@ import { dashboard } from '@/routes';
 import { index as agentsIndex, show as agentShow } from '@/routes/agents';
 import { show as showLifecycle } from '@/actions/App/Http/Controllers/AgentLifecycleController';
 import { update as updateAgentStatus } from '@/routes/agents/status';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import MoreDetails from '@/components/MoreDetails.vue';
+import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +16,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { computed } from 'vue';
 import {
     Select,
     SelectContent,
@@ -69,6 +71,15 @@ const form = useForm({
     agent_explanation: '',
 });
 
+const statusLabel = (value: string): string =>
+    props.allowed_targets.find((target) => target.value === value)?.label ??
+    readable(value);
+const readable = (value: string): string => {
+    const text = value.replaceAll('_', ' ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+};
+const targetLabel = computed(() => statusLabel(form.target_status));
+
 const submit = (): void => {
     form.patch(updateAgentStatus(props.agent.id).url, { preserveScroll: true });
 };
@@ -78,116 +89,118 @@ defineOptions({
         breadcrumbs: [
             { title: 'Dashboard', href: dashboard() },
             { title: 'Agents', href: agentsIndex() },
-            { title: 'Manage status', href: '#' },
+            { title: 'Change status', href: '#' },
         ],
     },
 });
 </script>
 
 <template>
-    <Head :title="`Manage ${agent.name} status`" />
-    <div class="mx-auto w-full max-w-4xl space-y-6">
-        <div>
-            <h1 class="text-[25px] font-medium tracking-tight">
-                Manage Agent status
-            </h1>
-            <p class="text-muted-foreground mt-1.5 text-sm">
-                {{ agent.name }} · {{ agent.id }}
-            </p>
-        </div>
-
-        <Link :href="showLifecycle(agent.id)"
-            ><Button variant="outline"
-                >Manage account access and offboarding</Button
-            ></Link
+    <Head :title="`Change status: ${agent.name}`" />
+    <div class="mx-auto w-full max-w-3xl space-y-6">
+        <PageHeader
+            title="Change status"
+            :description="`Choose whether ${agent.name} can work with customers.`"
         >
-
-        <div class="grid gap-4 sm:grid-cols-2">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Current state</CardTitle>
-                    <CardDescription
-                        >Operational readiness and account access are different
-                        settings.</CardDescription
-                    >
-                </CardHeader>
-                <CardContent class="flex flex-wrap gap-2">
-                    <Badge variant="secondary"
-                        >Agent: {{ agent.operational_status }}</Badge
-                    >
-                    <Badge variant="outline"
-                        >Account: {{ agent.account_state }}</Badge
-                    >
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Readiness</CardTitle>
-                    <CardDescription>{{
-                        agent.readiness.reason ??
-                        'The Agent can do assigned Customer work.'
-                    }}</CardDescription>
-                </CardHeader>
-                <CardContent class="space-y-1 text-sm">
-                    <p>
-                        New assignments:
-                        {{
-                            agent.assignment_readiness.reason ??
-                            'The Agent can receive them.'
-                        }}
-                    </p>
-                    <p>
-                        Email verified:
-                        {{ agent.email_verified ? 'Yes' : 'No' }}
-                    </p>
-                    <p>
-                        MFA confirmed: {{ agent.mfa_confirmed ? 'Yes' : 'No' }}
-                    </p>
-                    <p>
-                        Open offboarding case:
-                        {{ agent.has_open_offboarding_case ? 'Yes' : 'No' }}
-                    </p>
-                </CardContent>
-            </Card>
-        </div>
+            <template #actions>
+                <Button as-child variant="outline">
+                    <Link :href="showLifecycle(agent.id)">Account access</Link>
+                </Button>
+            </template>
+        </PageHeader>
 
         <Card>
             <CardHeader>
-                <CardTitle>Current assignments</CardTitle>
-                <CardDescription
-                    >Assignments do not change when the operational status
-                    changes.</CardDescription
-                >
+                <CardTitle>Right now</CardTitle>
             </CardHeader>
-            <CardContent class="flex flex-wrap gap-2 text-sm">
-                <Badge variant="outline"
-                    >Active: {{ agent.assignment_counts.active }}</Badge
-                >
-                <Badge variant="outline"
-                    >Inactive: {{ agent.assignment_counts.inactive }}</Badge
-                >
-                <Badge variant="outline"
-                    >Restricted: {{ agent.assignment_counts.restricted }}</Badge
-                >
-                <Badge variant="outline"
-                    >Archived: {{ agent.assignment_counts.archived }}</Badge
-                >
+            <CardContent class="space-y-4">
+                <div class="flex flex-wrap gap-2">
+                    <Badge variant="secondary">{{
+                        statusLabel(agent.operational_status)
+                    }}</Badge>
+                    <Badge variant="outline"
+                        >Account: {{ readable(agent.account_state) }}</Badge
+                    >
+                </div>
+                <ul class="divide-border divide-y text-sm">
+                    <li class="flex justify-between gap-4 py-2.5">
+                        <span class="text-muted-foreground">Customer work</span>
+                        <span class="text-right">{{
+                            agent.readiness.reason ?? 'Can work with customers'
+                        }}</span>
+                    </li>
+                    <li class="flex justify-between gap-4 py-2.5">
+                        <span class="text-muted-foreground">New customers</span>
+                        <span class="text-right">{{
+                            agent.assignment_readiness.reason ??
+                            'Can take new customers'
+                        }}</span>
+                    </li>
+                    <li class="flex justify-between gap-4 py-2.5">
+                        <span class="text-muted-foreground"
+                            >Assigned customers</span
+                        >
+                        <span class="text-right"
+                            >{{ agent.assignment_counts.active }} active ·
+                            {{ agent.assignment_counts.inactive }} inactive ·
+                            {{ agent.assignment_counts.restricted }} restricted
+                            ·
+                            {{ agent.assignment_counts.archived }}
+                            archived</span
+                        >
+                    </li>
+                </ul>
+                <MoreDetails>
+                    <dl class="grid gap-2 text-sm">
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-muted-foreground">
+                                Email confirmed
+                            </dt>
+                            <dd>{{ agent.email_verified ? 'Yes' : 'No' }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-muted-foreground">
+                                Two-step sign-in set up
+                            </dt>
+                            <dd>{{ agent.mfa_confirmed ? 'Yes' : 'No' }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-muted-foreground">
+                                Offboarding in progress
+                            </dt>
+                            <dd>
+                                {{
+                                    agent.has_open_offboarding_case
+                                        ? 'Yes'
+                                        : 'No'
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-muted-foreground">Agent ID</dt>
+                            <dd class="font-mono text-xs">{{ agent.id }}</dd>
+                        </div>
+                    </dl>
+                    <div class="text-muted-foreground mt-3 space-y-1 text-xs">
+                        <p>{{ financial_responsibilities.collections }}</p>
+                        <p>{{ financial_responsibilities.requests }}</p>
+                    </div>
+                </MoreDetails>
             </CardContent>
         </Card>
 
         <Card>
             <CardHeader>
-                <CardTitle>Change operational status</CardTitle>
+                <CardTitle>New status</CardTitle>
                 <CardDescription
-                    >The Inactive status stops new Customer work immediately.
-                    Login access and assignments do not change. Suspension is a
-                    different action.</CardDescription
+                    >Inactive agents can't do customer work. They can still sign
+                    in and keep their customers.</CardDescription
                 >
             </CardHeader>
             <CardContent>
                 <form class="space-y-5" @submit.prevent="submit">
                     <div class="space-y-2">
-                        <Label for="agent-target-status">New status</Label>
+                        <Label for="agent-target-status">Status</Label>
                         <Select v-model="form.target_status">
                             <SelectTrigger
                                 id="agent-target-status"
@@ -219,7 +232,7 @@ defineOptions({
                         </p>
                     </div>
                     <div class="space-y-2">
-                        <Label for="agent-status-reason">Internal reason</Label>
+                        <Label for="agent-status-reason">Reason</Label>
                         <textarea
                             id="agent-status-reason"
                             v-model="form.reason"
@@ -228,6 +241,9 @@ defineOptions({
                             required
                             class="border-input bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
                         />
+                        <p class="text-muted-foreground text-xs">
+                            Only managers see this.
+                        </p>
                         <p
                             v-if="form.errors.reason"
                             class="text-destructive text-sm"
@@ -237,7 +253,7 @@ defineOptions({
                     </div>
                     <div class="space-y-2">
                         <Label for="agent-explanation"
-                            >Explanation shown to the Agent</Label
+                            >Message to the agent</Label
                         >
                         <textarea
                             id="agent-explanation"
@@ -261,8 +277,8 @@ defineOptions({
                             class="border-input text-primary focus-visible:ring-ring mt-0.5 size-4 rounded"
                         />
                         <span
-                            >I confirm the {{ form.target_status }} transition
-                            and its effect on Customer work.</span
+                            >I want to set this agent to
+                            {{ targetLabel }}.</span
                         >
                     </label>
                     <p
@@ -271,28 +287,13 @@ defineOptions({
                     >
                         {{ form.errors.confirmed }}
                     </p>
-                    <Alert>
-                        <AlertTitle
-                            >Financial responsibilities unavailable</AlertTitle
-                        >
-                        <AlertDescription
-                            >{{ financial_responsibilities.collections }}
-                            {{
-                                financial_responsibilities.requests
-                            }}</AlertDescription
-                        >
-                    </Alert>
                     <div class="flex flex-wrap gap-3">
                         <Button type="submit" :disabled="form.processing">{{
-                            form.processing
-                                ? 'Saving…'
-                                : 'Confirm status change'
+                            form.processing ? 'Saving…' : 'Save status'
                         }}</Button>
-                        <Link :href="agentShow(agent.id)"
-                            ><Button type="button" variant="outline"
-                                >Cancel</Button
-                            ></Link
-                        >
+                        <Button as-child type="button" variant="outline">
+                            <Link :href="agentShow(agent.id)">Cancel</Link>
+                        </Button>
                     </div>
                 </form>
             </CardContent>
@@ -300,48 +301,51 @@ defineOptions({
 
         <Card>
             <CardHeader>
-                <CardTitle>Status history</CardTitle>
-                <CardDescription
-                    >Only authorized managers can see internal reasons and
-                    delivery outcomes.</CardDescription
-                >
+                <CardTitle>History</CardTitle>
             </CardHeader>
             <CardContent>
                 <p
                     v-if="history.length === 0"
                     class="text-muted-foreground text-sm"
                 >
-                    The system has no recorded status changes.
+                    No status changes yet.
                 </p>
-                <ol v-else class="space-y-5">
+                <ol v-else class="divide-border -my-3 divide-y">
                     <li
                         v-for="(entry, index) in history"
                         :key="`${entry.effective_at}-${index}`"
-                        class="border-border border-l-2 pl-4"
+                        class="space-y-1 py-3"
                     >
                         <p class="text-sm font-medium">
-                            {{ entry.from_status }} → {{ entry.to_status }}
+                            {{ statusLabel(entry.from_status) }} →
+                            {{ statusLabel(entry.to_status) }}
                         </p>
-                        <p class="text-muted-foreground mt-1 text-xs">
+                        <p class="text-muted-foreground text-xs">
                             {{ entry.effective_at }} · {{ entry.changed_by }}
                         </p>
-                        <p class="mt-2 text-sm">
-                            Internal reason: {{ entry.reason }}
+                        <p class="text-sm">Reason: {{ entry.reason }}</p>
+                        <p v-if="entry.agent_explanation" class="text-sm">
+                            Message to agent: {{ entry.agent_explanation }}
                         </p>
-                        <p v-if="entry.agent_explanation" class="mt-1 text-sm">
-                            Agent explanation: {{ entry.agent_explanation }}
-                        </p>
-                        <p
-                            v-for="(notice, noticeIndex) in entry.notifications"
-                            :key="noticeIndex"
-                            class="text-muted-foreground mt-1 text-xs"
+                        <MoreDetails
+                            v-if="entry.notifications.length"
+                            label="Who was told"
+                            class="pt-1"
                         >
-                            {{ notice.audience }} · {{ notice.channel }} ·
-                            {{ notice.status
-                            }}<span v-if="notice.failure_reason"
-                                >: {{ notice.failure_reason }}</span
+                            <p
+                                v-for="(
+                                    notice, noticeIndex
+                                ) in entry.notifications"
+                                :key="noticeIndex"
+                                class="text-muted-foreground text-xs"
                             >
-                        </p>
+                                {{ notice.audience }} · {{ notice.channel }} ·
+                                {{ notice.status
+                                }}<span v-if="notice.failure_reason"
+                                    >: {{ notice.failure_reason }}</span
+                                >
+                            </p>
+                        </MoreDetails>
                     </li>
                 </ol>
             </CardContent>
