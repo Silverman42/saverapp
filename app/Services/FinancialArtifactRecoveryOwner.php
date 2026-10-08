@@ -31,11 +31,11 @@ class FinancialArtifactRecoveryOwner implements RecoveryOwner
 
     private function verified(FinancialArtifact $artifact): bool
     {
-        if ($artifact->storage_path === null || ! Storage::disk('local')->exists($artifact->storage_path)) {
+        if ($artifact->storage_path === null || ! Storage::disk()->exists($artifact->storage_path)) {
             return false;
         }
 
-        return hash_equals($artifact->artifact_hash, hash('sha256', Crypt::decryptString(Storage::disk('local')->get($artifact->storage_path))));
+        return hash_equals($artifact->artifact_hash, hash('sha256', Crypt::decryptString(Storage::disk()->get($artifact->storage_path))));
     }
 
     public function execute(int $sourceId): void

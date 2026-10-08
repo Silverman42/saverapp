@@ -30,7 +30,7 @@ class BusinessLogoController extends Controller
     {
         abort_unless($logos->exists($reference), 404, 'Record unavailable.');
 
-        return response(Storage::disk(BusinessLogoService::DISK)->get($logos->path($reference)), 200, [
+        return response(Storage::disk()->get($logos->path($reference)), 200, [
             'Content-Type' => 'image/png',
             'Cache-Control' => 'private, max-age=86400, immutable',
             'X-Content-Type-Options' => 'nosniff',

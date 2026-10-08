@@ -29,16 +29,16 @@ class AgentPhotoController extends Controller
             abort(404, 'Record unavailable.');
         }
 
-        $disk = Storage::disk('local')->exists($agentProfile->profile_photo_path)
-            ? 'local'
-            : (Storage::disk('public')->exists($agentProfile->profile_photo_path) ? 'public' : null);
+        $disk = Storage::disk()->exists($agentProfile->profile_photo_path)
+            ? Storage::disk()
+            : (Storage::disk('public')->exists($agentProfile->profile_photo_path) ? Storage::disk('public') : null);
 
         if ($disk === null) {
             abort(404, 'Record unavailable.');
         }
 
-        $mimeType = Storage::disk($disk)->mimeType($agentProfile->profile_photo_path) ?: 'application/octet-stream';
-        $content = Storage::disk($disk)->get($agentProfile->profile_photo_path);
+        $mimeType = $disk->mimeType($agentProfile->profile_photo_path) ?: 'application/octet-stream';
+        $content = $disk->get($agentProfile->profile_photo_path);
 
         return response($content, 200, [
             'Content-Type' => $mimeType,

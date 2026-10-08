@@ -10,34 +10,34 @@ Artisan::command('inspire', function () {
 
 Schedule::command('authz:expire-restrictions')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping()->onOneServer();
 
 Schedule::command('collections:freeze-batches')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping()->onOneServer();
 
 Schedule::command('withdrawals:expire')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping()->onOneServer();
 
 Schedule::command('withdrawals:reconcile-bank-payouts')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping()->onOneServer();
 
 Schedule::command('ledger:rebuild-transactions --if-stale')
     ->everyFiveMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping()->onOneServer();
 
-Schedule::command('notifications:drain')->everyMinute()->withoutOverlapping();
+Schedule::command('notifications:drain')->everyMinute()->withoutOverlapping()->onOneServer();
 
-Schedule::command('audit:drain')->everyMinute()->withoutOverlapping();
+Schedule::command('audit:drain')->everyMinute()->withoutOverlapping()->onOneServer();
 
-Schedule::command('business:activate-settings --limit=100')->everyMinute()->withoutOverlapping();
+Schedule::command('business:activate-settings --limit=100')->everyMinute()->withoutOverlapping()->onOneServer();
 
-Schedule::command('platform:heartbeat')->everyMinute()->evenInMaintenanceMode()->withoutOverlapping();
+Schedule::command('platform:heartbeat')->everyMinute()->evenInMaintenanceMode()->withoutOverlapping()->onOneServer();
 
-Schedule::command('customers:expire-recovery')->everyMinute()->withoutOverlapping();
+Schedule::command('customers:expire-recovery')->everyMinute()->withoutOverlapping()->onOneServer();
 
-Schedule::command('financial-artifacts:drain')->everyMinute()->withoutOverlapping();
+Schedule::command('financial-artifacts:drain')->everyMinute()->withoutOverlapping()->onOneServer();
 
-Schedule::command('collections:clean-evidence --limit=500')->daily()->withoutOverlapping();
+Schedule::command('collections:clean-evidence --limit=500')->daily()->withoutOverlapping()->onOneServer();

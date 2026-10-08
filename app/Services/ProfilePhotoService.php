@@ -72,7 +72,7 @@ class ProfilePhotoService
     /**
      * Store photo stripped of metadata.
      */
-    public function storePhoto(UploadedFile $file, string $disk = 'local', string $directory = 'profile-photos'): string
+    public function storePhoto(UploadedFile $file, ?string $disk = null, string $directory = 'profile-photos'): string
     {
         $this->validatePhoto($file);
 

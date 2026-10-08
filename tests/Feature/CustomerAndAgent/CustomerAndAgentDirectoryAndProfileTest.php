@@ -834,7 +834,7 @@ test('profile photo storage failure returns a recoverable validation error inste
     $file = UploadedFile::fake()->image('photo.jpg', 200, 200);
     $disk = Mockery::mock(FilesystemAdapter::class);
     $disk->shouldReceive('putFileAs')->once()->andReturnFalse();
-    Storage::shouldReceive('disk')->once()->with('local')->andReturn($disk);
+    Storage::shouldReceive('disk')->once()->with(null)->andReturn($disk);
 
     expect(fn () => app(ProfilePhotoService::class)->storePhoto($file))
         ->toThrow(ValidationException::class, 'The profile photo could not be stored. Please retry.');

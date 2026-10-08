@@ -168,7 +168,7 @@ class FinancialArtifactService
             throw new RuntimeException('Financial artifact exceeds the local 20 MB profile.');
         }
         $path = 'financial-artifacts/'.$artifact->artifact_reference.'/'.$artifact->render_generation.'-'.Str::uuid().'.encrypted';
-        if (! Storage::disk('local')->put($path, Crypt::encryptString($bytes))) {
+        if (! Storage::disk()->put($path, Crypt::encryptString($bytes))) {
             throw new RuntimeException('Private artifact storage failed.');
         }
         $published = false;
@@ -194,7 +194,7 @@ class FinancialArtifactService
             });
         } finally {
             if (! $published) {
-                Storage::disk('local')->delete($path);
+                Storage::disk()->delete($path);
             }
         }
     }
@@ -227,7 +227,7 @@ class FinancialArtifactService
             $actor = User::query()->whereKey($actor->id)->firstOrFail();
             $this->authorize($actor, $artifact);
             abort_unless($artifact->status === 'ready' && ! $artifact->expires_at?->isPast(), 404);
-            $bytes = Crypt::decryptString(Storage::disk('local')->get($artifact->storage_path));
+            $bytes = Crypt::decryptString(Storage::disk()->get($artifact->storage_path));
             abort_unless(hash_equals($artifact->artifact_hash, hash('sha256', $bytes)), 503, 'Document integrity verification failed.');
             $this->audit('downloaded', $artifact, $actor);
 
@@ -322,7 +322,7 @@ class FinancialArtifactService
                 if ($artifact->held || $artifact->status === 'expired') {
                     return false;
                 }
-                if ($artifact->storage_path !== null && ! Storage::disk('local')->delete($artifact->storage_path)) {
+                if ($artifact->storage_path !== null && ! Storage::disk()->delete($artifact->storage_path)) {
                     throw new RuntimeException('Expired artifact cleanup failed.');
                 }
                 $artifact->update(['status' => 'expired', 'storage_path' => null]);
@@ -338,7 +338,7 @@ class FinancialArtifactService
     public function discardOrphanGenerations(int $limit = 100): int
     {
         $count = 0;
-        $disk = Storage::disk('local');
+        $disk = Storage::disk();
         foreach ($disk->allFiles('financial-artifacts') as $path) {
             if ($count >= min(1000, max(1, $limit))) {
                 break;

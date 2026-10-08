@@ -18,8 +18,6 @@ class BusinessLogoService
 
     public const MAX_DIMENSION = 2048;
 
-    public const DISK = 'local';
-
     public const DIRECTORY = 'business-logos';
 
     private const ALLOWED_TYPES = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP];
@@ -48,7 +46,7 @@ class BusinessLogoService
         $bytes = $this->reencode($this->decode($path, $info[2]));
         $reference = hash('sha256', $bytes);
         $stored = self::DIRECTORY.'/'.$reference.'.png';
-        if (! Storage::disk(self::DISK)->exists($stored) && ! Storage::disk(self::DISK)->put($stored, $bytes)) {
+        if (! Storage::disk()->exists($stored) && ! Storage::disk()->put($stored, $bytes)) {
             $this->fail('The logo could not be stored. Please retry.');
         }
         AuditEvent::record('business_settings.logo_uploaded', self::class, null, $reference,
@@ -60,7 +58,7 @@ class BusinessLogoService
 
     public function exists(string $reference): bool
     {
-        return preg_match('/\A[0-9a-f]{64}\z/', $reference) === 1 && Storage::disk(self::DISK)->exists($this->path($reference));
+        return preg_match('/\A[0-9a-f]{64}\z/', $reference) === 1 && Storage::disk()->exists($this->path($reference));
     }
 
     public function path(string $reference): string

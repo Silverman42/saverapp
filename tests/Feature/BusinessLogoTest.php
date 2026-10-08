@@ -3,7 +3,6 @@
 use App\Enums\AdminPermission;
 use App\Models\BusinessProfile;
 use App\Models\User;
-use App\Services\BusinessLogoService;
 use App\Services\BusinessSettings;
 use App\Services\BusinessSettingsReadiness;
 use Illuminate\Http\Request;
@@ -33,7 +32,7 @@ function logoUpload(int $width, int $height, string $trailingBytes = ''): Upload
 }
 
 beforeEach(function (): void {
-    Storage::fake(BusinessLogoService::DISK);
+    Storage::fake();
 });
 
 test('a manager uploads a re-encoded logo, publishes it, and other users can view it', function (): void {
@@ -42,7 +41,7 @@ test('a manager uploads a re-encoded logo, publishes it, and other users can vie
         ->assertOk();
     $reference = $response->json('reference');
 
-    $stored = Storage::disk(BusinessLogoService::DISK)->get('business-logos/'.$reference.'.png');
+    $stored = Storage::disk()->get('business-logos/'.$reference.'.png');
     expect($stored)->toStartWith("\x89PNG")->not->toContain('<?php')
         ->and(hash('sha256', $stored))->toBe($reference)
         ->and(app(BusinessSettingsReadiness::class)->checks()['logo']['state'])->toBe('Ready to enable');
@@ -67,7 +66,7 @@ test('invalid logo uploads are rejected without storing a file', function (Uploa
     $this->actingAs(logoManager())->post(route('admin.business-settings.logo.store'), ['logo' => $file])
         ->assertSessionHasErrors('logo');
 
-    expect(Storage::disk(BusinessLogoService::DISK)->allFiles())->toBe([]);
+    expect(Storage::disk()->allFiles())->toBe([]);
 })->with([
     'too small' => fn () => logoUpload(64, 64),
     'too large in dimensions' => fn () => logoUpload(2100, 200),

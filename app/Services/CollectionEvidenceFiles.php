@@ -53,14 +53,16 @@ class CollectionEvidenceFiles
             || ($mime !== 'application/pdf' && @getimagesize($upload->getPathname()) === false)) {
             throw ValidationException::withMessages(['files' => 'The evidence file is malformed or encrypted.']);
         }
+        $checksum = hash('sha256', $bytes);
+        $version = $this->scanner->scan($upload->getRealPath());
+        if (! hash_equals($checksum, (string) hash_file('sha256', $upload->getRealPath()))) {
+            throw new ConflictHttpException('The evidence file changed during scanning.');
+        }
         $path = 'files/'.Str::uuid();
         $disk = Storage::disk('collection_evidence');
-        $disk->put($path, $bytes);
         try {
-            $checksum = hash('sha256', $bytes);
-            $version = $this->scanner->scan($disk->path($path));
-            if (! hash_equals($checksum, hash('sha256', $disk->get($path)))) {
-                throw new ConflictHttpException('The evidence file changed during scanning.');
+            if (! $disk->put($path, $bytes) || ! hash_equals($checksum, hash('sha256', (string) $disk->get($path)))) {
+                throw new ServiceUnavailableHttpException(null, 'Protected evidence storage is unavailable.');
             }
 
             return ['storage_path' => $path, 'checksum' => $checksum, 'mime_type' => $mime, 'byte_size' => strlen($bytes),

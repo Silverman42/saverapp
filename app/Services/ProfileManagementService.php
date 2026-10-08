@@ -148,20 +148,20 @@ class ProfileManagementService
             });
         } catch (QueryException $exception) {
             if ($newPhotoPath !== null) {
-                Storage::disk('local')->delete($newPhotoPath);
+                Storage::disk()->delete($newPhotoPath);
             }
 
             throw new ConflictHttpException('The Customer profile changed while you were editing it. Refresh and try again.', $exception);
         } catch (\Throwable $exception) {
             if ($newPhotoPath !== null) {
-                Storage::disk('local')->delete($newPhotoPath);
+                Storage::disk()->delete($newPhotoPath);
             }
 
             throw $exception;
         }
 
         if ($oldPhotoPath !== null && $oldPhotoPath !== $newPhotoPath && (($validated['remove_photo'] ?? false) || $newPhotoPath !== null)) {
-            Storage::disk('local')->delete($oldPhotoPath);
+            Storage::disk()->delete($oldPhotoPath);
         }
 
         return $updated;
@@ -292,20 +292,20 @@ class ProfileManagementService
             });
         } catch (QueryException $exception) {
             if ($newPhotoPath !== null) {
-                Storage::disk('local')->delete($newPhotoPath);
+                Storage::disk()->delete($newPhotoPath);
             }
 
             throw new ConflictHttpException('The Agent profile changed while you were editing it. Refresh and try again.', $exception);
         } catch (\Throwable $exception) {
             if ($newPhotoPath !== null) {
-                Storage::disk('local')->delete($newPhotoPath);
+                Storage::disk()->delete($newPhotoPath);
             }
 
             throw $exception;
         }
 
         if ($oldPhotoPath !== null && $oldPhotoPath !== $newPhotoPath && (($validated['remove_photo'] ?? false) || $newPhotoPath !== null)) {
-            Storage::disk('local')->delete($oldPhotoPath);
+            Storage::disk()->delete($oldPhotoPath);
         }
 
         return $updated;
