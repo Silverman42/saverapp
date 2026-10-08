@@ -14,6 +14,7 @@ use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
 use App\Services\ReversalCapabilityRegistry;
 use App\Services\ReversalService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -116,6 +117,8 @@ class ReversalController extends Controller
         unset($data['files']);
         $reversal = $service->submit($request->user(), $original, $data, $uploads);
 
+        Toast::success('Reversal requested', 'The reversal is waiting for review.');
+
         return redirect()->route('reversals.show', $reversal);
     }
 
@@ -125,6 +128,8 @@ class ReversalController extends Controller
         $this->rejectUnexpected($request, ['files']);
         $request->validate(['files' => ['required', 'array', 'min:1', 'max:3'], 'files.*' => ['file']]);
         $service->addEvidence($request->user(), $reversal, array_values($request->file('files', [])));
+
+        Toast::success('Evidence added', 'The reversal evidence was saved.');
 
         return redirect()->route('reversals.show', $reversal);
     }
@@ -198,6 +203,10 @@ class ReversalController extends Controller
             'confirmed' => ['required', 'accepted'],
         ]);
         $service->decide($request->user(), $reversal, $action, $data, $request);
+
+        Toast::success(match ($action) {
+            'approve' => 'Reversal approved', 'reject' => 'Reversal rejected', default => 'Reversal cancelled'
+        }, 'The reversal decision was recorded.');
 
         return redirect()->route('reversals.show', $reversal);
     }

@@ -704,6 +704,7 @@ test('a real open cycle retains capacity after its final date and full acknowled
 
 test('an Inactive Customer settles existing cycle savings through independent review and acknowledged cash without changing contribution history', function (): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00', 'Africa/Lagos'));
+    DB::table('cash_method_versions')->update(['effective_at' => now()->subDay()]);
     config()->set('collections.enabled', true);
     [$agent, $customer, $assignment, $plan, $date] = collectionFixture(2);
     LedgerAccount::query()->update(['mapping_status' => 'mapped']);

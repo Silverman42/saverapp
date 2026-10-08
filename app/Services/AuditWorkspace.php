@@ -44,7 +44,8 @@ class AuditWorkspace
             throw ValidationException::withMessages(['from' => 'Choose an audit range of at most 366 days ending no later than today.']);
         }
         $perPage = (int) ($filters['per_page'] ?? 25);
-        $queryFilters = array_filter(array_diff_key($filters, ['cursor' => true]), fn ($value) => $value !== null && $value !== '');
+        $queryFilters = array_map('strval', array_filter(array_diff_key($filters, ['cursor' => true]), fn ($value) => $value !== null && $value !== ''));
+        $queryFilters['per_page'] = (string) $perPage;
         ksort($queryFilters);
         $filterHash = hash('sha256', json_encode($queryFilters, JSON_THROW_ON_ERROR));
         $state = DB::table('audit_projection_state')->where('id', 1)->firstOrFail();
@@ -57,7 +58,7 @@ class AuditWorkspace
                 throw new ConflictHttpException('The audit cursor is invalid. Start a new search.');
             }
             if (($cursor['scope'] ?? null) !== $scope || ($cursor['filters'] ?? null) !== $filterHash
-                || ($cursor['watermark'] ?? null) !== (int) $state->watermark || ($cursor['version'] ?? null) !== (int) $state->active_version || ($cursor['expires'] ?? 0) < now()->timestamp) {
+                || ! is_int($cursor['watermark'] ?? null) || $cursor['watermark'] > (int) $state->watermark || ($cursor['version'] ?? null) !== (int) $state->active_version || ($cursor['expires'] ?? 0) < now()->timestamp) {
                 throw new ConflictHttpException('Audit access or projection changed. Start a new search.');
             }
             $watermark = (int) $cursor['watermark'];

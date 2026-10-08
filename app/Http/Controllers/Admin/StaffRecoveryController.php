@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\StaffRecovery;
 use App\Models\User;
 use App\Services\StaffRecoveryService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -117,7 +118,7 @@ class StaffRecoveryController extends Controller
 
     private function done(string $message): RedirectResponse
     {
-        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+        Toast::success('Recovery updated', $message);
 
         return redirect()->route('admin.staff-recoveries.index');
     }

@@ -12,6 +12,7 @@ use App\Services\AgentEligibilityService;
 use App\Services\CustomerLifecycleEligibility;
 use App\Services\CustomerStatusManagementService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -118,7 +119,7 @@ class CustomerStatusController extends Controller
             customerExplanation: $data['customer_explanation'],
         );
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Customer status updated.']);
+        Toast::success('Status updated', 'Customer status updated.');
 
         return to_route('customers.status.edit', $profile->customer_id);
     }

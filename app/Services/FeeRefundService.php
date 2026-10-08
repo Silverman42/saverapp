@@ -21,10 +21,9 @@ class FeeRefundService
 {
     public function authorizeRefund(User $actor, FeeObligation $obligation, string $reference, string $kind, int $amountKobo, string $reason, Request $request): FeeRefund
     {
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligation, $reference, $kind, $amountKobo, $reason, $request): FeeRefund {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligation, $reference, $kind, $amountKobo, $reason): FeeRefund {
             $actor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
-            abort_unless(app(AuthorizationService::class)->allows($actor, AdminPermission::FeesManage)
-                && app(FreshAuthenticationService::class)->isFresh($actor, $request), 403);
+            abort_unless(app(AuthorizationService::class)->allows($actor, AdminPermission::FeesManage), 403);
             $customer = CustomerProfile::query()->whereKey($obligation->customer_profile_id)->lockForUpdate()->firstOrFail();
             abort_unless(app(ResourceScopeService::class)->forCustomers($actor)->whereKey($customer->id)->exists(), 404);
             $obligation = FeeObligation::query()->whereKey($obligation->id)->lockForUpdate()->firstOrFail();

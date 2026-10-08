@@ -13,6 +13,7 @@ use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
 use App\Services\CollectionReplacementService;
 use App\Services\PlanSettlementService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,6 +50,8 @@ class FinancialWorkflowController extends Controller
     {
         $receipt = $service->record($request->user(), $reversal, $request->validated());
 
+        Toast::success('Replacement recorded', 'The replacement payment was recorded.');
+
         return to_route('collections.show', $receipt);
     }
 
@@ -63,6 +66,8 @@ class FinancialWorkflowController extends Controller
     public function settlementConfirm(ThriftPlan $plan, string $action, ConfirmPlanSettlementRequest $request, PlanSettlementService $service): RedirectResponse
     {
         $service->confirm($request->user(), $plan, $action, $request->validated());
+
+        Toast::success('Settlement confirmed', 'The plan settlement was confirmed.');
 
         return to_route('plans.show', $plan);
     }

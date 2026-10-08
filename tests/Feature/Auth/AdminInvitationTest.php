@@ -70,7 +70,7 @@ function adminInvitationIssue(object $test, User $inviter, array $overrides = []
     return [User::query()->where('email', $overrides['email'] ?? 'ngozi.admin@example.test')->firstOrFail(), $token];
 }
 
-test('only an Admin with admins.manage and fresh authentication can open or submit the invitation form', function (): void {
+test('only an Admin with admins.manage can open or submit the invitation form', function (): void {
     $baseline = User::factory()->admin()->withTwoFactor()->create();
     $agent = User::factory()->agent()->withTwoFactor()->create();
 
@@ -81,7 +81,7 @@ test('only an Admin with admins.manage and fresh authentication can open or subm
     ])->assertForbidden();
 
     $this->actingAs(adminInvitationManager())->withSession(['auth.fresh_until' => 0, 'auth.password_confirmed_at' => 0])
-        ->get(route('admin.access.invitations.create'))->assertRedirect(route('fresh-authentication'));
+        ->get(route('admin.access.invitations.create'))->assertOk();
     expect(User::query()->where('email', 'x@example.test')->exists())->toBeFalse();
 });
 
@@ -92,7 +92,7 @@ test('the admin directory loads the invite form only on request and only for adm
     $this->actingAs($manager)->withSession(adminInvitationFreshSession())->get(route('admin.access.index'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/access/Index')
-            ->where('isFresh', true)
+            ->where('canManage', true)
             ->missing('inviteForm')
             ->reloadOnly('inviteForm', fn (Assert $reload) => $reload
                 ->has('inviteForm.attempt_reference')
@@ -100,7 +100,7 @@ test('the admin directory loads the invite form only on request and only for adm
 
     $this->actingAs($baseline)->withSession(adminInvitationFreshSession())->get(route('admin.access.index'))
         ->assertInertia(fn (Assert $page) => $page
-            ->where('isFresh', false)
+            ->where('canManage', false)
             ->reloadOnly('inviteForm', fn (Assert $reload) => $reload->where('inviteForm', null)));
 });
 

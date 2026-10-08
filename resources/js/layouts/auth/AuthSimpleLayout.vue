@@ -107,6 +107,6 @@ defineProps<{
                 </div>
             </div>
         </main>
-        <Toaster position="bottom-center" />
+        <Toaster />
     </div>
 </template>

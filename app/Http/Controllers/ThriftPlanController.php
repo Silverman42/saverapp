@@ -22,6 +22,7 @@ use App\Services\RegistrationFeeService;
 use App\Services\ResourceScopeService;
 use App\Services\ThriftPlanService;
 use App\Support\MoneyFormatter;
+use App\Support\Toast;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -243,10 +244,7 @@ class ThriftPlanController extends Controller
 
         $data = $request->validated();
         $result = $planService->create($actor, $customerProfile, $data['attempt_reference'], $data);
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $result['replayed'] ? 'Existing plan creation resolved.' : 'Daily thrift plan created.',
-        ]);
+        Toast::success('Plan created', $result['replayed'] ? 'Existing plan creation resolved.' : 'Daily thrift plan created.');
 
         return to_route('plans.show', $result['plan']->plan_id);
     }
@@ -407,7 +405,7 @@ class ThriftPlanController extends Controller
         Gate::authorize('managePlan', $record->customerProfile);
         $data = $request->validated();
         $planService->revise($actor, $record, $data['attempt_reference'], $data);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Plan terms updated.']);
+        Toast::success('Plan updated', 'Plan terms updated.');
 
         return to_route('plans.show', $record->plan_id);
     }
@@ -452,7 +450,7 @@ class ThriftPlanController extends Controller
         Gate::authorize('managePlan', $record->customerProfile);
         $data = $request->validated();
         $planService->transition($actor, $record, $action, $data['attempt_reference'], $data);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Plan status updated.']);
+        Toast::success('Plan status updated', 'Plan status updated.');
 
         return to_route('plans.show', $record->plan_id);
     }

@@ -6,10 +6,11 @@ use App\Enums\AdminPermission;
 use App\Http\Requests\ReportRequest;
 use App\Models\BusinessProfile;
 use App\Models\FinancialArtifact;
+use App\Rules\InclusiveDateRange;
 use App\Services\AuthorizationService;
 use App\Services\FinancialArtifactService;
 use App\Services\ResourceScopeService;
-use Carbon\CarbonImmutable;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -23,15 +24,15 @@ class FinancialArtifactController extends Controller
     public function statement(string $customer, Request $request, ResourceScopeService $scope, FinancialArtifactService $service): RedirectResponse
     {
         $this->rejectUnknown($request, ['operation_reference', 'preview_fingerprint', 'supersedes_reference', 'from', 'to', 'confirmed']);
-        $data = $request->validate(['operation_reference' => ['required', 'uuid'], 'from' => ['required', 'date_format:Y-m-d'],
-            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'], 'preview_fingerprint' => ['required', 'regex:/\A[a-f0-9]{64}\z/'],
-            'supersedes_reference' => ['nullable', 'uuid'], 'confirmed' => ['required', 'accepted']]);
         $timezone = BusinessProfile::current()->timezone;
-        abort_if(CarbonImmutable::parse($data['from'], $timezone)->diffInDays(CarbonImmutable::parse($data['to'], $timezone)) > 365
-            || $data['to'] > now($timezone)->toDateString(), 422, 'Choose at most 366 dates ending no later than today.');
+        $data = $request->validate(['operation_reference' => ['required', 'uuid'], 'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', new InclusiveDateRange($request->input('from'), $timezone)], 'preview_fingerprint' => ['required', 'regex:/\A[a-f0-9]{64}\z/'],
+            'supersedes_reference' => ['nullable', 'uuid'], 'confirmed' => ['required', 'accepted']]);
         $profile = $scope->forCustomers($request->user())->where('customer_id', $customer)->firstOrFail();
         $supersedes = empty($data['supersedes_reference']) ? null : FinancialArtifact::query()->where('artifact_reference', $data['supersedes_reference'])->firstOrFail();
         $artifact = $service->issueStatement($request->user(), $profile, $data['operation_reference'], $data['from'], $data['to'], $data['preview_fingerprint'], $supersedes);
+
+        Toast::success('Statement requested', 'The statement is being prepared.');
 
         return redirect()->route('financial-artifacts.show', $artifact);
     }
@@ -41,6 +42,8 @@ class FinancialArtifactController extends Controller
         $this->rejectUnknown($request, [...array_keys($request->rules()), 'operation_reference', 'format', 'confirmed']);
         $data = $request->validate(['operation_reference' => ['required', 'uuid'], 'format' => ['required', 'in:csv,pdf'], 'confirmed' => ['required', 'accepted']]);
         $artifact = $service->exportReport($request->user(), $data['operation_reference'], $report, $data['format'], $request->filters(BusinessProfile::current()->timezone));
+
+        Toast::success('Export requested', 'The report export is being prepared.');
 
         return redirect()->route('financial-artifacts.show', $artifact);
     }
@@ -78,6 +81,8 @@ class FinancialArtifactController extends Controller
         $request->validate(['confirmed' => ['required', 'accepted']]);
         $service->cancel($request->user(), $artifact);
 
+        Toast::success('Document cancelled', 'The document will not be prepared.');
+
         return redirect()->route('financial-artifacts.show', $artifact);
     }
 
@@ -87,6 +92,8 @@ class FinancialArtifactController extends Controller
         $request->validate(['confirmed' => ['required', 'accepted']]);
         $service->retry($request->user(), $artifact);
 
+        Toast::success('Retry started', 'The document is being prepared again.');
+
         return redirect()->route('financial-artifacts.show', $artifact);
     }
 
@@ -95,6 +102,8 @@ class FinancialArtifactController extends Controller
         $this->rejectUnknown($request, ['held', 'reason', 'confirmed']);
         $data = $request->validate(['held' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:500'], 'confirmed' => ['required', 'accepted']]);
         $service->setHold($request->user(), $artifact, (bool) $data['held'], $data['reason'], $request);
+
+        Toast::success('Hold updated', 'The document hold was updated.');
 
         return redirect()->route('financial-artifacts.show', $artifact);
     }

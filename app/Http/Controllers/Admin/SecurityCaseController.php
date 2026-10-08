@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AuditWorkspace;
 use App\Services\AuthorizationService;
 use App\Services\SecurityCaseService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -72,6 +73,8 @@ class SecurityCaseController extends Controller
     public function update(SecurityCaseRequest $request, SecurityCase $case, SecurityCaseService $cases): RedirectResponse
     {
         $cases->change($request->user(), $case, $request->validated());
+
+        Toast::success('Case updated', 'The security case was updated.');
 
         return back();
     }

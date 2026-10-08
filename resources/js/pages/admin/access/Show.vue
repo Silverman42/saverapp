@@ -119,7 +119,6 @@ const props = defineProps<{
     canManage: boolean;
     invitation: AdminInvitationSummary | null;
     canRequestRecovery: boolean;
-    isFresh: boolean;
     isSelf: boolean;
     history_filters: HistoryFilters;
 }>();

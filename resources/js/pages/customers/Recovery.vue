@@ -20,6 +20,7 @@ import {
     CardTitle,
     CardDescription,
 } from '@/components/ui/card';
+import { showToast } from '@/lib/flashToast';
 const props = defineProps<{
     customer: {
         reference: string;
@@ -119,6 +120,11 @@ async function submit(
         form.attempt_reference = crypto.randomUUID();
         form.confirmed = false;
         message.value = 'Saved.';
+        showToast({
+            type: 'success',
+            title: 'Recovery updated',
+            description: 'The account recovery step was saved.',
+        });
         router.reload();
     } catch (error) {
         const status = (error as { response?: { status?: number } }).response

@@ -355,12 +355,13 @@ test('LED-AC-030: invalid or overwide ranges, bad cursors and filters never leak
     $reads = app(LedgerTransactionReadService::class);
     $this->actingAs($agent);
 
-    $this->get(route('transactions.index', ['from' => '2025-09-01', 'to' => '2026-10-02']))->assertUnprocessable();
-    $this->get(route('transactions.index', ['from' => '2026-10-02', 'to' => '2026-10-01']))->assertUnprocessable();
+    $this->get(route('transactions.index', ['from' => '2025-09-01', 'to' => '2026-10-02']))->assertSessionHasErrors(['to' => 'Choose a date range of at most 366 days.']);
+    $this->get(route('transactions.index', ['from' => '2026-10-02', 'to' => '2026-10-01']))->assertSessionHasErrors(['to' => 'The end date must be on or after the start date.']);
+    $this->get(route('transactions.index', ['from' => '2026-09-27', 'to' => '2026-10-02']))->assertOk();
     $this->get(route('transactions.index', ['from' => '2026-02-30']))->assertSessionHasErrors('from');
     $this->get(route('transactions.index', ['page_size' => 500]))->assertSessionHasErrors('page_size');
     $this->get(route('transactions.index', ['cursor' => 'not-a-cursor']))->assertUnprocessable();
-    $this->get(route('customers.statements.preview', [$customer->customer_id, 'from' => '2025-09-01', 'to' => '2026-10-02']))->assertUnprocessable();
+    $this->get(route('customers.statements.preview', [$customer->customer_id, 'from' => '2025-09-01', 'to' => '2026-10-02']))->assertSessionHasErrors('to');
     foreach ($hidden as $reference) {
         $this->get(route('transactions.index', ['reference' => $reference]))->assertInertia(fn ($page) => $page->where('result.total', 0)->has('result.data', 0)->where('result.next_cursor', null));
     }

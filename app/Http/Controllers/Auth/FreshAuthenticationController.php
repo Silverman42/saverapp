@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Services\FreshAuthenticationService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -58,6 +59,8 @@ class FreshAuthenticationController extends Controller
             $validated['password'],
             $validated['code'] ?? null,
         );
+
+        Toast::success('Identity confirmed', 'You can continue with your action.');
 
         return redirect()->intended(route('dashboard'));
     }

@@ -41,17 +41,13 @@ test('missing months remain closed and only the direct period grant exposes the 
         ->where('periods.data', []));
 });
 
-test('opening needs freshness and creates one audited month without granting anyone else', function (): void {
+test('opening creates one audited month without re-confirmation or granting anyone else', function (): void {
     $admin = periodManager();
     $month = now('Africa/Lagos')->format('Y-m');
-    $this->actingAs($admin)->postJson(route('admin.financial-periods.open'), [
-        'month' => $month, 'reason' => 'Prepare cash booking.',
-    ])->assertStatus(423);
-    expect(FinancialPeriod::query()->count())->toBe(0);
 
-    $this->withSession(freshPeriodSession())->post(route('admin.financial-periods.open'), [
+    assertToast($this->actingAs($admin)->post(route('admin.financial-periods.open'), [
         'month' => $month, 'reason' => 'Prepare cash booking.',
-    ])->assertRedirect(route('admin.financial-periods.index'));
+    ])->assertRedirect(route('admin.financial-periods.index')), 'success', 'Period opened');
     expect(FinancialPeriod::query()->sole()->status)->toBe('open')
         ->and(FinancialPeriod::query()->sole()->version)->toBe(1)
         ->and(AuditEvent::query()->where('event_type', 'financial_period.open')->count())->toBe(1)

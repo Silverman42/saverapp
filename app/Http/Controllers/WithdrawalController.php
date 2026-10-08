@@ -20,6 +20,7 @@ use App\Services\ResourceScopeService;
 use App\Services\WithdrawalBalanceService;
 use App\Services\WithdrawalMethodRegistry;
 use App\Services\WithdrawalService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -87,6 +88,8 @@ class WithdrawalController extends Controller
     {
         $profile = CustomerProfile::query()->where('customer_id', $customer)->firstOrFail();
         $withdrawal = $service->submit($request->user(), $profile, $request->validated());
+
+        Toast::success('Withdrawal requested', 'The withdrawal is waiting for review.');
 
         return redirect()->route('withdrawals.show', $withdrawal);
     }
@@ -177,6 +180,10 @@ class WithdrawalController extends Controller
             'customer_explanation' => [in_array($action, ['reject', 'revoke'], true) ? 'required' : 'nullable', 'string', 'min:1', 'max:500'],
         ]);
         $service->decide($request->user(), $withdrawal, $action, $data, $request);
+
+        Toast::success(match ($action) {
+            'approve' => 'Withdrawal approved', 'reject' => 'Withdrawal rejected', 'revoke' => 'Withdrawal revoked', default => 'Withdrawal cancelled'
+        }, 'The withdrawal decision was recorded.');
 
         return redirect()->route('withdrawals.show', $withdrawal);
     }

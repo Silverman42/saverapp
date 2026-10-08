@@ -69,8 +69,9 @@ use App\Http\Controllers\WithdrawalController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
-Route::inertia('/', 'Welcome')->name('home');
+Route::get('/', [AuthenticatedSessionController::class, 'create'])->middleware('guest')->name('home');
 
 // Admin Activation via Hashed Challenge (AUTH-T05)
 Route::get('invitations/admin/{token}', [AdminActivationController::class, 'show'])->name('invitations.admin.show');
@@ -315,10 +316,10 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::prefix('financial-periods')->name('financial-periods.')->group(function (): void {
             Route::get('/', [FinancialPeriodController::class, 'index'])->name('index');
-            Route::post('/', [FinancialPeriodController::class, 'open'])->middleware('fresh')->name('open');
-            Route::post('{month}/close', [FinancialPeriodController::class, 'close'])->middleware('fresh')
+            Route::post('/', [FinancialPeriodController::class, 'open'])->name('open');
+            Route::post('{month}/close', [FinancialPeriodController::class, 'close'])
                 ->where('month', '[0-9]{4}-[0-9]{2}')->name('close');
-            Route::post('{month}/reopen', [FinancialPeriodController::class, 'reopen'])->middleware('fresh')
+            Route::post('{month}/reopen', [FinancialPeriodController::class, 'reopen'])
                 ->where('month', '[0-9]{4}-[0-9]{2}')->name('reopen');
         });
         Route::prefix('business-settings')->name('business-settings.')->group(function (): void {
@@ -326,9 +327,9 @@ Route::middleware(['auth'])->group(function () {
             Route::post('drafts', [BusinessSettingsController::class, 'store'])->middleware('throttle:30,1')->name('drafts.store');
             Route::patch('drafts/{draft}', [BusinessSettingsController::class, 'update'])->whereNumber('draft')->name('drafts.update');
             Route::post('drafts/{draft}/preview', [BusinessSettingsController::class, 'preview'])->whereNumber('draft')->name('drafts.preview');
-            Route::post('drafts/{draft}/publish', [BusinessSettingsController::class, 'publish'])->whereNumber('draft')->middleware(['fresh', 'throttle:10,1'])->name('drafts.publish');
+            Route::post('drafts/{draft}/publish', [BusinessSettingsController::class, 'publish'])->whereNumber('draft')->middleware('throttle:10,1')->name('drafts.publish');
             Route::post('drafts/{draft}/discard', [BusinessSettingsController::class, 'discard'])->whereNumber('draft')->name('drafts.discard');
-            Route::post('versions/{configuration}/cancel', [BusinessSettingsController::class, 'cancel'])->whereNumber('configuration')->middleware('fresh')->name('versions.cancel');
+            Route::post('versions/{configuration}/cancel', [BusinessSettingsController::class, 'cancel'])->whereNumber('configuration')->name('versions.cancel');
             Route::post('versions/{configuration}/rollback', [BusinessSettingsController::class, 'rollback'])->whereNumber('configuration')->name('versions.rollback');
             Route::get('operations/{operation}', [BusinessSettingsController::class, 'operation'])->whereUuid('operation')->name('operations.show');
             Route::post('logo', [BusinessLogoController::class, 'store'])->middleware('throttle:10,1')->name('logo.store');
@@ -342,18 +343,17 @@ Route::middleware(['auth'])->group(function () {
         Route::post('lockouts/{user}/unlock', [LockoutController::class, 'unlock'])->name('lockouts.unlock');
 
         Route::get('staff-recoveries', [StaffRecoveryController::class, 'index'])->name('staff-recoveries.index');
-        Route::get('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'create'])->middleware('fresh')->name('staff-recoveries.create');
-        Route::post('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'store'])->middleware(['fresh', 'throttle:10,1'])->name('staff-recoveries.store');
-        Route::post('staff-recoveries/{recovery:reference}/{action}', [StaffRecoveryController::class, 'decide'])->whereIn('action', ['approve', 'reject', 'cancel', 'reissue'])->middleware(['fresh', 'throttle:10,1'])->name('staff-recoveries.decide');
+        Route::get('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'create'])->name('staff-recoveries.create');
+        Route::post('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'store'])->middleware('throttle:10,1')->name('staff-recoveries.store');
+        Route::post('staff-recoveries/{recovery:reference}/{action}', [StaffRecoveryController::class, 'decide'])->whereIn('action', ['approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1')->name('staff-recoveries.decide');
         Route::get('access', [AdminAccessController::class, 'index'])->name('access.index');
-        Route::get('access/invite', [AdminInvitationController::class, 'create'])->middleware('fresh')->name('access.invitations.create');
-        Route::post('access/invite', [AdminInvitationController::class, 'store'])->middleware(['fresh', 'throttle:20,1'])->name('access.invitations.store');
-        Route::post('access/{admin}/invitation/resend', [AdminInvitationController::class, 'resend'])->middleware('fresh')->name('access.invitations.resend');
-        Route::post('access/{admin}/invitation/correct-email', [AdminInvitationController::class, 'correctEmail'])->middleware('fresh')->name('access.invitations.correct-email');
-        Route::post('access/{admin}/invitation/cancel', [AdminInvitationController::class, 'cancel'])->middleware('fresh')->name('access.invitations.cancel');
+        Route::get('access/invite', [AdminInvitationController::class, 'create'])->name('access.invitations.create');
+        Route::post('access/invite', [AdminInvitationController::class, 'store'])->middleware('throttle:20,1')->name('access.invitations.store');
+        Route::post('access/{admin}/invitation/resend', [AdminInvitationController::class, 'resend'])->name('access.invitations.resend');
+        Route::post('access/{admin}/invitation/correct-email', [AdminInvitationController::class, 'correctEmail'])->name('access.invitations.correct-email');
+        Route::post('access/{admin}/invitation/cancel', [AdminInvitationController::class, 'cancel'])->name('access.invitations.cancel');
         Route::get('access/{admin}', [AdminAccessController::class, 'show'])->name('access.show');
         Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
-            ->middleware('fresh')
             ->name('access.permissions.update');
 
         Route::get('charges', [ManualChargeController::class, 'index'])->name('charges.index');
@@ -361,31 +361,28 @@ Route::middleware(['auth'])->group(function () {
         Route::get('charges/attempts/{reference}', [ManualChargeController::class, 'status'])->whereUuid('reference')->name('charges.status');
         Route::post('charges/preview', [ManualChargeController::class, 'preview'])->name('charges.preview');
         Route::post('charges', [ManualChargeController::class, 'assess'])->name('charges.assess');
-        Route::post('fees/obligations/{obligation}/refund', [FeeRefundController::class, 'store'])->middleware('fresh')->name('fees.refunds.store');
+        Route::post('fees/obligations/{obligation}/refund', [FeeRefundController::class, 'store'])->name('fees.refunds.store');
         Route::get('fees', [FeeOverviewController::class, 'index'])->name('fees.index');
-        Route::post('fees/obligations/{obligation}/attempts/prepare', [FeeActionAttemptController::class, 'prepare'])->middleware('fresh')->name('fees.obligations.attempts.prepare');
-        Route::post('fees/obligations/{obligation}/attempts/cancel', [FeeActionAttemptController::class, 'cancel'])->middleware('fresh')->name('fees.obligations.attempts.cancel');
+        Route::post('fees/obligations/{obligation}/attempts/prepare', [FeeActionAttemptController::class, 'prepare'])->name('fees.obligations.attempts.prepare');
+        Route::post('fees/obligations/{obligation}/attempts/cancel', [FeeActionAttemptController::class, 'cancel'])->name('fees.obligations.attempts.cancel');
         Route::get('fees/obligations/{obligation}/attempts/{attemptReference}', [FeeActionAttemptController::class, 'status'])->whereUuid('attemptReference')->name('fees.obligations.attempts.status');
         Route::get('fees/obligations/{obligation}/savings-sources', [FeeSavingsApplicationController::class, 'sources'])->name('fees.obligations.savings-sources');
         Route::post('fees/obligations/{obligation}/savings-preview', [FeeSavingsApplicationController::class, 'preview'])->name('fees.obligations.savings-preview');
-        Route::post('fees/obligations/{obligation}/apply-savings', [FeeSavingsApplicationController::class, 'store'])->middleware('fresh')->name('fees.obligations.apply-savings');
+        Route::post('fees/obligations/{obligation}/apply-savings', [FeeSavingsApplicationController::class, 'store'])->name('fees.obligations.apply-savings');
         Route::get('fees/obligations/{obligation}/savings-status/{attemptReference}', [FeeSavingsApplicationController::class, 'status'])->whereUuid('attemptReference')->name('fees.obligations.savings-status');
         Route::get('fees/obligations/{obligation}/action-status/{attemptReference}', [FeeOverviewController::class, 'actionStatus'])->whereUuid('attemptReference')->name('fees.obligations.action-status');
 
         Route::post('fees/obligations/{obligation}/waive', [FeeOverviewController::class, 'waive'])
-            ->middleware('fresh')
             ->name('fees.obligations.waive');
         Route::post('fees/obligations/{obligation}/correct', [FeeOverviewController::class, 'correct'])
-            ->middleware('fresh')
             ->name('fees.obligations.correct');
 
         // Registration Fee Rules (CAM-T06)
         Route::get('fees/registration', [RegistrationFeeRuleController::class, 'index'])->name('fees.registration.index');
         Route::post('fees/registration/preview', [RegistrationFeeRuleController::class, 'preview'])->name('fees.registration.preview');
         Route::post('fees/registration/{feeRule}/retirement-preview', [RegistrationFeeRuleController::class, 'previewRetirement'])->name('fees.registration.retirement-preview');
-        Route::post('fees/registration/{feeRule}/retire', [RegistrationFeeRuleController::class, 'retire'])->middleware('fresh')->name('fees.registration.retire');
+        Route::post('fees/registration/{feeRule}/retire', [RegistrationFeeRuleController::class, 'retire'])->name('fees.registration.retire');
         Route::post('fees/registration', [RegistrationFeeRuleController::class, 'store'])
-            ->middleware('fresh')
             ->name('fees.registration.store');
     });
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BusinessProfile;
 use App\Models\StaffRecovery;
 use App\Services\StaffRecoveryService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,7 +41,7 @@ class StaffRecoveryActivationController extends Controller
 
             return redirect()->route('emergency-recovery.replacement');
         }
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Password created. Set up your new authenticator app to finish recovery.']);
+        Toast::success('Password created', 'Password created. Set up your new authenticator app to finish recovery.');
 
         return redirect()->route('two-factor.enrolment');
     }

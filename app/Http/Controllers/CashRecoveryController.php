@@ -9,6 +9,7 @@ use App\Models\CashRecovery;
 use App\Models\WithdrawalRequest;
 use App\Services\CashRecoveryService;
 use App\Services\CollectionService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,8 @@ class CashRecoveryController extends Controller
         $data = $request->validated();
         $service->recordReturn($request->user(), $execution, $data['recovery_reference'], $data['evidence'], $request, filled($data['amount_ngn'] ?? null) ? app(CollectionService::class)->amountToKobo($data['amount_ngn']) : null, $data['event_type'] ?? 'return');
 
+        Toast::success('Return recorded', 'The returned cash was recorded.');
+
         return redirect()->route('withdrawals.show', WithdrawalRequest::findOrFail($execution->withdrawal_request_id));
     }
 
@@ -40,6 +43,8 @@ class CashRecoveryController extends Controller
         $type = $data['event_type'] ?? 'return';
         $amount = $type === 'return' ? (filled($data['amount_ngn'] ?? null) ? app(CollectionService::class)->amountToKobo($data['amount_ngn']) : $execution->amount_kobo) : 0;
         $service->recordDisbursementReturn($request->user(), $execution, $data['recovery_reference'], $amount, $data['evidence'], $request, $type);
+
+        Toast::success('Return recorded', 'The returned cash was recorded.');
 
         return to_route('cash-disbursements.index');
     }
@@ -53,9 +58,13 @@ class CashRecoveryController extends Controller
         if ($recovery->cash_disbursement_id !== null) {
             $service->acknowledgeDisbursementReturn($request->user(), $recovery, $request);
 
+            Toast::success('Return acknowledged', 'The cash return was acknowledged.');
+
             return to_route('cash-disbursements.index');
         }
         $service->acknowledgeReturn($request->user(), $recovery);
+
+        Toast::success('Return acknowledged', 'The cash return was acknowledged.');
 
         return redirect()->route('withdrawals.show', WithdrawalRequest::findOrFail(CashExecution::findOrFail($recovery->cash_execution_id)->withdrawal_request_id));
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\EmergencyRecoveryService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,7 +32,7 @@ class EmergencyRecoveryController extends Controller
 
         $service->start($validated['email'], $validated['key'], (string) $request->ip());
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'If those details are valid, a single-use recovery link was sent to the seeded Administrator email.']);
+        Toast::success('Check your email', 'If those details are valid, a single-use recovery link was sent to the seeded Administrator email.');
 
         return redirect()->route('login');
     }

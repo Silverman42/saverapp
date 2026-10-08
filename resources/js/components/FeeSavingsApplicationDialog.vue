@@ -26,7 +26,6 @@ import {
     isOperationReference,
     newOperationReference,
 } from '@/lib/operation-reference';
-import { freshAuthentication } from '@/routes';
 import {
     prepare as prepareAttempt,
     cancel as cancelAttempt,
@@ -38,6 +37,7 @@ import {
     savingsSources,
     savingsStatus,
 } from '@/routes/admin/fees/obligations';
+import { showToast } from '@/lib/flashToast';
 
 type Selection = { id: number; customer_name: string; rule_name: string };
 type Instructions = {
@@ -100,7 +100,6 @@ const review = ref<Review | null>(null);
 const confirmed = ref(false);
 const message = ref('');
 const outcome = ref<Outcome | null>(null);
-const needsFreshAuthentication = ref(false);
 const storageBlocked = ref(false);
 let sequence = 0;
 const sourceRequest = useHttp<
@@ -332,6 +331,11 @@ function recordOutcome(saved: Outcome, pending: Attempt): void {
     if (clearAttempt(pending)) {
         message.value = 'Fee paid from savings. Nothing is left to pay.';
     }
+    showToast({
+        type: 'success',
+        title: 'Fee paid',
+        description: 'The fee was paid from savings.',
+    });
     router.reload({ only: ['summary', 'obligations'] });
 }
 
@@ -358,7 +362,6 @@ function resolveAttempt(result: AttemptResult, pending: Attempt): boolean {
         outcome.value = null;
         review.value = null;
         confirmed.value = false;
-        needsFreshAuthentication.value = false;
         open.value = false;
         message.value =
             'The payment was stopped. Nothing was taken from savings. You can start again.';
@@ -368,8 +371,6 @@ function resolveAttempt(result: AttemptResult, pending: Attempt): boolean {
 }
 
 function attemptError(error: unknown): void {
-    needsFreshAuthentication.value =
-        error instanceof HttpResponseError && error.response.status === 423;
     message.value = errorMessage(
         error,
         'We do not know if the payment went through. Check its status or stop it before trying again.',
@@ -447,6 +448,11 @@ async function stopApplication(): Promise<void> {
         }
         if (!resolveAttempt(result, pending))
             throw new Error('Cancellation is not terminal');
+        showToast({
+            type: 'info',
+            title: 'Payment stopped',
+            description: 'The fee was not paid from savings.',
+        });
     } catch (error) {
         attemptError(error);
     }
@@ -487,7 +493,6 @@ watch(open, async (visible) => {
     outcome.value = null;
     confirmed.value = false;
     message.value = '';
-    needsFreshAuthentication.value = false;
     previewRequest.resetAndClearErrors();
     commitRequest.clearErrors();
     await loadSources();
@@ -570,7 +575,6 @@ async function sendApplication(): Promise<void> {
             attempt_reference: pending.reference,
             payload: { ...submitted.value },
         });
-        needsFreshAuthentication.value = false;
         const prepared = await prepareRequest.post(
             prepareAttempt.url(pending.obligation),
         );
@@ -587,15 +591,12 @@ async function sendApplication(): Promise<void> {
     }
     Object.assign(commitRequest, submitted.value);
     message.value = '';
-    needsFreshAuthentication.value = false;
     try {
         recordOutcome(
             await commitRequest.post(applySavings.url(pending.obligation)),
             pending,
         );
     } catch (error) {
-        needsFreshAuthentication.value =
-            error instanceof HttpResponseError && error.response.status === 423;
         message.value = errorMessage(
             error,
             'The connection dropped. Check the status before trying again.',
@@ -748,14 +749,6 @@ async function confirmApplication(): Promise<void> {
                             :disabled="busy || storageBlocked"
                             @click="stopApplication"
                             >Stop payment</Button
-                        >
-                        <Button
-                            v-if="needsFreshAuthentication"
-                            as-child
-                            variant="outline"
-                            ><Link :href="freshAuthentication()"
-                                >Confirm it's you</Link
-                            ></Button
                         >
                     </div>
                     <MoreDetails>

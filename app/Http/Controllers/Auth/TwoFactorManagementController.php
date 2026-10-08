@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\TwoFactorService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
 
 class TwoFactorManagementController extends Controller
@@ -98,10 +98,7 @@ class TwoFactorManagementController extends Controller
             (string) $request->current_code
         );
 
-        Inertia::flash('toast', [
-            'type' => 'info',
-            'message' => __('Authenticator replacement initiated. Scan the new QR code to confirm.'),
-        ]);
+        Toast::info('Replacement started', __('Authenticator replacement initiated. Scan the new QR code to confirm.'));
 
         return back()->with('replacementSetup', $setupData);
     }
@@ -121,10 +118,7 @@ class TwoFactorManagementController extends Controller
             $request->session()->getId()
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Authenticator app replaced and other sessions revoked.'),
-        ]);
+        Toast::success('Authenticator replaced', __('Authenticator app replaced and other sessions revoked.'));
 
         return back()->with('recoveryCodes', $codes);
     }
@@ -136,10 +130,7 @@ class TwoFactorManagementController extends Controller
     {
         $this->twoFactorService->cancelPendingSetupOrReplacement($request->user());
 
-        Inertia::flash('toast', [
-            'type' => 'info',
-            'message' => __('Authenticator replacement cancelled.'),
-        ]);
+        Toast::info('Replacement cancelled', __('Authenticator replacement cancelled.'));
 
         return back();
     }
@@ -160,10 +151,7 @@ class TwoFactorManagementController extends Controller
             (string) $request->code
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Recovery codes regenerated successfully.'),
-        ]);
+        Toast::success('Recovery codes regenerated', __('Recovery codes regenerated successfully.'));
 
         return back()->with('recoveryCodes', $codes);
     }
@@ -178,10 +166,7 @@ class TwoFactorManagementController extends Controller
         if ($user->authenticator_state->isPending() || $user->two_factor_pending_secret !== null) {
             $this->twoFactorService->cancelPendingSetupOrReplacement($user);
 
-            Inertia::flash('toast', [
-                'type' => 'info',
-                'message' => __('Pending two-factor authentication setup was cancelled.'),
-            ]);
+            Toast::info('Setup cancelled', __('Pending two-factor authentication setup was cancelled.'));
 
             return back();
         }

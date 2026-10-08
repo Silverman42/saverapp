@@ -211,7 +211,7 @@ test('bounded rebuild resumes and preserves active projection until coverage pas
     $this->assertDatabaseCount('canonical_audit_events', 3);
 });
 
-test('permission version and watermark changes invalidate continuation', function () {
+test('permission version changes invalidate continuation while newer events keep the pinned snapshot', function () {
     Queue::fake([ProjectAuditEvent::class]);
     $viewer = auditViewer();
     for ($i = 0; $i < 26; $i++) {
@@ -224,7 +224,20 @@ test('permission version and watermark changes invalidate continuation', functio
     $cursor = app(AuditWorkspace::class)->search($viewer, [])['next_cursor'];
     auditFixture();
     app(AuditProjection::class)->drain();
-    expect(fn () => app(AuditWorkspace::class)->search($viewer, ['cursor' => $cursor]))->toThrow(ConflictHttpException::class);
+    expect(app(AuditWorkspace::class)->search($viewer, ['cursor' => $cursor])['rows'])->toHaveCount(1);
+});
+
+test('more results continue a default search sent with the page size the workspace applies', function () {
+    Queue::fake([ProjectAuditEvent::class]);
+    $viewer = auditViewer();
+    for ($i = 0; $i < 26; $i++) {
+        auditFixture();
+    }
+    app(AuditProjection::class)->drain();
+    $cursor = app(AuditWorkspace::class)->search($viewer, [])['next_cursor'];
+
+    $this->actingAs($viewer)->get(route('admin.audit.index', ['per_page' => '25', 'outcome' => '', 'cursor' => $cursor]))
+        ->assertOk()->assertInertia(fn (Assert $page) => $page->has('audit.rows', 1));
 });
 
 test('replay survives authentication freshness changes without duplicate evidence', function () {

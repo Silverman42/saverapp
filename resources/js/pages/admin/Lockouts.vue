@@ -13,7 +13,6 @@ import {
     ShieldCheck,
     Unlock,
 } from '@lucide/vue';
-import { toast } from 'vue-sonner';
 import DirectoryPanel from '@/components/directory/DirectoryPanel.vue';
 import DirectoryRow from '@/components/directory/DirectoryRow.vue';
 import EmptyState from '@/components/EmptyState.vue';
@@ -39,6 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { showToast } from '@/lib/flashToast';
 
 export type LockItem = {
     id: number;
@@ -179,7 +179,6 @@ const submitUnlock = async () => {
             preserveScroll: true,
             onSuccess: () => {
                 closeUnlockDialog();
-                toast.success('Account unlocked.');
             },
             onError: (errors) => {
                 serverErrors.value = errors as Record<string, string>;
@@ -190,7 +189,11 @@ const submitUnlock = async () => {
                     errors.reason ||
                     Object.values(errors)[0] ||
                     'Could not unlock the account. Please try again.';
-                toast.error(message as string);
+                showToast({
+                    type: 'error',
+                    title: 'Account not unlocked',
+                    description: message as string,
+                });
             },
             onFinish: () => {
                 isSubmitting.value = false;

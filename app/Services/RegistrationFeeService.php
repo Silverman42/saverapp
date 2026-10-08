@@ -29,7 +29,6 @@ class RegistrationFeeService
 {
     public function __construct(
         protected AuthorizationService $authorizationService,
-        protected FreshAuthenticationService $freshAuthenticationService,
         protected FeeObligationService $feeObligationService,
     ) {}
 
@@ -123,13 +122,10 @@ class RegistrationFeeService
      */
     public function publishRule(User $admin, array $data, Request $request): FeeRule
     {
-        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $data, $request): FeeRule {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $data): FeeRule {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->whereKey($admin->id)->lockForUpdate()->firstOrFail();
             $this->ensureCanManageFees($freshAdmin);
-            if (! $this->freshAuthenticationService->isFresh($freshAdmin, $request)) {
-                throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
-            }
 
             $terms = $this->publicationTerms($data);
             $kind = $terms['kind'];
@@ -322,13 +318,10 @@ class RegistrationFeeService
      */
     public function retireRule(User $admin, int $ruleId, string $reason, Request $request, string $previewFingerprint, bool $confirmed): FeeRule
     {
-        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $ruleId, $reason, $request, $previewFingerprint, $confirmed): FeeRule {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($admin, $ruleId, $reason, $previewFingerprint, $confirmed): FeeRule {
             /** @var User $freshAdmin */
             $freshAdmin = User::query()->whereKey($admin->id)->lockForUpdate()->firstOrFail();
             $this->ensureCanManageFees($freshAdmin);
-            if (! $this->freshAuthenticationService->isFresh($freshAdmin, $request)) {
-                throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
-            }
             if (! $confirmed) {
                 throw ValidationException::withMessages(['confirmed' => ['Confirm the reviewed rule retirement.']]);
             }

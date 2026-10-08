@@ -41,11 +41,11 @@ import * as versions from '@/routes/admin/business-settings/versions';
 import * as operations from '@/routes/admin/business-settings/operations';
 import * as logo from '@/routes/admin/business-settings/logo';
 import { show as logoAsset } from '@/routes/business-logo';
-import { show as freshAuthentication } from '@/actions/App/Http/Controllers/Auth/FreshAuthenticationController';
 import type {
     SettingValue,
     SettingsWorkspace,
 } from '@/types/business-settings';
+import { showToast } from '@/lib/flashToast';
 const props = defineProps<{ settings: SettingsWorkspace; scope: string }>();
 defineOptions({
     layout: {
@@ -80,6 +80,11 @@ function uploadLogo(event: Event): void {
     logoUpload.post(logo.store.url(), {
         onSuccess: (response) => {
             value.value = response.reference;
+            showToast({
+                type: 'success',
+                title: 'Logo uploaded',
+                description: 'Save the draft to use the new logo.',
+            });
         },
     });
 }
@@ -909,16 +914,6 @@ function retryOriginal(): void {
                                 class="text-destructive text-sm"
                             >
                                 {{ error }}
-                            </p>
-                            <p class="text-muted-foreground text-xs">
-                                You need to
-                                <Link
-                                    :href="freshAuthentication()"
-                                    class="text-primary underline"
-                                    >confirm it's you</Link
-                                >
-                                with your password and authenticator code before
-                                publishing.
                             </p>
                         </form>
                     </div>

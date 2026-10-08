@@ -8,6 +8,7 @@ use App\Services\AgentTrustedDeviceService;
 use App\Services\ResumeCookieService;
 use App\Services\SessionManagerService;
 use App\Support\RoleDestinationResolver;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -91,6 +92,8 @@ class DeviceEvictionController extends Controller
     {
         $request->session()->forget('login.pending_eviction');
 
+        Toast::info('Sign-in cancelled', 'Your other devices stay signed in.');
+
         return redirect()->route('login');
     }
 
@@ -137,10 +140,7 @@ class DeviceEvictionController extends Controller
             $response->withCookie($cookie);
         }
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Active session updated and signed in successfully.'),
-        ]);
+        Toast::success('Signed in', __('Active session updated and signed in successfully.'));
 
         return $response;
     }

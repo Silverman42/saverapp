@@ -6,6 +6,7 @@ use App\Models\AgentProfile;
 use App\Models\CreationAttempt;
 use App\Services\AgentRegistrationService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -93,10 +94,7 @@ class AgentRegistrationController extends Controller
             ? 'Existing Agent registration resolved.'
             : 'Agent registered successfully. Invitation queued for delivery.';
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $message,
-        ]);
+        Toast::success('Agent registered', $message);
 
         return redirect()->route('agents.show', $result['agent']->agent_id);
     }

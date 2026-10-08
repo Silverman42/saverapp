@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /*
@@ -47,4 +48,19 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Assert the response flashed the one-time toast shown after a non-GET action.
+ *
+ * @param  'success'|'info'|'warning'|'error'  $type
+ */
+function assertToast(TestResponse $response, string $type = 'success', ?string $title = null): TestResponse
+{
+    $response->assertInertiaFlash('toast.type', $type);
+    if ($title !== null) {
+        $response->assertInertiaFlash('toast.title', $title);
+    }
+
+    return $response;
 }

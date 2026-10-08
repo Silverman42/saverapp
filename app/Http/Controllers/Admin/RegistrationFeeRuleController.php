@@ -14,6 +14,7 @@ use App\Models\FeeRule;
 use App\Services\AuthorizationService;
 use App\Services\RegistrationFeeService;
 use App\Support\MoneyAmount;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,12 +86,9 @@ class RegistrationFeeRuleController extends Controller
             'preview_fingerprint' => $validated['preview_fingerprint'],
         ], $request);
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => ($validated['kind'] ?? FeeRuleKind::Registration->value) === FeeRuleKind::Plan->value
+        Toast::success('Fee rule published', ($validated['kind'] ?? FeeRuleKind::Registration->value) === FeeRuleKind::Plan->value
                 ? 'Plan fee option published successfully.'
-                : 'Registration fee rule published successfully.',
-        ]);
+                : 'Registration fee rule published successfully.');
 
         return redirect()->route('admin.fees.registration.index');
     }
@@ -103,7 +101,7 @@ class RegistrationFeeRuleController extends Controller
     public function retire(RetireFeeRuleRequest $request, FeeRule $feeRule, RegistrationFeeService $feeService): RedirectResponse
     {
         $feeService->retireRule($request->user(), $feeRule->id, $request->validated('reason'), $request, $request->validated('preview_fingerprint'), $request->boolean('confirmed'));
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Fee rule retired. Existing agreements retain their fee terms.']);
+        Toast::success('Fee rule retired', 'Fee rule retired. Existing agreements retain their fee terms.');
 
         return redirect()->route('admin.fees.registration.index');
     }

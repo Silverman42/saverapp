@@ -9,6 +9,7 @@ use App\Models\Permission;
 use App\Models\User;
 use App\Services\AdminInvitationService;
 use App\Services\AuthorizationService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -73,10 +74,7 @@ class AdminInvitationController extends Controller
             'permissions' => array_values($validated['permissions']),
         ]);
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $result['replayed'] ? 'Existing Administrator invitation resolved.' : 'Administrator invited. Invitation queued for delivery.',
-        ]);
+        Toast::success('Admin invited', $result['replayed'] ? 'Existing Administrator invitation resolved.' : 'Administrator invited. Invitation queued for delivery.');
 
         return redirect()->route('admin.access.show', $result['admin']->id);
     }
@@ -137,7 +135,7 @@ class AdminInvitationController extends Controller
 
     private function backWith(User $admin, string $message): RedirectResponse
     {
-        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+        Toast::success('Invitation updated', $message);
 
         return redirect()->route('admin.access.show', $admin->id);
     }

@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\AgentEligibilityService;
 use App\Services\AgentStatusManagementService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -109,7 +110,7 @@ class AgentStatusController extends Controller
             agentExplanation: $data['agent_explanation'],
         );
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Agent status reviewed.']);
+        Toast::success('Status reviewed', 'Agent status reviewed.');
 
         return to_route('agents.status.edit', $profile->agent_id);
     }

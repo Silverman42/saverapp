@@ -66,6 +66,35 @@ class LedgerTransactionProjectionService
         }
     }
 
+    /**
+     * Whether the projection was never verified, failed, or trails the posted ledger.
+     */
+    public function isBehind(): bool
+    {
+        $state = DB::table('ledger_projection_state')->where('id', 1)->first();
+
+        return $state === null || $state->status !== 'ready'
+            || (int) $state->ledger_group_watermark < (int) (LedgerPostingGroup::query()->max('id') ?? 0);
+    }
+
+    /**
+     * A posting that lands while the projection is not ready would otherwise wait for the scheduler,
+     * so a verified rebuild runs once the posting transaction has committed.
+     */
+    private function rebuildAfterCommit(): void
+    {
+        DB::afterCommit(function (): void {
+            if (! $this->isBehind()) {
+                return;
+            }
+            try {
+                $this->rebuild();
+            } catch (PlatformBlocked|RuntimeException) {
+                // The failed rebuild has recorded its integrity incident; reads keep failing closed.
+            }
+        });
+    }
+
     /** @return array{version: int, transactions: int, groups: int, frozen_customers: int} */
     private function rebuildVerified(): array
     {
@@ -239,6 +268,8 @@ class LedgerTransactionProjectionService
     {
         $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
         if ($state === null || $state->status !== 'ready') {
+            $this->rebuildAfterCommit();
+
             return;
         }
         $this->writeReceipt($receipt, $this->receiptGroups($receipt), (int) $state->active_version);
@@ -257,6 +288,8 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($settlementId): void {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null || $state->status !== 'ready') {
+                $this->rebuildAfterCommit();
+
                 return;
             }
             $settlement = DB::table('collection_settlements')->where('id', $settlementId)->first();
@@ -291,6 +324,8 @@ class LedgerTransactionProjectionService
     {
         $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
         if ($state === null || $state->status !== 'ready') {
+            $this->rebuildAfterCommit();
+
             return;
         }
         $remittance = CashRemittance::query()->whereKey($remittanceId)->firstOrFail();
@@ -397,6 +432,8 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($withdrawal): void {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null || $state->status !== 'ready') {
+                $this->rebuildAfterCommit();
+
                 return;
             }
             $payout = app(WithdrawalPayoutSource::class)->posted($withdrawal);
@@ -489,6 +526,8 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($project): void {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null || $state->status !== 'ready') {
+                $this->rebuildAfterCommit();
+
                 return;
             }
             $project((int) $state->active_version);
@@ -557,6 +596,8 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($charge): void {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null || $state->status !== 'ready') {
+                $this->rebuildAfterCommit();
+
                 return;
             }
             $this->writeCharge($charge, LedgerPostingGroup::query()->findOrFail($charge->ledger_posting_group_id), (int) $state->active_version);
@@ -593,6 +634,8 @@ class LedgerTransactionProjectionService
         app(PlatformGuard::class)->transaction('derived', function () use ($reversal): void {
             $state = DB::table('ledger_projection_state')->where('id', 1)->lockForUpdate()->first();
             if ($state === null || $state->status !== 'ready') {
+                $this->rebuildAfterCommit();
+
                 return;
             }
             if ($reversal->state === 'approved_no_money') {

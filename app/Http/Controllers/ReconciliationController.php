@@ -24,6 +24,7 @@ use App\Services\CollectionReadService;
 use App\Services\CollectionService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\PlatformGuard;
+use App\Support\Toast;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -190,6 +191,8 @@ class ReconciliationController extends Controller
             );
         }, attempts: 3);
 
+        Toast::success('Remittance recorded', 'The cash remittance was recorded.');
+
         return redirect()->route('collection-batches.show', $batch);
     }
 
@@ -257,6 +260,8 @@ class ReconciliationController extends Controller
             );
         }, attempts: 3);
 
+        Toast::success('Batch reviewed', 'The collection batch review was recorded.');
+
         return redirect()->route('collection-batches.show', $batch);
     }
 
@@ -299,6 +304,8 @@ class ReconciliationController extends Controller
                 context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
             );
         }, attempts: 3);
+
+        Toast::success('Exception reported', 'The batch exception was recorded.');
 
         return redirect()->route('collection-batches.show', $batch);
     }
@@ -344,6 +351,8 @@ class ReconciliationController extends Controller
                 (string) $currentException->id, ['batch_id' => $current->id, 'from_status' => $previous, 'to_status' => $data['status']],
                 $request->user(), context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']);
         }, attempts: 3);
+
+        Toast::success('Exception updated', 'The batch exception progress was recorded.');
 
         return redirect()->route('collection-batches.show', $batch);
     }
@@ -399,6 +408,8 @@ class ReconciliationController extends Controller
             );
         }, attempts: 3);
 
+        Toast::success('Exception resolved', 'The batch exception was resolved.');
+
         return redirect()->route('collection-batches.show', $batch);
     }
 
@@ -437,6 +448,8 @@ class ReconciliationController extends Controller
                 context: ['executor' => self::class, 'required_permission' => 'reconciliation.manage']
             );
         }, attempts: 3);
+
+        Toast::success('Exception reopened', 'The batch exception was reopened.');
 
         return redirect()->route('collection-batches.show', $batch);
     }

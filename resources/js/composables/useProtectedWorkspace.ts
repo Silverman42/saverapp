@@ -1,6 +1,9 @@
 import { router, usePage, usePoll } from '@inertiajs/vue3';
 import { onUnmounted, ref, watch } from 'vue';
 import type { AdminPermission } from '@/types/auth';
+
+const accessLostStatuses = [401, 403, 419];
+
 export function useProtectedWorkspace(
     scope: () => string,
     permission?: AdminPermission,
@@ -38,12 +41,14 @@ export function useProtectedWorkspace(
             clear();
         }
     });
-    const removeHttp = router.on('httpException', clear);
-    const removeNetwork = router.on('networkError', clear);
+    const removeHttp = router.on('httpException', (event) => {
+        if (accessLostStatuses.includes(event.detail.response.status)) {
+            clear();
+        }
+    });
     onUnmounted(() => {
         remove();
         removeHttp();
-        removeNetwork();
     });
     usePoll(5000, {
         only: ['scope'],

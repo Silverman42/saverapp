@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\EmailChangeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,7 +21,7 @@ class EmailChangeController extends Controller
         $this->assertOnlyFields($request, ['email']);
         $validated = $request->validate(['email' => ['required', 'string', 'email:rfc', 'max:255']]);
         $service->begin($user, $validated['email']);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Confirmation links were sent to your current and proposed email addresses.']);
+        Toast::success('Check your email', 'Confirmation links were sent to your current and proposed email addresses.');
 
         return to_route('profile.edit');
     }
@@ -47,6 +48,8 @@ class EmailChangeController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         $request->session()->flash('status', 'email-change-complete');
+
+        Toast::success('Email confirmed', 'Your email change confirmation was recorded.');
 
         return to_route('login');
     }

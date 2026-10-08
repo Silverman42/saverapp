@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Mockery\MockInterface;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\CreatesLifecycleCustomers;
 
 require_once __DIR__.'/../CollectionFixtures.php';
@@ -174,22 +173,19 @@ test('another authorized Admin cannot use the original actors retirement review'
     expect(retirementOwnerRows())->toBe($baseline);
 });
 
-test('retirement challenges an expired or recovery authentication session without owner writes', function (array $session): void {
+test('retirement does not ask an admin to confirm their identity again', function (): void {
     $this->freezeTime();
     [$admin, $rule] = retirementFixture();
     $preview = app(RegistrationFeeService::class)->previewRetirement($admin, $rule->id, 'End new selection.');
     $baseline = retirementOwnerRows();
 
-    $this->actingAs($admin)->withSession(array_replace(retirementSession(), $session))->postJson(route('admin.fees.registration.retire', $rule), [
-        'reason' => 'End new selection.', 'preview_fingerprint' => $preview['preview_fingerprint'], 'confirmed' => true,
-    ])->assertStatus(423);
+    $this->actingAs($admin)->withSession(array_replace(retirementSession(), ['auth.password_confirmed_at' => 1, 'auth.mfa_confirmed_at' => 1]))
+        ->post(route('admin.fees.registration.retire', $rule), [
+            'reason' => 'End new selection.', 'preview_fingerprint' => $preview['preview_fingerprint'], 'confirmed' => true,
+        ])->assertRedirect()->assertSessionHasNoErrors()->assertInertiaFlash('toast.title', 'Fee rule retired');
 
-    expect(retirementOwnerRows())->toBe($baseline);
-})->with([
-    'expired password' => [['auth.password_confirmed_at' => 1]],
-    'expired MFA' => [['auth.mfa_confirmed_at' => 1]],
-    'recovery authentication' => [['recovery_code_used' => true]],
-]);
+    expect(retirementOwnerRows())->not->toBe($baseline);
+});
 
 test('retirement rejects a matching grant revoked after review with 403', function (): void {
     $this->freezeTime();
@@ -205,7 +201,7 @@ test('retirement rejects a matching grant revoked after review with 403', functi
     expect(retirementOwnerRows())->toBe($baseline);
 });
 
-test('direct retirement enforces freshness reason and confirmation inside the owner', function (string $failure): void {
+test('direct retirement enforces reason and confirmation inside the owner', function (string $failure): void {
     $this->freezeTime();
     [$admin, $rule] = retirementFixture();
     $owner = app(RegistrationFeeService::class);
@@ -213,15 +209,15 @@ test('direct retirement enforces freshness reason and confirmation inside the ow
     $request = Request::create('/admin/fees/registration', 'POST');
     $request->setLaravelSession(app('session')->driver());
     $request->session()->flush();
-    $request->session()->put($failure === 'freshness' ? [] : retirementSession());
+    $request->session()->put(retirementSession());
     $baseline = retirementOwnerRows();
 
     expect(fn () => $owner->retireRule($admin, $rule->id, $failure === 'reason' ? ' ' : 'End new selection.', $request,
         $preview['preview_fingerprint'], $failure !== 'confirmation'))
-        ->toThrow($failure === 'freshness' ? ConflictHttpException::class : ValidationException::class);
+        ->toThrow(ValidationException::class);
 
     expect(retirementOwnerRows())->toBe($baseline);
-})->with(['freshness', 'reason', 'confirmation']);
+})->with(['reason', 'confirmation']);
 
 test('retirement rejects an already ended reviewed rule without changing original retirement evidence', function (): void {
     $this->freezeTime();

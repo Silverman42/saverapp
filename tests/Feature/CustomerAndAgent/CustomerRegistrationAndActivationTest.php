@@ -158,12 +158,11 @@ test('Non-admin or admin without fees.manage cannot view or publish registration
         ])->assertForbidden();
 });
 
-test('Admin without fresh session is challenged when publishing registration fee rule', function (): void {
+test('Admin without fresh session is not asked to confirm their identity when publishing registration fee rule', function (): void {
     $admin = User::factory()->admin()->create();
     $admin->assignRole(UserType::Admin->value);
     $admin->givePermissionTo(AdminPermission::FeesManage->value);
 
-    // No fresh session -> fresh middleware redirects to fresh-authentication
     $response = $this->actingAs($admin)->post(route('admin.fees.registration.store'), [
         'name' => 'Fee 2026',
         'model' => 'fixed',
@@ -172,7 +171,8 @@ test('Admin without fresh session is challenged when publishing registration fee
         'publication_reason' => 'Annual policy update',
     ]);
 
-    $response->assertRedirect(route('fresh-authentication'));
+    $response->assertSessionHasErrors(['confirmed', 'preview_fingerprint']);
+    expect($response->headers->get('Location'))->not->toBe(route('fresh-authentication'));
 });
 
 test('Admin with fresh session and fees.manage can view and publish fixed registration fee rule', function (int|float|string $amountNgn, int $amountKobo, string $formattedAmount): void {

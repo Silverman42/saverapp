@@ -151,7 +151,7 @@ test('WDL-AC-015 submitted terms cannot be edited and a terminal release permits
     $payload = withdrawalPayload($customer, $assignment, $plan);
     $quote = $this->actingAs($agent)->postJson(route('customers.withdrawals.preview', $customer->customer_id), $payload)->json();
     $submission = withdrawalSubmission($payload, $quote);
-    $this->actingAs($agent)->post(route('customers.withdrawals.store', $customer->customer_id), $submission)->assertRedirect();
+    assertToast($this->actingAs($agent)->post(route('customers.withdrawals.store', $customer->customer_id), $submission)->assertRedirect(), 'success', 'Withdrawal requested');
     $withdrawal = WithdrawalRequest::query()->sole();
     $before = $withdrawal->getAttributes();
 

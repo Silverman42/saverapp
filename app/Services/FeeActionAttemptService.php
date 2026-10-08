@@ -149,9 +149,6 @@ class FeeActionAttemptService
         if (! app(AuthorizationService::class)->allows($admin, AdminPermission::FeesManage)) {
             throw new AuthorizationException('Current authority to manage fees is required.');
         }
-        if ($request !== null && ! app(FreshAuthenticationService::class)->isFresh($admin, $request)) {
-            throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
-        }
 
         return $admin;
     }

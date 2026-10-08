@@ -27,7 +27,6 @@ class BusinessSettings
         private BusinessSettingsCatalogue $catalogue,
         private BusinessSettingsReadiness $readiness,
         private AuthorizationService $authorization,
-        private FreshAuthenticationService $freshAuthentication,
         private NotificationPipeline $notifications,
     ) {}
 
@@ -196,7 +195,6 @@ class BusinessSettings
         $reason = $this->reason($reason);
 
         return $this->operation($actor, 'publish', $operation, compact('draftId', 'revision', 'previewReference', 'reason'), function (User $current) use ($draftId, $revision, $previewReference, $reason, $request): array {
-            $this->requireFresh($current, $request);
             $profile = $this->lockedProfile();
             $snapshot = $this->resolve(true);
             $draft = $this->ownedDraft($current, $draftId);
@@ -237,7 +235,6 @@ class BusinessSettings
         $reason = $this->reason($reason);
 
         return $this->operation($actor, 'cancel', $operation, compact('configurationId', 'reason'), function (User $current) use ($configurationId, $reason, $request): array {
-            $this->requireFresh($current, $request);
             $version = BusinessConfigurationVersion::query()->findOrFail($configurationId);
             $work = DB::table('business_configuration_work')->where('configuration_id', $configurationId)->lockForUpdate()->firstOrFail();
             if (! in_array($work->status, ['scheduled', 'propagation_pending', 'blocked'], true)) {
@@ -380,7 +377,7 @@ class BusinessSettings
     {
         $this->authorize($actor);
 
-        return hash('sha256', json_encode([$actor->id, $actor->permission_version, $this->authorization->allows($actor, AdminPermission::BusinessSettingsManage), BusinessProfile::current()->version], JSON_THROW_ON_ERROR));
+        return hash('sha256', json_encode([$actor->id, $actor->permission_version, $this->authorization->allows($actor, AdminPermission::BusinessSettingsManage)], JSON_THROW_ON_ERROR));
     }
 
     /** @return array<string, mixed> */
@@ -454,13 +451,6 @@ class BusinessSettings
     {
         if ($expected !== $actual) {
             throw new ConflictHttpException('The configuration or draft changed. Refresh and preview again.');
-        }
-    }
-
-    private function requireFresh(User $actor, Request $request): void
-    {
-        if (! $this->freshAuthentication->isFresh($actor, $request)) {
-            throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
         }
     }
 

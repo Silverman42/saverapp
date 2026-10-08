@@ -104,7 +104,7 @@ test('independent fee payment review restores savings and valid unpaid debt once
     $this->post(route('reversals.approve', $reversal), $payload)->assertRedirect();
     $this->assertDatabaseCount('reversal_requests', 1);
     $this->assertDatabaseCount('ledger_posting_groups', 3);
-    $this->assertDatabaseCount('ledger_transaction_projections', 3);
+    expect(DB::table('ledger_transaction_projections')->where('projection_version', DB::table('ledger_projection_state')->value('active_version'))->count())->toBe(3);
     $this->assertDatabaseCount('fee_obligation_entries', 3);
     expect(app(FinancialCashPosition::class)->balance(LedgerAccountCode::FeeIncome))->toBe(0);
     expect(app(FeeConcessionPosition::class)->retainedSources($fee->fresh()))->toBe(['savings_kobo' => 0, 'external_kobo' => 0]);

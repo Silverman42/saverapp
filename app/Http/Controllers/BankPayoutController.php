@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BankPayoutAttempt;
 use App\Models\WithdrawalRequest;
 use App\Services\BankPayoutService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,8 @@ class BankPayoutController extends Controller
             'confirmed' => ['required', 'accepted']]);
         $service->start($request->user(), $withdrawal, $data['attempt_reference'], (int) $data['version'], $request);
 
+        Toast::success('Bank payout started', 'The withdrawal was sent for bank payout.');
+
         return redirect()->route('withdrawals.show', $withdrawal);
     }
 
@@ -25,6 +28,8 @@ class BankPayoutController extends Controller
     {
         $this->rejectUnknown($request, []);
         $service->check($request->user(), $attempt);
+
+        Toast::info('Payout checked', 'The latest bank payout status was retrieved.');
 
         return redirect()->route('withdrawals.show', WithdrawalRequest::query()->findOrFail($attempt->withdrawal_request_id));
     }

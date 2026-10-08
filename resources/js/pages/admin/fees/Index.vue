@@ -13,7 +13,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { dashboard, freshAuthentication } from '@/routes';
+import { dashboard } from '@/routes';
 import {
     isOperationReference,
     newOperationReference,
@@ -53,6 +53,7 @@ import {
 import { DatePicker } from '@/components/ui/date-picker';
 import InputError from '@/components/InputError.vue';
 import FeeSavingsApplicationDialog from '@/components/FeeSavingsApplicationDialog.vue';
+import { showToast } from '@/lib/flashToast';
 
 type Obligation = {
     id: number;
@@ -305,7 +306,6 @@ const storageKey = `fee-admin-action-v1-${page.props.auth.user.id}`;
 const pendingAction = ref<PendingAction | null>(null);
 const storageBlocked = ref(false);
 const actionMessage = ref('');
-const freshRequired = ref(false);
 const outcomeRequest = useHttp<Record<string, never>, AttemptResult>({});
 const prepareRequest = useHttp<AttemptInstructions, AttemptResult>({
     operation: 'waive',
@@ -338,7 +338,6 @@ function blockFeeAccess(): void {
     savingsObligation.value = null;
     showActionDialog.value = false;
     showSavingsDialog.value = false;
-    freshRequired.value = false;
     accessMessage.value =
         'You no longer have access to fees. Anything you started is still saved. Once access is back, reload this page.';
     focusAccessNotice();
@@ -476,7 +475,6 @@ function openAction(
     form.direction = 'reduce';
     form.attempt_reference = newOperationReference();
     actionMessage.value = '';
-    freshRequired.value = false;
     showActionDialog.value = true;
 }
 
@@ -548,7 +546,6 @@ function resolveAttempt(
         throw new Error('Saved attempt remains');
     pendingAction.value = null;
     form.resetAndClearErrors();
-    freshRequired.value = false;
     showActionDialog.value = false;
     actionMessage.value =
         result.status === 'cancelled'
@@ -559,8 +556,6 @@ function resolveAttempt(
 }
 
 function reportAttemptError(error: unknown): void {
-    freshRequired.value =
-        error instanceof HttpResponseError && error.response.status === 423;
     if (error instanceof HttpResponseError) {
         if (error.response.status === 403) {
             blockFeeAccess();
@@ -627,6 +622,11 @@ async function stopAction(): Promise<void> {
         }
         if (!resolveAttempt(result, pending))
             throw new Error('Cancellation not terminal');
+        showToast({
+            type: 'info',
+            title: 'Change stopped',
+            description: 'Nothing was saved. You can start again.',
+        });
     } catch (error) {
         reportAttemptError(error);
     }
@@ -676,7 +676,6 @@ async function submitAction(): Promise<void> {
     try {
         assertRetained(pending);
         Object.assign(prepareRequest, instructions(pending));
-        freshRequired.value = false;
         const prepared = await prepareRequest.post(
             prepareAttempt.url(pending.obligation_id),
         );
@@ -1524,11 +1523,6 @@ async function submitAction(): Promise<void> {
                             </p>
                         </div>
                     </MoreDetails>
-                    <Button v-if="freshRequired" as-child variant="outline"
-                        ><Link :href="freshAuthentication()"
-                            >Confirm it's you</Link
-                        ></Button
-                    >
                     <DialogFooter class="flex-wrap">
                         <Button
                             type="button"

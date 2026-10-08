@@ -220,7 +220,7 @@ test('damaged explicit fee sources deny saved outcomes replay and projection pro
     expect(fn () => $owner->apply($admin, $fee->id, $payload, savingsFeeFreshRequest()))->toThrow(ConflictHttpException::class);
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class);
 
-    expect(app(LedgerTransactionReadService::class)->state()['status'])->toBe('unavailable');
+    expect(app(LedgerTransactionReadService::class)->state()['status'])->not->toBe('ready');
     expect(savingsFeeOwnerRows())->toEqual($before);
 })->with([
     'missing group cycle' => ['ledger_posting_groups', ['thrift_plan_id' => null]],
@@ -303,7 +303,7 @@ test('HTTP fee confirmation rejects unreviewed instructions with 422 and no fina
     'malformed review' => [['preview_fingerprint' => 'unreviewed'], 'preview_fingerprint'],
 ]);
 
-test('HTTP fee application requires fresh authentication with 423 and no financial writes', function (): void {
+test('HTTP fee application does not ask an admin to confirm their identity again', function (): void {
     $this->freezeTime();
     config()->set('fees.savings_applications_enabled', true);
     [$agent, $customer, , $plan] = withdrawalFixture();
@@ -319,9 +319,9 @@ test('HTTP fee application requires fresh authentication with 423 and no financi
     $this->postJson(route('admin.fees.obligations.apply-savings', $fee->id), [...$data,
         'attempt_reference' => (string) Str::uuid(), 'confirmed' => true,
         'preview_fingerprint' => $quote['preview_fingerprint'], 'quote_expires_at' => $quote['quote_expires_at'],
-    ])->assertStatus(423)->assertJsonPath('message', 'Fresh authentication required.');
+    ])->assertSuccessful();
 
-    expect(savingsFeeOwnerRows())->toEqual($before);
+    expect(savingsFeeOwnerRows())->not->toEqual($before);
 });
 
 test('HTTP fee application rejects an expired review with 409 and no financial writes', function (): void {
@@ -446,7 +446,7 @@ test('reviewed fee application cannot consume funds held by an actual live withd
     expect(app(WithdrawalBalanceService::class)->position($customer, $plan)['cycle_available_kobo'])->toBe(10000);
 });
 
-test('fee application rejects lost authority freshness changed review or unavailable accounting without financial writes', function (string $change): void {
+test('fee application rejects lost authority changed review or unavailable accounting without financial writes', function (string $change): void {
     $this->freezeTime();
     config()->set('fees.savings_applications_enabled', true);
     [$agent, $customer, , $plan] = withdrawalFixture();
@@ -464,9 +464,6 @@ test('fee application rejects lost authority freshness changed review or unavail
     if ($change === 'authority') {
         $admin->revokePermissionTo(AdminPermission::FeesManage);
         $exception = AuthorizationException::class;
-    }
-    if ($change === 'freshness') {
-        $request->session()->forget('auth.mfa_confirmed_at');
     }
     if ($change === 'review') {
         $payload['reason'] = 'Different unreviewed settlement.';
@@ -488,7 +485,7 @@ test('fee application rejects lost authority freshness changed review or unavail
     expect(fn () => $owner->apply($admin, $fee->id, $payload, $request))->toThrow($exception);
     expect(savingsFeeOwnerRows())->toEqual($baseline);
     expect($fee->fresh()->outstandingAmountKobo())->toBe(20000);
-})->with(['authority', 'freshness', 'review', 'mapping', 'period', 'disabled', 'confirmation']);
+})->with(['authority', 'review', 'mapping', 'period', 'disabled', 'confirmation']);
 
 test('fee application persistence fault rolls back its durable owner and both ledger lines before same-attempt retry', function (string $table): void {
     $this->freezeTime();

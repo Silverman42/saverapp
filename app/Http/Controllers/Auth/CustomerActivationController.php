@@ -13,6 +13,7 @@ use App\Models\FeeSnapshot;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Support\PasswordPolicy;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -180,10 +181,7 @@ class CustomerActivationController extends Controller
 
         $business = BusinessProfile::current();
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => "Account activated successfully. Welcome to {$business->display_name}!",
-        ]);
+        Toast::success('Account activated', "Account activated successfully. Welcome to {$business->display_name}!");
 
         return redirect()->route('customer.dashboard');
     }

@@ -335,21 +335,16 @@ test('foreign and revoked operators cannot disclose or stop a prepared original 
     expect(durableFeeAttemptFinancialRows())->toEqual($before);
 });
 
-test('stopping a prepared instruction requires fresh authentication while its read-only status remains available', function (string $operation): void {
+test('stopping a prepared instruction does not ask an admin to confirm their identity again', function (string $operation): void {
     [$admin, $fee, $payload] = durableFeeAttemptFixture($operation);
     $body = durableFeeAttemptBody($operation, $payload);
     $this->actingAs($admin)->withSession(cashSession())->postJson(route('admin.fees.obligations.attempts.prepare', $fee->id), $body)->assertOk();
     $before = durableFeeAttemptFinancialRows();
-    $retained = DB::table('fee_action_attempts')->get()->all();
     $this->flushSession();
 
-    $this->postJson(route('admin.fees.obligations.attempts.cancel', $fee->id), $body)->assertStatus(423);
     $this->getJson(route('admin.fees.obligations.attempts.status', [$fee->id, $payload['attempt_reference']]))
         ->assertOk()->assertJsonPath('status', 'prepared');
-
-    expect(DB::table('fee_action_attempts')->get()->all())->toEqual($retained);
-    expect(durableFeeAttemptFinancialRows())->toEqual($before);
-    $this->withSession(cashSession())->postJson(route('admin.fees.obligations.attempts.cancel', $fee->id), $body)
+    $this->postJson(route('admin.fees.obligations.attempts.cancel', $fee->id), $body)
         ->assertOk()->assertJsonPath('status', 'cancelled');
     expect(durableFeeAttemptFinancialRows())->toEqual($before);
 })->with(['waive', 'apply_savings']);

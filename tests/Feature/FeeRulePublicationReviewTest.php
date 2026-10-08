@@ -124,23 +124,19 @@ test('altered reviewed publication terms or a forged token reject with 409 befor
     'forged token' => [['preview_fingerprint' => str_repeat('0', 64)]],
 ]);
 
-test('publication challenges expired or recovery authentication with 423 and no owner writes', function (array $session): void {
+test('publication does not ask an admin to confirm their identity again', function (): void {
     $this->freezeTime();
     $admin = publicationReviewActor();
     $payload = publicationReviewPayload();
     $review = $this->actingAs($admin)->postJson(route('admin.fees.registration.preview'), $payload)->assertOk()->json('preview_fingerprint');
     $baseline = publicationReviewRows();
 
-    $this->withSession(array_replace(publicationReviewSession(), $session))->postJson(route('admin.fees.registration.store'), [
-        ...$payload, 'confirmed' => true, 'preview_fingerprint' => $review,
-    ])->assertStatus(423);
+    assertToast($this->withSession(array_replace(publicationReviewSession(), ['auth.password_confirmed_at' => 1, 'auth.mfa_confirmed_at' => 1]))
+        ->post(route('admin.fees.registration.store'), [...$payload, 'confirmed' => true, 'preview_fingerprint' => $review])
+        ->assertRedirect()->assertSessionHasNoErrors(), 'success', 'Fee rule published');
 
-    expect(publicationReviewRows())->toBe($baseline);
-})->with([
-    'password expired' => [['auth.password_confirmed_at' => 1]],
-    'MFA expired' => [['auth.mfa_confirmed_at' => 1]],
-    'recovery authenticated' => [['recovery_code_used' => true]],
-]);
+    expect(publicationReviewRows())->not->toBe($baseline);
+});
 
 test('another authorized Admin cannot confirm the original actors publication review', function (): void {
     $this->freezeTime();
@@ -262,14 +258,14 @@ test('direct publication enforces confirmed reviews and native integer pricing i
     $request = Request::create('/admin/fees/registration', 'POST');
     $request->setLaravelSession(app('session')->driver());
     $request->session()->flush();
-    $request->session()->put($failure === 'freshness' ? [] : publicationReviewSession());
+    $request->session()->put(publicationReviewSession());
     $baseline = publicationReviewRows();
 
     expect(fn () => $owner->publishRule($admin, $terms, $request))
-        ->toThrow(in_array($failure, ['review', 'freshness'], true) ? ConflictHttpException::class : ValidationException::class);
+        ->toThrow($failure === 'review' ? ConflictHttpException::class : ValidationException::class);
 
     expect(publicationReviewRows())->toBe($baseline);
-})->with(['confirmation', 'review', 'freshness', 'money', 'rate', 'currency', 'reason']);
+})->with(['confirmation', 'review', 'money', 'rate', 'currency', 'reason']);
 
 test('retiring the current catalogue invalidates a pending publication review without new owner writes', function (): void {
     $this->freezeTime();

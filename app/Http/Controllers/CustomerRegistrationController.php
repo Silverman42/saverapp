@@ -7,6 +7,7 @@ use App\Models\CustomerProfile;
 use App\Services\CustomerRegistrationService;
 use App\Services\RegistrationFeeService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -120,10 +121,7 @@ class CustomerRegistrationController extends Controller
             ? 'Existing Customer registration resolved.'
             : 'Customer registered successfully. Invitation queued for delivery.';
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $message,
-        ]);
+        Toast::success('Customer registered', $message);
 
         return redirect()->route('customers.show', $result['customer']->customer_id);
     }

@@ -6,6 +6,7 @@ use App\Enums\CustomerStatus;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
 use App\Models\BusinessProfile;
+use App\Rules\InclusiveDateRange;
 use App\Services\BusinessSettings;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -33,7 +34,7 @@ class DashboardRequest extends FormRequest
         return [
             'period' => ['nullable', Rule::in(['today', 'week', 'month', 'custom'])],
             'from' => ['required_if:period,custom', 'nullable', 'date_format:Y-m-d'],
-            'to' => ['required_if:period,custom', 'nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'to' => ['required_if:period,custom', 'nullable', 'date_format:Y-m-d', new InclusiveDateRange($this->input('from'), BusinessProfile::current()->timezone)],
             'customer_status' => ['nullable', Rule::enum(CustomerStatus::class)],
             'plan_status' => ['nullable', Rule::enum(ThriftPlanStatus::class)],
             'agent_basis' => ['nullable', Rule::in(['current', 'recording'])],
@@ -53,17 +54,6 @@ class DashboardRequest extends FormRequest
             }
             if ($this->filled('agent') !== $this->filled('agent_basis')) {
                 $validator->errors()->add('agent', 'Choose both an Agent and an attribution basis.');
-            }
-            if ($validator->errors()->isNotEmpty()) {
-                return;
-            }
-            if ($this->input('period') === 'custom') {
-                $timezone = BusinessProfile::current()->timezone;
-                $from = CarbonImmutable::parse($this->string('from')->toString(), $timezone);
-                $to = CarbonImmutable::parse($this->string('to')->toString(), $timezone);
-                if ($from->diffInDays($to) > 365 || $to->toDateString() > CarbonImmutable::now($timezone)->toDateString()) {
-                    $validator->errors()->add('to', 'Choose at most 366 inclusive dates ending no later than today.');
-                }
             }
         });
     }

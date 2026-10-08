@@ -24,6 +24,7 @@ import {
     CardTitle,
     CardDescription,
 } from '@/components/ui/card';
+import { showToast } from '@/lib/flashToast';
 const props = defineProps<{
     customer: {
         reference: string;
@@ -114,6 +115,12 @@ async function submit(retryOriginal = false): Promise<void> {
             result.status === 'unchanged'
                 ? 'Nothing changed. The customer already has this agent.'
                 : 'Agent changed.';
+        showToast({
+            type: result.status === 'unchanged' ? 'info' : 'success',
+            title:
+                result.status === 'unchanged' ? 'No change' : 'Agent changed',
+            description: message.value,
+        });
         form.attempt_reference = crypto.randomUUID();
         review.value = null;
         router.reload();

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { RefreshCw, ScrollText, Search, SlidersHorizontal } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import FormSheet from '@/components/FormSheet.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
+import InputError from '@/components/InputError.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,10 @@ import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
 import { dashboard } from '@/routes';
 import { index, show } from '@/routes/admin/audit';
 import type { AuditResult } from '@/types/audit';
+const page = usePage();
+const dateRangeError = computed(
+    () => page.props.errors.from ?? page.props.errors.to,
+);
 const props = defineProps<{
     audit: AuditResult;
     filters: Record<string, string>;
@@ -150,6 +155,7 @@ function lookup(): void {
                     <Label for="audit-from">From</Label
                     ><DatePicker
                         id="audit-from"
+                        :error-message="dateRangeError"
                         v-model="filters.from"
                         aria-label="From date"
                     />
@@ -158,6 +164,7 @@ function lookup(): void {
                     <Label for="audit-to">To</Label
                     ><DatePicker
                         id="audit-to"
+                        :error-message="dateRangeError"
                         v-model="filters.to"
                         aria-label="To date"
                     />
@@ -176,6 +183,7 @@ function lookup(): void {
                         >{{ activeFilterCount }}</span
                     >
                 </Button>
+                <InputError class="basis-full" :message="dateRangeError" />
             </form>
 
             <FormSheet

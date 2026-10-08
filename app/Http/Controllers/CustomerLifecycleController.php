@@ -8,12 +8,12 @@ use App\Models\User;
 use App\Services\CustomerLifecycleEligibility;
 use App\Services\CustomerLifecycleService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Inertia\Inertia;
 
 class CustomerLifecycleController extends Controller
 {
@@ -49,7 +49,7 @@ class CustomerLifecycleController extends Controller
         if ($request->expectsJson()) {
             return response()->json($result);
         }
-        Inertia::flash('toast', ['type' => 'success', 'message' => $action === 'archive' ? 'Customer archived.' : 'Customer restored to Inactive.']);
+        Toast::success('Customer updated', $action === 'archive' ? 'Customer archived.' : 'Customer restored to Inactive.');
 
         return to_route('customers.status.edit', $customer);
     }

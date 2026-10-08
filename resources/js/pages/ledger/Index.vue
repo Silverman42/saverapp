@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, usePage, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import {
     ArrowRight,
@@ -10,6 +10,7 @@ import {
 import EmptyState from '@/components/EmptyState.vue';
 import FormSheet from '@/components/FormSheet.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
+import InputError from '@/components/InputError.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { dashboard } from '@/routes';
 import { resolve as resolveIncident } from '@/routes/ledger/incidents';
@@ -59,6 +60,10 @@ type Incident = {
     detected_at: string;
     recovered_at: string | null;
 };
+const page = usePage();
+const dateRangeError = computed(
+    () => page.props.errors.from ?? page.props.errors.to,
+);
 const props = defineProps<{
     incidents: Incident[];
     can_resolve_incidents: boolean;
@@ -223,12 +228,14 @@ function money(kobo: number): string {
             >
             <DatePicker
                 id="transactions-from"
+                :error-message="dateRangeError"
                 v-model="from"
                 aria-label="From date"
                 class="w-fit"
             />
             <DatePicker
                 id="transactions-to"
+                :error-message="dateRangeError"
                 v-model="to"
                 aria-label="To date"
                 class="w-fit"
@@ -243,6 +250,7 @@ function money(kobo: number): string {
                     >{{ activeFilterCount }}</span
                 >
             </Button>
+            <InputError class="basis-full" :message="dateRangeError" />
         </form>
 
         <FormSheet

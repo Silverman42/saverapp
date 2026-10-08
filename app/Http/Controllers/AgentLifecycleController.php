@@ -15,6 +15,7 @@ use App\Services\AgentOffboardingEligibility;
 use App\Services\AuthorizationService;
 use App\Services\FreshAuthenticationService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -138,7 +139,7 @@ class AgentLifecycleController extends Controller
         if ($request->expectsJson()) {
             return response()->json($result);
         }
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Agent lifecycle action recorded.']);
+        Toast::success('Action recorded', 'Agent lifecycle action recorded.');
 
         return to_route('agents.lifecycle.show', $agent);
     }

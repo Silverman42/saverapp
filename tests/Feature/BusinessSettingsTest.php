@@ -185,13 +185,13 @@ test('a competing publication makes the older draft stale', function () {
     expect(fn () => publishConfiguration($actor, $second))->toThrow(ConflictHttpException::class);
     expect(BusinessProfile::current()->display_name)->toBe('First');
 });
-test('stale fresh authentication blocks publication without changing settings', function () {
+test('publication does not ask an admin to confirm their identity again', function () {
     $actor = configurationManager();
     $draft = configurationDraft($actor, ['display_name' => 'New name']);
     $request = configurationRequest();
     $request->session()->put('auth.mfa_confirmed_at', now()->subMinutes(11)->timestamp);
-    expect(fn () => app(BusinessSettings::class)->publish($actor, $draft['draft_id'], 1, $draft['preview']['reference'], 'Reason', (string) Str::uuid(), $request))->toThrow(ConflictHttpException::class);
-    $this->assertDatabaseCount('business_configuration_versions', 1);
+    app(BusinessSettings::class)->publish($actor, $draft['draft_id'], 1, $draft['preview']['reference'], 'Reason', (string) Str::uuid(), $request);
+    $this->assertDatabaseCount('business_configuration_versions', 2);
 });
 test('revoked manager authority prevents publication using a retained actor object', function () {
     $actor = configurationManager();
@@ -236,6 +236,16 @@ test('unexpected top-level input is not silently discarded', function () {
     $this->actingAs($actor)->post(route('admin.business-settings.drafts.store'), ['operation_id' => (string) Str::uuid(), 'base_version' => 1,
         'patch' => ['display_name' => 'Valid'], 'business_id' => 'injected'])->assertSessionHasErrors('business_id');
     $this->assertDatabaseCount('business_configuration_drafts', 0);
+});
+test('saving a draft returns to the settings workspace even when the previous request was a logo image', function () {
+    $actor = configurationManager();
+    app(BusinessSettings::class)->import();
+
+    $response = $this->actingAs($actor)->from(route('business-logo.show', 'LOGO-REF'))
+        ->post(route('admin.business-settings.drafts.store'), ['operation_id' => (string) Str::uuid(), 'base_version' => 1, 'patch' => ['display_name' => 'Valid']])
+        ->assertRedirect(route('admin.business-settings.index'));
+    assertToast($response, 'success', 'Draft saved');
+    $this->assertDatabaseCount('business_configuration_drafts', 1);
 });
 test('scheduled configuration catches up once and does not take effect before due time', function () {
     $this->freezeTime();

@@ -196,7 +196,7 @@ test('fresh middleware returns 423 json response when requested by json client',
     $admin = User::factory()->admin()->withTwoFactor()->create();
 
     $this->actingAs($admin)
-        ->putJson(route('admin.access.permissions.update', $admin->id))
+        ->getJson(route('security.edit'))
         ->assertStatus(423)
         ->assertJson(['message' => 'Fresh authentication required.']);
 });

@@ -40,7 +40,6 @@ class FeeObligationService
 {
     public function __construct(
         protected AuthorizationService $authorizationService,
-        protected FreshAuthenticationService $freshAuthenticationService,
     ) {}
 
     /**
@@ -720,10 +719,6 @@ class FeeObligationService
         $admin = User::query()->whereKey($actorId)->lockForUpdate()->firstOrFail();
         if (! $this->authorizationService->allows($admin, AdminPermission::FeesManage)) {
             throw new AuthorizationException('Current authority to manage fees is required.');
-        }
-
-        if (! $this->freshAuthenticationService->isFresh($admin, $request)) {
-            throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
         }
 
         return $admin;

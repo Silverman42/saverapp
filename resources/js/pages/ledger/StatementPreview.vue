@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, usePage, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { FileText, ReceiptText } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import FormSheet from '@/components/FormSheet.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
+import InputError from '@/components/InputError.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { dashboard } from '@/routes';
 import { show as showCustomer } from '@/routes/customers';
@@ -38,6 +39,10 @@ type StatementLine = {
     fee_amount_kobo: number;
 };
 
+const page = usePage();
+const dateRangeError = computed(
+    () => page.props.errors.from ?? page.props.errors.to,
+);
 const props = defineProps<{
     customer: { id: string; name: string };
     preview: {
@@ -151,6 +156,7 @@ function money(kobo: number): string {
                 <Label for="statement-from">From</Label>
                 <DatePicker
                     id="statement-from"
+                    :error-message="dateRangeError"
                     v-model="from"
                     aria-label="From"
                     class="w-fit"
@@ -160,12 +166,14 @@ function money(kobo: number): string {
                 <Label for="statement-to">To</Label>
                 <DatePicker
                     id="statement-to"
+                    :error-message="dateRangeError"
                     v-model="to"
                     aria-label="To"
                     class="w-fit"
                 />
             </div>
             <Button type="submit" variant="outline">Show</Button>
+            <InputError class="basis-full" :message="dateRangeError" />
         </form>
 
         <EmptyState

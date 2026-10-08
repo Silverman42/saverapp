@@ -35,8 +35,8 @@ test('a positive fee withdrawal paid by bank transfer keeps its cycle fee verifi
         'preview_fingerprint' => $quote['preview_fingerprint'], 'quote_expires_at' => $quote['quote_expires_at'],
         'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
         'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'], 'instruction_attested' => true, 'confirmed' => true]);
-    $this->actingAs($admin)->withSession(bankSession())->post(route('withdrawals.approve', $withdrawal), [
-        'attempt_reference' => (string) Str::uuid(), 'version' => $withdrawal->version, 'confirmed' => true, 'decision_note' => 'Approved.'])->assertRedirect();
+    assertToast($this->actingAs($admin)->withSession(bankSession())->post(route('withdrawals.approve', $withdrawal), [
+        'attempt_reference' => (string) Str::uuid(), 'version' => $withdrawal->version, 'confirmed' => true, 'decision_note' => 'Approved.'])->assertRedirect(), 'success', 'Withdrawal approved');
 
     FinancialPeriod::factory()->create();
     $reference = startBankPayout($this, $admin, $withdrawal->fresh());
@@ -99,7 +99,7 @@ test('a fully returned bank transfer is compensated once by an independently app
         ->and(BankPayoutReturn::query()->where('status', 'consumed')->count())->toBe(2)
         ->and(app(WithdrawalBalanceService::class)->position($customer, $plan)['liability_kobo'])->toBe(200000);
     app(LedgerTransactionProjectionService::class)->rebuild();
-    expect(DB::table('ledger_transaction_projections')->where('type', 'reversal')->count())->toBe(1);
+    expect(DB::table('ledger_transaction_projections')->where('projection_version', DB::table('ledger_projection_state')->value('active_version'))->where('type', 'reversal')->count())->toBe(1);
 });
 
 test('a provider exception on the attempt blocks compensation', function (): void {

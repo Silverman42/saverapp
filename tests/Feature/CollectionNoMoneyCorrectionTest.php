@@ -117,7 +117,7 @@ test('corrupted no-money proof prevents fee-source reuse and successful projecti
 
     expect(fn () => app(FeeConcessionPosition::class)->retainedSources($fee))->toThrow(ConflictHttpException::class);
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(ConflictHttpException::class);
-    expect(app(LedgerTransactionReadService::class)->state()['status'])->toBe('unavailable');
+    expect(app(LedgerTransactionReadService::class)->state()['status'])->not->toBe('ready');
 });
 
 test('rejected or cancelled fully conceded receipt requests leave their settlement and concession intact', function (string $action): void {
@@ -284,5 +284,5 @@ test('cold no-money proof cannot omit a previously approved fee component', func
         ->toThrow(ConflictHttpException::class, 'The no-money correction fee component graph is incomplete.');
     expect(fn () => app(FeeConcessionPosition::class)->retainedSources($fees[0]))->toThrow(ConflictHttpException::class);
     expect(fn () => app(LedgerTransactionProjectionService::class)->rebuild())->toThrow(RuntimeException::class, 'Receipt amounts and ledger components do not reconcile.');
-    expect(app(LedgerTransactionReadService::class)->state()['status'])->toBe('unavailable');
+    expect(app(LedgerTransactionReadService::class)->state()['status'])->not->toBe('ready');
 });

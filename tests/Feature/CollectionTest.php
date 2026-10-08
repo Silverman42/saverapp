@@ -506,7 +506,7 @@ test('COL-AC-029/062: search outage and rebuild preserve one receipt, card and b
     $this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect();
     $receipt = CollectionReceipt::query()->sole();
     $batch = CollectionBatch::query()->sole();
-    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']);
+    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable', 'verified_at' => null]);
 
     expect(app(LedgerTransactionReadService::class)->search($customer->user, [])['status'])->toBe('unavailable')
         ->and(app(CollectionReadService::class)->card($plan->fresh())['paid_slots'])->toBe(1)
@@ -520,6 +520,20 @@ test('COL-AC-029/062: search outage and rebuild preserve one receipt, card and b
         ->and(CollectionReceipt::count())->toBe(1)
         ->and(DB::table('ledger_posting_groups')->where('event_type', 'cash_contribution')->count())->toBe(1)
         ->and($batch->receipts()->count())->toBe(1);
+});
+
+test('a collection posted while the projection was never verified promotes a verified projection', function (): void {
+    [$agent, $customer, $assignment, $plan, $today] = collectionFixture();
+    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable', 'verified_at' => null, 'ledger_group_watermark' => 0]);
+    $payload = collectionPayload($customer, $assignment, $plan, $today, '2000.00');
+    $payload['preview_fingerprint'] = $this->actingAs($agent)
+        ->postJson(route('customers.collections.preview', $customer->customer_id), $payload)
+        ->assertOk()->json('preview_fingerprint');
+
+    assertToast($this->post(route('customers.collections.store', $customer->customer_id), $payload)->assertRedirect(), 'success', 'Payment recorded');
+
+    expect(app(LedgerTransactionReadService::class)->state()['status'])->toBe('ready')
+        ->and(app(LedgerTransactionReadService::class)->balance($agent, $customer)['status'])->toBe('ready');
 });
 
 test('COL-AC-011/016: partial receipts fill exact residual before a plan completes', function (): void {

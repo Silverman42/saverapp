@@ -21,6 +21,7 @@ use App\Services\FeeRegisterReadService;
 use App\Services\FeeSavingsApplicationService;
 use App\Support\MoneyAmount;
 use App\Support\MoneyFormatter;
+use App\Support\Toast;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -77,7 +78,7 @@ class FeeOverviewController extends Controller
             request: $request,
         );
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Fee waiver recorded.']);
+        Toast::success('Fee waived', 'Fee waiver recorded.');
 
         return redirect()->route('admin.fees.index');
     }
@@ -101,7 +102,7 @@ class FeeOverviewController extends Controller
             request: $request,
         );
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Unsettled assessment correction recorded.']);
+        Toast::success('Correction recorded', 'Unsettled assessment correction recorded.');
 
         return redirect()->route('admin.fees.index');
     }

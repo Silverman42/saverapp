@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FeeObligation;
 use App\Services\FeeRefundService;
 use App\Support\MoneyAmount;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,8 @@ class FeeRefundController extends Controller
             throw ValidationException::withMessages(['amount_ngn' => $exception->getMessage()]);
         }
         $service->authorizeRefund($request->user(), $obligation, $data['refund_reference'], $data['kind'], $amount, $data['reason'], $request);
+
+        Toast::success('Refund authorized', 'The fee refund is ready for cash disbursement.');
 
         return redirect()->route('cash-disbursements.index');
     }

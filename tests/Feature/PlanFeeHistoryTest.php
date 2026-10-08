@@ -361,6 +361,7 @@ test('current reassignment removes former Agent fee history access and preserves
 
 test('actual withdrawal fee history retains the original payment and an independent savings concession', function (bool $fixed): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00:00', 'Africa/Lagos'));
+    DB::table('cash_method_versions')->update(['effective_at' => now()->subDay()]);
     config()->set('fees.refunds_enabled', true);
     [$admin, $customer, $plan, $withdrawal] = cashPaymentFixture(true, $fixed);
     LedgerAccount::query()->update(['mapping_status' => 'mapped']);

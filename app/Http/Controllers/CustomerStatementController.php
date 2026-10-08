@@ -6,10 +6,12 @@ use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\FinancialArtifact;
+use App\Rules\InclusiveDateRange;
 use App\Services\ResourceScopeService;
 use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -28,11 +30,7 @@ class CustomerStatementController extends Controller
         ]);
         $from = $dates['from'] ?? $today->startOfMonth()->toDateString();
         $to = $dates['to'] ?? $today->toDateString();
-        $start = CarbonImmutable::createFromFormat('!Y-m-d', $from, $timezone);
-        $end = CarbonImmutable::createFromFormat('!Y-m-d', $to, $timezone);
-        if ($start === null || $end === null || $start->greaterThan($end) || $start->diffInDays($end) > 365) {
-            abort(422, 'Choose an inclusive statement period of at most 366 dates.');
-        }
+        Validator::make(['to' => $to], ['to' => [new InclusiveDateRange($from, $timezone, endsByToday: false)]])->validate();
 
         $preview = $statements->preview($request->user(), $profile, $from, $to, $timezone);
         AuditEvent::record('ledger.statement_previewed', CustomerProfile::class, $profile->id, $profile->customer_id, [

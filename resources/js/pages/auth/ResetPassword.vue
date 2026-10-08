@@ -8,7 +8,6 @@ import {
     required,
     sameAs,
 } from '@vuelidate/validators';
-import { toast } from 'vue-sonner';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import TextLink from '@/components/TextLink.vue';
@@ -23,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
 import { request, update } from '@/routes/password';
+import { showToast } from '@/lib/flashToast';
 
 defineOptions({
     layout: {
@@ -88,7 +88,11 @@ const toggleRecoveryMode = (): void => {
 };
 
 const handleSuccess = (): void => {
-    toast.success('Your password has been successfully reset.');
+    showToast({
+        type: 'success',
+        title: 'Password reset',
+        description: 'Your password has been successfully reset.',
+    });
 };
 </script>
 

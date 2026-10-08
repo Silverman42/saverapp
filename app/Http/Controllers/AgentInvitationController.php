@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Services\InvitationManagementService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Inertia\Inertia;
 
 class AgentInvitationController extends Controller
 {
@@ -36,10 +36,7 @@ class AgentInvitationController extends Controller
 
         $service->resend($agentProfile, $request->user(), $validated['reason'] ?? null);
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Agent invitation resent successfully.',
-        ]);
+        Toast::success('Invitation resent', 'Agent invitation resent successfully.');
 
         return back();
     }
@@ -75,10 +72,7 @@ class AgentInvitationController extends Controller
             $validated['reason'],
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Agent email corrected and new invitation issued.',
-        ]);
+        Toast::success('Email corrected', 'Agent email corrected and new invitation issued.');
 
         return back();
     }
@@ -108,10 +102,7 @@ class AgentInvitationController extends Controller
 
         $service->cancel($agentProfile, $request->user(), $validated['reason']);
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Agent invitation cancelled.',
-        ]);
+        Toast::success('Invitation cancelled', 'Agent invitation cancelled.');
 
         return back();
     }

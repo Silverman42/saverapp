@@ -13,9 +13,9 @@ use App\Models\PermissionGrantHistory;
 use App\Models\User;
 use App\Services\AuthorizationRestrictionService;
 use App\Services\AuthorizationService;
-use App\Services\FreshAuthenticationService;
 use App\Services\PermissionManagementService;
 use App\Services\StaffRecoveryService;
+use App\Support\Toast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +27,7 @@ class AdminAccessController extends Controller
     /**
      * Display the Admin access directory.
      */
-    public function index(Request $request, AuthorizationService $authService, FreshAuthenticationService $freshService): Response
+    public function index(Request $request, AuthorizationService $authService): Response
     {
         $currentAdmin = $request->user();
         $canManageAdmins = $currentAdmin ? $authService->allows($currentAdmin, AdminPermission::AdminsManage) : false;
@@ -88,7 +88,6 @@ class AdminAccessController extends Controller
         return Inertia::render('admin/access/Index', [
             'admins' => $admins,
             'canManage' => $canManageAdmins,
-            'isFresh' => $canManageAdmins && $currentAdmin !== null && $freshService->isFresh($currentAdmin, $request),
             'inviteForm' => Inertia::optional(fn (): ?array => $canManageAdmins ? AdminInvitationController::formProps() : null),
             'filters' => [
                 'search' => $search,
@@ -106,7 +105,6 @@ class AdminAccessController extends Controller
         User $admin,
         AuthorizationService $authService,
         AuthorizationRestrictionService $restrictionService,
-        FreshAuthenticationService $freshService,
     ): Response {
         if ($admin->user_type !== UserType::Admin) {
             abort(404, 'Administrator not found.');
@@ -183,8 +181,6 @@ class AdminAccessController extends Controller
                 'created_at' => $h->created_at?->toIso8601String(),
             ]);
 
-        $isFresh = $currentAdmin ? $freshService->isFresh($currentAdmin, $request) : false;
-
         return Inertia::render('admin/access/Show', [
             'admin' => [
                 'id' => $admin->id,
@@ -211,7 +207,6 @@ class AdminAccessController extends Controller
             'invitation' => $canManage && ! $isSelf && $admin->account_state === AccountState::Invited
                 ? $this->latestInvitation($admin)
                 : null,
-            'isFresh' => $isFresh,
             'isSelf' => $isSelf,
         ]);
     }
@@ -271,10 +266,7 @@ class AdminAccessController extends Controller
             expectedPermissionVersion: $expectedVersion,
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Administrator permissions updated successfully.'),
-        ]);
+        Toast::success('Permissions updated', __('Administrator permissions updated successfully.'));
 
         return redirect()->route('admin.access.show', $admin->id);
     }

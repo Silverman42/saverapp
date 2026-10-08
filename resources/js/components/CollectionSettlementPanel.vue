@@ -21,6 +21,7 @@ import {
 import { DatePicker } from '@/components/ui/date-picker';
 import { store, show } from '@/routes/collection-batches/settlements';
 import { link } from '@/routes/collection-settlements/files';
+import { showToast } from '@/lib/flashToast';
 
 const props = defineProps<{
     batchId: number;
@@ -96,6 +97,11 @@ async function submit(): Promise<void> {
         posted.value = true;
         sheetOpen.value = false;
         message.value = 'Bank deposit saved. Review the batch again.';
+        showToast({
+            type: 'success',
+            title: 'Deposit saved',
+            description: message.value,
+        });
         router.reload();
     } catch (error) {
         if (

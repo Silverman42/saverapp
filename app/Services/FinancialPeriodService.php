@@ -18,7 +18,6 @@ class FinancialPeriodService
 {
     public function __construct(
         private AuthorizationService $authorization,
-        private FreshAuthenticationService $freshAuthentication,
         private CollectionReadService $collections,
     ) {}
 
@@ -45,13 +44,10 @@ class FinancialPeriodService
             throw new ConflictHttpException('A reason is required for this transition.');
         }
 
-        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $month, $action, $version, $reason, $request): FinancialPeriod {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $month, $action, $version, $reason): FinancialPeriod {
             $currentActor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
             if (! $this->authorization->allows($currentActor, AdminPermission::FinancialPeriodsManage)) {
                 throw new AuthorizationException;
-            }
-            if (! $this->freshAuthentication->isFresh($currentActor, $request)) {
-                throw new AuthorizationException('Fresh authentication is required.');
             }
 
             $business = BusinessProfile::query()->lockForUpdate()->sole();

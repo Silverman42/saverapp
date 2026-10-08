@@ -529,7 +529,7 @@ test('reviewed charges reject expired edited forged and changed savings reviews 
     $this->assertDatabaseCount('fee_obligations', 0);
 })->with(['expiry', 'reason', 'fingerprint', 'reservation']);
 
-test('FEE-AC-025: deduction requires its separate current permission fresh authentication and explicit reviewed confirmation', function (): void {
+test('FEE-AC-025: deduction requires its separate current permission and explicit reviewed confirmation', function (): void {
     [$customer, , $admin, , $payload] = manualChargeReviewedFixture($this, 'deduction', 'deduction');
     $admin->givePermissionTo(AdminPermission::FeesManage);
     $admin->revokePermissionTo(AdminPermission::DeductionsManage);
@@ -538,8 +538,6 @@ test('FEE-AC-025: deduction requires its separate current permission fresh authe
     $previewInputs = array_intersect_key($payload, array_flip(['customer_id', 'plan_id', 'category_id', 'customer_version', 'plan_version', 'reason', 'mode']));
     $this->postJson(route('admin.charges.preview'), $previewInputs)->assertForbidden();
     $admin->givePermissionTo(AdminPermission::DeductionsManage);
-    $this->withSession(['auth.fresh_until' => 0, 'auth.password_confirmed_at' => 0, 'auth.mfa_confirmed_at' => 0]);
-    $this->postJson(route('admin.charges.assess'), $payload)->assertForbidden();
     $this->withSession(manualChargeSession())->postJson(route('admin.charges.assess'), [...$payload, 'confirmed' => false])
         ->assertUnprocessable()->assertJsonValidationErrors('confirmed');
     $unreviewed = $payload;

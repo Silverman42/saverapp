@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\CustomerProfile;
 use App\Services\CustomerInvitationManagementService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 
 class CustomerInvitationController extends Controller
 {
@@ -42,10 +42,7 @@ class CustomerInvitationController extends Controller
             reason: $validated['reason'] ?? null,
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Customer invitation resent successfully.',
-        ]);
+        Toast::success('Invitation resent', 'Customer invitation resent successfully.');
 
         return redirect()->back();
     }
@@ -83,10 +80,7 @@ class CustomerInvitationController extends Controller
             reason: $validated['reason'] ?? null,
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Customer email corrected and new invitation dispatched.',
-        ]);
+        Toast::success('Email corrected', 'Customer email corrected and new invitation dispatched.');
 
         return redirect()->back();
     }
@@ -122,10 +116,7 @@ class CustomerInvitationController extends Controller
             reason: $validated['reason'],
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Customer invitation cancelled successfully.',
-        ]);
+        Toast::success('Invitation cancelled', 'Customer invitation cancelled successfully.');
 
         return redirect()->back();
     }

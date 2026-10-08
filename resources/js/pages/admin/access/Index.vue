@@ -29,7 +29,6 @@ import {
     index as adminAccessIndex,
     show as adminAccessShow,
 } from '@/routes/admin/access';
-import { create as invitationsCreate } from '@/routes/admin/access/invitations';
 import { dashboard } from '@/routes';
 
 type Admin = {
@@ -59,7 +58,6 @@ type InviteFormData = {
 const props = defineProps<{
     admins: PaginatedAdmins;
     canManage: boolean;
-    isFresh?: boolean;
     inviteForm?: InviteFormData | null;
     filters: Filters;
 }>();
@@ -146,15 +144,9 @@ const openInvite = (): void => {
             description="See who has admin access and what they can do."
         >
             <template v-if="canManage" #actions>
-                <Button v-if="isFresh" @click="openInvite">
+                <Button @click="openInvite">
                     <MailPlus class="size-4" />
                     Invite admin
-                </Button>
-                <Button v-else as-child>
-                    <Link :href="invitationsCreate()">
-                        <MailPlus class="size-4" />
-                        Invite admin
-                    </Link>
                 </Button>
             </template>
         </PageHeader>
@@ -312,7 +304,7 @@ const openInvite = (): void => {
         </DirectoryPanel>
 
         <FormSheet
-            v-if="canManage && isFresh"
+            v-if="canManage"
             v-model:open="inviteOpen"
             title="Invite admin"
             description="They set their own password and sign-in code."

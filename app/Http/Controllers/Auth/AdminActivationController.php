@@ -11,6 +11,7 @@ use App\Models\BusinessProfile;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Support\PasswordPolicy;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -164,10 +165,7 @@ class AdminActivationController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Password created successfully. Please configure mandatory two-factor authentication.',
-        ]);
+        Toast::success('Password created', 'Password created successfully. Please configure mandatory two-factor authentication.');
 
         return redirect()->route('two-factor.enrolment');
     }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CashExecution;
 use App\Models\WithdrawalRequest;
 use App\Services\CashExecutionService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,8 @@ class CashExecutionController extends Controller
             'evidence' => ['required', 'string', 'min:1', 'max:500'], 'confirmed' => ['required', 'accepted']]);
         $service->start($request->user(), $withdrawal, $data['execution_reference'], (int) $data['version'], $data['evidence'], $request);
 
+        Toast::success('Cash payout started', 'The withdrawal is ready for cash handoff.');
+
         return redirect()->route('withdrawals.show', $withdrawal);
     }
 
@@ -25,6 +28,8 @@ class CashExecutionController extends Controller
     {
         $evidence = $this->evidence($request);
         $service->recordHandoff($request->user(), $execution, $evidence, $request);
+
+        Toast::success('Cash handed off', 'The withdrawal handoff was recorded.');
 
         return $this->show($execution);
     }
@@ -34,6 +39,8 @@ class CashExecutionController extends Controller
         $evidence = $this->evidence($request);
         $service->confirmNoHandoff($request->user(), $execution, $evidence, $request);
 
+        Toast::warning('Marked not delivered', 'The cash payout was recorded as not delivered.');
+
         return $this->show($execution);
     }
 
@@ -42,6 +49,8 @@ class CashExecutionController extends Controller
         $this->rejectUnknown($request, ['confirmed']);
         $request->validate(['confirmed' => ['required', 'accepted']]);
         $service->confirmReceipt($request->user(), $execution);
+
+        Toast::success('Receipt acknowledged', 'The cash payout was acknowledged.');
 
         return $this->show($execution);
     }

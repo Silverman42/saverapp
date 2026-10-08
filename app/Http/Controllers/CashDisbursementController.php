@@ -11,6 +11,7 @@ use App\Services\AuthorizationService;
 use App\Services\CashDisbursementService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyAmount;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -48,6 +49,8 @@ class CashDisbursementController extends Controller
         $data = $this->startData($request, false);
         $service->start($request->user(), $data['execution_reference'], $refund, $refund->amount_kobo, $data['evidence'], $request);
 
+        Toast::success('Refund started', 'The fee refund is ready for cash handoff.');
+
         return redirect()->route('cash-disbursements.index');
     }
 
@@ -61,6 +64,8 @@ class CashDisbursementController extends Controller
         }
         $service->start($request->user(), $data['execution_reference'], null, $amount, $data['evidence'], $request);
 
+        Toast::success('Draw started', 'The earnings draw is ready for cash handoff.');
+
         return redirect()->route('cash-disbursements.index');
     }
 
@@ -70,6 +75,8 @@ class CashDisbursementController extends Controller
         $data = $request->validate(['evidence' => ['required', 'string', 'max:1000'], 'delivered' => ['required', 'boolean'], 'confirmed' => ['required', 'accepted']]);
         $service->handoff($request->user(), $execution, (bool) $data['delivered'], $data['evidence'], $request);
 
+        Toast::success('Cash handed off', 'The disbursement handoff was recorded.');
+
         return redirect()->route('cash-disbursements.index');
     }
 
@@ -78,6 +85,8 @@ class CashDisbursementController extends Controller
         $this->strict($request, ['confirmed']);
         $request->validate(['confirmed' => ['required', 'accepted']]);
         $service->acknowledge($request->user(), $execution, $request);
+
+        Toast::success('Receipt acknowledged', 'The cash disbursement was acknowledged.');
 
         return redirect()->route('cash-disbursements.index');
     }

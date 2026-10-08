@@ -48,7 +48,7 @@ test('verified noncash savings uses its closed custody account without creating 
             ->where('ledger_accounts.code', 'agent_receivable_ngn')->count())->toBe(0);
     }
     app(LedgerTransactionProjectionService::class)->rebuild();
-    expect(DB::table('ledger_transaction_projections')->where('customer_profile_id', $customer->id)->where('type', 'contribution')->count())->toBe(1);
+    expect(DB::table('ledger_transaction_projections')->where('projection_version', DB::table('ledger_projection_state')->value('active_version'))->where('customer_profile_id', $customer->id)->where('type', 'contribution')->count())->toBe(1);
     $retry = [...$payload, 'attempt_reference' => (string) Str::uuid()];
     $this->postJson(route('customers.collections.preview', $customer->customer_id), $retry)->assertConflict();
     $this->assertDatabaseCount('collection_receipts', 1);

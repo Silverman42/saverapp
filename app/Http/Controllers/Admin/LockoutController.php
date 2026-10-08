@@ -11,6 +11,7 @@ use App\Models\AuthenticationLock;
 use App\Models\User;
 use App\Services\AuthenticationAbuseService;
 use App\Services\UnlockState;
+use App\Support\Toast;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -130,10 +131,7 @@ class LockoutController extends Controller
 
         $abuseService->manualUnlock($user, $request->user(), $category, $verificationMethod, $reason, $request->validated('restriction_token'));
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Account restriction cleared successfully.'),
-        ]);
+        Toast::success('Account unlocked', __('Account restriction cleared successfully.'));
 
         return back();
     }

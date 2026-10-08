@@ -22,6 +22,7 @@ use App\Services\CollectionService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\ResourceScopeService;
 use App\Support\PlatformBlocked;
+use App\Support\Toast;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -149,6 +150,8 @@ class CollectionController extends Controller
         $receipt = $service->record($request->user(),
             $this->customer($scope, $request, $customer), $request->validated());
 
+        Toast::success('Payment recorded', 'The collection was recorded on the plan.');
+
         return redirect()->route('collections.show', $receipt);
     }
 
@@ -269,6 +272,8 @@ class CollectionController extends Controller
                     'correlation_reference' => 'annotation:'.$annotation->id]
             );
         }, attempts: 3);
+
+        Toast::success('Note added', 'The thrift card note was saved.');
 
         return redirect()->route('plans.card', $plan);
     }

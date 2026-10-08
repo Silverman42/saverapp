@@ -6,6 +6,7 @@ use App\Enums\AccountState;
 use App\Models\User;
 use App\Services\ProfileManagementService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -66,7 +67,7 @@ class ProfileManagementController extends Controller
         }
 
         $service->updateCustomer($actor, $profile, $this->profileInput($request), $request->file('photo'));
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Customer profile updated.']);
+        Toast::success('Profile updated', 'Customer profile updated.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -120,7 +121,7 @@ class ProfileManagementController extends Controller
         }
 
         $service->updateAgent($actor, $profile, $this->profileInput($request), $request->file('photo'));
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Agent profile updated.']);
+        Toast::success('Profile updated', 'Agent profile updated.');
 
         return to_route('agents.show', $profile->agent_id);
     }

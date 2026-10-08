@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\SessionManagerService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Inertia\Inertia;
 
 class SessionController extends Controller
 {
@@ -46,10 +46,7 @@ class SessionController extends Controller
             return back()->withErrors(['session' => __('The selected session could not be found or has already expired.')]);
         }
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Device signed out successfully.'),
-        ]);
+        Toast::success('Device signed out', __('Device signed out successfully.'));
 
         return back();
     }
@@ -64,10 +61,7 @@ class SessionController extends Controller
             $request->session()->getId(),
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('All other active sessions have been signed out.'),
-        ]);
+        Toast::success('Sessions signed out', __('All other active sessions have been signed out.'));
 
         return back();
     }
@@ -84,6 +78,8 @@ class SessionController extends Controller
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        Toast::success('Signed out everywhere', 'All sessions and trusted devices were signed out.');
 
         return redirect()->route('login')->with('status', __('All sessions and trusted devices have been signed out everywhere.'));
     }

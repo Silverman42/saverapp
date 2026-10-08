@@ -26,7 +26,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { isOperationReference } from '@/lib/operation-reference';
-import { dashboard, freshAuthentication } from '@/routes';
+import { dashboard } from '@/routes';
 import {
     index,
     publish,
@@ -599,11 +599,6 @@ async function submitCharge(): Promise<void> {
                             >Try again</Button
                         >
                     </div>
-                    <Link
-                        :href="freshAuthentication()"
-                        class="text-primary w-fit text-sm underline"
-                        >Confirm it's you</Link
-                    >
                     <MoreDetails>
                         <p class="text-muted-foreground text-xs">
                             Reference {{ pendingReference }}

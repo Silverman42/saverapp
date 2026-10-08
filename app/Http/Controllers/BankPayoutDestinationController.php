@@ -9,6 +9,7 @@ use App\Models\CustomerProfile;
 use App\Services\AuthorizationService;
 use App\Services\BankPayoutDestinationService;
 use App\Services\WithdrawalMethodRegistry;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -51,12 +52,16 @@ class BankPayoutDestinationController extends Controller
         $profile = CustomerProfile::query()->where('customer_id', $customer)->firstOrFail();
         $service->register($request->user(), $profile, $data);
 
+        Toast::success('Destination added', 'The bank account is waiting for verification.');
+
         return redirect()->route('customers.payout-destinations.index', $profile->customer_id);
     }
 
     public function verify(CustomerPayoutDestination $destination, Request $request, BankPayoutDestinationService $service): RedirectResponse
     {
         $service->verify($request->user(), $destination, $this->note($request), $request);
+
+        Toast::success('Destination verified', 'The bank account can receive payouts.');
 
         return $this->back($destination);
     }
@@ -65,12 +70,16 @@ class BankPayoutDestinationController extends Controller
     {
         $service->reject($request->user(), $destination, $this->note($request), $request);
 
+        Toast::success('Destination rejected', 'The bank account cannot receive payouts.');
+
         return $this->back($destination);
     }
 
     public function revoke(CustomerPayoutDestination $destination, Request $request, BankPayoutDestinationService $service): RedirectResponse
     {
         $service->revoke($request->user(), $destination, $this->note($request), $request);
+
+        Toast::success('Destination revoked', 'The bank account can no longer receive payouts.');
 
         return $this->back($destination);
     }

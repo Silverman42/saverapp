@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\CustomerNameCorrectionService;
 use App\Services\PhoneChangeService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -45,12 +46,9 @@ class ProfileIdentityController extends Controller
             reason: $validated['reason'],
             expectedVersion: (int) $validated['version'],
         );
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $correction === null
+        Toast::success('Name updated', $correction === null
                 ? 'Customer name corrected before activation.'
-                : 'Name correction sent to the Customer for confirmation.',
-        ]);
+                : 'Name correction sent to the Customer for confirmation.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -74,7 +72,7 @@ class ProfileIdentityController extends Controller
             'version' => ['required', 'integer', 'min:1'],
         ]);
         $service->changeOwnName($actor, $profile, $validated['name'], $validated['reason'], (int) $validated['version']);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Your Customer name was updated.']);
+        Toast::success('Name updated', 'Your Customer name was updated.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -183,14 +181,11 @@ class ProfileIdentityController extends Controller
         $profile = $this->customerProfile($scope, $actor, $customer);
         $this->assertOnlyFields($request, []);
         $resolved = $service->resolve($actor, $profile, $correction, 'accepted');
-        Inertia::flash('toast', [
-            'type' => $resolved->status === 'accepted' ? 'success' : 'error',
-            'message' => match ($resolved->status) {
-                'accepted' => 'Your name was updated.',
-                'expired' => 'This name correction has expired.',
-                default => 'This name correction is no longer valid.',
-            },
-        ]);
+        Toast::show($resolved->status === 'accepted' ? 'success' : 'error', 'Name correction', match ($resolved->status) {
+            'accepted' => 'Your name was updated.',
+            'expired' => 'This name correction has expired.',
+            default => 'This name correction is no longer valid.',
+        });
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -207,7 +202,7 @@ class ProfileIdentityController extends Controller
         $profile = $this->customerProfile($scope, $actor, $customer);
         $this->assertOnlyFields($request, []);
         $service->resolve($actor, $profile, $correction, 'rejected');
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'The proposed name correction was rejected.']);
+        Toast::success('Correction rejected', 'The proposed name correction was rejected.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -224,7 +219,7 @@ class ProfileIdentityController extends Controller
         $profile = $this->customerProfile($scope, $actor, $customer);
         $this->assertOnlyFields($request, []);
         $service->cancel($actor, $profile, $correction);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'The name correction was cancelled.']);
+        Toast::success('Correction cancelled', 'The name correction was cancelled.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -251,7 +246,7 @@ class ProfileIdentityController extends Controller
             'version' => ['required', 'integer', 'min:1'],
         ]);
         $service->changeCustomerPhone($actor, $profile, $validated['phone'], (string) ($validated['reason'] ?? ''), (int) $validated['version']);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Customer phone number updated.']);
+        Toast::success('Phone updated', 'Customer phone number updated.');
 
         return to_route('customers.show', $profile->customer_id);
     }
@@ -271,7 +266,7 @@ class ProfileIdentityController extends Controller
             'version' => ['required', 'integer', 'min:1'],
         ]);
         $service->changeAgentPhone($actor, $profile, $validated['phone'], (string) ($validated['reason'] ?? ''), (int) $validated['version']);
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Agent phone number updated.']);
+        Toast::success('Phone updated', 'Agent phone number updated.');
 
         return to_route('agents.show', $profile->agent_id);
     }

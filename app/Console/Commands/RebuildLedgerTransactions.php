@@ -2,13 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Models\LedgerPostingGroup;
 use App\Services\LedgerTransactionProjectionService;
 use App\Support\PlatformBlocked;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 #[Signature('ledger:rebuild-transactions {--if-stale : Rebuild only when the projection is unavailable or behind the ledger}')]
@@ -20,7 +18,7 @@ class RebuildLedgerTransactions extends Command
      */
     public function handle(LedgerTransactionProjectionService $projections): int
     {
-        if ($this->option('if-stale') && ! $this->stale()) {
+        if ($this->option('if-stale') && ! $projections->isBehind()) {
             $this->info('The transaction projection is current.');
 
             return self::SUCCESS;
@@ -40,13 +38,5 @@ class RebuildLedgerTransactions extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function stale(): bool
-    {
-        $state = DB::table('ledger_projection_state')->where('id', 1)->first();
-
-        return $state === null || $state->status !== 'ready'
-            || (int) $state->ledger_group_watermark < (int) (LedgerPostingGroup::query()->max('id') ?? 0);
     }
 }

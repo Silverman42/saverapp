@@ -231,11 +231,8 @@ class FeeSavingsApplicationService
         }
         $hash = $this->fingerprint([$actor->id, $obligationId, $data]);
 
-        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $data, $request, $hash): LedgerPostingGroup {
+        return app(PlatformGuard::class)->transaction('financial', function () use ($actor, $obligationId, $data, $hash): LedgerPostingGroup {
             $admin = $this->authorize($actor);
-            if (! app(FreshAuthenticationService::class)->isFresh($admin, $request)) {
-                throw new ConflictHttpException('Fresh password and authenticator confirmation is required.');
-            }
             if (! Schema::hasTable('fee_savings_applications')) {
                 throw new ConflictHttpException('Reviewed savings fee application is unavailable.');
             }

@@ -11,6 +11,7 @@ use App\Services\FeeSavingsApplicationService;
 use App\Services\ManualChargeService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyAmount;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,8 @@ class ManualChargeController extends Controller
         $service->publish($request->user(), ['publication_reference' => $data['publication_reference'], 'category_key' => $data['category_key'], 'kind' => $data['kind'],
             'purpose' => $data['purpose'], 'customer_description' => $data['customer_description'], 'amount_kobo' => $amount], $request);
 
+        Toast::success('Category published', 'The charge category is available for new charges.');
+
         return redirect()->route('admin.charges.index');
     }
 
@@ -77,6 +80,8 @@ class ManualChargeController extends Controller
         if ($request->expectsJson()) {
             return response()->json(['status' => 'confirmed', 'charge_reference' => $data['operation_reference']]);
         }
+
+        Toast::success('Charge recorded', 'The charge was posted to the Customer.');
 
         return redirect()->route('admin.charges.index', ['customer' => $customer->customer_id]);
     }

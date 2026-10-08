@@ -3,7 +3,6 @@ import { Form, Head } from '@inertiajs/vue3';
 import { reactive } from 'vue';
 import { useVuelidate } from '@vuelidate/core';
 import { email as emailValidator, required } from '@vuelidate/validators';
-import { toast } from 'vue-sonner';
 import InputError from '@/components/InputError.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
 import { email } from '@/routes/password';
+import { showToast } from '@/lib/flashToast';
 
 defineOptions({
     layout: {
@@ -35,9 +35,12 @@ const rules = {
 const v$ = useVuelidate(rules, formState);
 
 const handleSuccess = (): void => {
-    toast.success(
-        "If an account exists for this email, we've sent password reset instructions.",
-    );
+    showToast({
+        type: 'success',
+        title: 'Check your email',
+        description:
+            "If an account exists for this email, we've sent password reset instructions.",
+    });
 };
 </script>
 

@@ -233,21 +233,23 @@ test('self-management is prohibited when updating permissions', function () {
         ->assertForbidden();
 });
 
-test('permission update requires unexpired fresh authentication', function () {
+test('permission update does not ask an admin to confirm their identity again', function () {
     $admin = User::factory()->admin()->withTwoFactor()->create();
     $admin->givePermissionTo(AdminPermission::AdminsManage->value);
 
     $otherAdmin = User::factory()->admin()->withTwoFactor()->create();
 
-    // Stale/missing fresh authentication redirects to fresh-authentication
     $this->actingAs($admin)
         ->put(route('admin.access.permissions.update', $otherAdmin->id), [
             'permissions' => [AdminPermission::AuditView->value],
-            'reason' => 'Missing fresh auth',
+            'reason' => 'No re-confirmation needed',
             'expected_permission_version' => $otherAdmin->permission_version,
             'confirmed' => true,
         ])
-        ->assertRedirect(route('fresh-authentication'));
+        ->assertSessionHasNoErrors()
+        ->assertInertiaFlash('toast.title', 'Permissions updated');
+
+    expect($otherAdmin->fresh()->hasDirectPermission(AdminPermission::AuditView->value))->toBeTrue();
 });
 
 test('validation rejects empty reason, length over 500, and unconfirmed submission', function () {

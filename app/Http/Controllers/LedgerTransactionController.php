@@ -9,17 +9,20 @@ use App\Models\BusinessProfile;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\LedgerPostingGroup;
+use App\Rules\InclusiveDateRange;
 use App\Services\AuthorizationService;
 use App\Services\LedgerIntegrityIncidentService;
 use App\Services\LedgerTransactionReadService;
 use App\Services\ResourceScopeService;
 use App\Services\ReversalCapabilityRegistry;
+use App\Support\Toast;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -40,13 +43,9 @@ class LedgerTransactionController extends Controller
             'page_size' => ['nullable', 'integer', Rule::in([25, 50, 100])],
             'cursor' => ['nullable', 'string', 'max:2048'],
         ]);
-        $filters['from'] ??= $today->subDays(365)->toDateString();
+        $filters['from'] ??= $today->subDays(29)->toDateString();
         $filters['to'] ??= $today->toDateString();
-        $start = CarbonImmutable::createFromFormat('!Y-m-d', $filters['from'], $timezone);
-        $end = CarbonImmutable::createFromFormat('!Y-m-d', $filters['to'], $timezone);
-        if ($start === null || $end === null || $start->greaterThan($end) || $start->diffInDays($end) > 365) {
-            abort(422, 'Choose an inclusive date range of at most 366 dates.');
-        }
+        Validator::make($filters, ['to' => [new InclusiveDateRange($filters['from'], $timezone, endsByToday: false)]])->validate();
 
         $result = $transactions->search($request->user(), $filters);
         AuditEvent::record('ledger.transactions_viewed', 'ledger_transaction', null, null, [
@@ -71,6 +70,8 @@ class LedgerTransactionController extends Controller
     {
         $data = $request->validate(['note' => ['required', 'string', 'min:1', 'max:500', 'not_regex:/[<>\x00-\x08\x0B\x0C\x0E-\x1F]/'], 'confirmed' => ['required', 'accepted']]);
         $incidents->resolve($request->user(), $reference, $data['note'], $request);
+
+        Toast::success('Incident resolved', 'The ledger integrity incident was resolved.');
 
         return redirect()->route('transactions.index');
     }

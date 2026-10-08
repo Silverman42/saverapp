@@ -152,6 +152,12 @@
     --sidebar-border: #e3ebf0;
     --sidebar-ring: #08aceb;
     --sidebar: #ffffff;
+    --toast-background: #04121c;
+    --toast-foreground: #f3f8fb;
+    --toast-muted-foreground: #c4d6e2;
+    --toast-border: #12283a;
+    --toast-button: #0e2536;
+    --toast-button-hover: #16344a;
 }
 
 .dark {

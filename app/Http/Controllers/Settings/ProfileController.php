@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
+use App\Support\Toast;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -46,6 +47,8 @@ class ProfileController extends Controller
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        Toast::success('Account deleted', 'Your account was deleted.');
 
         return redirect('/');
     }

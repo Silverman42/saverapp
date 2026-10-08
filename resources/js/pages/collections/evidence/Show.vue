@@ -28,6 +28,7 @@ import { show as reviewResult } from '@/routes/collection-evidence/reviews';
 import { index as collections } from '@/routes/collections';
 import { create } from '@/routes/customers/collections';
 import type { PaymentEvidence } from '@/types/collection-evidence';
+import { showToast } from '@/lib/flashToast';
 
 const props = defineProps<{
     evidence: PaymentEvidence;
@@ -150,6 +151,11 @@ async function submit(): Promise<void> {
         confirmed.value = false;
         sheetOpen.value = false;
         message.value = 'Review saved.';
+        showToast({
+            type: 'success',
+            title: 'Review saved',
+            description: 'Your proof of payment review was recorded.',
+        });
         router.reload();
     } catch (error) {
         if (

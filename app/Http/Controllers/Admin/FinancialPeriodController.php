@@ -8,6 +8,7 @@ use App\Models\BusinessProfile;
 use App\Models\FinancialPeriod;
 use App\Services\AuthorizationService;
 use App\Services\FinancialPeriodService;
+use App\Support\Toast;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,6 +46,8 @@ class FinancialPeriodController extends Controller
         ]);
         $periods->transition($request->user(), $data['month'], 'open', null, trim($data['reason']), $request);
 
+        Toast::success('Period opened', 'The financial month is open for posting.');
+
         return redirect()->route('admin.financial-periods.index');
     }
 
@@ -66,6 +69,8 @@ class FinancialPeriodController extends Controller
             'reason' => ['required', 'string', 'min:1', 'max:500'],
         ]);
         $periods->transition($request->user(), $month, $action, (int) $data['version'], trim($data['reason']), $request);
+
+        Toast::success($action === 'close' ? 'Period closed' : 'Period reopened', $action === 'close' ? 'No more cash can be posted to this month.' : 'The financial month is open for posting again.');
 
         return redirect()->route('admin.financial-periods.index');
     }

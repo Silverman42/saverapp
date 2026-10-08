@@ -25,6 +25,7 @@ import type {
     CollectionMethod,
     PaymentEvidence,
 } from '@/types/collection-evidence';
+import { showToast } from '@/lib/flashToast';
 
 const props = defineProps<{
     customer: {
@@ -156,6 +157,11 @@ async function upload(): Promise<void> {
             return;
         }
         accept(result);
+        showToast({
+            type: 'success',
+            title: 'Proof uploaded',
+            description: 'The proof of payment was saved.',
+        });
     } catch (error) {
         uncertain.value = !(
             error instanceof HttpResponseError &&

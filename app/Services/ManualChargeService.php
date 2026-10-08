@@ -321,8 +321,7 @@ class ManualChargeService
     private function authorize(User $actor, string $kind, Request $request): User
     {
         $actor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
-        abort_unless(app(AuthorizationService::class)->allows($actor, $kind === 'manual_fee' ? AdminPermission::FeesManage : AdminPermission::DeductionsManage)
-            && app(FreshAuthenticationService::class)->isFresh($actor, $request), 403);
+        abort_unless(app(AuthorizationService::class)->allows($actor, $kind === 'manual_fee' ? AdminPermission::FeesManage : AdminPermission::DeductionsManage), 403);
 
         return $actor;
     }

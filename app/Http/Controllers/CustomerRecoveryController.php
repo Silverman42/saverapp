@@ -11,6 +11,7 @@ use App\Services\AgentEligibilityService;
 use App\Services\AuthorizationService;
 use App\Services\CustomerRecoveryService;
 use App\Services\ResourceScopeService;
+use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -74,7 +75,7 @@ class CustomerRecoveryController extends Controller
     public function activate(Request $request, string $recovery, CustomerRecoveryService $service): RedirectResponse
     {
         $service->activate($recovery, $request->only(['token', 'password', 'password_confirmation']));
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Account recovery complete. Sign in with your new email and password.']);
+        Toast::success('Recovery complete', 'Account recovery complete. Sign in with your new email and password.');
 
         return to_route('login');
     }

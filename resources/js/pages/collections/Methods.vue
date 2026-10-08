@@ -24,6 +24,7 @@ import {
 } from '@/lib/operation-reference';
 import { dashboard } from '@/routes';
 import { manage, publicationResult, store } from '@/routes/collection-methods';
+import { showToast } from '@/lib/flashToast';
 
 type Method = {
     id: number;
@@ -203,6 +204,11 @@ async function publish(): Promise<void> {
     try {
         await form.post(store.url());
         message.value = `${form.label} was published.`;
+        showToast({
+            type: 'success',
+            title: 'Method published',
+            description: message.value,
+        });
         sheetOpen.value = false;
         clearAttempt();
         form.publication_reference = newOperationReference();

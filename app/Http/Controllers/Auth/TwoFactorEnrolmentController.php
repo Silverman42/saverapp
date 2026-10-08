@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Services\AuthenticationAbuseService;
 use App\Services\TwoFactorService;
 use App\Support\IdentityNormalizer;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -93,10 +94,7 @@ class TwoFactorEnrolmentController extends Controller
 
         $request->session()->forget('setup.two_factor_attempts');
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Authenticator app verified. Please save your recovery codes.'),
-        ]);
+        Toast::success('Authenticator verified', __('Authenticator app verified. Please save your recovery codes.'));
 
         return back()->with('recoveryCodes', $codes);
     }
@@ -116,10 +114,7 @@ class TwoFactorEnrolmentController extends Controller
             $user
         );
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => __('Two-factor authentication setup is complete.'),
-        ]);
+        Toast::success('Two-factor enabled', __('Two-factor authentication setup is complete.'));
 
         return redirect()->route('dashboard');
     }

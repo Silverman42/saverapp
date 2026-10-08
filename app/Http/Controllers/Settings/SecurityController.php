@@ -10,6 +10,7 @@ use App\Models\AuditEvent;
 use App\Models\User;
 use App\Services\SessionManagerService;
 use App\Support\PasswordPolicy;
+use App\Support\Toast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
@@ -60,7 +61,7 @@ class SecurityController extends Controller
                 ['changed_fields' => ['password']], $request->user(), ['executor' => self::class]);
         });
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
+        Toast::success('Password updated', __('Use your new password the next time you sign in.'));
 
         return back();
     }
