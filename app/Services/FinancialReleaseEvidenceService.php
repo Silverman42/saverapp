@@ -18,6 +18,9 @@ class FinancialReleaseEvidenceService
 
     public const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 
+    /** Ledger accounts only the non-cash collection capabilities depend on. */
+    public const NONCASH_LEDGER_ACCOUNTS = ['business_bank_ngn', 'payment_clearing_ngn'];
+
     public function dependencyHash(): string
     {
         return AuditProjection::digest([
@@ -63,6 +66,48 @@ class FinancialReleaseEvidenceService
         }, attempts: 3);
     }
 
+    /**
+     * Ledger account codes that are not yet mapped, optionally including the non-cash collection accounts.
+     *
+     * @return list<string>
+     */
+    public function unmappedLedgerAccounts(bool $includeNoncash = false): array
+    {
+        return LedgerAccount::query()->where('mapping_status', '!=', 'mapped')
+            ->when(! $includeNoncash, fn ($query) => $query->whereNotIn('code', self::NONCASH_LEDGER_ACCOUNTS))
+            ->orderBy('code')->get()->map(fn (LedgerAccount $account): string => $account->code->value)->all();
+    }
+
+    /**
+     * Mark the given ledger accounts as mapped on behalf of an authorized actor.
+     *
+     * @param  list<string>  $codes
+     */
+    public function mapLedgerAccounts(User $actor, array $codes): int
+    {
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $codes): int {
+            $actor = User::query()->whereKey($actor->id)->lockForUpdate()->firstOrFail();
+            abort_unless(app(AuthorizationService::class)->allows($actor, AdminPermission::BusinessSettingsManage), 403);
+            $accounts = LedgerAccount::query()->whereIn('code', $codes)->where('mapping_status', '!=', 'mapped')->lockForUpdate()->get();
+            $accounts->each(fn (LedgerAccount $account) => $account->update(['mapping_status' => 'mapped']));
+
+            return $accounts->count();
+        }, attempts: 3);
+    }
+
+    /** Whether the latest evidence for a capability and owner role is accepted, intact, unexpired and bound to the current release. */
+    public function hasCurrentEvidence(string $capability, string $role): bool
+    {
+        $latest = DB::table('financial_release_evidence')->where('capability', $capability)->where('owner_role', $role)->orderByDesc('version')->first();
+
+        return $latest !== null && $this->isCurrent($latest, $this->dependencyHash());
+    }
+
+    public function nextVersion(string $capability, string $role): int
+    {
+        return (int) DB::table('financial_release_evidence')->where('capability', $capability)->where('owner_role', $role)->max('version') + 1;
+    }
+
     /** @return array{state: string, owner: string, blocker: string, version: int} */
     public function check(string $capability): array
     {
@@ -74,7 +119,7 @@ class FinancialReleaseEvidenceService
     {
         $rows = Schema::hasTable('financial_release_evidence') ? DB::table('financial_release_evidence')->orderBy('version')->get()->groupBy('capability') : collect();
         $hash = $this->dependencyHash();
-        $mappingUnavailable = LedgerAccount::query()->whereNotIn('code', ['business_bank_ngn', 'payment_clearing_ngn'])->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
+        $mappingUnavailable = LedgerAccount::query()->whereNotIn('code', self::NONCASH_LEDGER_ACCOUNTS)->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
         $methodUnavailable = false;
         try {
             app(CashMethodCatalogue::class)->version('withdrawal');
@@ -135,6 +180,11 @@ class FinancialReleaseEvidenceService
         ]));
     }
 
+    private function isCurrent(\stdClass $row, string $hash): bool
+    {
+        return $row->state === 'accepted' && $this->hasValidEvidence($row) && hash_equals($hash, $row->dependency_hash) && ! now()->parse($row->valid_until)->isPast();
+    }
+
     /** @param array<string, \stdClass> $rows
      * @param  list<string>  $additionalBlockers
      * @return array{state: string, owner: string, blocker: string, version: int}
@@ -145,7 +195,7 @@ class FinancialReleaseEvidenceService
         $version = 1;
         foreach (self::ROLES as $role) {
             $evidence = $rows[$role] ?? null;
-            if ($evidence === null || $evidence->state !== 'accepted' || ! $this->hasValidEvidence($evidence) || ! hash_equals($hash, $evidence->dependency_hash) || now()->parse($evidence->valid_until)->isPast()) {
+            if ($evidence === null || ! $this->isCurrent($evidence, $hash)) {
                 $missing[] = $role;
             } else {
                 $version = max($version, $evidence->version);

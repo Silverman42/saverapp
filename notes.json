@@ -1,0 +1,21 @@
+{
+    "defaults": {
+        "finance_mapping": "",
+        "delegated_permissions": "",
+        "retention_key_custody": "",
+        "operations": "",
+        "acceptance": "",
+        "enablement": ""
+    },
+    "capabilities": {
+        "plan_creation": {},
+        "collections": {},
+        "payout_execution": {},
+        "reversal_posting": {},
+        "statement_pdf": {},
+        "report_exports": {},
+        "manual_charges": {},
+        "fee_refunds": {},
+        "cash_disbursements": {}
+    }
+}
