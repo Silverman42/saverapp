@@ -132,6 +132,8 @@ class BusinessSettings
      */
     public function saveDraft(User $actor, array $patch, int $base, string $operation, ?int $draftId = null, ?int $revision = null): array
     {
+        $this->assertTextEncoding($patch);
+
         return $this->operation($actor, 'save', $operation, compact('patch', 'base', 'draftId', 'revision'), function (User $current) use ($patch, $base, $draftId, $revision): array {
             $snapshot = $this->resolve(true);
             abort_if($snapshot['configuration_id'] === null, 503, 'Import the trusted business configuration first.');
@@ -420,6 +422,27 @@ class BusinessSettings
 
             return $result;
         }, attempts: 3);
+    }
+
+    /**
+     * Reject malformed text before it reaches operation hashing, so it fails as a field error rather than an encoding fault.
+     *
+     * @param  array<string, mixed>  $patch
+     */
+    private function assertTextEncoding(array $patch): void
+    {
+        $errors = [];
+        foreach ($patch as $code => $value) {
+            if (! mb_check_encoding((string) $code, 'UTF-8')) {
+                throw ValidationException::withMessages(['patch' => 'Use plain text without markup or control characters.']);
+            }
+            if (is_string($value) && ! mb_check_encoding($value, 'UTF-8')) {
+                $errors[$code] = 'Use plain text without markup or control characters.';
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     private function lockedProfile(): BusinessProfile

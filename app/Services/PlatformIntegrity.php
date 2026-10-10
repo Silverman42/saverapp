@@ -28,6 +28,8 @@ class PlatformIntegrity
         'configuration' => 'configuration',
         'projection_watermarks' => 'work',
         'recovery_leases' => 'work',
+        'recovery_attempts' => 'work',
+        'statements' => 'statements',
         'identity' => 'identity',
     ];
 
@@ -175,6 +177,30 @@ class PlatformIntegrity
     private function recoveryLeases(Connection $db): int
     {
         return $db->table('platform_recovery_work')->where('state', 'running')->whereNull('lease_owner')->count();
+    }
+
+    private function recoveryAttempts(Connection $db): int
+    {
+        $overrun = $db->table('platform_recovery_work')->whereIn('state', ['queued', 'retry_scheduled', 'running'])
+            ->whereColumn('cycle_attempts', '>', 'max_attempts')->count();
+        $unleased = $db->table('platform_recovery_work')->where('state', 'running')->whereNull('lease_expires_at')->count();
+        $orphaned = $db->table('platform_recovery_attempts as attempts')->leftJoin('platform_recovery_work as work', 'work.id', '=', 'attempts.work_id')
+            ->whereNull('work.id')->count();
+
+        return $overrun + $unleased + $orphaned;
+    }
+
+    private function statements(Connection $db): int
+    {
+        $incomplete = $db->table('financial_artifacts')->where('status', 'ready')->where(fn ($query) => $query->whereNull('artifact_hash')
+            ->orWhereNull('issued_at')->orWhereNull('storage_path'))->count();
+        $malformed = $db->table('financial_artifacts')->where(fn ($query) => $query->whereRaw('LENGTH(snapshot_hash) <> 64')
+            ->orWhere(fn ($hash) => $hash->whereNotNull('artifact_hash')->whereRaw('LENGTH(artifact_hash) <> 64')))->count();
+        $mislinked = $db->table('financial_artifacts as artifacts')->join('financial_artifacts as superseded', 'superseded.id', '=', 'artifacts.supersedes_artifact_id')
+            ->where(fn ($query) => $query->whereColumn('artifacts.kind', '!=', 'superseded.kind')
+                ->orWhereRaw('COALESCE(artifacts.customer_profile_id, 0) <> COALESCE(superseded.customer_profile_id, 0)'))->count();
+
+        return $incomplete + $malformed + $mislinked;
     }
 
     private function identity(Connection $db): int

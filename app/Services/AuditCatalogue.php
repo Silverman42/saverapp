@@ -78,6 +78,12 @@ class AuditCatalogue
         $safe = [];
         $protected = [];
         foreach ($payload as $key => $value) {
+            if ($this->containsSecretMaterial((string) $key, $value)) {
+                if ($legacy) {
+                    continue;
+                }
+                throw new InvalidArgumentException('Prohibited audit content.');
+            }
             if (in_array($key, self::FIELDS[$family], true)) {
                 $this->validateValue($value);
                 $safe[$key] = $value;
@@ -106,6 +112,51 @@ class AuditCatalogue
         return ['safe' => $safe, 'protected' => $protected, 'category' => $family,
             'retention' => in_array($family, ['auth', 'security'], true) ? 'security_evidence'
                 : ($family === 'audit' || str_ends_with($eventType, '_viewed') ? 'protected_access' : 'business_evidence')];
+    }
+
+    /**
+     * Detect credentials, card numbers, key material and error dumps carried in the value of an otherwise allowed field.
+     * Reference, identifier, hash and phone fields, and international (+) numbers, are excluded from the card check.
+     */
+    private function containsSecretMaterial(string $key, mixed $value): bool
+    {
+        if (is_array($value)) {
+            foreach ($value as $itemKey => $item) {
+                if ($this->containsSecretMaterial(is_string($itemKey) ? $itemKey : $key, $item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        if (! is_string($value)) {
+            return false;
+        }
+        if (preg_match('/-----BEGIN [A-Z ]*(PRIVATE KEY|CERTIFICATE)-----|\bBearer\s+[A-Za-z0-9._~+\/-]{16,}|\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.|Stack trace:|SQLSTATE\[|\bdata:[a-z]+\/[a-z0-9.+-]+;base64,|(?:^|\s)#\d+ \/[^\s]+\.php\(\d+\)/i', $value)) {
+            return true;
+        }
+        if (preg_match('/(?:_reference|_id|_hash|digest|reference|phone|phone_normalized)\z/', $key)) {
+            return false;
+        }
+        preg_match_all('/(?<![\d+-])\d(?:[ -]?\d){12,18}(?![\d-])/', $value, $matches);
+        foreach ($matches[0] as $candidate) {
+            if ($this->passesLuhn(preg_replace('/\D/', '', $candidate))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function passesLuhn(string $digits): bool
+    {
+        $sum = 0;
+        foreach (array_reverse(str_split($digits)) as $index => $digit) {
+            $value = (int) $digit * ($index % 2 === 1 ? 2 : 1);
+            $sum += $value > 9 ? $value - 9 : $value;
+        }
+
+        return strlen($digits) >= 13 && $sum % 10 === 0;
     }
 
     private function validateValue(mixed $value, int $depth = 0): void
