@@ -45,7 +45,7 @@ class PlatformCatalogue
 
     public function isLocalRecoveryJob(object $job): bool
     {
-        if ($job instanceof ProjectAuditEvent || $job instanceof MaterializeNotificationIntent) {
+        if ($job instanceof ProjectAuditEvent || $job instanceof MaterializeNotificationIntent || $job instanceof RenderFinancialArtifact) {
             return true;
         }
         $family = self::LOCAL_INTENT_JOBS[$job::class] ?? null;

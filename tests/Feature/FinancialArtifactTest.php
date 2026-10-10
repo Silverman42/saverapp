@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Jobs\RenderFinancialArtifact;
 use App\Models\FinancialArtifact;
 use App\Models\LedgerAccount;
 use App\Models\User;
@@ -8,6 +9,7 @@ use App\Services\FinancialArtifactService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\StatementPreviewService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -41,6 +43,20 @@ test('issued statement freezes verified source values and renders an encrypted p
     $url = URL::temporarySignedRoute('financial-artifacts.download', now()->addMinutes(15), ['artifact' => $artifact, 'viewer' => $customer->user_id]);
     $this->get($url)->assertOk()->assertHeader('Content-Type', 'application/pdf');
     $this->actingAs(User::factory()->customer()->create())->get($url)->assertNotFound();
+});
+
+test('queued render job publishes the issued statement through the platform job middleware', function (): void {
+    [, $customer] = withdrawalFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $payload = ['operation_reference' => (string) Str::uuid(), 'from' => now()->startOfMonth()->toDateString(), 'to' => now()->toDateString(), 'confirmed' => true];
+    $payload['preview_fingerprint'] = app(StatementPreviewService::class)->preview($customer->user, $customer, $payload['from'], $payload['to'], 'Africa/Lagos')['preview_fingerprint'];
+    $this->actingAs($customer->user)->post(route('customers.statements.issue', $customer->customer_id), $payload)->assertRedirect();
+    $artifact = FinancialArtifact::query()->sole();
+
+    Bus::dispatchNow(new RenderFinancialArtifact($artifact->id, $artifact->render_generation));
+
+    expect([$artifact->fresh()->status, $artifact->fresh()->failure_code])->toBe(['ready', null]);
+    expect(Crypt::decryptString(Storage::disk('local')->get($artifact->fresh()->storage_path)))->toStartWith('%PDF');
 });
 
 test('statement rejects stale ledger future dates changed replay and another Customer scope', function (): void {
