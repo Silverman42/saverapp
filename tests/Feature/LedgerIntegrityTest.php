@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Jobs\ProjectAuditEvent;
 use App\Models\AgentProfile;
 use App\Models\BusinessProfile;
 use App\Models\CustomerAssignment;
@@ -16,6 +17,7 @@ use App\Services\LedgerTransactionReadService;
 use App\Services\ReversalService;
 use App\Services\StatementPreviewService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -197,9 +199,13 @@ test('the interactive statement preview is a read that takes no row locks', func
         $queries[] = strtolower($query->sql);
     });
 
+    Queue::fake([ProjectAuditEvent::class]);
+
     $this->actingAs($agent)->get(route('customers.statements.preview', $customer->customer_id))->assertOk();
 
-    expect(collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'for update'))->all())->toBe([]);
+    $locks = collect($queries)->filter(fn (string $sql): bool => str_contains($sql, 'for update'));
+    expect($locks->reject(fn (string $sql): bool => str_contains($sql, 'audit_projection_state'))->all())->toBe([]);
+    Queue::assertPushed(ProjectAuditEvent::class, 1);
 });
 
 test('a denied transaction read is audited without revealing whether the record exists', function (): void {
