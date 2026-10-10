@@ -60,6 +60,7 @@ function cashPercentageOwnerRows(): array
 
 test('later actual payouts retain a once per cycle withdrawal fee after descriptive revision', function (string $model, int $firstFee, int $laterFee, string $disposition = 'normal', bool $largePercentage = false): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00', 'Africa/Lagos'));
+    DB::table('cash_method_versions')->update(['effective_at' => now()->subDay()]);
     config()->set(['collections.enabled' => true, 'collections.settlement_enabled' => true, 'fees.refunds_enabled' => true, 'withdrawals.cash_compensation_enabled' => true]);
     [$admin, $customer, $agentProfile] = $this->createLifecycleFixture();
     FinancialPeriod::factory()->create(['month' => '2026-10-01']);
@@ -312,6 +313,7 @@ test('later actual payouts retain a once per cycle withdrawal fee after descript
 
 test('a real partial payout consumes its reservation once without subtracting it twice from available savings', function (): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00', 'Africa/Lagos'));
+    DB::table('cash_method_versions')->update(['effective_at' => now()->subDay()]);
     config()->set(['collections.enabled' => true, 'collections.settlement_enabled' => true]);
     [$admin, $customer, $agentProfile] = $this->createLifecycleFixture();
     FinancialPeriod::factory()->create(['month' => '2026-10-01']);
@@ -395,6 +397,7 @@ test('a real partial payout consumes its reservation once without subtracting it
 
 test('a real open cycle retains capacity after its final date and full acknowledged payout until explicit settled closure', function (string $state, string $amount, int $feeKobo, bool $correctClosed = false): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 12:00', 'Africa/Lagos'));
+    DB::table('cash_method_versions')->update(['effective_at' => now()->subDay()]);
     config()->set(['collections.enabled' => true, 'collections.settlement_enabled' => true]);
     [$admin, $customer, $agentProfile] = $this->createLifecycleFixture();
     FinancialPeriod::factory()->create(['month' => '2026-10-01']);
