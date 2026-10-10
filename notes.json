@@ -8,6 +8,8 @@
         "enablement": ""
     },
     "capabilities": {
+        "collection_cash": {},
+        "withdrawal_cash": {},
         "plan_creation": {},
         "collections": {},
         "payout_execution": {},
@@ -16,6 +18,10 @@
         "report_exports": {},
         "manual_charges": {},
         "fee_refunds": {},
-        "cash_disbursements": {}
+        "cash_disbursements": {},
+        "retention_restore": {},
+        "collection_transfer": {},
+        "collection_pos": {},
+        "collection_other": {}
     }
 }
