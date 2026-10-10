@@ -296,8 +296,8 @@ class WithdrawalService
             }, attempts: 3);
         } catch (AuthorizationException|ConflictHttpException $exception) {
             AuditEvent::record('withdrawal.decision_denied', WithdrawalRequest::class, $request->id, $request->withdrawal_id,
-                ['attempt_reference' => $data['attempt_reference'], 'source' => $action, 'state' => $request->state,
-                    'version' => $request->version, 'customer_profile_id' => $request->customer_profile_id,
+                ['attempt_reference' => $data['attempt_reference'], 'source' => $action,
+                    'version' => (int) $data['version'], 'customer_profile_id' => $request->customer_profile_id,
                     'outcome' => $exception instanceof AuthorizationException ? 'denied' : 'conflict'], $actor,
                 ['executor' => self::class, 'required_permission' => $action === 'cancel' ? null : 'withdrawals.review']);
             throw $exception;

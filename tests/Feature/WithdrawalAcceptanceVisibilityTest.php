@@ -150,6 +150,24 @@ test('WDL-AC-038 denied and conflicting attempts are audited without changing th
         ->and($withdrawal->fresh()->state)->toBe('pending_review')->and($withdrawal->fresh()->version)->toBe(1);
 });
 
+test('retrying a denied decision after the request changed replays the denial without an identity conflict', function (): void {
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    enableFixtureMethod();
+    $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);
+    $reviewer = visibilityReviewer();
+    $staleDecision = ['attempt_reference' => (string) Str::uuid(), 'version' => 9, 'confirmed' => true, 'decision_note' => 'Reviewed'];
+
+    $this->actingAs($reviewer)->withSession(cashSession())->post(route('withdrawals.approve', $withdrawal), $staleDecision)->assertConflict();
+    app(WithdrawalService::class)->decide($agent, $withdrawal, 'cancel', ['attempt_reference' => (string) Str::uuid(), 'version' => 1,
+        'confirmed' => true, 'internal_reason' => 'Changed instruction'], request());
+    $this->actingAs($reviewer)->withSession(cashSession())->post(route('withdrawals.approve', $withdrawal), $staleDecision)->assertConflict();
+
+    expect(DB::table('audit_events')->where('event_type', 'withdrawal.decision_denied')->count())->toBe(1)
+        ->and(DB::table('audit_events')->where('event_type', 'audit.identity_conflict')->exists())->toBeFalse()
+        ->and(DB::table('security_cases')->exists())->toBeFalse()
+        ->and($withdrawal->fresh()->state)->toBe('cancelled');
+});
+
 test('WDL-AC-040 statements include only the posted withdrawal and never the pending request', function (): void {
     [$admin, $customer, $plan, $withdrawal] = cashPaymentFixture();
     $preview = fn (): array => app(StatementPreviewService::class)->preview($admin, $customer, now()->subMonth()->toDateString(), now()->addDay()->toDateString(), 'Africa/Lagos');
