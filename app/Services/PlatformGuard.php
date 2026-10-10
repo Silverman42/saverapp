@@ -24,7 +24,7 @@ class PlatformGuard
             || ($mode === PlatformMode::FinancialFreeze && $operation === 'financial')) {
             throw new PlatformBlocked('platform_operation_paused', $mode);
         }
-        if ($operation === 'financial' && app(PlatformIntegrity::class)->blockedDomains() !== []) {
+        if ($operation === 'financial' && app(PlatformIntegrity::class)->blockedDomains($lock) !== []) {
             throw new PlatformBlocked('platform_integrity_failed', PlatformMode::FinancialFreeze);
         }
     }

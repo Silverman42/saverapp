@@ -68,12 +68,15 @@ class PlatformIntegrity
 
     /**
      * The latest live run's failed domains; empty when no live run has failed since the last pass.
+     * Inside a financial transaction this must be a locking read: a plain read would fix the MySQL
+     * REPEATABLE READ snapshot before the owner's row locks are taken.
      *
      * @return list<string>
      */
-    public function blockedDomains(): array
+    public function blockedDomains(bool $sharedLock = false): array
     {
-        $latest = DB::table('platform_integrity_runs')->where('scope', 'live')->orderByDesc('id')->first(['status', 'failed_domains']);
+        $query = DB::table('platform_integrity_runs')->where('scope', 'live')->orderByDesc('id');
+        $latest = ($sharedLock ? $query->sharedLock() : $query)->first(['status', 'failed_domains']);
 
         return $latest === null || $latest->status === 'passed' ? [] : json_decode($latest->failed_domains, true, flags: JSON_THROW_ON_ERROR);
     }
