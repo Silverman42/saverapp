@@ -19,12 +19,12 @@ use App\Services\CustomerReassignmentService;
 use App\Services\ReversalService;
 use App\Services\WithdrawalMethodRegistry;
 use App\Services\WithdrawalService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\CreatesLifecycleCustomers;
 
 uses(CreatesLifecycleCustomers::class);
@@ -160,7 +160,7 @@ test('invitation authority follows handover without changing its token expiry or
     app(CustomerReassignmentService::class)->execute($this->admin, $this->customer, reassignmentInput($this->customer, $this->admin, $this->replacement));
     expect($invitation->fresh()->getAttributes())->toBe($before)->and(DB::table('fee_snapshots')->where('customer_profile_id', $this->customer->id)->get()->all())->toEqual($fees);
     app(CustomerInvitationManagementService::class)->verifyAuthority($this->replacement->user, $this->customer->fresh());
-    expect(fn () => app(CustomerInvitationManagementService::class)->verifyAuthority($this->agent->user, $this->customer->fresh()))->toThrow(ConflictHttpException::class);
+    expect(fn () => app(CustomerInvitationManagementService::class)->verifyAuthority($this->agent->user, $this->customer->fresh()))->toThrow(AuthorizationException::class);
 });
 
 test('pending reversal keeps its initiator evidence amount and assignment after handover', function () {

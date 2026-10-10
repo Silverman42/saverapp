@@ -19,6 +19,8 @@ import {
 } from '@lucide/vue';
 import AdminInvitationPanel from '@/components/AdminInvitationPanel.vue';
 import type { AdminInvitationSummary } from '@/components/AdminInvitationPanel.vue';
+import AdminStatusPanel from '@/components/AdminStatusPanel.vue';
+import type { AdminStatusSummary } from '@/components/AdminStatusPanel.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
@@ -118,6 +120,7 @@ const props = defineProps<{
     history: PaginatedHistory;
     canManage: boolean;
     invitation: AdminInvitationSummary | null;
+    status: AdminStatusSummary;
     canRequestRecovery: boolean;
     isSelf: boolean;
     history_filters: HistoryFilters;
@@ -319,6 +322,8 @@ const stateLabels: Record<string, string> = {
     active: 'Active',
     invited: 'Invited',
     mfa_setup: 'Setting up',
+    mfa_setup_required: 'Setting up',
+    temporarily_locked: 'Locked',
     suspended: 'Suspended',
     deactivated: 'Deactivated',
 };
@@ -365,6 +370,14 @@ const stateLabels: Record<string, string> = {
             :admin-id="admin.id"
             :current-email="admin.email"
             :invitation="invitation"
+        />
+
+        <AdminStatusPanel
+            v-if="status.actions.length > 0"
+            :key="status.version"
+            :admin-id="admin.id"
+            :admin-name="admin.name"
+            :status="status"
         />
 
         <div

@@ -177,7 +177,7 @@ test('ownership transfer requires a currently eligible management Admin and a cu
     expect(fn () => $service->execute($admin, $agent, 'cancel-offboarding', [...$this->agentLifecyclePayload($agent), 'case_version' => 1], $request))->toThrow(ConflictHttpException::class);
 });
 
-test('completion fails closed on missing cash mapping recovery handover and queued-work contracts', function (): void {
+test('completion fails closed on a missing cash mapping while empty recovery and queued-work inventories pass', function (): void {
     [$admin, $agent] = $this->createAgentLifecycleFixture();
     $service = app(AgentLifecycleService::class);
     $request = $this->agentLifecycleRequest($admin);
@@ -187,7 +187,7 @@ test('completion fails closed on missing cash mapping recovery handover and queu
     $checks = collect($gates['checks'])->keyBy('key');
     expect($checks['cash']['status'])->toBe('unavailable');
     expect($checks['recovery_invitations']['status'])->toBe('passed');
-    expect($checks['queued_work']['status'])->toBe('unavailable');
+    expect($checks['queued_work']['status'])->toBe('passed');
     expect(fn () => $service->execute($admin, $agent, 'complete-offboarding', $this->agentLifecyclePayload($agent), $request))->toThrow(ValidationException::class);
     expect($agent->user->fresh()->account_state)->toBe(AccountState::Suspended);
     expect($agent->offboardingCases()->first()->status)->toBe('in_progress');
@@ -233,6 +233,30 @@ test('completion rechecks gates under lock and returning Agent retains completed
     expect($agent->user->fresh()->account_state)->toBe(AccountState::Active);
     expect($case->fresh()->status)->toBe('completed');
     expect(fn () => $service->execute($admin, $agent, 'cancel-offboarding', $this->agentLifecyclePayload($agent), $request))->toThrow(ConflictHttpException::class);
+});
+
+test('CAM-AC-041: every real gate passing completes deactivation while an unfinished Agent attempt blocks it', function (): void {
+    [$admin, $agent] = $this->createAgentLifecycleFixture();
+    LedgerAccount::query()->where('code', LedgerAccountCode::AgentReceivable->value)->update(['mapping_status' => 'mapped', 'currency' => 'NGN', 'normal_balance' => 'debit']);
+    $service = app(AgentLifecycleService::class);
+    $request = $this->agentLifecycleRequest($admin);
+    $service->execute($admin, $agent, 'start-offboarding', $this->agentLifecyclePayload($agent), $request);
+    $attempt = DB::table('creation_attempts')->insertGetId(['attempt_reference' => (string) Str::uuid(), 'user_id' => $agent->user_id,
+        'business_id' => 'BUS-1', 'operation_type' => 'customer_registration', 'payload_fingerprint' => str_repeat('a', 64),
+        'status' => 'in_progress', 'created_at' => now(), 'updated_at' => now()]);
+
+    $checks = collect(app(AgentOffboardingEligibility::class)->preview($admin, $agent->fresh(), $agent->offboardingCases()->first())['checks'])->keyBy('key');
+    expect($checks['queued_work']['status'])->toBe('blocked')
+        ->and($checks->except('queued_work')->pluck('status')->unique()->values()->all())->toBe(['passed']);
+    expect(fn () => $service->execute($admin, $agent, 'complete-offboarding', $this->agentLifecyclePayload($agent), $request))->toThrow(ValidationException::class);
+    expect($agent->user->fresh()->account_state)->toBe(AccountState::Suspended);
+
+    DB::table('creation_attempts')->where('id', $attempt)->update(['status' => 'failed']);
+    $service->execute($admin, $agent, 'complete-offboarding', $this->agentLifecyclePayload($agent), $request);
+
+    expect($agent->user->fresh()->account_state)->toBe(AccountState::Deactivated)
+        ->and($agent->fresh()->operational_status)->toBe(AgentStatus::Inactive)
+        ->and($agent->offboardingCases()->first()->status)->toBe('completed');
 });
 
 test('deactivated accounts cannot be suspended or returned without completed-case evidence', function (): void {
@@ -379,7 +403,7 @@ test('authoritative empty financial inventory passes while ambiguous reconciliat
     expect($read->agentOffboardingStatus($agent))->toBe('passed');
     $checks = collect(app(AgentOffboardingEligibility::class)->preview($admin, $agent, null)['checks'])->keyBy('key');
     expect($checks['financial_requests']['status'])->toBe('passed');
-    expect($checks['obligations']['status'])->toBe('unavailable');
+    expect($checks['obligations']['status'])->toBe('passed');
     $batch = CollectionBatch::create(['business_version' => 1, 'agent_profile_id' => $agent->id,
         'received_date' => now()->toDateString(), 'timezone' => 'Africa/Lagos', 'revision' => 1, 'status' => 'open', 'version' => 1]);
     expect($read->agentOffboardingStatus($agent))->toBe('blocked');

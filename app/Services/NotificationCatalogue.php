@@ -46,7 +46,7 @@ class NotificationCatalogue
         'reversal' => ['submitted', 'approved_posted', 'approved_no_money', 'rejected', 'cancelled'],
         'collection_exception' => ['opened', 'investigating', 'awaiting_action', 'resolved', 'reopened'],
         'account_security' => ['auth.password_changed', 'auth.password_reset', 'auth.mfa_changed', 'auth.session_revoked', 'auth.recovery_codes_regenerated', 'auth.lock_created', 'auth.manual_unlock', 'auth.compromise_sessions_revoked', 'auth.recovery_codes_used'],
-        'authorization' => ['auth.staff_recovery_requested', 'auth.staff_recovery_approval_recorded', 'auth.staff_recovery_approved', 'auth.staff_recovery_rejected', 'auth.staff_recovery_cancelled', 'auth.staff_recovery_completed', 'authorization.permissions_changed', 'authorization.restriction_applied', 'authorization.restriction_cleared', 'authorization.restriction_expired'],
+        'authorization' => ['auth.staff_recovery_requested', 'auth.staff_recovery_approval_recorded', 'auth.staff_recovery_approved', 'auth.staff_recovery_rejected', 'auth.staff_recovery_cancelled', 'auth.staff_recovery_completed', 'authorization.permissions_changed', 'admin.suspended', 'admin.reactivated', 'admin.deactivated', 'authorization.restriction_applied', 'authorization.restriction_cleared', 'authorization.restriction_expired', 'user.email_changed'],
         'ledger_incident' => ['ledger.integrity_incident', 'ledger.integrity_incident_resolved'],
     ];
 
@@ -548,6 +548,8 @@ class NotificationCatalogue
                 $title = match (true) {
                     str_starts_with($eventType, 'auth.staff_recovery_') => 'Account recovery updated',
                     $eventType === 'authorization.permissions_changed' => 'Access permissions changed',
+                    str_starts_with($eventType, 'admin.') => 'Admin account status changed',
+                    $eventType === 'user.email_changed' => 'Admin email address changed',
                     default => 'Access restriction updated',
                 };
                 if (str_starts_with($eventType, 'auth.staff_recovery_')) {
@@ -558,6 +560,10 @@ class NotificationCatalogue
                         ? 'An assisted recovery of your account changed state. Contact your Administrator if you did not expect it.'
                         : 'An Agent or Admin account recovery changed state. Open the recovery queue to review approvals.';
                     $destination = $audience === 'subject_user' ? ['route' => 'dashboard', 'parameters' => []] : ['route' => 'admin.staff-recoveries.index', 'parameters' => []];
+                } elseif ($eventType === 'user.email_changed') {
+                    $this->audience($audience, ['admin_manager']);
+                    $summary = 'Another Admin changed their sign-in email address. If this was not expected, open their access record and start a staff recovery.';
+                    $destination = ['route' => 'admin.access.show', 'parameters' => [$subject]];
                 } elseif ($audience === 'subject_user') {
                     $this->matchSubject($subject, (int) $owner->recipient_user_id);
                     $summary = 'Your access was changed. Some actions may now be available or unavailable; sign in again if a page does not reflect it.';

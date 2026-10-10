@@ -241,3 +241,29 @@ test('approved recovery blocks login without account failure counters that could
     expect(Cache::get('auth:password:failures:'.$this->customer->user->email_normalized))->toBeNull()
         ->and($this->customer->user->fresh()->account_state->value)->toBe('active');
 });
+
+test('AUTH-AC-023: Customer recovery rejection, approval and completion are audited without the token or evidence', function () {
+    $store = route('customers.recovery.store', $this->customer->customer_id);
+    $this->actingAs($this->agent->user)->postJson($store, recoveryVerification($this->customer))->assertOk();
+    $rejected = CustomerRecovery::firstOrFail();
+    $this->actingAs($this->admin)->withSession($this->freshSession)
+        ->postJson(route('customers.recovery.update', [$this->customer->customer_id, $rejected->reference, 'reject']), recoveryDecision($rejected))->assertOk();
+    $this->travel(2)->minutes();
+    $this->actingAs($this->agent->user)->postJson($store, recoveryVerification($this->customer->fresh()))->assertOk();
+    $approved = CustomerRecovery::query()->whereKeyNot($rejected->id)->firstOrFail();
+    $this->actingAs($this->admin)->withSession($this->freshSession)
+        ->postJson(route('customers.recovery.update', [$this->customer->customer_id, $approved->reference, 'approve']), recoveryDecision($approved))->assertOk();
+    $token = recoveryToken($approved->fresh());
+
+    $this->post(route('customer-recovery.activate', $approved->reference), ['token' => $token, 'password' => 'a new private password',
+        'password_confirmation' => 'a new private password'])->assertRedirect(route('login'));
+
+    $events = DB::table('audit_events')->whereIn('event_type', ['auth.customer_recovery_rejected', 'auth.customer_recovery_approved', 'auth.customer_recovery_completed'])
+        ->orderBy('id')->get(['event_type', 'target_reference']);
+    expect($events->map(fn (object $event): array => (array) $event)->all())->toBe([
+        ['event_type' => 'auth.customer_recovery_rejected', 'target_reference' => $this->customer->customer_id],
+        ['event_type' => 'auth.customer_recovery_approved', 'target_reference' => $this->customer->customer_id],
+        ['event_type' => 'auth.customer_recovery_completed', 'target_reference' => $this->customer->customer_id],
+    ])->and(DB::table('audit_events')->where('event_type', 'like', 'auth.customer_recovery_%')->get()->toJson())
+        ->not->toContain($token)->not->toContain('Private in-person evidence')->not->toContain('a new private password');
+});

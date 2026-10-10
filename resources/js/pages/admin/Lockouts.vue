@@ -54,6 +54,8 @@ export type LockItem = {
     locked_at?: string | null;
     locked_until?: string | null;
     requires_review: boolean;
+    notification_status: 'not_sent' | 'queued' | 'sent' | 'failed';
+    notification_status_label: string;
     is_active: boolean;
     is_expired: boolean;
     unlocked_at?: string | null;
@@ -415,6 +417,12 @@ const restrictionState = (lock: LockItem): string => {
                                     {{ lock.device_context }} ·
                                     {{ lock.masked_ip }}
                                 </dd>
+                            </div>
+                            <div>
+                                <dt class="text-foreground font-medium">
+                                    Owner notice
+                                </dt>
+                                <dd>{{ lock.notification_status_label }}</dd>
                             </div>
                             <div v-if="lock.unlocked_at" class="sm:col-span-2">
                                 <dt class="text-foreground font-medium">

@@ -219,6 +219,7 @@ class SessionManagerService
             (function () use ($user) {
                 $user->revokeAllSessions();
                 $user->revokeAllTrustedDevices();
+                $user->forceFill(['lifecycle_access_version' => (int) $user->lifecycle_access_version + 1])->save();
 
                 $user->notify((new SessionRevokedNotification(
                     reason: 'All sessions and trusted devices signed out everywhere',

@@ -12,6 +12,7 @@ use App\Models\AgentProfile;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\CustomerRecovery;
+use App\Models\StaffRecovery;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -46,10 +47,10 @@ class AgentOffboardingEligibility
                 'Requests must be resolved or have an authoritative handover; unsupported transfers remain unavailable.', null],
             'recovery_invitations' => ['Customer recovery and invitations', fn (): string => $this->recoveryContinuity($agent, $forUpdate),
                 'Recovery and invitation contact responsibility must follow a verified current assignment.', AdminPermission::SecurityOperationsManage],
-            'obligations' => ['Agent security and business obligations', fn (): string => $this->security->agentLifecycleStatus($agent->user, $forUpdate) === 'blocked' ? 'blocked' : 'unavailable',
-                'Security cases require authorized resolution. The complete Agent business-obligation inventory is not yet available.', AdminPermission::SecurityOperationsManage],
-            'queued_work' => ['Queued Customer work', fn (): string => 'unavailable',
-                'A complete owning-module inventory of queued Agent mutations is not yet available. Current requests still recheck authority.', null],
+            'obligations' => ['Agent security and business obligations', fn (): string => $this->obligationStatus($agent, $forUpdate),
+                'Security cases and the Agent\'s own assisted recovery require authorized resolution. Money owed is settled through reconciliation, not here.', AdminPermission::SecurityOperationsManage],
+            'queued_work' => ['Queued Customer work', fn (): string => $this->queuedWorkStatus($agent, $forUpdate),
+                'Customer registrations and plan operations the Agent started must finish or fail before deactivation. Every other request rechecks current authority when it commits.', null],
         ];
         $checks = [];
         foreach ($owners as $key => [$label, $evaluate, $message, $permission]) {
@@ -72,6 +73,41 @@ class AgentOffboardingEligibility
         }
 
         return ['eligible' => collect($checks)->every(fn (array $check): bool => $check['status'] === 'passed'), 'checks' => $checks];
+    }
+
+    /**
+     * Recorded Agent responsibilities outside money: open security cases and an unfinished assisted recovery of the Agent's own account.
+     */
+    private function obligationStatus(AgentProfile $agent, bool $forUpdate): string
+    {
+        $security = $this->security->agentLifecycleStatus($agent->user, $forUpdate);
+        if ($security !== 'passed') {
+            return $security;
+        }
+        $recovery = StaffRecovery::query()->where('user_id', $agent->user_id)->whereNotNull('open_user_id');
+        if ($forUpdate) {
+            $recovery->lockForUpdate();
+        }
+
+        return $recovery->exists() ? 'blocked' : 'passed';
+    }
+
+    /**
+     * Agent-authored attempts whose outcome is still undecided and could commit a Customer mutation later.
+     */
+    private function queuedWorkStatus(AgentProfile $agent, bool $forUpdate): string
+    {
+        foreach (['creation_attempts', 'plan_operation_attempts'] as $table) {
+            $query = DB::table($table)->where('user_id', $agent->user_id)->where('status', 'in_progress');
+            if ($forUpdate) {
+                $query->lockForUpdate();
+            }
+            if ($query->exists()) {
+                return 'blocked';
+            }
+        }
+
+        return 'passed';
     }
 
     private function customerContinuity(AgentProfile $agent, bool $forUpdate): string

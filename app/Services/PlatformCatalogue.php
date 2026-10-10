@@ -127,7 +127,7 @@ class PlatformCatalogue
         'cash-executions.not-delivered' => 'financial',
         'cash-executions.acknowledge' => 'financial',
         'customers.reassignment.preview' => 'read', 'customers.reassignment.store' => 'mutation', 'customers.recovery.store' => 'mutation', 'customers.recovery.update' => 'mutation', 'customer-recovery.activate' => 'mutation',
-        'admin.access.permissions.update' => 'mutation',
+        'admin.access.permissions.update' => 'mutation', 'admin.access.status.update' => 'mutation',
         'admin.staff-recoveries.store' => 'mutation', 'admin.staff-recoveries.decide' => 'mutation', 'staff-recovery.activate' => 'mutation', 'emergency-recovery.store' => 'mutation',
         'admin.access.invitations.store' => 'mutation', 'admin.access.invitations.resend' => 'mutation', 'admin.access.invitations.correct-email' => 'mutation', 'admin.access.invitations.cancel' => 'mutation',
         'admin.business-settings.drafts.discard' => 'mutation',

@@ -83,8 +83,15 @@ class ResetUserPassword implements ResetsUserPasswords
         $recoveryCode = isset($input['recovery_code']) ? trim((string) $input['recovery_code']) : '';
 
         $twoFactorService = app(TwoFactorService::class);
+        $abuseService = app(AuthenticationAbuseService::class);
 
         if ($recoveryCode !== '') {
+            if ($abuseService->isRecoveryCodeRestricted($user)) {
+                throw ValidationException::withMessages([
+                    'recovery_code' => [__('Recovery code authentication is temporarily restricted due to excessive invalid attempts. Please try again later.')],
+                ]);
+            }
+
             $consumed = $twoFactorService->verifyAndConsumeRecoveryCode($user, $recoveryCode);
 
             if (! $consumed) {
@@ -97,6 +104,12 @@ class ResetUserPassword implements ResetsUserPasswords
         }
 
         if ($code !== '') {
+            if ($abuseService->isTotpRestricted($user)) {
+                throw ValidationException::withMessages([
+                    'code' => [__('Two-factor authenticator verification is temporarily restricted due to excessive invalid attempts. Please try again later.')],
+                ]);
+            }
+
             $isValid = $twoFactorService->verifyTotp($user, $code);
 
             if (! $isValid) {
@@ -123,8 +136,9 @@ class ResetUserPassword implements ResetsUserPasswords
         DB::table($sessionTable)->where('user_id', $user->id)->delete();
         $user->revokeAllTrustedDevices();
 
-        // Rotate remember token
+        // Rotate remember token and end saved resume destinations
         $user->setRememberToken(Str::random(60));
+        $user->lifecycle_access_version = (int) $user->lifecycle_access_version + 1;
         $user->save();
 
         // Clear temporary password locks and failure counters (AUTH-061 & AC 75)

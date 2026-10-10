@@ -45,12 +45,34 @@ class PermissionManagementService
             ]);
         }
 
+        $denial = null;
+        try {
+            return $this->apply($actor, $target, $desiredPermissions, $reason, $expectedPermissionVersion, $denial);
+        } catch (AuthorizationException|ValidationException $exception) {
+            if ($denial !== null) {
+                AuditEvent::record('authorization.denied', User::class, $target->id, null,
+                    ['permission_code' => AdminPermission::AdminsManage->value, 'denial_code' => $denial], $actor,
+                    ['required_permission' => AdminPermission::AdminsManage->value, 'executor' => self::class, 'outcome' => 'Denied']);
+            }
+            throw $exception;
+        }
+    }
+
+    /**
+     * Apply the permission change inside one locked transaction, naming any high-risk denial in $denial.
+     *
+     * @param  list<string>  $desiredPermissions
+     * @return array{batch_id: string, grants: list<string>, revocations: list<string>, new_version: int}
+     */
+    private function apply(User $actor, User $target, array $desiredPermissions, string $reason, int $expectedPermissionVersion, ?string &$denial): array
+    {
         return app(PlatformGuard::class)->transaction('mutation', function () use (
             $actor,
             $target,
             $desiredPermissions,
             $reason,
             $expectedPermissionVersion,
+            &$denial,
         ): array {
             // 1. Gather all active admin IDs for continuity checks, actor ID, and target ID
             $activeAdminIds = User::query()
@@ -76,11 +98,13 @@ class PermissionManagementService
 
             // 2. Authoritative commit-time authorization check for actor
             if (! $this->authorizationService->allows($lockedActor, AdminPermission::AdminsManage)) {
+                $denial = 'missing_authority';
                 throw new AuthorizationException(__('You do not have authorization to manage administrator permissions.'));
             }
 
             // 3. Self-management prohibition
             if ($lockedActor->id === $lockedTarget->id) {
+                $denial = 'self_management';
                 throw new AuthorizationException(__('Administrators cannot manage their own permissions.'));
             }
 
@@ -149,6 +173,7 @@ class PermissionManagementService
                     ->filter(fn (User $admin) => $this->authorizationService->allows($admin, AdminPermission::AdminsManage));
 
                 if ($remainingCapables->isEmpty()) {
+                    $denial = 'final_capable_admin';
                     throw ValidationException::withMessages([
                         'permissions' => [__('Cannot revoke admins.manage: at least one active, unrestricted Administrator with admins.manage must be preserved.')],
                     ]);

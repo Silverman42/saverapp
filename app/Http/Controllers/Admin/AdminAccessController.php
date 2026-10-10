@@ -7,10 +7,12 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateAdminPermissionsRequest;
+use App\Http\Requests\Admin\UpdateAdminStatusRequest;
 use App\Models\Invitation;
 use App\Models\Permission;
 use App\Models\PermissionGrantHistory;
 use App\Models\User;
+use App\Services\AdminStatusService;
 use App\Services\AuthorizationRestrictionService;
 use App\Services\AuthorizationService;
 use App\Services\PermissionManagementService;
@@ -204,6 +206,10 @@ class AdminAccessController extends Controller
             'canManage' => $canManage && ! $isSelf,
             'canRequestRecovery' => $currentAdmin !== null && $admin->account_state !== AccountState::Invited
                 && app(StaffRecoveryService::class)->canManage($currentAdmin, $admin),
+            'status' => [
+                'version' => (int) $admin->lifecycle_access_version,
+                'actions' => $currentAdmin !== null ? app(AdminStatusService::class)->availableActions($currentAdmin, $admin) : [],
+            ],
             'invitation' => $canManage && ! $isSelf && $admin->account_state === AccountState::Invited
                 ? $this->latestInvitation($admin)
                 : null,
@@ -247,9 +253,6 @@ class AdminAccessController extends Controller
         }
 
         $currentAdmin = $request->user();
-        if ($currentAdmin && $admin->id === $currentAdmin->id) {
-            abort(403, 'Administrators cannot manage their own permissions.');
-        }
 
         /** @var list<string> $permissions */
         $permissions = $request->validated('permissions');
@@ -267,6 +270,36 @@ class AdminAccessController extends Controller
         );
 
         Toast::success('Permissions updated', __('Administrator permissions updated successfully.'));
+
+        return redirect()->route('admin.access.show', $admin->id);
+    }
+
+    /**
+     * Suspend, reactivate or deactivate another Administrator's account.
+     */
+    public function updateStatus(
+        UpdateAdminStatusRequest $request,
+        User $admin,
+        AdminStatusService $statusService,
+    ): RedirectResponse {
+        if ($admin->user_type !== UserType::Admin) {
+            abort(404, 'Administrator not found.');
+        }
+
+        $currentAdmin = $request->user();
+
+        /** @var string $action */
+        $action = $request->validated('action');
+        /** @var string $reason */
+        $reason = $request->validated('reason');
+
+        $statusService->change($currentAdmin, $admin, $action, (int) $request->validated('expected_version'), $reason);
+
+        Toast::success('Account status updated', match ($action) {
+            'suspend' => __('The Administrator was suspended and signed out everywhere.'),
+            'reactivate' => __('The Administrator\'s access was restored.'),
+            default => __('The Administrator was deactivated and signed out everywhere.'),
+        });
 
         return redirect()->route('admin.access.show', $admin->id);
     }

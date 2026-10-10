@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\LockNotificationStatus;
 use App\Enums\UnlockVerificationMethod;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $unlocked_by_user_id
  * @property string|null $unlock_reason
  * @property UnlockVerificationMethod|null $unlock_verification_method
- * @property bool $notification_sent
+ * @property LockNotificationStatus $notification_status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $user
@@ -57,7 +58,7 @@ class AuthenticationLock extends Model
         'unlocked_by_user_id',
         'unlock_reason',
         'unlock_verification_method',
-        'notification_sent',
+        'notification_status',
     ];
 
     /**
@@ -72,7 +73,7 @@ class AuthenticationLock extends Model
             'locked_until' => 'datetime',
             'unlocked_at' => 'datetime',
             'requires_review' => 'boolean',
-            'notification_sent' => 'boolean',
+            'notification_status' => LockNotificationStatus::class,
             'failed_attempts_count' => 'integer',
             'unlock_verification_method' => UnlockVerificationMethod::class,
         ];

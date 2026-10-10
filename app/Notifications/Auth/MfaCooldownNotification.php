@@ -7,7 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MfaCooldownNotification extends Notification implements ShouldQueue
+class MfaCooldownNotification extends Notification implements ReportsLockDelivery, ShouldQueue
 {
     use Queueable;
 
@@ -17,7 +17,16 @@ class MfaCooldownNotification extends Notification implements ShouldQueue
     public function __construct(
         public int $durationMinutes = 15,
         public string $reason = 'Excessive invalid authenticator codes',
+        public ?int $authenticationLockId = null,
     ) {}
+
+    /**
+     * The authentication lock whose notification status this delivery updates.
+     */
+    public function lockId(): ?int
+    {
+        return $this->authenticationLockId;
+    }
 
     /**
      * Get the notification's delivery channels.

@@ -3,7 +3,6 @@
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\UnlockVerificationMethod;
-use App\Enums\UserType;
 use App\Models\AuthenticationLock;
 use App\Models\User;
 use App\Models\UserRecoveryCode;
@@ -541,31 +540,12 @@ test('admin cannot manually unlock their own account', function () {
     expect($admin->fresh()->isTemporarilyLocked('password'))->toBeTrue();
 });
 
-test('final active admin cannot be manually unlocked', function () {
-    $finalAdmin = User::factory()->admin()->active()->create();
-
-    // Create a temporary secondary admin to attempt the unlock
-    $actingAdmin = User::factory()->admin()->active()->create();
-
-    // If actingAdmin is deactivated, finalAdmin is the only remaining active admin
-    $actingAdmin->account_state = AccountState::Suspended;
-    $actingAdmin->save();
-
-    // Re-activate acting admin to attempt, but create a 3rd user to keep finalAdmin as the tested one
-    // Specifically test isFinalActiveAdmin
-    $finalAdminSolo = User::factory()->admin()->active()->create();
-    // Delete other admins
-    User::where('user_type', UserType::Admin)->where('id', '!=', $finalAdminSolo->id)->delete();
-
-    // Now finalAdminSolo is indeed the final active admin
-    expect($finalAdminSolo->isFinalActiveAdmin())->toBeTrue();
-
-    // A mock admin acting
-    $anotherAdmin = User::factory()->admin()->create(['account_state' => AccountState::Suspended]);
-
+test('a suspended Admin without security permission cannot unlock an Admin', function () {
+    $lockedAdmin = User::factory()->admin()->active()->create();
+    $suspendedAdmin = User::factory()->admin()->create(['account_state' => AccountState::Suspended]);
     $service = app(AuthenticationAbuseService::class);
 
-    expect(fn () => $service->manualUnlock($finalAdminSolo, $anotherAdmin, 'password', UnlockVerificationMethod::InPerson, 'Emergency unlock attempt'))
+    expect(fn () => $service->manualUnlock($lockedAdmin, $suspendedAdmin, 'password', UnlockVerificationMethod::InPerson, 'Emergency unlock attempt'))
         ->toThrow(AuthorizationException::class);
 });
 

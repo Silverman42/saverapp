@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\AccountState;
+use App\Enums\AdminPermission;
+use App\Enums\AuthorizationRestrictionType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
 use App\Models\StaffRecovery;
@@ -49,8 +51,9 @@ test('only a hash of the key is stored and the operator command never silently r
     expect(BusinessProfile::current()->emergency_key_hash)->toBe($profile->emergency_key_hash);
 });
 
-test('the final Admin recovers with the key and seeded email, the key is consumed and a replacement is shown once', function (): void {
+test('the final Admin recovers with the key and seeded email, the key is consumed, a replacement is shown once and Admin management is restricted', function (): void {
     [$admin, $key] = emergencyFinalAdmin();
+    $admin->givePermissionTo(AdminPermission::AdminsManage->value);
     $oldHash = BusinessProfile::current()->emergency_key_hash;
 
     $this->post(route('emergency-recovery.store'), ['email' => 'founder@example.test', 'key' => strtolower($key)])
@@ -80,7 +83,10 @@ test('the final Admin recovers with the key and seeded email, the key is consume
     expect($replacement)->toBeString()->not->toBe($key)
         ->and($profile->emergency_key_hash)->not->toBeNull()->not->toBe($oldHash)
         ->and($admin->fresh()->account_state)->toBe(AccountState::MfaSetupRequired)
-        ->and(app(AuthorizationRestrictionService::class)->getActiveRestrictions($admin->fresh()))->toBeEmpty()
+        ->and(app(AuthorizationRestrictionService::class)->getActiveRestrictions($admin->fresh()))->toHaveCount(1)
+        ->and(app(AuthorizationRestrictionService::class)->getActiveRestrictions($admin->fresh())->first()->restriction_type)->toBe(AuthorizationRestrictionType::PostRecoveryAdminManagement)
+        ->and(app(AuthorizationRestrictionService::class)->getActiveRestrictions($admin->fresh())->first()->source)->toBe('emergency_recovery')
+        ->and($admin->fresh()->hasDirectPermission(AdminPermission::AdminsManage->value))->toBeTrue()
         ->and(DB::table('audit_events')->where('payload', 'like', '%'.$replacement.'%')->exists())->toBeFalse();
 });
 

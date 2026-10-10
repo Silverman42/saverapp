@@ -67,14 +67,17 @@ test('Agent trusted-device creation and revocation are audited without the devic
         ->and(DB::table('audit_events')->where('payload', 'like', '%'.$cookie->getValue().'%')->exists())->toBeFalse();
 });
 
-test('a suspected-compromise session revocation notifies only the account holder', function (): void {
+test('a suspected-compromise session revocation signs the holder out everywhere and notifies only them', function (): void {
     $user = User::factory()->create();
     $other = User::factory()->create();
 
     app(AuthenticationAbuseService::class)->revokeSessionsForSuspectedCompromise($user, 'token reuse');
 
-    $this->actingAs($user)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page
+    $this->actingAs($user)->get(route('notifications.index'))->assertRedirect(route('login'));
+    $this->actingAs($user->fresh())->withSession(['auth.lifecycle_access_version' => $user->fresh()->lifecycle_access_version])
+        ->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page
         ->where('inbox.items.0.title', 'Your sessions were signed out for your protection'));
+    $this->flushSession();
     $this->actingAs($other)->get(route('notifications.index'))->assertInertia(fn (Assert $page) => $page
         ->where('inbox.items', []));
 });

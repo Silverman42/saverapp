@@ -151,6 +151,13 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($request->session()->get('login.id'));
         });
 
+        RateLimiter::for('invitation-activation', function (Request $request) {
+            return [
+                Limit::perMinute(5)->by('token:'.hash('sha256', (string) $request->route('token'))),
+                Limit::perMinute(20)->by('source:'.$request->ip()),
+            ];
+        });
+
         RateLimiter::for('login', function (Request $request) {
             $email = IdentityNormalizer::normalizeEmail((string) $request->input(Fortify::username()));
             $throttleKey = Str::transliterate($email.'|'.$request->ip());

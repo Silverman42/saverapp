@@ -341,6 +341,8 @@ An Admin must complete fresh step-up authentication before:
 - Changing authentication or recovery details.
 - Changing security-sensitive business configuration.
 
+Since the 8 October 2026 catalogue change in Section 8.5, Admin invitations, Admin permission changes and business-setting publication no longer repeat fresh authentication; they rely on the MFA-confirmed session, the exact permission and their own confirmation. Changing the Admin's own authentication or recovery details still requires it.
+
 ### 5.2 Agent
 
 Multi-factor authentication is mandatory for every Agent when establishing a new session. After email and password are accepted, the Agent must enter an authenticator code unless a valid, previously established trusted-device authorization satisfies the possession factor under Section 8.2.
@@ -764,6 +766,8 @@ After confirmation, the previous session is revoked, the new session is establis
 
 Authentication owns the verification mechanics, factors, timestamp and non-extendable 10-minute duration. An owning module may require fresh authentication only for a specifically named action and must use this shared result rather than define another duration or credential flow. The initial Admin action catalogue includes Admin/permission management; Agent suspension, access restoration, offboarding and reactivation; fee-rule publication and sensitive fee/deduction/refund/business-draw actions; withdrawal decisions, pre-execution revocation and exceptional expiry resolution; reversal approval; and business-setting publication, scheduled-change cancellation, emergency disable and rollback. Changing this catalogue requires coordinated updates to Authentication and the owning module.
 
+**Catalogue change, 8 October 2026 (product decision).** Admins no longer repeat fresh authentication for Admin invitations and their resend, correction and cancellation; Admin permission changes; staff assisted-recovery requests and decisions; business-setting publication and scheduled-change cancellation; financial-period opening, closing and reopening; and fee actions (registration-fee publication and retirement, fee waiver, correction and refund, savings application and prepared fee attempts). These actions still require an active, MFA-confirmed Admin session, the exact Admin permission, and their own reason, before-and-after review, confirmation and version checks. The window still applies to Agent suspension, access restoration, offboarding and return; withdrawal decisions and pre-execution revocation; reversal approval and rejection; cash and bank payout execution, returns and payout-destination decisions; business draws and cash fee refunds; evidence and collection-method publication; ledger-incident resolution; Customer recovery review; and every Customer, Agent and Admin self-service authentication, recovery, email and phone change.
+
 ### 8.6 Last-page resume cookie for Admins and Agents
 
 The system must preserve the most recently visited eligible page for an Admin or Agent so they can return to it after signing in again.
@@ -1021,7 +1025,7 @@ The server shall enforce the authenticated user's role and permissions on every 
 
 ### AUTH-008 — Admin and Agent MFA
 
-The system shall require authenticator-app MFA from every Admin and Agent. An Admin must complete fresh authentication before changing Admin permissions or other security-sensitive access settings.
+The system shall require authenticator-app MFA from every Admin and Agent. An Admin must complete fresh authentication before changing their own authentication or recovery settings and before the Admin actions that remain in the Section 8.5 catalogue; Admin permission changes left that catalogue on 8 October 2026.
 
 ### AUTH-009 — Recovery
 
@@ -1254,7 +1258,7 @@ This module is operational when:
 5. Each user can sign in through the same login page and reach the correct dashboard.
 6. A suspended or deactivated user immediately loses access on all active sessions.
 7. Password recovery does not disclose whether an account exists.
-8. An Admin must reauthenticate before changing Admin permissions.
+8. An Admin must reauthenticate before changing Admin permissions. _(Changed by the 8 October 2026 catalogue decision in Section 8.5: permission changes now require an active MFA-confirmed Admin session, `admins.manage`, a reason, review and confirmation, but no repeated fresh authentication.)_
 9. Role and permission restrictions remain enforced when protected endpoints are called directly.
 10. Authentication and account-management events appear in the audit log without exposing secrets.
 11. A password-reset request always returns a generic response, regardless of account existence, user type, or status.
@@ -1339,6 +1343,7 @@ This module is operational when:
 - The seeded first Admin may initially exist without an authenticator. After their password is accepted, they must configure and confirm an authenticator app before entering the Admin dashboard.
 - Any Admin or Agent account without completed authenticator setup is routed to mandatory MFA enrolment after password verification and cannot access its dashboard until setup is complete.
 - Customer assisted recovery is initiated by the assigned Agent and approved by an authorized Admin.
+- 8 October 2026: Admin invitations, Admin permission changes, staff assisted recovery, business-setting publication and cancellation, financial periods and Admin fee actions no longer repeat fresh authentication (Section 8.5).
 - Agent assisted recovery is controlled by an authorized Admin.
 - Admin assisted recovery requires two authorized Admin approvals when two eligible approvers are available.
 - A recovered Admin is restricted from Admin-management and permission changes for 24 hours.

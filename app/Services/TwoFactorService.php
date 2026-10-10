@@ -225,25 +225,14 @@ class TwoFactorService
      */
     public function confirmEnrolment(User $user, string $code): array
     {
+        $this->discardExpiredPending($user, AuthenticatorState::NotConfigured,
+            __('The authenticator enrolment session has expired. Please restart enrolment.'));
+
         return DB::transaction(function () use ($user, $code) {
             $result = (function () use ($user, $code) {
                 if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
                     throw ValidationException::withMessages([
                         'code' => [__('No pending authenticator setup was found. Please restart enrolment.')],
-                    ]);
-                }
-
-                if ($user->two_factor_pending_expires_at->isPast()) {
-                    $user->forceFill([
-                        'two_factor_pending_secret' => null,
-                        'two_factor_pending_purpose' => null,
-                        'two_factor_pending_expires_at' => null,
-                        'two_factor_pending_last_used_timestep' => null,
-                        'authenticator_state' => AuthenticatorState::NotConfigured,
-                    ])->save();
-
-                    throw ValidationException::withMessages([
-                        'code' => [__('The authenticator enrolment session has expired. Please restart enrolment.')],
                     ]);
                 }
 
@@ -372,25 +361,14 @@ class TwoFactorService
      */
     public function confirmReplacement(User $user, string $newCode, ?string $currentSessionId = null): array
     {
+        $this->discardExpiredPending($user, AuthenticatorState::Active,
+            __('The replacement session has expired. Your current authenticator remains active.'));
+
         return DB::transaction(function () use ($user, $newCode, $currentSessionId) {
             $result = (function () use ($user, $newCode, $currentSessionId) {
                 if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at) {
                     throw ValidationException::withMessages([
                         'code' => [__('No pending replacement was found. Please restart the replacement process.')],
-                    ]);
-                }
-
-                if ($user->two_factor_pending_expires_at->isPast()) {
-                    $user->forceFill([
-                        'two_factor_pending_secret' => null,
-                        'two_factor_pending_purpose' => null,
-                        'two_factor_pending_expires_at' => null,
-                        'two_factor_pending_last_used_timestep' => null,
-                        'authenticator_state' => AuthenticatorState::Active,
-                    ])->save();
-
-                    throw ValidationException::withMessages([
-                        'code' => [__('The replacement session has expired. Your current authenticator remains active.')],
                     ]);
                 }
 
@@ -534,5 +512,29 @@ class TwoFactorService
 
             return $result;
         });
+    }
+
+    /**
+     * Clear an expired pending authenticator and reject the confirmation.
+     *
+     * Runs outside the confirmation transaction so the clean-up is not rolled back by the rejection.
+     *
+     * @throws ValidationException
+     */
+    private function discardExpiredPending(User $user, AuthenticatorState $restoredState, string $message): void
+    {
+        if (! $user->two_factor_pending_secret || ! $user->two_factor_pending_expires_at?->isPast()) {
+            return;
+        }
+
+        $user->forceFill([
+            'two_factor_pending_secret' => null,
+            'two_factor_pending_purpose' => null,
+            'two_factor_pending_expires_at' => null,
+            'two_factor_pending_last_used_timestep' => null,
+            'authenticator_state' => $restoredState,
+        ])->save();
+
+        throw ValidationException::withMessages(['code' => [$message]]);
     }
 }

@@ -222,11 +222,11 @@ class StaffRecoveryService
             $recovery->forceFill(['state' => 'completed', 'version' => $recovery->version + 1, 'completed_at' => now(),
                 'activation_token_hash' => null, 'activation_expires_at' => null, 'open_user_id' => null, 'proposed_email_normalized' => null])->save();
 
-            if ($user->user_type === UserType::Admin && $recovery->kind !== 'emergency') {
+            if ($user->user_type === UserType::Admin) {
                 $this->restrictions->apply(
                     target: $user,
                     type: AuthorizationRestrictionType::PostRecoveryAdminManagement,
-                    source: 'staff_recovery',
+                    source: $recovery->kind === 'emergency' ? 'emergency_recovery' : 'staff_recovery',
                     sourceReference: $recovery->reference,
                 );
             }

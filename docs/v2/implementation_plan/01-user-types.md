@@ -42,3 +42,7 @@ Implement only Module 01 decisions that are confirmed and independently enforcea
 - No role-changing API or generic role middleware is introduced; Module 03 will own authorization enforcement.
 - Account states and MFA remain with Module 02; Customer/Agent profiles and assignments with Module 04; audit storage with Module 14; singleton Business and secure first-Admin provisioning with Modules 02, 03, and 15.
 - The generic dashboard remains unchanged because role-specific dashboards belong to later modules.
+
+## Resource-level authorization closure — 10 October 2026
+
+The Module 01 task "Enforce resource-level authorization boundaries and separation of duties" was Blocked on Modules 02 and 03. Those decisions are confirmed and implemented, so the blocker no longer applies. Each capability-baseline row in Section 8 now maps to passing Module 03 evidence (see the Module 03 Track A matrix): Customer isolation (AUTHZ-AC 1, 26, 27), assigned-Agent operations and reassignment loss (2–5), Agent prohibitions on approvals, reassignment, exports and business administration (6), Admin collection prohibition (7, 19), Admin-only withdrawal and reversal approval (20, 21), reassignment and Agent registration grants (18), Admin add/suspend/remove with `admins.manage` (13–16, via the new Admin status workflow), and business-wide reads (7). Separation of duties for withdrawals, reversals, recovery and access management is covered by AUTHZ-AC 13, 17, 20, 21 and 23 and the Module 02 recovery criteria.

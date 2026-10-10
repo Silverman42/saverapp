@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AccountState;
 use App\Enums\InvitationStatus;
+use App\Enums\UserType;
 use App\Models\Invitation;
 use App\Models\PendingEmailChange;
 use App\Models\User;
@@ -140,6 +141,7 @@ class EmailChangeService
             $user->email = $newEmail;
             $user->email_verified_at = Carbon::now();
             $user->remember_token = Str::random(60);
+            $user->lifecycle_access_version = (int) $user->lifecycle_access_version + 1;
             $user->save();
 
             Invitation::query()->where('user_id', $user->id)
@@ -173,10 +175,11 @@ class EmailChangeService
             );
             $pending->delete();
 
-            DB::afterCommit(function () use ($oldEmail, $newEmail): void {
+            $recoveryContact = $user->user_type === UserType::Customer ? 'your Agent' : 'an Admin';
+            DB::afterCommit(function () use ($oldEmail, $newEmail, $recoveryContact): void {
                 $notification = new EmailChangeNotification(
                     subject: 'Your account email address changed',
-                    message: 'The email address on your account was changed. If you did not make this change, use the account recovery options immediately.',
+                    message: "The email address on your account was changed. If you did not make this change, contact {$recoveryContact} immediately so they can start account recovery.",
                     actionUrl: route('login'),
                     actionLabel: 'Sign in',
                 );

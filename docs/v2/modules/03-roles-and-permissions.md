@@ -249,7 +249,7 @@ Version 2 uses the following closed permission catalogue.
 | `fees.manage`                | Fee management                | Configure fee rules and perform the Admin fee actions defined by the Fees module. It does not merge fee earnings with Customer liabilities.                                                                                          |
 | `deductions.manage`          | Deduction management          | Perform the Admin deduction actions defined by the Deductions module, subject to confirmation and audit rules.                                                                                                                       |
 | `reconciliation.manage`      | Reconciliation management     | Review Agent collection submissions, record reconciliation outcomes, and resolve reconciliation exceptions through the approved workflow.                                                                                            |
-| `business.settings.manage`   | Business configuration        | Update general and operational business settings. Security-sensitive changes require fresh authentication.                                                                                                                           |
+| `business.settings.manage`   | Business configuration        | Update general and operational business settings. Fresh authentication for publication was removed on 8 October 2026.                                                                                                                |
 | `security.operations.manage` | Security operations           | View non-secret security events, review Customer assisted recovery, manage permitted authentication locks, and perform the Agent security operations assigned to this permission.                                                    |
 | `audit.view`                 | Audit-log access              | Search and view business audit events, subject to masking and export restrictions.                                                                                                                                                   |
 | `reports.export`             | Report export                 | Export business reports and statements containing business-wide or multi-Customer information.                                                                                                                                       |
@@ -341,7 +341,7 @@ The grants must be recorded with `system_seed` as their source. After first acce
 
 When inviting another Admin:
 
-1. The inviting Admin completes fresh password-and-MFA authentication.
+1. The inviting Admin is signed in with a confirmed authenticator. _(Repeated fresh password-and-MFA authentication was removed on 8 October 2026; see Authentication Section 8.5.)_
 2. The system verifies `admins.manage` and any active temporary restrictions.
 3. The inviting Admin enters the required identity information.
 4. The inviting Admin selects initial permissions from the predefined catalogue.
@@ -377,7 +377,7 @@ Any active Admin may see a concise responsibility summary for other Admins. Only
 An Admin with `admins.manage` may change another Admin's permissions through this workflow:
 
 1. Open the target Admin's access settings.
-2. Complete fresh password-and-MFA authentication if the existing fresh-authentication window is not valid.
+2. Be signed in with a confirmed authenticator. _(Repeated fresh password-and-MFA authentication was removed on 8 October 2026; see Authentication Section 8.5.)_
 3. Select the permissions to grant or revoke.
 4. Enter a required reason.
 5. Review the before-and-after permission summary.
@@ -728,7 +728,7 @@ The system shall independently enforce `fees.manage`, `deductions.manage`, and `
 
 ### AUTHZ-018 — Business configuration
 
-The system shall require `business.settings.manage` and fresh authentication for security-sensitive business-configuration changes.
+The system shall require `business.settings.manage` for business-configuration changes. Publication and scheduled-change cancellation no longer repeat fresh authentication (8 October 2026 decision, Authentication Section 8.5).
 
 ### AUTHZ-019 — Security operations
 
@@ -838,7 +838,7 @@ This module is operational when:
 26. Lists, search suggestions, counts, dashboards, notifications, and exports exclude records outside the user's scope.
 27. Mismatching an accessible Customer with another Customer's plan or transaction is rejected without financial effect.
 28. A denied mutation creates no partial record, approval, balance change, reserved funds, or background task.
-29. Permission changes require a reason, fresh authentication, review of the before-and-after access, and atomic confirmation.
+29. Permission changes require a reason, review of the before-and-after access, and atomic confirmation. _(Fresh authentication was removed from this criterion by the 8 October 2026 decision in Authentication Section 8.5.)_
 30. Permission grants, revocations, restrictions, privileged actions, safeguard failures, and high-risk denials appear in the audit log without authentication secrets.
 
 ## 19. Confirmed Product Decisions

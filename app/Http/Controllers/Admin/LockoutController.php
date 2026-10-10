@@ -91,6 +91,8 @@ class LockoutController extends Controller
                     'locked_at' => $lock->locked_at->toIso8601String(),
                     'locked_until' => $lock->locked_until->toIso8601String(),
                     'requires_review' => $lock->requires_review,
+                    'notification_status' => $lock->notification_status->value,
+                    'notification_status_label' => $lock->notification_status->label(),
                     'is_active' => $isActive,
                     'is_expired' => $lock->isExpired(),
                     'unlocked_at' => $lock->unlocked_at?->toIso8601String(),

@@ -13,6 +13,7 @@ use App\Models\CustomerProfile;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Support\IdentityNormalizer;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -33,12 +34,12 @@ class CustomerInvitationManagementService
     public function verifyAuthority(User $actor, CustomerProfile $customerProfile): void
     {
         if ($actor->account_state !== AccountState::Active) {
-            throw new ConflictHttpException('Actor account is not active.');
+            throw new AuthorizationException('Actor account is not active.');
         }
 
         if ($actor->user_type === UserType::Admin) {
             if (! $this->authorizationService->allows($actor, AdminPermission::CustomersManage)) {
-                throw new ConflictHttpException('Admin does not have authority to manage customer invitations.');
+                throw new AuthorizationException('Admin does not have authority to manage customer invitations.');
             }
 
             return;
@@ -46,18 +47,18 @@ class CustomerInvitationManagementService
 
         if ($actor->user_type === UserType::Agent) {
             if (! $this->agentEligibilityService->canPerformAssignedCustomerWork($actor)) {
-                throw new ConflictHttpException('Agent is not eligible to perform customer management work.');
+                throw new AuthorizationException('Agent is not eligible to perform customer management work.');
             }
 
             $currentAssignment = $customerProfile->currentAssignment;
             if (! $currentAssignment || $currentAssignment->agent_profile_id !== $actor->agentProfile?->id) {
-                throw new ConflictHttpException('Agent is not currently assigned to this customer.');
+                throw new AuthorizationException('Agent is not currently assigned to this customer.');
             }
 
             return;
         }
 
-        throw new ConflictHttpException('Unauthorized to manage customer invitations.');
+        throw new AuthorizationException('Unauthorized to manage customer invitations.');
     }
 
     /**

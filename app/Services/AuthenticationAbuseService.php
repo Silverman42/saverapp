@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\LockNotificationStatus;
 use App\Enums\UnlockVerificationMethod;
 use App\Enums\UserType;
 use App\Models\AuditEvent;
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthenticationAbuseService
@@ -44,6 +46,12 @@ class AuthenticationAbuseService
         // Check cache cooldown or lock for this email
         $cooldownUntil = Cache::get("auth:password:cooldown:{$normalized}");
         if ($cooldownUntil !== null && (int) $cooldownUntil > Carbon::now()->timestamp) {
+            return true;
+        }
+
+        // Check restrictions from distributed attacks that no single source reveals
+        $distributedUntil = Cache::get("auth:distributed:restricted:{$normalized}");
+        if ($distributedUntil !== null && (int) $distributedUntil > Carbon::now()->timestamp) {
             return true;
         }
 
@@ -88,6 +96,8 @@ class AuthenticationAbuseService
         }
         Cache::put($ipAccountsKey, $ipAccounts, $now->copy()->addMinutes(15));
 
+        $this->detectDistributedAttack($normalized, $ip, $now);
+
         // 3. Calculate failure counts
         $count15m = count(array_filter($timestamps, fn ($t) => (int) $t >= $cutoff15m));
         $cutoff1h = $now->copy()->subHours(1)->timestamp;
@@ -113,7 +123,10 @@ class AuthenticationAbuseService
 
             Cache::put("auth:password:cooldown:{$normalized}", $lockedUntil->timestamp, $lockedUntil);
 
-            $this->captureLock([
+            $notifyOwner = $user && (! $wasAlreadyLocked || $count24h === 20);
+            $lock = $this->captureLock([
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
                 'user_id' => $user?->id,
                 'email_normalized' => $normalized,
                 'lock_category' => 'password',
@@ -122,15 +135,15 @@ class AuthenticationAbuseService
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => true,
-                'notification_sent' => true,
+                'notification_status' => $notifyOwner ? LockNotificationStatus::Queued : LockNotificationStatus::NotSent,
             ], $user);
 
             Log::warning('Password lock (1 hour, review required) applied', [
                 'failed_count' => $count24h,
             ]);
 
-            if ($user && (! $wasAlreadyLocked || $count24h === 20)) {
-                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason))->afterCommit());
+            if ($notifyOwner) {
+                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason, $lock->id))->afterCommit());
             }
 
             return;
@@ -144,7 +157,10 @@ class AuthenticationAbuseService
 
             Cache::put("auth:password:cooldown:{$normalized}", $lockedUntil->timestamp, $lockedUntil);
 
-            $this->captureLock([
+            $notifyOwner = $user && (! $wasAlreadyLocked || $count1h === 10);
+            $lock = $this->captureLock([
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
                 'user_id' => $user?->id,
                 'email_normalized' => $normalized,
                 'lock_category' => 'password',
@@ -153,15 +169,15 @@ class AuthenticationAbuseService
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
-                'notification_sent' => true,
+                'notification_status' => $notifyOwner ? LockNotificationStatus::Queued : LockNotificationStatus::NotSent,
             ], $user);
 
             Log::warning('Password lock (15 minutes) applied', [
                 'failed_count' => $count1h,
             ]);
 
-            if ($user && (! $wasAlreadyLocked || $count1h === 10)) {
-                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason))->afterCommit());
+            if ($notifyOwner) {
+                $user->notify((new PasswordLockoutNotification($lockDurationMinutes, $reason, $lock->id))->afterCommit());
             }
 
             return;
@@ -251,6 +267,13 @@ class AuthenticationAbuseService
         $count1h = count($timestamps);
         $wasAlreadyLocked = $user->isTemporarilyLocked('mfa');
 
+        try {
+            AuditEvent::record('auth.mfa_failed', User::class, $user->id, null,
+                ['category' => 'totp', 'attempt_count' => $count1h], null, ['executor' => self::class, 'outcome' => 'Denied', 'actor_category' => 'unknown']);
+        } catch (\Throwable) {
+            Log::warning('Authentication denial evidence unavailable.', ['event_code' => 'mfa_failed']);
+        }
+
         // Section 9.3 & AUTH-058: 10 failed authenticator-code attempts within 1 hour trigger 15-minute MFA cooldown
         if ($count1h >= 10) {
             $lockDurationMinutes = 15;
@@ -259,7 +282,10 @@ class AuthenticationAbuseService
 
             Cache::put("auth:totp:cooldown:{$user->id}", $lockedUntil->timestamp, $lockedUntil);
 
-            $this->captureLock([
+            $notifyOwner = ! $wasAlreadyLocked || $count1h === 10;
+            $lock = $this->captureLock([
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
                 'user_id' => $user->id,
                 'email_normalized' => IdentityNormalizer::normalizeEmail($user->email),
                 'lock_category' => 'mfa',
@@ -268,7 +294,7 @@ class AuthenticationAbuseService
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
-                'notification_sent' => true,
+                'notification_status' => $notifyOwner ? LockNotificationStatus::Queued : LockNotificationStatus::NotSent,
             ], $user);
 
             Log::warning('MFA cooldown (15 minutes) applied', [
@@ -276,8 +302,8 @@ class AuthenticationAbuseService
                 'failed_count' => $count1h,
             ]);
 
-            if (! $wasAlreadyLocked || $count1h === 10) {
-                $user->notify((new MfaCooldownNotification($lockDurationMinutes, $reason))->afterCommit());
+            if ($notifyOwner) {
+                $user->notify((new MfaCooldownNotification($lockDurationMinutes, $reason, $lock->id))->afterCommit());
             }
         }
 
@@ -347,6 +373,13 @@ class AuthenticationAbuseService
         $count1h = count($timestamps);
         $wasAlreadyLocked = $user->isTemporarilyLocked('recovery_code');
 
+        try {
+            AuditEvent::record('auth.mfa_failed', User::class, $user->id, null,
+                ['category' => 'recovery_code', 'attempt_count' => $count1h], null, ['executor' => self::class, 'outcome' => 'Denied', 'actor_category' => 'unknown']);
+        } catch (\Throwable) {
+            Log::warning('Authentication denial evidence unavailable.', ['event_code' => 'mfa_failed']);
+        }
+
         // Section 9.4 & AUTH-059: 10 recovery-code failures within 1 hour trigger 1-hour cooldown
         if ($count1h >= 10) {
             $lockDurationMinutes = 60;
@@ -355,7 +388,10 @@ class AuthenticationAbuseService
 
             Cache::put("auth:recovery_code:cooldown:{$user->id}", $lockedUntil->timestamp, $lockedUntil);
 
-            $this->captureLock([
+            $notifyOwner = ! $wasAlreadyLocked || $count1h === 10;
+            $lock = $this->captureLock([
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
                 'user_id' => $user->id,
                 'email_normalized' => IdentityNormalizer::normalizeEmail($user->email),
                 'lock_category' => 'recovery_code',
@@ -364,7 +400,7 @@ class AuthenticationAbuseService
                 'locked_at' => $now,
                 'locked_until' => $lockedUntil,
                 'requires_review' => false,
-                'notification_sent' => true,
+                'notification_status' => $notifyOwner ? LockNotificationStatus::Queued : LockNotificationStatus::NotSent,
             ], $user);
 
             Log::warning('Recovery code cooldown (1 hour) applied', [
@@ -372,8 +408,8 @@ class AuthenticationAbuseService
                 'failed_count' => $count1h,
             ]);
 
-            if (! $wasAlreadyLocked || $count1h === 10) {
-                $user->notify((new RecoveryCodeCooldownNotification($lockDurationMinutes, $reason))->afterCommit());
+            if ($notifyOwner) {
+                $user->notify((new RecoveryCodeCooldownNotification($lockDurationMinutes, $reason, $lock->id))->afterCommit());
             }
         }
 
@@ -564,6 +600,7 @@ class AuthenticationAbuseService
                 $sessionTable = config('session.table', 'sessions');
                 DB::table($sessionTable)->where('user_id', $user->id)->delete();
                 $user->revokeAllTrustedDevices();
+                $user->forceFill(['remember_token' => Str::random(60), 'lifecycle_access_version' => (int) $user->lifecycle_access_version + 1])->save();
 
                 $user->notify((new CompromiseSessionRevocationNotification($reason))->afterCommit());
 
@@ -593,5 +630,52 @@ class AuthenticationAbuseService
 
             return $lock;
         });
+    }
+
+    /**
+     * Detect abuse that no single source reveals (Section 9.5): one account attacked from many sources,
+     * and password spraying across many accounts. Either restricts the affected account for 15 minutes.
+     */
+    private function detectDistributedAttack(string $normalized, string $ip, Carbon $now): void
+    {
+        $cutoff = $now->copy()->subMinutes(15)->timestamp;
+        $windowEnd = $now->copy()->addMinutes(15);
+
+        $sourcesKey = "auth:account:sources:{$normalized}";
+        $sources = array_filter((array) Cache::get($sourcesKey, []), fn ($seenAt) => (int) $seenAt >= $cutoff);
+        $sources[$ip] = $now->timestamp;
+        Cache::put($sourcesKey, $sources, $windowEnd);
+        if (count($sources) >= 5) {
+            $this->restrictForDistributedAttack('many_sources', $normalized, count($sources), $now);
+        }
+
+        $failures = array_values(array_filter((array) Cache::get('auth:global:failures', []), fn ($failure) => (int) $failure[0] >= $cutoff));
+        $failures[] = [$now->timestamp, $normalized];
+        Cache::put('auth:global:failures', $failures, $windowEnd);
+        if (count($failures) >= 50 && count(array_unique(array_column($failures, 1))) >= 20) {
+            $this->restrictForDistributedAttack('password_spray', $normalized, count($failures), $now);
+        }
+    }
+
+    /**
+     * Restrict the account for 15 minutes and audit the detected pattern once per window.
+     */
+    private function restrictForDistributedAttack(string $pattern, string $normalized, int $attemptCount, Carbon $now): void
+    {
+        $restrictedUntil = $now->copy()->addMinutes(15);
+        Cache::put("auth:distributed:restricted:{$normalized}", $restrictedUntil->timestamp, $restrictedUntil);
+
+        $detectionKey = "auth:distributed:detected:{$pattern}:".($pattern === 'many_sources' ? $normalized : 'all');
+        if (! Cache::add($detectionKey, true, $restrictedUntil)) {
+            return;
+        }
+
+        try {
+            AuditEvent::record('auth.distributed_attack_detected', User::class, null, null,
+                ['category' => $pattern, 'attempt_count' => $attemptCount], null,
+                ['executor' => self::class, 'outcome' => 'Denied', 'actor_category' => 'unknown', 'severity' => 'High']);
+        } catch (\Throwable) {
+            Log::warning('Authentication denial evidence unavailable.', ['event_code' => 'distributed_attack_detected']);
+        }
     }
 }

@@ -6,10 +6,13 @@ use App\Enums\AdminPermission;
 use App\Enums\UserType;
 use App\Models\AuditEvent;
 use App\Models\User;
+use App\Services\AdminStatusService;
 use App\Services\AuthorizationService;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class UpdateAdminPermissionsRequest extends FormRequest
+class UpdateAdminStatusRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -31,8 +34,8 @@ class UpdateAdminPermissionsRequest extends FormRequest
     {
         $target = $this->route('admin');
         if ($this->user() !== null && $target instanceof User) {
-            AuditEvent::record('authorization.denied', User::class, $target->id, null,
-                ['permission_code' => AdminPermission::AdminsManage->value, 'denial_code' => 'missing_authority'], $this->user(),
+            AuditEvent::record('admin.status_denied', User::class, $target->id, null,
+                ['changed_fields' => [is_string($this->input('action')) && preg_match('/\\A[a-z]{1,20}\\z/', $this->input('action')) === 1 ? $this->input('action') : 'unknown'], 'denial_code' => 'missing_authority'], $this->user(),
                 ['required_permission' => AdminPermission::AdminsManage->value, 'executor' => self::class, 'outcome' => 'Denied']);
         }
 
@@ -42,15 +45,14 @@ class UpdateAdminPermissionsRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, array<int, string>>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'permissions' => ['present', 'array'],
-            'permissions.*' => ['string', 'distinct'],
+            'action' => ['required', 'string', Rule::in(array_keys(AdminStatusService::SOURCE_STATES))],
             'reason' => ['required', 'string', 'min:1', 'max:500'],
-            'expected_permission_version' => ['required', 'integer'],
+            'expected_version' => ['required', 'integer'],
             'confirmed' => ['required', 'accepted'],
         ];
     }

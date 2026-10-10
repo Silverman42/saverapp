@@ -74,23 +74,23 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::get('/', [AuthenticatedSessionController::class, 'create'])->middleware('guest')->name('home');
 
 // Admin Activation via Hashed Challenge (AUTH-T05)
-Route::get('invitations/admin/{token}', [AdminActivationController::class, 'show'])->name('invitations.admin.show');
-Route::post('invitations/admin/{token}', [AdminActivationController::class, 'activate'])->name('invitations.admin.activate');
+Route::get('invitations/admin/{token}', [AdminActivationController::class, 'show'])->middleware('throttle:invitation-activation')->name('invitations.admin.show');
+Route::post('invitations/admin/{token}', [AdminActivationController::class, 'activate'])->middleware('throttle:invitation-activation')->name('invitations.admin.activate');
 
 // Agent Activation via Hashed Challenge (CAM-T05)
-Route::get('invitations/agent/{token}', [AgentActivationController::class, 'show'])->name('invitations.agent.show');
-Route::post('invitations/agent/{token}', [AgentActivationController::class, 'activate'])->name('invitations.agent.activate');
+Route::get('invitations/agent/{token}', [AgentActivationController::class, 'show'])->middleware('throttle:invitation-activation')->name('invitations.agent.show');
+Route::post('invitations/agent/{token}', [AgentActivationController::class, 'activate'])->middleware('throttle:invitation-activation')->name('invitations.agent.activate');
 
 // Customer Activation via Hashed Challenge (CAM-T06)
-Route::get('invitations/customer/{token}', [CustomerActivationController::class, 'show'])->name('invitations.customer.show');
-Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->name('invitations.customer.activate');
+Route::get('invitations/customer/{token}', [CustomerActivationController::class, 'show'])->middleware('throttle:invitation-activation')->name('invitations.customer.show');
+Route::post('invitations/customer/{token}', [CustomerActivationController::class, 'activate'])->middleware('throttle:invitation-activation')->name('invitations.customer.activate');
 
 Route::get('emergency-recovery', [EmergencyRecoveryController::class, 'create'])->middleware('guest')->name('emergency-recovery.create');
-Route::post('emergency-recovery', [EmergencyRecoveryController::class, 'store'])->middleware(['guest', 'throttle:5,60'])->name('emergency-recovery.store');
+Route::post('emergency-recovery', [EmergencyRecoveryController::class, 'store'])->middleware(['guest', 'throttle:5,60,emergency-recovery'])->name('emergency-recovery.store');
 Route::get('staff-recovery/{recovery}/activate', [StaffRecoveryActivationController::class, 'show'])->whereUuid('recovery')->name('staff-recovery.activation');
-Route::post('staff-recovery/{recovery}/activate', [StaffRecoveryActivationController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('staff-recovery.activate');
+Route::post('staff-recovery/{recovery}/activate', [StaffRecoveryActivationController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1,staff-recovery-activation')->name('staff-recovery.activate');
 Route::get('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activation'])->whereUuid('recovery')->name('customer-recovery.activation');
-Route::post('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1')->name('customer-recovery.activate');
+Route::post('customer-recovery/{recovery}/activate', [CustomerRecoveryController::class, 'activate'])->whereUuid('recovery')->middleware('throttle:5,1,customer-recovery-activation')->name('customer-recovery.activate');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('collection-methods', [CollectionEvidenceController::class, 'methods'])->name('collection-methods.index');
@@ -116,8 +116,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('customers/{customer}/reassignment/operations/{attempt_reference}', [CustomerReassignmentController::class, 'operation'])->whereUuid('attempt_reference')->name('customers.reassignment.operation');
     Route::get('customers/{customer}/recovery/review', [CustomerRecoveryController::class, 'show'])->middleware('fresh')->name('customers.recovery.review');
     Route::get('customers/{customer}/recovery', [CustomerRecoveryController::class, 'show'])->name('customers.recovery.show');
-    Route::post('customers/{customer}/recovery', [CustomerRecoveryController::class, 'store'])->middleware('throttle:10,1')->name('customers.recovery.store');
-    Route::post('customers/{customer}/recovery/{recovery}/{action}', [CustomerRecoveryController::class, 'update'])->whereUuid('recovery')->whereIn('action', ['verify', 'approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1')->name('customers.recovery.update');
+    Route::post('customers/{customer}/recovery', [CustomerRecoveryController::class, 'store'])->middleware('throttle:10,1,customer-recovery')->name('customers.recovery.store');
+    Route::post('customers/{customer}/recovery/{recovery}/{action}', [CustomerRecoveryController::class, 'update'])->whereUuid('recovery')->whereIn('action', ['verify', 'approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1,customer-recovery')->name('customers.recovery.update');
     Route::get('customers/{customer}/recovery/operations/{attempt_reference}', [CustomerRecoveryController::class, 'operation'])->whereUuid('attempt_reference')->name('customers.recovery.operation');
     Route::get('customers/{customer}/delivery', [ManagementDeliveryController::class, 'customer'])->middleware('throttle:60,1')->name('customers.delivery.index');
     Route::get('agents/{agent}/delivery', [ManagementDeliveryController::class, 'agent'])->middleware('throttle:60,1')->name('agents.delivery.index');
@@ -344,8 +344,8 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('staff-recoveries', [StaffRecoveryController::class, 'index'])->name('staff-recoveries.index');
         Route::get('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'create'])->name('staff-recoveries.create');
-        Route::post('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'store'])->middleware('throttle:10,1')->name('staff-recoveries.store');
-        Route::post('staff-recoveries/{recovery:reference}/{action}', [StaffRecoveryController::class, 'decide'])->whereIn('action', ['approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1')->name('staff-recoveries.decide');
+        Route::post('staff-recoveries/users/{user}', [StaffRecoveryController::class, 'store'])->middleware('throttle:10,1,staff-recovery')->name('staff-recoveries.store');
+        Route::post('staff-recoveries/{recovery:reference}/{action}', [StaffRecoveryController::class, 'decide'])->whereIn('action', ['approve', 'reject', 'cancel', 'reissue'])->middleware('throttle:10,1,staff-recovery')->name('staff-recoveries.decide');
         Route::get('access', [AdminAccessController::class, 'index'])->name('access.index');
         Route::get('access/invite', [AdminInvitationController::class, 'create'])->name('access.invitations.create');
         Route::post('access/invite', [AdminInvitationController::class, 'store'])->middleware('throttle:20,1')->name('access.invitations.store');
@@ -355,6 +355,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('access/{admin}', [AdminAccessController::class, 'show'])->name('access.show');
         Route::put('access/{admin}/permissions', [AdminAccessController::class, 'update'])
             ->name('access.permissions.update');
+        Route::patch('access/{admin}/status', [AdminAccessController::class, 'updateStatus'])
+            ->name('access.status.update');
 
         Route::get('charges', [ManualChargeController::class, 'index'])->name('charges.index');
         Route::post('charges/categories', [ManualChargeController::class, 'publish'])->name('charges.publish');

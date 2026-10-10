@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Enums\AdminPermission;
+use App\Enums\LockNotificationStatus;
 use App\Models\AuditEvent;
+use App\Models\AuthenticationLock;
 use App\Models\User;
+use App\Notifications\Auth\ReportsLockDelivery;
 use App\Notifications\CollectionReceiptMailNotification;
 use App\Notifications\FeeSavingsApplicationMailNotification;
 use App\Notifications\FinancialCashMailNotification;
@@ -26,6 +29,7 @@ use Illuminate\Auth\Events\Logout;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Application;
 use Illuminate\Mail\SentMessage;
+use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Auth;
@@ -89,6 +93,16 @@ class AppServiceProvider extends ServiceProvider
             if (($event->notification instanceof CollectionReceiptMailNotification || $event->notification instanceof FeeSavingsApplicationMailNotification || $event->notification instanceof ManualChargeMailNotification || $event->notification instanceof FinancialCashMailNotification || $event->notification instanceof ThriftPlanNotification)
                 && $event->channel === 'mail') {
                 $event->notification->deliveryEvidence->accepted = $event->response instanceof SentMessage;
+            }
+        });
+        Event::listen(NotificationSent::class, static function (NotificationSent $event): void {
+            if ($event->notification instanceof ReportsLockDelivery && $event->notification->lockId() !== null) {
+                AuthenticationLock::query()->whereKey($event->notification->lockId())->update(['notification_status' => LockNotificationStatus::Sent]);
+            }
+        });
+        Event::listen(NotificationFailed::class, static function (NotificationFailed $event): void {
+            if ($event->notification instanceof ReportsLockDelivery && $event->notification->lockId() !== null) {
+                AuthenticationLock::query()->whereKey($event->notification->lockId())->update(['notification_status' => LockNotificationStatus::Failed]);
             }
         });
         $this->configureDefaults();

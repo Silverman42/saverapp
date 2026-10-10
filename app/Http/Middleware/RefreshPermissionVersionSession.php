@@ -2,9 +2,12 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AuditEvent;
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -51,6 +54,14 @@ class RefreshPermissionVersionSession
 
             // 5. Store current permission version
             $session->put('auth.permission_version', $user->permission_version);
+
+            try {
+                AuditEvent::record('authorization.session_refreshed', User::class, $user->id, null,
+                    ['from_version' => $sessionVersion, 'to_version' => $user->permission_version], null,
+                    ['executor' => self::class, 'outcome' => 'Succeeded', 'actor_category' => 'system']);
+            } catch (\Throwable) {
+                Log::warning('Authorization refresh evidence unavailable.', ['event_code' => 'session_refreshed']);
+            }
         }
 
         return $next($request);

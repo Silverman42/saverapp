@@ -36,9 +36,13 @@ class AuditNoticeService
         'auth.staff_recovery_cancelled' => 'authorization',
         'auth.staff_recovery_completed' => 'authorization',
         'authorization.permissions_changed' => 'authorization',
+        'admin.suspended' => 'authorization',
+        'admin.reactivated' => 'authorization',
+        'admin.deactivated' => 'authorization',
         'authorization.restriction_applied' => 'authorization',
         'authorization.restriction_cleared' => 'authorization',
         'authorization.restriction_expired' => 'authorization',
+        'user.email_changed' => 'authorization',
         'ledger.integrity_incident' => 'ledger_incident',
         'ledger.integrity_incident_resolved' => 'ledger_incident',
     ];
@@ -94,7 +98,7 @@ class AuditNoticeService
         if ($family !== 'ledger_incident') {
             $subject = $this->subjectUserId($audit->event_type, $audit->target_type, $audit->target_id);
             $subjectUser = $subject === null ? null : User::query()->find($subject);
-            if ($subjectUser !== null) {
+            if ($subjectUser !== null && $audit->event_type !== 'user.email_changed') {
                 $recipients[] = [$subjectUser->id, 'subject_user'];
             }
             if ($family === 'account_security' || ($subjectUser?->user_type !== UserType::Admin && ! str_starts_with($audit->event_type, 'auth.staff_recovery_'))) {
