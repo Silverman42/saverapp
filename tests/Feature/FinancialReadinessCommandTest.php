@@ -3,6 +3,8 @@
 use App\Enums\AdminPermission;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Services\BusinessSettingsCatalogue;
+use App\Services\BusinessSettingsReadiness;
 use App\Services\FinancialReleaseEvidenceService;
 use Illuminate\Support\Facades\DB;
 
@@ -47,7 +49,8 @@ test('status mode reports readiness without changing anything', function () {
 });
 
 test('local mode makes every capability ready and is idempotent', function () {
-    config(['collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true]);
+    config(['collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true,
+        'withdrawals.bank_enabled' => true, 'withdrawals.bank_certified' => true, 'withdrawals.bank.provider' => 'fake']);
     readinessAdmin();
 
     $this->artisan('financial:readiness', ['--local' => true])->assertSuccessful();
@@ -108,3 +111,28 @@ test('incomplete notes, unmapped ledgers, unauthorized actors and declined confi
     'actor without permission' => fn () => [['--notes' => readinessNotesFile(completeRoleNotes()), '--map-ledger' => true, '--actor' => User::factory()->admin()->create()->id, '--force' => true], null],
     'declined confirmation' => fn () => [['--notes' => readinessNotesFile(completeRoleNotes()), '--map-ledger' => true], 'no'],
 ]);
+
+test('owner evidence releases the formerly fixed capabilities in production and bank payouts still need a provider', function () {
+    $actor = readinessAdmin();
+    $codes = ['timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
+    $notes = 'base64:'.base64_encode(json_encode(completeRoleNotes(), JSON_THROW_ON_ERROR));
+    app()->detectEnvironment(static fn (): string => 'production');
+
+    try {
+        $this->artisan('financial:readiness', ['--notes' => $notes, '--map-ledger' => true, '--actor' => $actor->id, '--capability' => $codes, '--force' => true])
+            ->assertSuccessful();
+        $checks = app(BusinessSettingsReadiness::class)->checks();
+        $definitions = app(BusinessSettingsCatalogue::class)->definitions();
+    } finally {
+        app()->detectEnvironment(static fn (): string => 'testing');
+    }
+
+    foreach (['timezone', 'customer_registration', 'transactional_email', 'emergency_recovery'] as $code) {
+        expect($checks[$code]['state'])->toBe('Ready to enable');
+    }
+    expect($definitions['customer_registration']['editable'])->toBeTrue()
+        ->and($definitions['timezone']['editable'])->toBeTrue()
+        ->and($checks['withdrawal_transfer']['state'])->toBe('Unavailable')
+        ->and($checks['withdrawal_transfer']['blocker'])->toContain('bank payout provider')
+        ->and($definitions['withdrawal_transfer']['editable'])->toBeFalse();
+});

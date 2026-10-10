@@ -8,6 +8,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\AuditCapture;
 use App\Services\BusinessSettings;
+use App\Services\BusinessSettingsCatalogue;
 use App\Services\BusinessSettingsReadiness;
 use App\Services\CollectionService;
 use App\Services\FinancialReleaseEvidenceService;
@@ -117,6 +118,23 @@ test('local cash certification permits audited settings publication only when ex
 
     config()->set('collections.local_certified', false);
     expect(fn () => $settings->ensureFeature('collections'))->toThrow(HttpException::class);
+});
+test('local readiness override marks the fixed capabilities ready only outside production', function () {
+    $codes = ['timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
+    $states = fn (): array => array_map(fn (array $check): string => $check['state'], array_intersect_key(app(BusinessSettingsReadiness::class)->checks(), array_flip($codes)));
+    expect(array_values(array_unique($states())))->toBe(['Unavailable'])
+        ->and(app(BusinessSettingsCatalogue::class)->definitions()['customer_registration']['editable'])->toBeFalse();
+
+    config()->set('app.readiness_local_override', true);
+    expect(array_values(array_unique($states())))->toBe(['Ready to enable'])
+        ->and(app(BusinessSettingsCatalogue::class)->definitions()['customer_registration']['editable'])->toBeTrue();
+
+    app()->detectEnvironment(static fn (): string => 'production');
+    try {
+        expect(array_values(array_unique($states())))->toBe(['Unavailable']);
+    } finally {
+        app()->detectEnvironment(static fn (): string => 'testing');
+    }
 });
 test('baseline admins read safe configuration but cannot mutate it', function () {
     app(BusinessSettings::class)->import();

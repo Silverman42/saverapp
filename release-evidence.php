@@ -14,7 +14,7 @@
  * notes.json supplies the evidence text. "defaults" applies a role's text to every capability;
  * "capabilities" overrides it for a single capability/role pair. Every pair must end up with text.
  */
-const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other'];
+const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
 
 const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 

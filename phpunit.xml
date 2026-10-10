@@ -35,6 +35,7 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="COLLECTIONS_NONCASH_ENABLED" value="false"/>
         <env name="COLLECTIONS_LOCAL_CERTIFIED" value="false"/>
+        <env name="READINESS_LOCAL_OVERRIDE" value="false"/>
         <env name="COLLECTION_EVIDENCE_SCANNER_FAKE" value="false"/>
     </php>
 </phpunit>

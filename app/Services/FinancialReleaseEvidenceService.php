@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AdminPermission;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\PayoutProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
@@ -14,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FinancialReleaseEvidenceService
 {
-    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other'];
+    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
 
     public const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 
@@ -128,19 +129,25 @@ class FinancialReleaseEvidenceService
         }
         $checks = [];
         foreach (self::CAPABILITIES as $capability) {
-            $checks[$capability] = $this->evaluate($rows->get($capability, collect())->keyBy('owner_role')->all(), $hash, $mappingUnavailable, $methodUnavailable, $this->noncashBlockers($capability));
+            $checks[$capability] = $this->evaluate($rows->get($capability, collect())->keyBy('owner_role')->all(), $hash, $mappingUnavailable, $methodUnavailable, $this->methodBlockers($capability));
         }
 
         return $checks;
     }
 
     /**
-     * Method-specific custody, scanning and switch prerequisites for non-cash collection capabilities.
+     * Method-specific prerequisites: custody, scanning and switch for non-cash collections, and a configured provider for bank payouts.
      *
      * @return list<string>
      */
-    private function noncashBlockers(string $capability): array
+    private function methodBlockers(string $capability): array
     {
+        if ($capability === 'withdrawal_transfer') {
+            $bankAvailable = config('withdrawals.bank_enabled') === true && config('withdrawals.bank_certified') === true
+                && app(PayoutProvider::class)->key() !== 'unavailable';
+
+            return $bankAvailable ? [] : ['enabled and certified bank payout provider'];
+        }
         $required = match ($capability) {
             'collection_transfer' => ['business_bank_ngn'],
             'collection_pos' => ['payment_clearing_ngn', 'business_bank_ngn'],

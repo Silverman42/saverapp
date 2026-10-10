@@ -29,6 +29,8 @@ class EnsureFreshAuthentication
         $user = $request->user();
         if (! $user || ! app(FreshAuthenticationService::class)->isFresh($user, $request)) {
             if ($request->expectsJson()) {
+                $request->session()->put('url.intended', url()->previous(route('dashboard')));
+
                 return response()->json(['message' => __('Fresh authentication required.')], 423);
             }
 

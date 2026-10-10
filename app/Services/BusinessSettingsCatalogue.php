@@ -62,7 +62,7 @@ class BusinessSettingsCatalogue
             $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
         }
         $readOnly = [...$readOnly, 'collection_other', 'manual_charges', 'fee_refunds', 'cash_disbursements'];
-        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements'] as $code) {
+        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email'] as $code) {
             if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
                 $readOnly = array_values(array_diff($readOnly, [$code]));
             }

@@ -22,7 +22,7 @@ import {
     isOperationReference,
     newOperationReference,
 } from '@/lib/operation-reference';
-import { dashboard } from '@/routes';
+import { dashboard, freshAuthentication } from '@/routes';
 import { manage, publicationResult, store } from '@/routes/collection-methods';
 import { showToast } from '@/lib/flashToast';
 
@@ -218,7 +218,14 @@ async function publish(): Promise<void> {
     } catch (error) {
         if (
             error instanceof HttpResponseError &&
-            [403, 422, 429, 503].includes(error.response.status)
+            error.response.status === 423
+        ) {
+            clearAttempt();
+            message.value = 'Confirm it is you, then publish again.';
+            router.visit(freshAuthentication());
+        } else if (
+            error instanceof HttpResponseError &&
+            [403, 409, 422, 429, 503].includes(error.response.status)
         ) {
             clearAttempt();
             message.value =

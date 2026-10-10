@@ -81,6 +81,15 @@ test('method publications require delegated fresh authority and current mapped c
     expect(DB::table('collection_method_versions')->value('reason'))->not->toContain('Verified business');
 });
 
+test('stale method publications are locked and return to the methods page after fresh authentication', function (): void {
+    [, , , , $admin] = paymentEvidenceFixture();
+    $this->actingAs($admin)->withHeader('referer', route('collection-methods.manage'))
+        ->postJson(route('collection-methods.store'), paymentEvidenceMethod())
+        ->assertStatus(423)
+        ->assertSessionHas('url.intended', route('collection-methods.manage'));
+    $this->assertDatabaseCount('collection_method_versions', 0);
+});
+
 test('scanned evidence remains private posts no money and replays without orphaned files', function (): void {
     [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
     $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->assertCreated()->json('method_version_id');

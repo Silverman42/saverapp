@@ -5,7 +5,8 @@ use App\Services\FinancialReleaseEvidenceService;
 use Database\Seeders\LocalFinancialReleaseEvidenceSeeder;
 
 test('local evidence makes every financial release capability ready to enable', function () {
-    config(['app.financial_release_revision' => 'local-test', 'collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true]);
+    config(['app.financial_release_revision' => 'local-test', 'collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true,
+        'withdrawals.bank_enabled' => true, 'withdrawals.bank_certified' => true, 'withdrawals.bank.provider' => 'fake']);
     User::factory()->create();
 
     $this->seed(LocalFinancialReleaseEvidenceSeeder::class);

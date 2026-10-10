@@ -2,6 +2,7 @@
 
 return [
     'financial_release_revision' => env('FINANCIAL_RELEASE_REVISION'),
+    'readiness_local_override' => (bool) env('READINESS_LOCAL_OVERRIDE', false),
 
     /*
     |--------------------------------------------------------------------------
