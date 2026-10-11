@@ -130,6 +130,18 @@ async function check(): Promise<void> {
                 'We could not check right now. Try again in a moment.';
     }
 }
+function reviewErrorMessage(error: HttpResponseError): string {
+    const validationMessage = Object.values(form.errors).find(Boolean);
+    if (validationMessage) return validationMessage;
+    try {
+        const body = JSON.parse(error.response.data);
+        if (typeof body?.message === 'string' && body.message !== '')
+            return body.message;
+    } catch {
+        /* The response had no readable message. */
+    }
+    return 'Your review was not saved. Check the details and try again.';
+}
 async function submit(): Promise<void> {
     if (
         !props.can_review ||
@@ -160,11 +172,16 @@ async function submit(): Promise<void> {
     } catch (error) {
         if (
             error instanceof HttpResponseError &&
-            [403, 422, 429, 503].includes(error.response.status)
+            [403, 409, 422, 429, 503].includes(error.response.status)
         ) {
             clearAttempt();
             message.value =
                 'Your review was not saved. Fix the errors below, or sign in again if asked.';
+            showToast({
+                type: 'error',
+                title: 'Check failed',
+                description: reviewErrorMessage(error),
+            });
         } else {
             uncertain.value = true;
             message.value =

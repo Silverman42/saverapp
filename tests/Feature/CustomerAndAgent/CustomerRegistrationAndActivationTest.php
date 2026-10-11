@@ -1018,7 +1018,7 @@ test('Public customer activation page renders fee terms disclosure and records o
     expect(AuditEvent::query()->where('event_type', 'invitation.opened')->exists())->toBeTrue();
 });
 
-test('Customer activation requires fee acknowledgement and 15-character password', function (): void {
+test('Customer activation requires fee acknowledgement and a strong password', function (): void {
     $rule = publishFeeRule(amountKobo: 50000);
     $agent = createEligibleAgent();
 
@@ -1044,12 +1044,42 @@ test('Customer activation requires fee acknowledgement and 15-character password
         'password_confirmation' => 'ValidPassword123456789!',
     ])->assertSessionHasErrors(['fee_acknowledged']);
 
-    // Password too short (< 15 chars for Customer per PasswordPolicy)
+    // Passwords must be 8+ characters with uppercase, lowercase, number and symbol
+    foreach (['Sh0rt!a', 'lowercase1!', 'UPPERCASE1!', 'NoNumbers!', 'NoSymbols123'] as $weakPassword) {
+        $this->travel(1)->minutes();
+
+        $this->post(route('invitations.customer.activate', $plainToken), [
+            'fee_acknowledged' => true,
+            'password' => $weakPassword,
+            'password_confirmation' => $weakPassword,
+        ])->assertSessionHasErrors(['password']);
+    }
+});
+
+test('Customer activation accepts an 8 character password with mixed case, a number and a symbol', function (): void {
+    $rule = publishFeeRule();
+    $agent = createEligibleAgent();
+
+    $this->actingAs($agent)->post(route('customers.store'), [
+        'attempt_reference' => (string) Str::uuid(),
+        'fee_rule_version' => $rule->version,
+        'name' => 'Short Password Customer',
+        'email' => 'short.password@saverapp.test',
+        'phone' => '+2348011223399',
+    ]);
+
+    $invitation = Invitation::where('target_email_normalized', 'short.password@saverapp.test')->first();
+    $plainToken = Str::random(64);
+    $invitation->token_hash = hash('sha256', $plainToken);
+    $invitation->save();
+
+    Auth::logout();
+
     $this->post(route('invitations.customer.activate', $plainToken), [
         'fee_acknowledged' => true,
-        'password' => 'Short1234!',
-        'password_confirmation' => 'Short1234!',
-    ])->assertSessionHasErrors(['password']);
+        'password' => 'Abcdef1!',
+        'password_confirmation' => 'Abcdef1!',
+    ])->assertSessionHasNoErrors()->assertRedirect(route('customer.dashboard'));
 });
 
 test('Customer activation completes account setup, sets password, marks active, and logs in', function (): void {

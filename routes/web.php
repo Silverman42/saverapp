@@ -101,8 +101,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('collection-evidence', [CollectionEvidenceController::class, 'index'])->name('collection-evidence.index');
     Route::get('collection-evidence/{reference}/view', [CollectionEvidenceController::class, 'view'])->whereUuid('reference')->name('collection-evidence.view');
     Route::get('collection-evidence/{reference}', [CollectionEvidenceController::class, 'show'])->whereUuid('reference')->name('collection-evidence.show');
-    Route::get('collection-evidence/{reference}/reviews/{operation}', [CollectionEvidenceController::class, 'reviewResult'])->whereUuid(['reference', 'operation'])->middleware('fresh')->name('collection-evidence.reviews.show');
-    Route::post('collection-evidence/{reference}/review', [CollectionEvidenceController::class, 'review'])->whereUuid('reference')->middleware('fresh')->name('collection-evidence.review');
+    Route::get('collection-evidence/{reference}/reviews/{operation}', [CollectionEvidenceController::class, 'reviewResult'])->whereUuid(['reference', 'operation'])->name('collection-evidence.reviews.show');
+    Route::post('collection-evidence/{reference}/review', [CollectionEvidenceController::class, 'review'])->whereUuid('reference')->name('collection-evidence.review');
     Route::get('collection-evidence/{reference}/files/{file}/link', [CollectionEvidenceController::class, 'link'])->whereUuid('reference')->whereNumber('file')->name('collection-evidence.files.link');
     Route::get('collection-evidence/{reference}/files/{file}/download', [CollectionEvidenceController::class, 'download'])->whereUuid('reference')->whereNumber('file')->middleware('signed')->name('collection-evidence.files.download');
     Route::post('collection-batches/{batch}/settlements', [CollectionSettlementController::class, 'store'])->middleware(['fresh', 'throttle:20,1'])->name('collection-batches.settlements.store');

@@ -90,6 +90,18 @@ test('stale method publications are locked and return to the methods page after 
     $this->assertDatabaseCount('collection_method_versions', 0);
 });
 
+test('evidence reviews and review result checks do not require fresh authentication', function (): void {
+    [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
+    $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
+    $reference = $this->actingAs($agent)->postJson(route('customers.collection-evidence.store', $customer), paymentEvidencePayload($customer, $assignment, $date, $method))->assertCreated()->json('evidence_reference');
+    $review = paymentEvidenceReview();
+    $this->flushSession()->actingAs($admin);
+    $this->postJson(route('collection-evidence.review', $reference), $review)->assertOk()->assertJsonPath('status', 'verified');
+    $this->getJson(route('collection-evidence.reviews.show', ['reference' => $reference, 'operation' => $review['operation_reference']]))
+        ->assertOk()->assertJsonPath('outcome', 'verified');
+    $this->assertDatabaseCount('collection_evidence_reviews', 1);
+});
+
 test('scanned evidence remains private posts no money and replays without orphaned files', function (): void {
     [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
     $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->assertCreated()->json('method_version_id');

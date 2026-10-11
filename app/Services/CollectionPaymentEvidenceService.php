@@ -115,7 +115,6 @@ class CollectionPaymentEvidenceService
     {
         $evidence = $this->authorized($actor, $reference);
         abort_unless(app(AuthorizationService::class)->allows($actor, AdminPermission::ReconciliationManage), 403);
-        abort_unless(app(FreshAuthenticationService::class)->isFresh($actor, request()), 403);
         if ($data['outcome'] === 'verified') {
             foreach (DB::table('collection_evidence_files')->where('collection_payment_evidence_id', $evidence->id)->get() as $file) {
                 $this->fileBytes($file);
@@ -125,7 +124,6 @@ class CollectionPaymentEvidenceService
         return app(PlatformGuard::class)->transaction('mutation', function () use ($actor, $evidence, $reference, $data): int {
             $context = $this->guard->lockAndAuthorize($actor, $evidence->customer_profile_id, 'view');
             abort_unless(app(AuthorizationService::class)->allows($context->actor, AdminPermission::ReconciliationManage), 403);
-            abort_unless(app(FreshAuthenticationService::class)->isFresh($context->actor, request()), 403);
             DB::table('collection_payment_evidence')->where('id', $evidence->id)->lockForUpdate()->first();
             $hash = AuditProjection::digest(['actor' => $actor->id, 'evidence' => $evidence->id, ...$data]);
             $existing = DB::table('collection_evidence_reviews')->where('operation_reference', $data['operation_reference'])->first();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BadgeAlert, BadgeCheck, BadgeInfo, BadgeX } from "@lucide/vue";
+import { BadgeAlert, BadgeCheck, BadgeInfo, CircleX } from "@lucide/vue";
 import { computed } from "vue";
 import { toast } from "vue-sonner";
 import type { FlashToast } from "@/types/ui";
@@ -12,7 +12,7 @@ const appearance = computed(
             success: { icon: BadgeCheck, color: "text-primary" },
             info: { icon: BadgeInfo, color: "text-primary" },
             warning: { icon: BadgeAlert, color: "text-amber-400" },
-            error: { icon: BadgeX, color: "text-destructive" },
+            error: { icon: CircleX, color: "text-destructive" },
         })[props.type],
 );
 </script>

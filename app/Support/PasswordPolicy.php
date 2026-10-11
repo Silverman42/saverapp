@@ -40,6 +40,21 @@ class PasswordPolicy
     }
 
     /**
+     * Get the password validation rule for customer invitation activation.
+     * Requires at least 8 characters with an uppercase letter, a lowercase letter, a number and a symbol.
+     */
+    public static function customerActivationRule(): Password
+    {
+        $rule = Password::min(8)->mixedCase()->numbers()->symbols();
+
+        if (app()->isProduction()) {
+            $rule->uncompromised();
+        }
+
+        return $rule;
+    }
+
+    /**
      * Get the password validation rule for a specific user.
      */
     public static function ruleForUser(?User $user = null): Password

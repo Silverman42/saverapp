@@ -131,7 +131,7 @@ class CustomerActivationController extends Controller
 
         $request->validate([
             'fee_acknowledged' => ['accepted'],
-            'password' => ['required', 'confirmed', PasswordPolicy::ruleForUserType(UserType::Customer)],
+            'password' => ['required', 'confirmed', PasswordPolicy::customerActivationRule()],
         ]);
 
         $user = DB::transaction(function () use ($invitation, $request): User {

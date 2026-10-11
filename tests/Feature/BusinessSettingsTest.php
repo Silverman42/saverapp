@@ -119,11 +119,15 @@ test('local cash certification permits audited settings publication only when ex
     config()->set('collections.local_certified', false);
     expect(fn () => $settings->ensureFeature('collections'))->toThrow(HttpException::class);
 });
-test('local readiness override marks the fixed capabilities ready only outside production', function () {
-    $codes = ['timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
+test('local readiness override marks every capability ready only outside production', function () {
+    $codes = ['timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery', 'collection_cash', 'withdrawal_cash', 'payout_execution', 'retention_restore'];
     $states = fn (): array => array_map(fn (array $check): string => $check['state'], array_intersect_key(app(BusinessSettingsReadiness::class)->checks(), array_flip($codes)));
     expect(array_values(array_unique($states())))->toBe(['Unavailable'])
         ->and(app(BusinessSettingsCatalogue::class)->definitions()['customer_registration']['editable'])->toBeFalse();
+
+    config()->set('app.readiness_local_override', true);
+    expect(collect(app(BusinessSettingsReadiness::class)->checks())->pluck('state')->unique()->values()->all())->toBe(['Ready to enable']);
+    config()->set('app.readiness_local_override', false);
 
     config()->set('app.readiness_local_override', true);
     expect(array_values(array_unique($states())))->toBe(['Ready to enable'])

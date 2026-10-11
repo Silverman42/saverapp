@@ -1,29 +1,16 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import {
-    AlertCircle,
-    CheckCircle2,
-    Coins,
-    KeyRound,
-    Loader2,
-    ShieldAlert,
-    ShieldCheck,
-    UserCheck,
-} from '@lucide/vue';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Head, Link, setLayoutProps, useForm } from '@inertiajs/vue3';
+import { Check, Circle } from '@lucide/vue';
+import { computed, watchEffect } from 'vue';
+import { activate } from '@/actions/App/Http/Controllers/Auth/CustomerActivationController';
+import InputError from '@/components/InputError.vue';
+import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { login } from '@/routes';
 
 export type FeeSnapshot = {
     name: string;
@@ -34,8 +21,11 @@ export type FeeSnapshot = {
     is_zero: boolean;
 };
 
+type ActivationStatus =
+    'ready' | 'expired' | 'cancelled' | 'already_activated' | 'invalid';
+
 const props = defineProps<{
-    status: 'ready' | 'expired' | 'cancelled' | 'already_activated' | 'invalid';
+    status: ActivationStatus;
     token?: string;
     name?: string;
     email?: string;
@@ -43,312 +33,239 @@ const props = defineProps<{
     fee_snapshot?: FeeSnapshot | null;
 }>();
 
+const headings: Record<
+    ActivationStatus,
+    { title: string; description: string }
+> = {
+    ready: {
+        title: 'Activate your account',
+        description: props.name
+            ? `Hi ${props.name}, set a password to start saving with ${props.business_name}.`
+            : `Set a password to start saving with ${props.business_name}.`,
+    },
+    expired: {
+        title: 'This link has expired',
+        description:
+            'Activation links work for 7 days. Ask your agent to send you a new one.',
+    },
+    cancelled: {
+        title: 'This invitation was cancelled',
+        description: 'If you think this is a mistake, contact your agent.',
+    },
+    already_activated: {
+        title: 'Your account is already active',
+        description: 'Log in with the email and password you set up.',
+    },
+    invalid: {
+        title: 'This link is not valid',
+        description:
+            'Check the link in your email, or ask your agent to send a new one.',
+    },
+};
+
+watchEffect(() => {
+    setLayoutProps(headings[props.status]);
+});
+
 const form = useForm({
     fee_acknowledged: false,
     password: '',
     password_confirmation: '',
 });
 
-const submit = (): void => {
-    if (!props.token) return;
+const passwordRequirements = computed(() => [
+    { label: 'At least 8 characters', met: form.password.length >= 8 },
+    { label: 'An uppercase letter', met: /\p{Lu}/u.test(form.password) },
+    { label: 'A lowercase letter', met: /\p{Ll}/u.test(form.password) },
+    { label: 'A number', met: /\p{N}/u.test(form.password) },
+    {
+        label: 'A special character',
+        met: /[^\p{L}\p{N}]/u.test(form.password),
+    },
+]);
 
-    form.post(`/invitations/customer/${props.token}`, {
+const isPasswordValid = computed(() =>
+    passwordRequirements.value.every((requirement) => requirement.met),
+);
+
+const doPasswordsMatch = computed(
+    () =>
+        form.password_confirmation.length > 0 &&
+        form.password === form.password_confirmation,
+);
+
+const confirmationError = computed(() =>
+    form.password_confirmation.length >= form.password.length &&
+    form.password_confirmation.length > 0 &&
+    !doPasswordsMatch.value
+        ? 'Passwords do not match.'
+        : undefined,
+);
+
+const canSubmit = computed(
+    () =>
+        form.fee_acknowledged &&
+        isPasswordValid.value &&
+        doPasswordsMatch.value &&
+        !form.processing,
+);
+
+const feeAmount = computed(() =>
+    props.fee_snapshot && !props.fee_snapshot.is_zero
+        ? props.fee_snapshot.formatted_amount
+        : 'Free',
+);
+
+const submit = (): void => {
+    if (!props.token) {
+        return;
+    }
+
+    form.post(activate.url(props.token), {
         preserveScroll: true,
+        onFinish: () => form.reset('password', 'password_confirmation'),
     });
 };
 </script>
 
 <template>
     <div>
-        <Head title="Activate Customer Account" />
+        <Head title="Activate account" />
 
-        <div
-            class="bg-muted/40 flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8"
+        <form
+            v-if="status === 'ready'"
+            class="flex flex-col gap-6"
+            @submit.prevent="submit"
         >
-            <div class="w-full max-w-lg space-y-6">
-                <!-- Branding Header -->
-                <div class="text-center">
-                    <div
-                        class="bg-primary text-primary-foreground mx-auto flex size-12 items-center justify-center rounded-2xl shadow-sm"
-                    >
-                        <UserCheck class="size-6" />
-                    </div>
-                    <h1 class="mt-4 text-2xl font-bold tracking-tight">
-                        {{ business_name }}
-                    </h1>
-                    <p class="text-muted-foreground mt-1 text-sm">
-                        Customer Account Activation
-                    </p>
+            <div class="grid gap-6">
+                <div class="grid gap-2">
+                    <Label for="email">Email address</Label>
+                    <Input
+                        id="email"
+                        type="email"
+                        :model-value="email"
+                        autocomplete="username"
+                        readonly
+                        class="bg-muted/50 text-muted-foreground"
+                    />
                 </div>
 
-                <!-- Ready State: Fee Terms & Password Form -->
-                <Card v-if="status === 'ready'">
-                    <CardHeader>
-                        <CardTitle>Activate Your Account</CardTitle>
-                        <CardDescription>
-                            Hello
-                            <span class="text-foreground font-medium">{{
-                                name
-                            }}</span
-                            >, please review your registration terms and set
-                            your account password for
-                            <span class="text-foreground font-medium">{{
-                                email
-                            }}</span
-                            >.
-                        </CardDescription>
-                    </CardHeader>
-                    <form @submit.prevent="submit">
-                        <CardContent class="space-y-5">
-                            <!-- Registration Fee Terms Disclosure Card -->
-                            <div
-                                class="bg-muted/30 space-y-3 rounded-lg border p-4"
-                            >
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-2">
-                                        <Coins class="text-primary size-4" />
-                                        <span
-                                            class="text-foreground text-sm font-semibold"
-                                        >
-                                            Registration Fee Terms
-                                        </span>
-                                    </div>
-                                    <span
-                                        class="text-foreground font-mono text-sm font-bold"
-                                    >
-                                        {{
-                                            fee_snapshot
-                                                ? fee_snapshot.formatted_amount
-                                                : 'Free'
-                                        }}
-                                    </span>
-                                </div>
-
-                                <p
-                                    v-if="fee_snapshot?.description"
-                                    class="text-muted-foreground text-xs"
-                                >
-                                    {{ fee_snapshot.description }}
-                                </p>
-                                <p v-else class="text-muted-foreground text-xs">
-                                    {{
-                                        fee_snapshot?.is_zero
-                                            ? 'No registration charge is required for this account.'
-                                            : 'Standard registration charge.'
-                                    }}
-                                </p>
-
-                                <div
-                                    class="border-border/60 flex items-start gap-3 border-t pt-2"
-                                >
-                                    <Checkbox
-                                        id="fee-ack"
-                                        :checked="form.fee_acknowledged"
-                                        @update:checked="
-                                            form.fee_acknowledged =
-                                                Boolean($event)
-                                        "
-                                        class="mt-0.5"
-                                    />
-                                    <Label
-                                        for="fee-ack"
-                                        class="cursor-pointer text-xs leading-normal font-normal"
-                                    >
-                                        I acknowledge and accept the
-                                        registration terms and fee of
-                                        <span
-                                            class="text-foreground font-semibold"
-                                        >
-                                            {{
-                                                fee_snapshot
-                                                    ? fee_snapshot.formatted_amount
-                                                    : 'NGN 0.00'
-                                            }}
-                                        </span>
-                                        associated with opening this account.
-                                    </Label>
-                                </div>
-                                <p
-                                    v-if="form.errors.fee_acknowledged"
-                                    class="text-destructive text-xs"
-                                >
-                                    {{ form.errors.fee_acknowledged }}
-                                </p>
-                            </div>
-
-                            <!-- Password Fields -->
-                            <div class="space-y-4">
-                                <div class="space-y-1.5">
-                                    <Label for="password"
-                                        >Create Password</Label
-                                    >
-                                    <Input
-                                        id="password"
-                                        v-model="form.password"
-                                        type="password"
-                                        required
-                                        autocomplete="new-password"
-                                        placeholder="•••••••••••••••"
-                                        :class="{
-                                            'border-destructive':
-                                                form.errors.password,
-                                        }"
-                                    />
-                                    <p
-                                        v-if="form.errors.password"
-                                        class="text-destructive text-xs"
-                                    >
-                                        {{ form.errors.password }}
-                                    </p>
-                                    <p
-                                        class="text-muted-foreground text-[11px]"
-                                    >
-                                        Use at least 15 characters. Do not use a
-                                        password that is known from a public
-                                        data breach.
-                                    </p>
-                                </div>
-
-                                <div class="space-y-1.5">
-                                    <Label for="password-confirmation"
-                                        >Confirm Password</Label
-                                    >
-                                    <Input
-                                        id="password-confirmation"
-                                        v-model="form.password_confirmation"
-                                        type="password"
-                                        required
-                                        autocomplete="new-password"
-                                        placeholder="•••••••••••••••"
-                                        :class="{
-                                            'border-destructive':
-                                                form.errors
-                                                    .password_confirmation,
-                                        }"
-                                    />
-                                    <p
-                                        v-if="form.errors.password_confirmation"
-                                        class="text-destructive text-xs"
-                                    >
-                                        {{ form.errors.password_confirmation }}
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button
-                                type="submit"
-                                class="w-full"
-                                :disabled="
-                                    form.processing || !form.fee_acknowledged
-                                "
-                            >
-                                <Loader2
-                                    v-if="form.processing"
-                                    class="mr-2 size-4 animate-spin"
-                                />
-                                <KeyRound v-else class="mr-2 size-4" />
-                                Activate Account & Log In
-                            </Button>
-                        </CardFooter>
-                    </form>
-                </Card>
-
-                <!-- Expired State -->
-                <Card v-else-if="status === 'expired'">
-                    <CardHeader class="text-center">
-                        <div
-                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
-                        >
-                            <AlertCircle class="size-6" />
-                        </div>
-                        <CardTitle class="mt-2"
-                            >Invitation Link Expired</CardTitle
-                        >
-                        <CardDescription>
-                            This activation link has expired. For your security,
-                            invitation links work for 7 days after we send them.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent
-                        class="text-muted-foreground text-center text-sm"
+                <div class="grid gap-2">
+                    <Label for="password">Password</Label>
+                    <PasswordInput
+                        id="password"
+                        v-model="form.password"
+                        required
+                        autofocus
+                        autocomplete="new-password"
+                        placeholder="Create a password"
+                        aria-describedby="password-requirements"
+                    />
+                    <ul
+                        id="password-requirements"
+                        class="grid grid-cols-1 gap-x-4 gap-y-1.5 pt-1 sm:grid-cols-2"
                     >
-                        Ask your agent or account administrator for a new
-                        invitation link.
-                    </CardContent>
-                </Card>
-
-                <!-- Cancelled State -->
-                <Card v-else-if="status === 'cancelled'">
-                    <CardHeader class="text-center">
-                        <div
-                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
+                        <li
+                            v-for="requirement in passwordRequirements"
+                            :key="requirement.label"
+                            class="flex items-center gap-2 text-xs transition-colors"
+                            :class="
+                                requirement.met
+                                    ? 'text-foreground'
+                                    : 'text-muted-foreground'
+                            "
                         >
-                            <AlertCircle class="size-6" />
-                        </div>
-                        <CardTitle class="mt-2">Invitation Cancelled</CardTitle>
-                        <CardDescription>
-                            An agent or administrator cancelled this activation
-                            invitation.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent
-                        class="text-muted-foreground text-center text-sm"
+                            <Check
+                                v-if="requirement.met"
+                                class="text-primary size-3.5 shrink-0"
+                            />
+                            <Circle v-else class="size-3.5 shrink-0" />
+                            <span>
+                                {{ requirement.label }}
+                                <span class="sr-only">{{
+                                    requirement.met ? '(done)' : '(missing)'
+                                }}</span>
+                            </span>
+                        </li>
+                    </ul>
+                    <InputError :message="form.errors.password" />
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="password_confirmation">Confirm password</Label>
+                    <PasswordInput
+                        id="password_confirmation"
+                        v-model="form.password_confirmation"
+                        required
+                        autocomplete="new-password"
+                        placeholder="Enter it again"
+                    />
+                    <InputError
+                        :message="
+                            form.errors.password_confirmation ??
+                            confirmationError
+                        "
+                    />
+                </div>
+
+                <div class="grid gap-3 rounded-xl border p-4">
+                    <div class="flex items-baseline justify-between gap-4">
+                        <span class="text-sm font-medium"
+                            >Registration fee</span
+                        >
+                        <span class="text-sm font-semibold tabular-nums">
+                            {{ feeAmount }}
+                        </span>
+                    </div>
+                    <p
+                        v-if="fee_snapshot?.description"
+                        class="text-muted-foreground text-xs leading-5"
                     >
-                        If you think that this is an error, contact your account
-                        manager.
-                    </CardContent>
-                </Card>
-
-                <!-- Already Activated State -->
-                <Card v-else-if="status === 'already_activated'">
-                    <CardHeader class="text-center">
-                        <div
-                            class="bg-primary/10 text-primary mx-auto flex size-12 items-center justify-center rounded-full"
-                        >
-                            <CheckCircle2 class="size-6" />
-                        </div>
-                        <CardTitle class="mt-2"
-                            >Account Already Activated</CardTitle
-                        >
-                        <CardDescription>
-                            This customer account has already been successfully
-                            activated.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent class="text-center">
-                        <Link href="/login">
-                            <Button class="w-full"
-                                >Sign In to Your Account</Button
-                            >
-                        </Link>
-                    </CardContent>
-                </Card>
-
-                <!-- Invalid / Fallback State -->
-                <Card v-else>
-                    <CardHeader class="text-center">
-                        <div
-                            class="bg-destructive/10 text-destructive mx-auto flex size-12 items-center justify-center rounded-full"
-                        >
-                            <ShieldAlert class="size-6" />
-                        </div>
-                        <CardTitle class="mt-2"
-                            >Invalid Invitation Link</CardTitle
-                        >
-                        <CardDescription>
-                            This invitation link is not valid, or it was
-                            cancelled.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent
-                        class="text-muted-foreground text-center text-sm"
+                        {{ fee_snapshot.description }}
+                    </p>
+                    <Label
+                        for="fee_acknowledged"
+                        class="flex items-start gap-3 text-sm leading-5 font-normal"
                     >
-                        Please check the link received in your email or contact
-                        support.
-                    </CardContent>
-                </Card>
+                        <Checkbox
+                            id="fee_acknowledged"
+                            v-model="form.fee_acknowledged"
+                            class="mt-0.5"
+                        />
+                        <span>
+                            I accept the registration terms and the
+                            {{
+                                feeAmount === 'Free'
+                                    ? 'free registration'
+                                    : `${feeAmount} fee`
+                            }}.
+                        </span>
+                    </Label>
+                    <InputError :message="form.errors.fee_acknowledged" />
+                </div>
+
+                <Button
+                    type="submit"
+                    class="mt-2 w-full"
+                    :disabled="!canSubmit"
+                    data-test="activate-button"
+                >
+                    <Spinner v-if="form.processing" />
+                    Activate account
+                </Button>
             </div>
-        </div>
+        </form>
+
+        <Button
+            v-else-if="status === 'already_activated'"
+            as-child
+            class="w-full"
+        >
+            <Link :href="login()">Log in</Link>
+        </Button>
+
+        <Button v-else variant="outline" as-child class="w-full">
+            <Link :href="login()">Back to log in</Link>
+        </Button>
     </div>
 </template>

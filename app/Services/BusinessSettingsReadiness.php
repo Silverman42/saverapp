@@ -35,9 +35,11 @@ class BusinessSettingsReadiness
             }
         }
         if (app()->environment(['local', 'testing']) && config('app.readiness_local_override') === true) {
-            foreach (['timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'] as $code) {
-                $checks[$code] = ['state' => 'Ready to enable', 'owner' => $checks[$code]['owner'].' local override',
-                    'blocker' => 'Local override only; production release remains unavailable.', 'version' => 2];
+            foreach ($checks as $code => $check) {
+                if ($check['state'] !== 'Ready to enable') {
+                    $checks[$code] = ['state' => 'Ready to enable', 'owner' => $check['owner'].' local override',
+                        'blocker' => 'Local override only; production release remains unavailable.', 'version' => 2];
+                }
             }
         }
         $checks['logo'] = ['state' => 'Ready to enable', 'owner' => 'Module 15', 'blocker' => 'Uploads are decoded and re-encoded to strip metadata and payloads, then stored privately; no external malware scanner is integrated.', 'version' => 2];
