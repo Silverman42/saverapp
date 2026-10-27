@@ -13,6 +13,7 @@ use App\Models\CashExecution;
 use App\Models\CashRecovery;
 use App\Models\CustomerPayoutDestination;
 use App\Models\CustomerProfile;
+use App\Models\OfflinePayout;
 use App\Models\WithdrawalAttempt;
 use App\Models\WithdrawalRequest;
 use App\Services\AuthorizationService;
@@ -126,6 +127,10 @@ class WithdrawalController extends Controller
             'can_execute' => $withdrawal->method === 'cash' && $authorization->allows($request->user(), AdminPermission::CashExecute),
             'can_execute_bank' => $withdrawal->method === 'bank_transfer' && $request->user()->user_type === UserType::Admin
                 && $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
+            'can_record_offline' => $withdrawal->method === 'offline' && $request->user()->user_type === UserType::Admin
+                && $authorization->allows($request->user(), AdminPermission::WithdrawalsReview),
+            'offline_payout' => $this->offlinePayout($withdrawal, $request->user()->user_type === UserType::Customer),
+            'today' => now(BusinessProfile::current()->timezone)->toDateString(),
             'timezone' => BusinessProfile::current()->timezone,
             'bank_attempts' => $request->user()->user_type === UserType::Customer ? [] : $this->bankAttempts($withdrawal),
             'bank_returns' => $request->user()->user_type === UserType::Customer ? [] : BankPayoutReturn::query()
@@ -186,6 +191,20 @@ class WithdrawalController extends Controller
         }, 'The withdrawal decision was recorded.');
 
         return redirect()->route('withdrawals.show', $withdrawal);
+    }
+
+    /** @return array{channel: string, external_reference: string|null, paid_on: string, amount_kobo: int, note: string|null, recorded_by: string|null, recorded_at: string|null}|null */
+    private function offlinePayout(WithdrawalRequest $withdrawal, bool $forCustomer): ?array
+    {
+        $payout = OfflinePayout::query()->where('withdrawal_request_id', $withdrawal->id)->with('recorder')->first();
+        if ($payout === null) {
+            return null;
+        }
+
+        return ['channel' => $payout->channel, 'external_reference' => $payout->external_reference,
+            'paid_on' => $payout->paid_on->toDateString(), 'amount_kobo' => $payout->amount_kobo,
+            'note' => $forCustomer ? null : $payout->note, 'recorded_by' => $forCustomer ? null : $payout->recorder?->name,
+            'recorded_at' => $payout->created_at?->toIso8601String()];
     }
 
     /** @return list<array<string, mixed>> */

@@ -657,7 +657,7 @@ class ThriftPlanService
             $fromStatus = $planRecord->status;
             $toStatus = match ($action) {
                 'pause' => $fromStatus === ThriftPlanStatus::Active ? ThriftPlanStatus::Paused : null,
-                'resume' => $fromStatus === ThriftPlanStatus::Paused ? ThriftPlanStatus::Active : null,
+                'resume' => $fromStatus === ThriftPlanStatus::Paused && $planRecord->closure_pending_at === null ? ThriftPlanStatus::Active : null,
                 'cancel' => in_array($fromStatus, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused], true) ? ThriftPlanStatus::Cancelled : null,
             };
             if ($toStatus === null) {

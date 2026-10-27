@@ -17,6 +17,10 @@ class ReversalCapabilityRegistry
         if (config('fees.deduction_corrections_enabled', false) && $original->source_type === 'manual_charge' && $original->event_type === 'other_deduction') {
             return app(DeductionReversalOwner::class);
         }
+        if ($original->source_type === 'withdrawal' && $original->event_type === 'offline_withdrawal') {
+            // Money paid outside the platform has no in-platform return evidence, so no compensation owner supports it.
+            return null;
+        }
         if ($original->source_type === 'withdrawal' && (
             (config('withdrawals.cash_compensation_enabled', false) && $original->event_type === 'cash_withdrawal')
             || (config('withdrawals.bank_compensation_enabled', false) && $original->event_type === 'bank_withdrawal'))) {

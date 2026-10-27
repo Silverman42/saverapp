@@ -100,6 +100,8 @@ class FinancialWorkflowReadService
             'gross_withdrawals' => ['Gross savings debits for paid withdrawals', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::CustomerSavingsLiability, 'debit'],
             'net_cash_payouts' => ['Cash delivered for paid withdrawals', 'cash_withdrawal', LedgerAccountCode::BusinessCash, 'credit'],
             'net_bank_payouts' => ['Bank transfers sent for paid withdrawals', 'bank_withdrawal', LedgerAccountCode::PayoutClearing, 'credit'],
+            'net_offline_cash_payouts' => ['Cash paid outside the platform for withdrawals', 'offline_withdrawal', LedgerAccountCode::BusinessCash, 'credit'],
+            'net_offline_bank_payouts' => ['Bank transfers made outside the platform for withdrawals', 'offline_withdrawal', LedgerAccountCode::BusinessBank, 'credit'],
             'withdrawal_fees' => ['Fees in original withdrawal postings', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::FeeIncome, 'credit'],
             'withdrawal_deductions' => ['Deductions in original withdrawal postings', WithdrawalPayoutSource::EVENT_TYPES, LedgerAccountCode::OtherDeductionDestination, 'credit'],
             'withdrawal_compensation' => ['Savings restored by full payout compensation', 'withdrawal_compensation', LedgerAccountCode::CustomerSavingsLiability, 'credit'],
@@ -190,7 +192,7 @@ class FinancialWorkflowReadService
         }
         $state = app(LedgerTransactionReadService::class)->state();
         $patterns = array_intersect_key($this->patterns(), array_flip([
-            'gross_withdrawals', 'net_cash_payouts', 'net_bank_payouts', 'withdrawal_fees', 'withdrawal_deductions', 'withdrawal_compensation',
+            'gross_withdrawals', 'net_cash_payouts', 'net_bank_payouts', 'net_offline_cash_payouts', 'net_offline_bank_payouts', 'withdrawal_fees', 'withdrawal_deductions', 'withdrawal_compensation',
             'other_deductions', 'deduction_compensation', 'confirmed_cash_returns',
         ]));
         $query = DB::table('ledger_entries as lines')

@@ -763,8 +763,8 @@ class ReportReadService
         $lines = DB::table('ledger_entries as entries')->join('ledger_accounts as accounts', 'accounts.id', '=', 'entries.ledger_account_id')
             ->selectRaw("entries.ledger_posting_group_id,
                 SUM(CASE WHEN accounts.code = 'customer_savings_liability_ngn' AND entries.side = 'debit' THEN entries.amount_kobo ELSE 0 END) AS gross,
-                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn') AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS paid,
-                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn') AND entries.side = 'credit' THEN 1 ELSE 0 END) AS paid_lines,
+                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn', 'business_bank_ngn') AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS paid,
+                SUM(CASE WHEN accounts.code IN ('business_cash_ngn', 'payout_clearing_ngn', 'business_bank_ngn') AND entries.side = 'credit' THEN 1 ELSE 0 END) AS paid_lines,
                 SUM(CASE WHEN accounts.code = 'fee_income_ngn' AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS fees,
                 SUM(CASE WHEN accounts.code = 'other_deduction_destination_ngn' AND entries.side = 'credit' THEN entries.amount_kobo ELSE 0 END) AS deductions")
             ->groupBy('entries.ledger_posting_group_id');

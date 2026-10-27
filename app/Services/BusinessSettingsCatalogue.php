@@ -39,6 +39,7 @@ class BusinessSettingsCatalogue
             'collection_other' => ['Configured Other methods', 'Collection methods & limits', false, ['required', 'boolean']],
             'withdrawal_cash' => ['Cash payout', 'Withdrawal methods', false, ['required', 'boolean']],
             'withdrawal_transfer' => ['Bank payout', 'Withdrawal methods', false, ['required', 'boolean']],
+            'withdrawal_offline' => ['Paid outside platform', 'Withdrawal methods', false, ['required', 'boolean']],
             'dashboard_activity_range' => ['Collection dashboard range', 'Dashboard & reports', 'today', ['required', 'in:today,week,month']],
             'dashboard_financial_range' => ['Financial dashboard range', 'Dashboard & reports', 'month', ['required', 'in:today,week,month']],
             'report_range' => ['Report activity range', 'Dashboard & reports', 'month', ['required', 'in:today,week,month']],
@@ -57,12 +58,12 @@ class BusinessSettingsCatalogue
             'fee_refunds' => ['Fee refund entitlements', 'Features & readiness', false, ['required', 'boolean']],
             'cash_disbursements' => ['Cash refunds and earnings draws', 'Features & readiness', false, ['required', 'boolean']],
         ];
-        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
+        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
         if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
             $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
         }
         $readOnly = [...$readOnly, 'collection_other', 'manual_charges', 'fee_refunds', 'cash_disbursements'];
-        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email'] as $code) {
+        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email'] as $code) {
             if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
                 $readOnly = array_values(array_diff($readOnly, [$code]));
             }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ThriftPlanStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property int $customer_profile_id
  * @property int $created_by_user_id
  * @property int|null $predecessor_plan_id
+ * @property CarbonImmutable|null $closure_pending_at
  * @property int|null $open_customer_profile_id
  * @property ThriftPlanStatus $status
  * @property int $current_terms_revision
@@ -32,6 +34,7 @@ use Illuminate\Support\Carbon;
     'current_terms_revision',
     'version',
     'activity_started_at',
+    'closure_pending_at',
 ])]
 class ThriftPlan extends Model
 {
@@ -42,6 +45,7 @@ class ThriftPlan extends Model
             'current_terms_revision' => 'integer',
             'version' => 'integer',
             'activity_started_at' => 'immutable_datetime',
+            'closure_pending_at' => 'immutable_datetime',
         ];
     }
 

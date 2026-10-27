@@ -18,6 +18,7 @@ import InputError from '@/components/InputError.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import { create as createCollection } from '@/routes/customers/collections';
+import { create as createCustomerPlan } from '@/routes/customers/plans';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
 import { store as storeAnnotation } from '@/routes/plans/card/annotations';
 import { computed, nextTick, ref } from 'vue';
@@ -53,6 +54,8 @@ const props = defineProps<{
     card: CardData;
     can_record: boolean;
     customer_id: string;
+    can_renew: boolean;
+    closure_pending: boolean;
 }>();
 defineOptions({
     layout: {
@@ -151,8 +154,27 @@ function saveAnnotation(): void {
                         >Record cash</Link
                     ></Button
                 >
+                <Button v-if="can_renew" as-child
+                    ><Link
+                        :href="
+                            createCustomerPlan(customer_id, {
+                                query: { predecessor_plan_id: card.plan_id },
+                            }).url
+                        "
+                        >Start new page</Link
+                    ></Button
+                >
             </template>
         </PageHeader>
+
+        <p
+            v-if="closure_pending"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            All savings on this page were paid out. The page closes once its
+            collections are reconciled; then a new page can start.
+        </p>
 
         <Card>
             <CardHeader

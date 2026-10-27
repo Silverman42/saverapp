@@ -331,6 +331,7 @@ class BankPayoutService
             $withdrawal->terminal_at = now();
             $this->transition($withdrawal, 'posted', 'bank_posted', null, $attempt);
             app(LedgerTransactionProjectionService::class)->projectWithdrawal($withdrawal);
+            app(PlanPageClosureService::class)->afterWithdrawalPosted($withdrawal, null);
 
             return $group;
         }, attempts: 3);

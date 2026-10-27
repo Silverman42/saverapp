@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FinancialReleaseEvidenceService
 {
-    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'customer_registration', 'transactional_email', 'emergency_recovery'];
+    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email', 'emergency_recovery'];
 
     public const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 
@@ -147,6 +147,9 @@ class FinancialReleaseEvidenceService
                 && app(PayoutProvider::class)->key() !== 'unavailable';
 
             return $bankAvailable ? [] : ['enabled and certified bank payout provider'];
+        }
+        if ($capability === 'withdrawal_offline') {
+            return config('withdrawals.offline_enabled') === true ? [] : ['enabled offline payout switch'];
         }
         $required = match ($capability) {
             'collection_transfer' => ['business_bank_ngn'],

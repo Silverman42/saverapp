@@ -149,6 +149,7 @@ class CashExecutionService
             $withdrawal->terminal_at = now();
             $this->transition($withdrawal, 'posted', 'cash_posted', $actor, $execution);
             app(LedgerTransactionProjectionService::class)->projectWithdrawal($withdrawal);
+            app(PlanPageClosureService::class)->afterWithdrawalPosted($withdrawal, null);
 
             return $execution;
         }, attempts: 3);

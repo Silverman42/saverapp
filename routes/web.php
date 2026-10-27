@@ -60,6 +60,7 @@ use App\Http\Controllers\FinancialWorkflowController;
 use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ManagementDeliveryController;
 use App\Http\Controllers\NotificationInboxController;
+use App\Http\Controllers\OfflinePayoutController;
 use App\Http\Controllers\ProfileIdentityController;
 use App\Http\Controllers\ProfileManagementController;
 use App\Http\Controllers\ReconciliationController;
@@ -222,6 +223,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('payout-destinations/{destination}/reject', [BankPayoutDestinationController::class, 'reject'])->middleware('fresh')->name('payout-destinations.reject');
     Route::post('payout-destinations/{destination}/revoke', [BankPayoutDestinationController::class, 'revoke'])->middleware('fresh')->name('payout-destinations.revoke');
     Route::post('withdrawals/{withdrawal}/bank/start', [BankPayoutController::class, 'start'])->middleware('fresh')->name('withdrawals.bank.start');
+    Route::post('withdrawals/{withdrawal}/offline-payout', [OfflinePayoutController::class, 'store'])->middleware('fresh')->name('withdrawals.offline-payout.store');
     Route::post('bank-payout-attempts/{attempt}/check', [BankPayoutController::class, 'check'])->middleware('throttle:30,1,bank-payout-check')->name('bank-payout-attempts.check');
 
     // Gated financial corrections (Module 09)

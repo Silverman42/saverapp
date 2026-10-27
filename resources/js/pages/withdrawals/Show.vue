@@ -15,11 +15,20 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { dashboard } from '@/routes';
 import { start as startCash } from '@/routes/withdrawals/cash';
 import { start as startBank } from '@/routes/withdrawals/bank';
+import { store as storeOfflinePayout } from '@/routes/withdrawals/offline-payout';
 import { check as checkAttempt } from '@/routes/bank-payout-attempts';
 import { preview as recoveryPreview } from '@/routes/cash-recoveries';
 import CashRecoveryPanel from '@/components/CashRecoveryPanel.vue';
@@ -69,9 +78,21 @@ type BankAttempt = {
     occurred_on: string | null;
     settled_at: string | null;
 };
+type OfflinePayout = {
+    channel: 'cash' | 'bank_transfer';
+    external_reference: string | null;
+    paid_on: string;
+    amount_kobo: number;
+    note: string | null;
+    recorded_by: string | null;
+    recorded_at: string | null;
+};
 const props = defineProps<{
     withdrawal: Withdrawal;
     can_execute_bank: boolean;
+    can_record_offline: boolean;
+    offline_payout: OfflinePayout | null;
+    today: string;
     timezone: string;
     bank_attempts: BankAttempt[];
     bank_returns: {
@@ -136,6 +157,26 @@ const bankForm = useForm({
     version: props.withdrawal.version,
     confirmed: false,
 });
+const offlineForm = useForm({
+    attempt_reference: crypto.randomUUID(),
+    version: props.withdrawal.version,
+    channel: 'cash' as 'cash' | 'bank_transfer',
+    external_reference: '',
+    paid_on: props.today,
+    note: '',
+    confirmed: false,
+});
+const offlineOpen = ref(false);
+function recordOffline(): void {
+    offlineForm.version = props.withdrawal.version;
+    offlineForm.post(storeOfflinePayout.url(props.withdrawal.id), {
+        onSuccess: () => {
+            offlineForm.reset();
+            offlineForm.attempt_reference = crypto.randomUUID();
+            offlineOpen.value = false;
+        },
+    });
+}
 const checkForm = useForm({});
 const poll = usePoll(
     10000,
@@ -446,7 +487,10 @@ function submit(): void {
         </Card>
 
         <Card
-            v-if="(can_execute || can_execute_bank) && canPayOut"
+            v-if="
+                (can_execute || can_execute_bank || can_record_offline) &&
+                canPayOut
+            "
             aria-labelledby="payout-title"
         >
             <CardHeader
@@ -472,8 +516,68 @@ function submit(): void {
                         @click="bankOpen = true"
                         >Send transfer</Button
                     >
+                    <Button
+                        v-if="
+                            can_record_offline &&
+                            withdrawal.state === 'approved'
+                        "
+                        type="button"
+                        @click="offlineOpen = true"
+                        >Record offline payout</Button
+                    >
                 </div>
             </CardHeader>
+        </Card>
+
+        <Card v-if="offline_payout" aria-labelledby="offline-payout-title">
+            <CardHeader>
+                <CardTitle id="offline-payout-title"
+                    >Paid outside platform</CardTitle
+                >
+            </CardHeader>
+            <CardContent>
+                <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                    <div>
+                        <dt class="text-muted-foreground">Paid by</dt>
+                        <dd class="font-medium">
+                            {{
+                                offline_payout.channel === 'cash'
+                                    ? 'Cash'
+                                    : 'Bank transfer'
+                            }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Amount paid</dt>
+                        <dd class="font-medium">
+                            {{ money(offline_payout.amount_kobo) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted-foreground">Payment date</dt>
+                        <dd class="font-medium">
+                            {{ offline_payout.paid_on }}
+                        </dd>
+                    </div>
+                    <div v-if="offline_payout.external_reference">
+                        <dt class="text-muted-foreground">Reference</dt>
+                        <dd class="font-medium">
+                            {{ offline_payout.external_reference }}
+                        </dd>
+                    </div>
+                    <div v-if="offline_payout.recorded_by">
+                        <dt class="text-muted-foreground">Recorded by</dt>
+                        <dd class="font-medium">
+                            {{ offline_payout.recorded_by }} ·
+                            {{ when(offline_payout.recorded_at) }}
+                        </dd>
+                    </div>
+                    <div v-if="offline_payout.note" class="sm:col-span-2">
+                        <dt class="text-muted-foreground">Note</dt>
+                        <dd>{{ offline_payout.note }}</dd>
+                    </div>
+                </dl>
+            </CardContent>
         </Card>
 
         <Card v-if="bank_attempts.length > 0">
@@ -714,6 +818,110 @@ function submit(): void {
                                 cashForm.processing || !cashForm.confirmed
                             "
                             >Start cash payment</Button
+                        >
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="offlineOpen">
+            <DialogContent class="sm:max-w-md">
+                <form class="grid gap-5" @submit.prevent="recordOffline">
+                    <DialogHeader>
+                        <DialogTitle>Record offline payout</DialogTitle>
+                        <DialogDescription>
+                            Record that {{ money(withdrawal.net_kobo) }} was
+                            paid to {{ withdrawal.customer_name }} outside the
+                            app. This posts the withdrawal straight away.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-2">
+                        <Label for="offline-channel">Paid by</Label>
+                        <Select v-model="offlineForm.channel"
+                            ><SelectTrigger
+                                id="offline-channel"
+                                class="h-11 w-full"
+                                ><SelectValue /></SelectTrigger
+                            ><SelectContent
+                                ><SelectItem value="cash">Cash</SelectItem
+                                ><SelectItem value="bank_transfer"
+                                    >Bank transfer</SelectItem
+                                ></SelectContent
+                            ></Select
+                        >
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="offline-reference"
+                            >Reference<span
+                                v-if="offlineForm.channel === 'bank_transfer'"
+                            >
+                                *</span
+                            ></Label
+                        >
+                        <Input
+                            id="offline-reference"
+                            v-model="offlineForm.external_reference"
+                            class="h-11"
+                            maxlength="120"
+                            :required="offlineForm.channel === 'bank_transfer'"
+                            :placeholder="
+                                offlineForm.channel === 'bank_transfer'
+                                    ? 'Bank transfer reference'
+                                    : 'Receipt number (optional)'
+                            "
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="offline-paid-on">Payment date</Label>
+                        <DatePicker
+                            id="offline-paid-on"
+                            v-model="offlineForm.paid_on"
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="offline-note">Note</Label>
+                        <Input
+                            id="offline-note"
+                            v-model="offlineForm.note"
+                            class="h-11"
+                            maxlength="500"
+                            required
+                            placeholder="Who paid and how the customer was identified"
+                        />
+                    </div>
+                    <label class="flex items-start gap-3 text-sm"
+                        ><input
+                            v-model="offlineForm.confirmed"
+                            type="checkbox"
+                            class="mt-0.5"
+                        />I confirm the customer was paid exactly
+                        {{ money(withdrawal.net_kobo) }}.</label
+                    >
+                    <div
+                        v-if="Object.keys(offlineForm.errors).length"
+                        role="alert"
+                        class="text-destructive grid gap-1 text-sm"
+                    >
+                        <p
+                            v-for="(error, key) in offlineForm.errors"
+                            :key="key"
+                        >
+                            {{ error }}
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="offlineOpen = false"
+                            >Go back</Button
+                        >
+                        <Button
+                            type="submit"
+                            :disabled="
+                                offlineForm.processing || !offlineForm.confirmed
+                            "
+                            >Record payout</Button
                         >
                     </DialogFooter>
                 </form>

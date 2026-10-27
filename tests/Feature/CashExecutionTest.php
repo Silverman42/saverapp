@@ -485,7 +485,9 @@ test('a real open cycle retains capacity after its final date and full acknowled
     $this->actingAs($customer->user)->post(route('cash-executions.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
     $position = app(WithdrawalBalanceService::class)->position($customer, $plan);
     expect($withdrawal->fresh()->state)->toBe('posted')->and($position['cycle_liability_kobo'])->toBe(0)
-        ->and($position['cycle_reservations_kobo'])->toBe(0)->and($plan->fresh()->status->value)->toBe($state)
+        ->and($position['cycle_reservations_kobo'])->toBe(0)
+        ->and($plan->fresh()->status->value)->toBe($state === 'completed' ? 'completed' : 'paused')
+        ->and($plan->fresh()->closure_pending_at !== null)->toBe($state !== 'completed')
         ->and($plan->fresh()->open_customer_profile_id)->toBe($customer->id);
     $baseline = [];
     foreach (['thrift_plans', 'plan_terms_revisions', 'contribution_slots', 'fee_snapshots', 'plan_operation_attempts',

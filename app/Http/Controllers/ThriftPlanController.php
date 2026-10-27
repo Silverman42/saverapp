@@ -171,13 +171,14 @@ class ThriftPlanController extends Controller
         $feeOptions = $feeService->getCurrentPlanOptions();
         $predecessorId = $request->validate(['predecessor_plan_id' => ['nullable', 'string', 'max:32']])['predecessor_plan_id'] ?? null;
         $today = CarbonImmutable::now($business->timezone)->toDateString();
+        $previous = $this->renewalDefaults($customerProfile->id, $predecessorId, $feeOptions->pluck('id')->all());
         $form = [
-            'name' => (string) $request->query('name', $predecessorId ? 'Renewed daily thrift plan' : 'Daily thrift plan'),
-            'amount_ngn' => (string) $request->query('amount_ngn', ''),
+            'name' => (string) $request->query('name', $previous['name'] ?? ($predecessorId ? 'Renewed daily thrift plan' : 'Daily thrift plan')),
+            'amount_ngn' => (string) $request->query('amount_ngn', $previous['amount_ngn'] ?? ''),
             'start_date' => (string) $request->query('start_date', $today),
-            'contribution_days' => (string) $request->query('contribution_days', '30'),
+            'contribution_days' => (string) $request->query('contribution_days', $previous['contribution_days'] ?? '30'),
             'customer_visible_notes' => (string) $request->query('customer_visible_notes', ''),
-            'fee_rule_id' => (string) $request->query('fee_rule_id', $feeOptions->first()->id ?? ''),
+            'fee_rule_id' => (string) $request->query('fee_rule_id', $previous['fee_rule_id'] ?? ($feeOptions->first()->id ?? '')),
         ];
 
         $preview = null;
@@ -292,11 +293,12 @@ class ThriftPlanController extends Controller
                 'can_settle' => $canManage && config('collections.settlement_enabled', false),
                 'can_edit' => $canManage && in_array($record->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused], true),
                 'can_pause' => $canManage && $record->status === ThriftPlanStatus::Active,
-                'can_resume' => $canManage && $record->status === ThriftPlanStatus::Paused
+                'can_resume' => $canManage && $record->status === ThriftPlanStatus::Paused && $record->closure_pending_at === null
                     && $record->customerProfile->operational_status->value === 'active',
                 'can_cancel' => $canCancel,
                 'can_renew' => $canManage && in_array($record->status, [ThriftPlanStatus::Cancelled, ThriftPlanStatus::Closed], true) && ! $hasSuccessor
                     && $record->customerProfile->operational_status->value === 'active',
+                'closure_pending' => $record->closure_pending_at !== null,
             ],
             'attempt_reference' => (string) Str::uuid(),
         ]);
@@ -518,6 +520,29 @@ class ThriftPlanController extends Controller
         }
 
         return $record;
+    }
+
+    /**
+     * The previous page's terms, used to pre-fill a new page. The fee rule is kept only while it is still offered.
+     *
+     * @param  list<int>  $offeredFeeRuleIds
+     * @return array{name: string, amount_ngn: string, contribution_days: string, fee_rule_id: string|null}|null
+     */
+    private function renewalDefaults(int $customerProfileId, ?string $predecessorId, array $offeredFeeRuleIds): ?array
+    {
+        if ($predecessorId === null) {
+            return null;
+        }
+        $predecessor = ThriftPlan::query()->where('plan_id', $predecessorId)->where('customer_profile_id', $customerProfileId)->first();
+        $revision = $predecessor?->currentTermsRevision();
+        if ($revision === null) {
+            return null;
+        }
+        $feeRuleId = $revision->feeSnapshot?->fee_rule_id;
+
+        return ['name' => $revision->name, 'amount_ngn' => $this->amountInput($revision->contribution_amount_kobo),
+            'contribution_days' => (string) $revision->contribution_days,
+            'fee_rule_id' => in_array($feeRuleId, $offeredFeeRuleIds, true) ? (string) $feeRuleId : null];
     }
 
     private function currentRevision(ThriftPlan $plan): ?PlanTermsRevision
