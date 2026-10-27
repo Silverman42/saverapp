@@ -4,11 +4,13 @@ use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\AgentStatus;
 use App\Enums\CustomerAssignmentStatus;
+use App\Enums\ThriftPlanStatus;
 use App\Models\AgentProfile;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
+use App\Services\WithdrawalMethodRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -182,4 +184,34 @@ test('WDL-AC-003 an Inactive Agent profile cannot preview or cancel', function (
     $this->actingAs($agent)->post(route('withdrawals.cancel', $withdrawal),
         withdrawalDecision(1, ['internal_reason' => 'Customer changed instruction']))->assertForbidden();
     expect($withdrawal->fresh()->state)->toBe('pending_review');
+});
+
+test('the customer page offers Request withdrawal only to a viewer who can start one', function (): void {
+    [$agent, $customer, , $plan] = withdrawalFixture();
+    $canRequestWithdrawal = fn (User $viewer): bool => $this->actingAs($viewer)
+        ->get(route('customers.show', $customer->customer_id))->assertOk()
+        ->inertiaProps('customer.actions.can_request_withdrawal');
+
+    expect($canRequestWithdrawal($agent))->toBeTrue()
+        ->and($canRequestWithdrawal(withdrawalReviewer()))->toBeFalse();
+
+    $plan->forceFill(['status' => ThriftPlanStatus::Closed])->save();
+    expect($canRequestWithdrawal($agent))->toBeFalse();
+});
+
+test('the request page points the Agent to a plan withdrawal that is already in progress', function (): void {
+    [$agent, $customer, $assignment, $plan] = withdrawalFixture();
+    enableFixtureMethod();
+    app(WithdrawalMethodRegistry::class)->shouldReceive('availableMethods')->andReturn(['cash']);
+    $livePlanWithdrawal = fn (): ?string => $this->actingAs($agent)
+        ->get(route('customers.withdrawals.create', $customer->customer_id))->assertOk()
+        ->inertiaProps('plans.0.live_withdrawal_id');
+
+    expect($livePlanWithdrawal())->toBeNull();
+
+    $withdrawal = submittedWithdrawal($agent, $customer, $assignment, $plan);
+
+    expect($livePlanWithdrawal())->toBe($withdrawal->withdrawal_id);
+    $this->actingAs($agent)->postJson(route('customers.withdrawals.preview', $customer->customer_id), withdrawalPayload($customer, $assignment, $plan))
+        ->assertConflict()->assertJsonPath('message', 'This cycle already has a live withdrawal request.');
 });

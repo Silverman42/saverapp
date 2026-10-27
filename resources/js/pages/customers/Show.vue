@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import {
     AlertCircle,
+    Banknote,
     FileText,
     History,
     MoreHorizontal,
@@ -50,6 +51,7 @@ import {
 import { dashboard } from '@/routes';
 import { create as createCustomerPlan } from '@/routes/customers/plans';
 import { create as createCollection } from '@/routes/customers/collections';
+import { create as createWithdrawal } from '@/routes/customers/withdrawals';
 import { index as plansIndex, show as showPlan } from '@/routes/plans';
 import { index as transactionsIndex } from '@/routes/transactions';
 import { preview as statementPreview } from '@/routes/customers/statements';
@@ -157,6 +159,7 @@ export type CustomerDetail = {
         reassign_message: string;
         can_archive: boolean;
         archive_message: string;
+        can_request_withdrawal?: boolean;
         can_manage_invitation?: boolean;
         can_manage_status?: boolean;
         can_enable_online_access?: boolean;
@@ -273,6 +276,16 @@ const getAccountBadgeVariant = (
                     <Button v-else-if="customer.plans.can_create" as-child>
                         <Link :href="createCustomerPlan(customer.id).url"
                             ><Plus class="size-4" /> New plan</Link
+                        >
+                    </Button>
+                    <Button
+                        v-if="customer.actions.can_request_withdrawal"
+                        as-child
+                        variant="outline"
+                    >
+                        <Link :href="createWithdrawal(customer.id).url"
+                            ><Banknote class="size-4" /> Request
+                            withdrawal</Link
                         >
                     </Button>
                     <Button

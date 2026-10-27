@@ -57,6 +57,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmailChangeController;
 use App\Http\Controllers\FinancialArtifactController;
 use App\Http\Controllers\FinancialWorkflowController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\LedgerTransactionController;
 use App\Http\Controllers\ManagementDeliveryController;
 use App\Http\Controllers\NotificationInboxController;
@@ -123,6 +124,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('customers/{customer}/recovery/operations/{attempt_reference}', [CustomerRecoveryController::class, 'operation'])->whereUuid('attempt_reference')->name('customers.recovery.operation');
     Route::get('customers/{customer}/delivery', [ManagementDeliveryController::class, 'customer'])->middleware('throttle:60,1')->name('customers.delivery.index');
     Route::get('agents/{agent}/delivery', [ManagementDeliveryController::class, 'agent'])->middleware('throttle:60,1')->name('agents.delivery.index');
+    Route::get('help', HelpController::class)->name('help');
     Route::get('notifications', [NotificationInboxController::class, 'index'])->name('notifications.index');
     Route::get('notifications/sync', [NotificationInboxController::class, 'sync'])->name('notifications.sync');
     Route::post('notifications/page-read', [NotificationInboxController::class, 'pageRead'])->name('notifications.page-read');

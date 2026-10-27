@@ -3,8 +3,9 @@ import FeeQuoteSummary from '@/components/FeeQuoteSummary.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import type { FeeDisclosure } from '@/types/fee-disclosure';
+import { HttpResponseError } from '@inertiajs/core';
 import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -25,7 +26,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { dashboard } from '@/routes';
-import { index as withdrawalsIndex } from '@/routes/withdrawals';
+import {
+    index as withdrawalsIndex,
+    show as showWithdrawal,
+} from '@/routes/withdrawals';
 import { index as payoutDestinations } from '@/routes/customers/payout-destinations';
 import {
     preview as previewWithdrawal,
@@ -55,7 +59,11 @@ type Quote = {
 };
 const props = defineProps<{
     customer: { id: string; name: string };
-    plans: Array<{ id: string; status: string }>;
+    plans: Array<{
+        id: string;
+        status: string;
+        live_withdrawal_id: string | null;
+    }>;
     methods: string[];
     cash_destination_reference: string;
     bank_destinations: Array<{ reference: string; label: string }>;
@@ -100,6 +108,12 @@ const previewHttp = useHttp({
     internal_notes: '',
 });
 const quote = ref<Quote | null>(null);
+const previewFailure = ref<string | null>(null);
+const liveWithdrawalId = computed(
+    () =>
+        props.plans.find((plan) => plan.id === form.plan_id)
+            ?.live_withdrawal_id ?? null,
+);
 const reviewOpen = ref(false);
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -124,6 +138,7 @@ watch(
     ],
     () => {
         quote.value = null;
+        previewFailure.value = null;
         form.confirmed = false;
     },
 );
@@ -135,6 +150,7 @@ async function review(): Promise<void> {
     previewHttp.destination_reference = form.destination_reference;
     previewHttp.reason = form.reason;
     previewHttp.internal_notes = form.internal_notes;
+    previewFailure.value = null;
     try {
         const result = (await previewHttp.post(
             previewWithdrawal.url(props.customer.id),
@@ -147,9 +163,34 @@ async function review(): Promise<void> {
         form.plan_version = result.plan_version;
         form.business_version = result.business_version;
         reviewOpen.value = true;
-    } catch {
+    } catch (error) {
         quote.value = null;
+        previewFailure.value = failureMessage(error);
     }
+}
+function failureMessage(error: unknown): string | null {
+    const fallback = 'The quote could not be loaded. Try again.';
+    if (!(error instanceof HttpResponseError)) {
+        return fallback;
+    }
+    if (error.response.status === 422) {
+        return null;
+    }
+    try {
+        const data: unknown = JSON.parse(error.response.data);
+        if (
+            data &&
+            typeof data === 'object' &&
+            'message' in data &&
+            typeof data.message === 'string' &&
+            data.message !== ''
+        ) {
+            return data.message;
+        }
+    } catch {
+        return fallback;
+    }
+    return fallback;
 }
 function submit(): void {
     if (quote.value && form.confirmed && form.instruction_attested)
@@ -195,6 +236,18 @@ function submit(): void {
                                 ></SelectContent
                             ></Select
                         >
+                        <p
+                            v-if="liveWithdrawalId"
+                            role="status"
+                            class="text-muted-foreground text-sm"
+                        >
+                            This plan already has a withdrawal in progress.
+                            <Link
+                                :href="showWithdrawal.url(liveWithdrawalId)"
+                                class="text-foreground underline"
+                                >View {{ liveWithdrawalId }}</Link
+                            >
+                        </p>
                     </div>
                     <div class="grid gap-2">
                         <Label for="withdrawal-type">Type</Label
@@ -334,12 +387,14 @@ function submit(): void {
                     </div>
                     <div
                         v-if="
+                            previewFailure ||
                             Object.keys(previewHttp.errors).length ||
                             (!reviewOpen && Object.keys(form.errors).length)
                         "
                         role="alert"
                         class="text-destructive grid gap-1 text-sm sm:col-span-2"
                     >
+                        <p v-if="previewFailure">{{ previewFailure }}</p>
                         <p
                             v-for="(error, key) in previewHttp.errors"
                             :key="key"

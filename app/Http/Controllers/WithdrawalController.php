@@ -68,8 +68,9 @@ class WithdrawalController extends Controller
 
         return Inertia::render('withdrawals/Create', [
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
-            'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])
-                ->get()->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value]),
+            'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])->get()
+                ->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value,
+                    'live_withdrawal_id' => WithdrawalRequest::query()->where('live_thrift_plan_id', $plan->id)->value('withdrawal_id')]),
             'methods' => $methods->availableMethods(),
             'cash_destination_reference' => 'customer:'.$profile->id,
             'bank_destinations' => CustomerPayoutDestination::query()->where('customer_profile_id', $profile->id)->where('status', 'verified')->get()

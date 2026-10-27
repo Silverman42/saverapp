@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import {
     Bell,
     Briefcase,
+    CircleHelp,
     Coins,
     LayoutDashboard,
     Palette,
@@ -29,7 +30,7 @@ import {
     SidebarTrigger,
     useSidebar,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
+import { dashboard, help } from '@/routes';
 import { index as businessSettings } from '@/routes/admin/business-settings';
 import { index as financialPeriodsIndex } from '@/routes/admin/financial-periods';
 import { index as notificationInbox } from '@/routes/notifications';
@@ -258,23 +259,35 @@ const adminNavItems = computed<NavItem[]>(() => {
     return items;
 });
 
-const accountNavItems: NavItem[] = [
-    {
-        title: 'Profile',
-        href: editProfile(),
-        icon: UserRound,
-    },
-    {
-        title: 'Security',
-        href: editSecurity(),
-        icon: ShieldCheck,
-    },
-    {
-        title: 'Appearance',
-        href: editAppearance(),
-        icon: Palette,
-    },
-];
+const accountNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
+        {
+            title: 'Profile',
+            href: editProfile(),
+            icon: UserRound,
+        },
+        {
+            title: 'Security',
+            href: editSecurity(),
+            icon: ShieldCheck,
+        },
+        {
+            title: 'Appearance',
+            href: editAppearance(),
+            icon: Palette,
+        },
+    ];
+
+    if (isAdmin.value || isAgent.value) {
+        items.push({
+            title: 'Help',
+            href: help(),
+            icon: CircleHelp,
+        });
+    }
+
+    return items;
+});
 
 function closeMobileSidebar(): void {
     if (isMobile.value) {

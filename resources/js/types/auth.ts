@@ -6,6 +6,7 @@ export type AdminPermission =
     | 'customers.manage'
     | 'customers.reassign'
     | 'withdrawals.review'
+    | 'cash.execute'
     | 'reversals.review'
     | 'fees.manage'
     | 'deductions.manage'

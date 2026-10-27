@@ -225,6 +225,8 @@ class CustomerProfileController extends Controller
                 'can_enable_online_access' => $customerProfile->offline_only && $canManageInvitation,
                 'can_charge_registration_fee' => Gate::forUser($viewer)->allows('chargeRegistrationFee', $customerProfile),
                 'can_collect_registration_fee' => Gate::forUser($viewer)->allows('recordCollection', $customerProfile),
+                'can_request_withdrawal' => Gate::forUser($viewer)->allows('initiateWithdrawal', $customerProfile)
+                    && $customerProfile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])->exists(),
                 'can_manage_status' => $viewer->user_type === UserType::Admin
                     && $authorizationService->allows($viewer, AdminPermission::CustomersManage),
             ],
