@@ -85,6 +85,9 @@ class DashboardReadService
             $manifest['ledger_watermark'] = $state['watermark'];
             $manifest['projection_version'] = $state['version'];
             $sections = [];
+            if ($viewer->user_type !== UserType::Customer) {
+                $sections['today'] = $this->section('today', $manifest, fn (): array => $this->today($viewer, $scope, $state, $business->timezone));
+            }
             $sections['portfolio'] = $this->section('portfolio', $manifest, function () use ($operational, $filters, $scope, $viewer): array {
                 if ($viewer->user_type === UserType::Customer && ! (clone $scope)->exists()) {
                     throw new RuntimeException('Customer profile unavailable.');
@@ -190,7 +193,13 @@ class DashboardReadService
             return $unavailable('No report reproduces this metric at the same scope; owner links reauthorize at their current cutoff.');
         }
         $query = [];
-        if ($report === 'contributions') {
+        if (in_array($metric, MetricDefinitionService::TODAY_METRICS, true)) {
+            if ($report === 'contributions' && $viewer->user_type === UserType::Agent) {
+                return $unavailable('Agent receipt totals use the immutable recording actor; the contributions report uses current assignment scope.');
+            }
+            $today = CarbonImmutable::now($manifest['timezone'])->toDateString();
+            $query = $report === 'customer-summary' ? [] : ['from' => $today, 'to' => $today];
+        } elseif ($report === 'contributions') {
             if ($viewer->user_type === UserType::Agent) {
                 return $unavailable('Agent receipt totals use the immutable recording actor; the contributions report uses current assignment scope.');
             }
@@ -234,6 +243,65 @@ class DashboardReadService
         }
 
         return $query;
+    }
+
+    /**
+     * Fixed business-local today figures. The period and operational filters never change them.
+     *
+     * @param  Builder<CustomerProfile>  $scope
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function today(User $viewer, Builder $scope, array $state, string $timezone): array
+    {
+        $localStart = CarbonImmutable::now($timezone)->startOfDay();
+        $start = $localStart->utc()->toDateTimeString();
+        $end = $localStart->addDay()->utc()->toDateTimeString();
+        $date = $localStart->toDateString();
+        $customerIds = (clone $scope)->select('customer_profiles.id');
+        $registered = $this->metric('customers_registered_today', 'Customers registered today', (clone $scope)
+            ->where('customer_profiles.created_at', '>=', $start)->where('customer_profiles.created_at', '<', $end)->count(),
+            'count', 'customer management', 'business local today', 'Customer profiles created today in the business timezone, including archived Customers.');
+        $note = 'Always today ('.$date.', '.$timezone.'). The period and other filters do not change these figures.';
+        $money = [
+            'registration_fee_charged_today' => ['Registration fee charged today', 'fee obligation entries', 'Registration fees assessed today plus approved increases, less approved reductions. Charged, not collected.'],
+            'service_charge_deducted_today' => ['Service charge deducted today', 'fee savings applications', 'Plan (page) service charge taken from Customer savings today.'],
+            'deposits_today' => ['Deposits today', 'verified collection receipts', $viewer->user_type === UserType::Agent
+                ? 'Savings recorded by you with today’s received date; excludes fees.'
+                : 'Savings component of posted receipts with today’s received date; excludes fees.'],
+        ];
+        try {
+            $this->requireLedger($state);
+        } catch (Throwable) {
+            return ['status' => 'Partial', 'reason' => 'Money figures are unavailable until the ledger is verified.', 'note' => $note, 'metrics' => [
+                $registered,
+                ...array_map(fn (string $code, array $meta): array => $this->metric($code, $meta[0], null, 'NGN', $meta[1], 'business local today', $meta[2]), array_keys($money), $money),
+            ]];
+        }
+
+        $fees = DB::table('fee_obligation_entries as entries')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'entries.fee_obligation_id')
+            ->where('obligations.kind', 'registration')->whereIn('obligations.customer_profile_id', $customerIds)
+            ->where('entries.created_at', '>=', $start)->where('entries.created_at', '<', $end)
+            ->selectRaw("COALESCE(SUM(CASE WHEN entries.entry_type IN ('assessment', 'assessment_correction_increase') THEN entries.amount_kobo ELSE 0 END), 0) AS charged")
+            ->selectRaw("COALESCE(SUM(CASE WHEN entries.entry_type = 'assessment_correction' THEN entries.amount_kobo ELSE 0 END), 0) AS reduced")
+            ->first();
+        $serviceCharge = DB::table('fee_savings_applications as applications')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'applications.fee_obligation_id')
+            ->where('obligations.kind', 'plan')->whereIn('applications.customer_profile_id', $customerIds)
+            ->where('applications.created_at', '>=', $start)->where('applications.created_at', '<', $end)
+            ->sum('applications.amount_kobo');
+        $deposits = $this->receiptQuery($viewer, $scope, [])->where('received_date', $date)->sum('savings_amount_kobo');
+        $values = [
+            'registration_fee_charged_today' => $this->integer($fees->charged) - $this->integer($fees->reduced),
+            'service_charge_deducted_today' => $this->integer($serviceCharge),
+            'deposits_today' => $this->integer($deposits),
+        ];
+
+        return ['note' => $note, 'metrics' => [
+            $registered,
+            ...array_map(fn (string $code, array $meta): array => $this->metric($code, $meta[0], $values[$code], 'NGN', $meta[1], 'business local today', $meta[2]), array_keys($money), $money),
+        ]];
     }
 
     /** @param Builder<CustomerProfile> $customers

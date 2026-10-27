@@ -526,3 +526,141 @@ test('each failed or disabled owner fails only its own sections', function (Clos
     'projection unavailable' => [fn () => DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']),
         ['savings', 'collections', 'schedule', 'activity', 'custody'], ['portfolio', 'requests']],
 ]);
+
+function dashboardFeeObligation(CustomerProfile $customer, string $kind, int $snapshotId, int $actorId): int
+{
+    return DB::table('fee_obligations')->insertGetId([
+        'customer_profile_id' => $customer->id, 'fee_snapshot_id' => $snapshotId, 'kind' => $kind, 'source_type' => 'test', 'source_id' => (string) Str::uuid(),
+        'amount_kobo' => 0, 'currency' => 'NGN', 'due_condition' => 'upon_registration',
+        'customer_description' => 'Test fee.', 'created_by_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+}
+
+function dashboardFeeEntry(int $obligationId, string $type, int $amount, CarbonImmutable|string $at): void
+{
+    $key = (string) Str::uuid();
+    DB::table('fee_obligation_entries')->insert([
+        'fee_obligation_id' => $obligationId, 'entry_type' => $type, 'amount_kobo' => $amount, 'currency' => 'NGN',
+        'source_type' => 'test', 'source_id' => $key, 'idempotency_key' => $key, 'created_at' => $at, 'updated_at' => $at,
+    ]);
+}
+
+function dashboardSavingsApplication(CustomerProfile $customer, ThriftPlan $plan, int $obligationId, int $actorId, int $amount, CarbonImmutable|string $at): void
+{
+    DB::table('fee_savings_applications')->insert([
+        'operation_reference' => (string) Str::uuid(), 'payload_hash' => str_repeat('a', 64), 'preview_fingerprint' => str_repeat('b', 64),
+        'customer_profile_id' => $customer->id, 'thrift_plan_id' => $plan->id, 'fee_obligation_id' => $obligationId,
+        'actor_user_id' => $actorId, 'amount_kobo' => $amount, 'remaining_cycle_savings_kobo' => 0, 'remaining_available_kobo' => 0,
+        'remaining_fee_kobo' => 0, 'currency' => 'NGN', 'reason' => 'Test.', 'customer_description' => 'Test.', 'created_at' => $at,
+    ]);
+}
+
+/** Seeds today and yesterday activity for the fixture Customer and an unassigned Customer. */
+function dashboardTodayActivity(array $fixture): void
+{
+    [$agent, $customer, , $plan] = $fixture;
+    $snapshot = FeeSnapshot::query()->firstOrFail()->id;
+    $now = CarbonImmutable::now();
+    $yesterday = $now->subDay();
+    CustomerProfile::factory()->create(['operational_status' => 'archived']);
+    CustomerProfile::factory()->create(['created_at' => $yesterday, 'updated_at' => $yesterday]);
+    $other = CustomerProfile::factory()->create();
+
+    $registration = dashboardFeeObligation($customer, 'registration', $snapshot, $agent->id);
+    dashboardFeeEntry($registration, 'assessment', 150000, $now);
+    dashboardFeeEntry($registration, 'assessment_correction_increase', 20000, $now);
+    dashboardFeeEntry($registration, 'assessment_correction', 10000, $now);
+    dashboardFeeEntry($registration, 'waiver', 5000, $now);
+    dashboardFeeEntry($registration, 'settlement', 50000, $now);
+    $otherRegistration = dashboardFeeObligation($other, 'registration', $snapshot, $agent->id);
+    dashboardFeeEntry($otherRegistration, 'assessment', 30000, $now);
+    $manual = dashboardFeeObligation($customer, 'manual', $snapshot, $agent->id);
+    dashboardFeeEntry($manual, 'assessment', 99000, $now);
+
+    $planFee = dashboardFeeObligation($customer, 'plan', $snapshot, $agent->id);
+    dashboardSavingsApplication($customer, $plan, $planFee, $agent->id, 25000, $now);
+    dashboardSavingsApplication($customer, $plan, $planFee, $agent->id, 40000, $yesterday);
+    dashboardSavingsApplication($customer, $plan, $registration, $agent->id, 7000, $now);
+}
+
+test('the today tab shows fixed business-local figures for admins and scoped figures for agents', function (string $period): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture, '1000.00', '2026-09-25');
+    array_map(fn (object $model) => $model->refresh(), array_slice($fixture, 1, 3));
+    dashboardPostReceipt($fixture, '2000.00');
+    dashboardTodayActivity($fixture);
+    $admin = User::factory()->admin()->create();
+
+    $this->actingAs($admin)->get(route('admin.dashboard', ['period' => $period]))->assertInertia(fn (Assert $page) => $page
+        ->where('dashboard.sections.today.status', 'Current')
+        ->where('dashboard.sections.today.metrics', fn ($metrics) => collect($metrics)->pluck('value', 'code')->all() === [
+            'customers_registered_today' => 3,
+            'registration_fee_charged_today' => 190000,
+            'service_charge_deducted_today' => 25000,
+            'deposits_today' => 200000,
+        ])
+        ->where('dashboard.sections.today.metrics.3.display', '₦2,000.00'));
+    $this->actingAs($fixture[0])->get(route('agent.dashboard', ['period' => $period]))->assertInertia(fn (Assert $page) => $page
+        ->where('dashboard.sections.today.metrics', fn ($metrics) => collect($metrics)->pluck('value', 'code')->all() === [
+            'customers_registered_today' => 1,
+            'registration_fee_charged_today' => 160000,
+            'service_charge_deducted_today' => 25000,
+            'deposits_today' => 200000,
+        ]));
+    $this->actingAs($fixture[1]->user)->get(route('customer.dashboard'))->assertInertia(fn (Assert $page) => $page
+        ->missing('dashboard.sections.today'));
+})->with(['today', 'week']);
+
+test('the week period widens collections but never the today figures', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture, '1000.00', '2026-09-25');
+    array_map(fn (object $model) => $model->refresh(), array_slice($fixture, 1, 3));
+    dashboardPostReceipt($fixture, '2000.00');
+    $data = app(DashboardReadService::class)->read(User::factory()->admin()->create(), ['period' => 'week', 'from' => '2026-09-21', 'to' => '2026-09-26', 'page_size' => 25]);
+
+    expect(dashboardMetric($data, 'collections', 'received_savings'))->toBe(300000)
+        ->and(dashboardMetric($data, 'today', 'deposits_today'))->toBe(200000)
+        ->and(collect($data['sections']['today']['metrics'])->firstWhere('code', 'deposits_today')['drill_down'])
+        ->toContain('reports/contributions')->toContain('from=2026-09-26')->toContain('to=2026-09-26')
+        ->and(collect($data['sections']['today']['metrics'])->firstWhere('code', 'registration_fee_charged_today')['drill_down'])
+        ->toContain('reports/fees')->toContain('from=2026-09-26');
+});
+
+test('today follows the business timezone day boundary rather than UTC', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 00:30:00', 'Africa/Lagos'));
+    $fixture = dashboardFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    CustomerProfile::query()->update(['created_at' => CarbonImmutable::parse('2026-09-26 00:10:00', 'Africa/Lagos')->utc()]);
+    CustomerProfile::factory()->create(['created_at' => CarbonImmutable::parse('2026-09-25 23:50:00', 'Africa/Lagos')->utc()]);
+    $registration = dashboardFeeObligation($fixture[1], 'registration', FeeSnapshot::query()->firstOrFail()->id, $fixture[0]->id);
+    dashboardFeeEntry($registration, 'assessment', 150000, CarbonImmutable::parse('2026-09-25 23:59:59', 'Africa/Lagos')->utc());
+    dashboardFeeEntry($registration, 'assessment_correction_increase', 5000, CarbonImmutable::parse('2026-09-26 00:00:00', 'Africa/Lagos')->utc());
+
+    $data = app(DashboardReadService::class)->read(User::factory()->admin()->create(), ['period' => 'today', 'from' => '2026-09-26', 'to' => '2026-09-26', 'page_size' => 25]);
+
+    expect(dashboardMetric($data, 'today', 'customers_registered_today'))->toBe(1)
+        ->and(dashboardMetric($data, 'today', 'registration_fee_charged_today'))->toBe(5000)
+        ->and($data['sections']['today']['note'])->toContain('2026-09-26');
+});
+
+test('an unverified ledger keeps the registration count but hides today money', function (): void {
+    $fixture = dashboardFixture();
+    dashboardPostReceipt($fixture);
+    DB::table('ledger_projection_state')->where('id', 1)->update(['status' => 'unavailable']);
+
+    $data = app(DashboardReadService::class)->read($fixture[0], ['from' => $fixture[4], 'to' => $fixture[4], 'page_size' => 25]);
+
+    expect($data['sections']['today']['status'])->toBe('Partial')
+        ->and(dashboardMetric($data, 'today', 'customers_registered_today'))->toBe(1)
+        ->and(collect($data['sections']['today']['metrics'])->firstWhere('code', 'deposits_today')['value'])->toBeNull();
+});
+
+test('the dashboard tab is accepted for display only and unknown tabs are rejected', function (): void {
+    $admin = User::factory()->admin()->create();
+
+    $this->actingAs($admin)->get(route('admin.dashboard', ['tab' => 'finance']))->assertOk()->assertInertia(fn (Assert $page) => $page
+        ->missing('filters.tab')->has('dashboard.sections.today'));
+    $this->getJson(route('admin.dashboard', ['tab' => 'secrets']))->assertUnprocessable()->assertJsonValidationErrors('tab');
+});

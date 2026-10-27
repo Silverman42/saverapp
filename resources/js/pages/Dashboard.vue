@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage, usePoll } from '@inertiajs/vue3';
+import { Head, router, usePage, usePoll } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
-import { ArrowRight, Inbox, RefreshCw, SlidersHorizontal } from '@lucide/vue';
-import EmptyState from '@/components/EmptyState.vue';
+import { RefreshCw, SlidersHorizontal } from '@lucide/vue';
+import DashboardSection from '@/components/DashboardSection.vue';
 import FormSheet from '@/components/FormSheet.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
 import PageHeader from '@/components/PageHeader.vue';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,74 +16,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { dashboard as dashboardRoute } from '@/routes';
 import { dashboard as customerDashboard } from '@/routes/customer';
 import { dashboard as agentDashboard } from '@/routes/agent';
 import { dashboard as adminDashboard } from '@/routes/admin';
-import { create as createCollection } from '@/routes/customers/collections';
-
-type Filters = {
-    period: string;
-    from: string;
-    to: string;
-    customer_status?: string;
-    plan_status?: string;
-    agent?: string;
-    agent_basis?: string;
-    page_size: number;
-};
-type Metric = {
-    code: string;
-    title: string;
-    unit: string;
-    display: string;
-    source: string;
-    date_basis: string;
-    definition: string;
-    drill_down: string | null;
-    drill_down_reason: string;
-};
-type Row = {
-    reference?: string;
-    type?: string;
-    state?: string;
-    name?: string;
-    customer_id?: string;
-    plan_id?: string;
-    remaining?: string;
-    amount?: string;
-    occurred_on?: string;
-    committed_at?: string;
-    href: string;
-    can_record_cash?: boolean;
-};
-type Manifest = {
-    cutoff: string;
-    generated_at: string;
-    timezone: string;
-    timezone_version: number;
-    ledger_watermark: number;
-    projection_version: number;
-    scope_hash: string;
-};
-type Section = Manifest & {
-    status: 'Current' | 'Stale' | 'Rebuilding' | 'Unavailable' | 'Partial';
-    metrics: Metric[];
-    rows?: Row[];
-    reason?: string;
-    note?: string;
-    href?: string;
-    link_note?: string;
-    total?: number;
-    trend?: { date: string; display: string }[];
-    trend_from?: string;
-    trend_to?: string;
-};
-type Dashboard = {
-    role: 'customer' | 'agent' | 'admin';
-    manifest: Manifest;
-    sections: Record<string, Section>;
-};
+import type {
+    Dashboard,
+    DashboardFilters as Filters,
+    DashboardSection as Section,
+    DashboardTab,
+} from '@/types/dashboard';
 
 const props = defineProps<{
     dashboard: Dashboard;
@@ -113,6 +53,7 @@ const allOption = '__all';
 const fromAllOption = (value: unknown): string =>
     value === allOption ? '' : String(value ?? '');
 const titles: Record<string, string> = {
+    today: 'Today',
     portfolio: 'Customers and plans',
     savings: 'Savings',
     collections: 'Payments received',
@@ -141,6 +82,62 @@ const route = computed(
             admin: adminDashboard,
         })[props.dashboard.role],
 );
+const tabLabels: Record<DashboardTab, string> = {
+    today: 'Today',
+    overview: 'Overview',
+    collections: 'Collections',
+    requests: 'Requests & activity',
+    finance: 'Finance',
+};
+// Finance is an Admin tab; other roles see their money movements with activity.
+function tabFor(code: string): DashboardTab {
+    if (code === 'today') return 'today';
+    if (code === 'collections' || code === 'schedule') return 'collections';
+    if (code === 'requests' || code === 'activity' || code === 'custody')
+        return 'requests';
+    if (code.startsWith('financial_') || code === 'incidents')
+        return props.dashboard.role === 'admin' ? 'finance' : 'requests';
+    return 'overview';
+}
+const tabs = computed(() => {
+    const present = new Set(
+        Object.keys(visible.value?.sections ?? {}).map(tabFor),
+    );
+
+    return (Object.keys(tabLabels) as DashboardTab[])
+        .filter((value) => present.has(value))
+        .map((value) => ({ value, label: tabLabels[value] }));
+});
+function tabFromUrl(): string | null {
+    return new URL(page.url, 'http://localhost').searchParams.get('tab');
+}
+const requestedTab = ref(tabFromUrl());
+const activeTab = computed<DashboardTab>(
+    () =>
+        tabs.value.find((tab) => tab.value === requestedTab.value)?.value ??
+        tabs.value[0]?.value ??
+        'today',
+);
+const activeSections = computed(
+    () =>
+        Object.entries(visible.value?.sections ?? {}).filter(
+            ([code]) => tabFor(code) === activeTab.value,
+        ) as [string, Section][],
+);
+function dashboardTab(): DashboardTab | undefined {
+    return props.dashboard.role === 'customer' ? undefined : activeTab.value;
+}
+// Switching tabs only updates ?tab= in place; the data is already loaded.
+function selectTab(value: string): void {
+    requestedTab.value = value;
+    const url = new URL(page.url, window.location.origin);
+    url.searchParams.set('tab', value);
+    router.replace({
+        url: url.pathname + url.search,
+        preserveState: true,
+        preserveScroll: true,
+    });
+}
 watch(
     () => props.dashboard,
     (value) => {
@@ -205,6 +202,7 @@ function applyFilters(): void {
             : undefined,
         agent_basis: filters.value.agent_basis || undefined,
         page_size: filters.value.page_size,
+        tab: dashboardTab(),
     };
     router.get(
         route.value.url({ query }),
@@ -231,13 +229,6 @@ const activeFilterCount = computed(
             filters.value.agent_basis,
         ].filter(Boolean).length + (filters.value.page_size !== 25 ? 1 : 0),
 );
-const statusLabels: Record<Section['status'], string> = {
-    Current: 'Up to date',
-    Stale: 'May be out of date',
-    Rebuilding: 'Updating',
-    Unavailable: 'Not available',
-    Partial: 'Partly loaded',
-};
 function applyFromSheet(): void {
     filtersOpen.value = false;
     applyFilters();
@@ -483,224 +474,44 @@ function resetFilters(): void {
             />
         </div>
         <template v-else>
-            <section
-                v-for="(section, code) in visible.sections"
-                :key="code"
-                :aria-labelledby="`section-${code}`"
+            <Tabs
+                v-if="dashboard.role !== 'customer'"
+                :model-value="activeTab"
+                class="gap-6"
+                @update:model-value="selectTab(String($event))"
             >
-                <Card>
-                    <CardHeader
-                        class="flex flex-row flex-wrap items-center justify-between gap-3"
-                    >
-                        <CardTitle :id="`section-${code}`">{{
-                            titles[code]
-                        }}</CardTitle>
-                        <Badge
-                            v-if="section.status !== 'Current'"
-                            variant="secondary"
-                            >{{ statusLabels[section.status] }}</Badge
+                <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+                    <TabsList aria-label="Dashboard sections" class="h-11">
+                        <TabsTrigger
+                            v-for="tab in tabs"
+                            :key="tab.value"
+                            :value="tab.value"
+                            class="px-3"
+                            >{{ tab.label }}</TabsTrigger
                         >
-                    </CardHeader>
-                    <CardContent class="space-y-5">
-                        <p
-                            v-if="section.reason"
-                            class="text-muted-foreground text-sm"
-                        >
-                            {{ section.reason }}
-                        </p>
-                        <div
-                            v-if="section.metrics.length"
-                            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-                        >
-                            <component
-                                :is="metric.drill_down ? Link : 'div'"
-                                v-for="metric in section.metrics"
-                                :key="metric.code"
-                                :href="metric.drill_down ?? undefined"
-                                :aria-label="
-                                    metric.drill_down
-                                        ? `View report for ${metric.title}`
-                                        : undefined
-                                "
-                                class="bg-muted/40 group flex flex-col justify-between gap-3 rounded-xl p-4 transition-colors"
-                                :class="
-                                    metric.drill_down
-                                        ? 'hover:bg-accent/60 focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
-                                        : ''
-                                "
-                            >
-                                <p class="text-muted-foreground text-sm">
-                                    {{ metric.title }}
-                                </p>
-                                <div
-                                    class="flex items-end justify-between gap-2"
-                                >
-                                    <p
-                                        class="text-2xl font-semibold break-words"
-                                        :aria-label="`${metric.display} ${metric.unit === 'NGN' ? 'NGN' : ''}`"
-                                    >
-                                        {{ metric.display }}
-                                    </p>
-                                    <ArrowRight
-                                        v-if="metric.drill_down"
-                                        class="text-muted-foreground group-hover:text-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                                    />
-                                </div>
-                            </component>
-                        </div>
-                        <div
-                            v-if="section.rows?.length"
-                            class="divide-border divide-y"
-                        >
-                            <div
-                                v-for="row in section.rows"
-                                :key="row.reference ?? row.plan_id"
-                                class="flex flex-wrap items-center justify-between gap-3 py-3"
-                            >
-                                <div class="min-w-0">
-                                    <Link
-                                        :href="row.href"
-                                        class="text-sm font-medium underline-offset-4 hover:underline"
-                                        >{{
-                                            row.reference ??
-                                            row.name ??
-                                            row.plan_id
-                                        }}</Link
-                                    >
-                                    <p
-                                        class="text-muted-foreground mt-0.5 text-xs"
-                                    >
-                                        {{ row.type ?? row.customer_id }} ·
-                                        {{
-                                            row.state ??
-                                            row.occurred_on ??
-                                            row.plan_id
-                                        }}
-                                    </p>
-                                </div>
-                                <div class="flex flex-wrap items-center gap-3">
-                                    <span class="text-sm font-medium">{{
-                                        row.amount ?? row.remaining
-                                    }}</span>
-                                    <Button
-                                        v-if="
-                                            code === 'schedule' &&
-                                            scopeSummary.can_collect &&
-                                            row.can_record_cash &&
-                                            row.customer_id
-                                        "
-                                        as-child
-                                        size="sm"
-                                        variant="outline"
-                                        ><Link
-                                            :href="
-                                                createCollection(
-                                                    row.customer_id,
-                                                ).url
-                                            "
-                                            >Record cash</Link
-                                        ></Button
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                        <EmptyState
-                            v-else-if="
-                                section.rows && section.status !== 'Unavailable'
-                            "
-                            :icon="Inbox"
-                            title="Nothing here yet"
-                            description="Items will show up here when there is activity."
-                        />
-                        <div v-if="section.trend" class="space-y-3">
-                            <h3 class="text-sm font-medium">
-                                Savings received, last 30 days
-                            </h3>
-                            <div
-                                class="max-h-64 overflow-y-auto rounded-xl border"
-                            >
-                                <table class="w-full text-left text-sm">
-                                    <caption class="sr-only">
-                                        Savings received by date, last 30 days
-                                    </caption>
-                                    <thead
-                                        class="text-muted-foreground text-xs"
-                                    >
-                                        <tr>
-                                            <th
-                                                scope="col"
-                                                class="p-3 font-medium"
-                                            >
-                                                Date
-                                            </th>
-                                            <th
-                                                scope="col"
-                                                class="p-3 text-right font-medium"
-                                            >
-                                                Amount (NGN)
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr
-                                            v-for="point in section.trend"
-                                            :key="point.date"
-                                            class="border-t"
-                                        >
-                                            <th
-                                                scope="row"
-                                                class="p-3 font-normal"
-                                            >
-                                                {{ point.date }}
-                                            </th>
-                                            <td class="p-3 text-right">
-                                                {{ point.display }}
-                                            </td>
-                                        </tr>
-                                        <tr v-if="!section.trend.length">
-                                            <td
-                                                colspan="2"
-                                                class="text-muted-foreground p-3"
-                                            >
-                                                No savings received in the last
-                                                30 days.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <Link
-                            v-if="section.href"
-                            :href="section.href"
-                            class="inline-flex items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
-                            >See all {{ section.total }} transactions
-                            <ArrowRight class="size-4"
-                        /></Link>
-                        <MoreDetails
-                            v-if="section.metrics.length || section.note"
-                            label="About these numbers"
-                        >
-                            <div
-                                class="text-muted-foreground space-y-3 text-xs leading-5"
-                            >
-                                <p v-if="section.note">{{ section.note }}</p>
-                                <dl class="space-y-2">
-                                    <div
-                                        v-for="metric in section.metrics"
-                                        :key="metric.code"
-                                    >
-                                        <dt class="text-foreground font-medium">
-                                            {{ metric.title }}
-                                        </dt>
-                                        <dd>{{ metric.definition }}</dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        </MoreDetails>
-                    </CardContent>
-                </Card>
-            </section>
+                    </TabsList>
+                </div>
+                <TabsContent :value="activeTab" class="flex flex-col gap-6">
+                    <DashboardSection
+                        v-for="[code, section] in activeSections"
+                        :key="code"
+                        :code="code"
+                        :title="titles[code] ?? code"
+                        :section="section"
+                        :can-collect="scopeSummary.can_collect"
+                    />
+                </TabsContent>
+            </Tabs>
+            <template v-else>
+                <DashboardSection
+                    v-for="(section, code) in visible.sections"
+                    :key="code"
+                    :code="String(code)"
+                    :title="titles[code] ?? String(code)"
+                    :section="section"
+                    :can-collect="scopeSummary.can_collect"
+                />
+            </template>
         </template>
     </div>
 </template>
