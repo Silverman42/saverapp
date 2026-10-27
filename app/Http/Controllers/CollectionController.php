@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AdminPermission;
+use App\Enums\ThriftPlanStatus;
 use App\Http\Requests\PreviewCollectionRequest;
 use App\Http\Requests\StoreCollectionRequest;
 use App\Models\AuditEvent;
@@ -223,6 +224,11 @@ class CollectionController extends Controller
                 && $plan->customerProfile->operational_status->value === 'active'
                 && Gate::forUser($request->user())->allows('recordCollection', $plan->customerProfile),
             'customer_id' => $plan->customerProfile->customer_id,
+            'can_renew' => in_array($plan->status, [ThriftPlanStatus::Cancelled, ThriftPlanStatus::Closed], true)
+                && ! $plan->successor()->exists()
+                && $plan->customerProfile->operational_status->value === 'active'
+                && Gate::forUser($request->user())->allows('managePlan', $plan->customerProfile),
+            'closure_pending' => $plan->closure_pending_at !== null,
         ]);
     }
 

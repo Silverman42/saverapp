@@ -38,6 +38,7 @@ class WithdrawalNoticeService
             'bank_posted' => 'The bank transfer was confirmed and the withdrawal was posted.',
             'bank_settled' => 'The provider settled the bank transfer. Your savings balance did not change again.',
             'bank_returned' => 'The bank returned the transfer. It is being reviewed; your savings balance has not changed yet.',
+            'offline_posted' => 'Your withdrawal was paid outside the platform and posted.',
             'provider_conflict' => 'The provider reported conflicting results for a withdrawal. It is on hold for review.',
             default => 'A withdrawal request was updated.',
         };

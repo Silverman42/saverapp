@@ -11,6 +11,8 @@ return [
     'bank_certified' => false,
     'bank_method_version' => 1,
     'bank_compensation_enabled' => false,
+    'offline_enabled' => (bool) env('WITHDRAWALS_OFFLINE_ENABLED', false),
+    'offline_method_version' => 1,
     'bank' => [
         'provider' => env('PAYOUT_PROVIDER', 'unavailable'),
         'callback_secret' => env('PAYOUT_CALLBACK_SECRET'),

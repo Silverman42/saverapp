@@ -6,6 +6,7 @@ use App\Data\PostedPayout;
 use App\Enums\LedgerAccountCode;
 use App\Models\BankPayoutAttempt;
 use App\Models\CashExecution;
+use App\Models\OfflinePayout;
 use App\Models\WithdrawalRequest;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -17,7 +18,7 @@ use RuntimeException;
 class WithdrawalPayoutSource
 {
     /** @var list<string> */
-    public const EVENT_TYPES = ['cash_withdrawal', 'bank_withdrawal'];
+    public const EVENT_TYPES = ['cash_withdrawal', 'bank_withdrawal', 'offline_withdrawal'];
 
     /**
      * @param  iterable<int>  $withdrawalIds
@@ -44,6 +45,13 @@ class WithdrawalPayoutSource
                 $attempt->provider_outcome === 'succeeded' && $attempt->finalized_at !== null && $attempt->provider_reference !== null));
         }
 
+        foreach (OfflinePayout::query()->whereIn('withdrawal_request_id', $ids)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get() as $payout) {
+            $rail = 'offline_'.$payout->channel;
+            $payouts->push(new PostedPayout($payout->withdrawal_request_id, $rail, $payout->id, $payout->ledger_posting_group_id,
+                $payout->amount_kobo, $this->payoutAccount($rail), 'offline_withdrawal', true));
+        }
+
         return $payouts;
     }
 
@@ -62,6 +70,8 @@ class WithdrawalPayoutSource
         return match ($rail) {
             'cash' => LedgerAccountCode::BusinessCash,
             'bank' => LedgerAccountCode::PayoutClearing,
+            'offline_cash' => LedgerAccountCode::BusinessCash,
+            'offline_bank_transfer' => LedgerAccountCode::BusinessBank,
             default => throw new RuntimeException('Unsupported payout rail.'),
         };
     }

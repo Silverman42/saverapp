@@ -244,7 +244,7 @@ class PlatformCatalogue
         'verification.send' => 'mutation',
         'verification.verify' => 'mutation',
         'withdrawals.approve' => 'financial',
-        'withdrawals.bank.start' => 'financial', 'ledger.incidents.resolve' => 'mutation', 'bank-payout-attempts.check' => 'financial', 'payout-callbacks.store' => 'financial',
+        'withdrawals.bank.start' => 'financial', 'withdrawals.offline-payout.store' => 'financial', 'ledger.incidents.resolve' => 'mutation', 'bank-payout-attempts.check' => 'financial', 'payout-callbacks.store' => 'financial',
         'customers.payout-destinations.store' => 'mutation', 'reversals.evidence.store' => 'mutation', 'payout-destinations.verify' => 'mutation', 'payout-destinations.reject' => 'mutation', 'payout-destinations.revoke' => 'financial',
         'withdrawals.cancel' => 'financial',
         'withdrawals.reject' => 'financial',

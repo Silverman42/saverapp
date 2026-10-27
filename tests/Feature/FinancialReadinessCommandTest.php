@@ -50,7 +50,8 @@ test('status mode reports readiness without changing anything', function () {
 
 test('local mode makes every capability ready and is idempotent', function () {
     config(['collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true,
-        'withdrawals.bank_enabled' => true, 'withdrawals.bank_certified' => true, 'withdrawals.bank.provider' => 'fake']);
+        'withdrawals.bank_enabled' => true, 'withdrawals.bank_certified' => true, 'withdrawals.bank.provider' => 'fake',
+        'withdrawals.offline_enabled' => true]);
     readinessAdmin();
 
     $this->artisan('financial:readiness', ['--local' => true])->assertSuccessful();

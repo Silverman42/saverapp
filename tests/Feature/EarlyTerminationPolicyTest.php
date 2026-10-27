@@ -4,17 +4,25 @@ use App\Enums\AdminPermission;
 use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
 use App\Enums\ThriftPlanStatus;
+use App\Models\BusinessProfile;
 use App\Models\CollectionReceipt;
+use App\Models\CustomerAssignment;
+use App\Models\CustomerProfile;
+use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
 use App\Models\LedgerAccount;
 use App\Models\LedgerPostingGroup;
+use App\Models\ThriftPlan;
 use App\Models\User;
+use App\Models\WithdrawalRequest;
 use App\Services\CollectionService;
 use App\Services\EarlyTerminationPolicy;
 use App\Services\FeeObligationService;
 use App\Services\FeeSavingsApplicationService;
 use App\Services\LedgerTransactionProjectionService;
 use App\Services\PlanSettlementService;
+use App\Services\ThriftPlanService;
+use App\Services\WithdrawalBalanceService;
 use App\Services\WithdrawalService;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
@@ -26,6 +34,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 require_once __DIR__.'/../CollectionFixtures.php';
 require_once __DIR__.'/../ReversalFixtures.php';
 require_once __DIR__.'/../CashExecutionFixtures.php';
+require_once __DIR__.'/../OfflinePayoutFixtures.php';
 
 function approvedTerminationFixture(string $model = 'fixed', FeeRuleTiming $timing = FeeRuleTiming::CycleCompletion, int $fee = 10000, bool $funded = true, FeeSettlementSource $source = FeeSettlementSource::SavingsApplication): array
 {
@@ -247,6 +256,17 @@ test('incomplete monetary termination retains its contribution base through sett
     $this->post(route('cash-executions.handoff', $execution), ['evidence' => 'Counted the synthetic exact net payout.', 'confirmed' => true])->assertRedirect();
     $this->actingAs($customer->user)->post(route('cash-executions.acknowledge', $execution), ['confirmed' => true])->assertRedirect();
     expect($execution->fresh()->status)->toBe('posted');
+    if ($type === 'full') {
+        expect($plan->fresh()->status)->toBe(ThriftPlanStatus::Closed)
+            ->and($plan->fresh()->open_customer_profile_id)->toBeNull()
+            ->and($plan->fresh()->closure_pending_at)->toBeNull()
+            ->and($plan->lifecycleEvents()->where('event_type', 'closed')->count())->toBe(1)
+            ->and($plan->currentTermsRevision()->feeSnapshot->obligation()->sole()->outstandingAmountKobo())->toBe(0)
+            ->and($plan->slots()->count())->toBe(2)
+            ->and((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe(100000);
+
+        return;
+    }
     $owner = app(PlanSettlementService::class);
     $quote = $owner->preview($agent, $plan->fresh(), 'prepare_termination');
 
@@ -256,20 +276,8 @@ test('incomplete monetary termination retains its contribution base through sett
     expect($quote['termination_fee']['principal_kobo'])->toBe(100000);
     expect($plan->currentTermsRevision()->feeSnapshot->obligation()->sole()->assessedAmountKobo())->toBe(2000);
     $close = $owner->preview($agent, $plan->fresh());
-    expect($close['can_close'])->toBe($remaining === 0);
-    if ($remaining === 0) {
-        $groups = DB::table('ledger_posting_groups')->orderBy('id')->get()->all();
-        $lines = DB::table('ledger_entries')->orderBy('id')->get()->all();
-        $instructions = terminationInstructions($close);
-        $this->actingAs($agent)->post(route('plans.settlement.confirm', ['plan' => $plan, 'action' => 'close']), $instructions)->assertRedirect()->assertSessionHasNoErrors();
-        $this->post(route('plans.settlement.confirm', ['plan' => $plan, 'action' => 'close']), $instructions)->assertRedirect()->assertSessionHasNoErrors();
-        expect($plan->fresh()->status)->toBe(ThriftPlanStatus::Closed);
-        expect(DB::table('ledger_posting_groups')->orderBy('id')->get()->all())->toEqual($groups);
-        expect(DB::table('ledger_entries')->orderBy('id')->get()->all())->toEqual($lines);
-        expect($plan->slots()->count())->toBe(2);
-        expect((int) DB::table('collection_allocations')->sum('amount_kobo'))->toBe(100000);
-    }
-})->with(['earlier partial payout' => ['300.00', 'partial', 68000, FeeSettlementSource::SavingsApplication], 'full early payout and separate closure' => ['980.00', 'full', 0, FeeSettlementSource::SavingsApplication], 'full payout collects existing completion fee' => ['1000.00', 'full', 0, FeeSettlementSource::WithdrawalPayout]]);
+    expect($close['can_close'])->toBeFalse();
+})->with(['earlier partial payout' => ['300.00', 'partial', 68000, FeeSettlementSource::SavingsApplication], 'full early payout closes the page' => ['980.00', 'full', 0, FeeSettlementSource::SavingsApplication], 'full payout collects existing completion fee' => ['1000.00', 'full', 0, FeeSettlementSource::WithdrawalPayout]]);
 
 test('withdrawal fee quotes reject zero or negative net payouts without capping the fee or posting money', function (string $gross): void {
     [$agent, $customer, $assignment, $plan] = approvedTerminationFixture(timing: FeeRuleTiming::Withdrawal);
@@ -345,4 +353,116 @@ test('cash execution rechecks the bound early preparation after withdrawal appro
     $this->assertDatabaseCount('cash_executions', 0);
     expect($withdrawal->fresh()->state)->toBe('approved');
     expect(DB::table('ledger_entries')->orderBy('id')->get()->all())->toEqual($before);
+});
+
+function pageClosureAdmin(): User
+{
+    $admin = User::factory()->admin()->withTwoFactor()->create();
+    $admin->givePermissionTo([AdminPermission::CashExecute, AdminPermission::WithdrawalsReview, AdminPermission::ReconciliationManage]);
+
+    return $admin;
+}
+
+function reconcilePageBatch(object $test, User $admin, string $date): void
+{
+    $batch = CollectionReceipt::query()->oldest('id')->firstOrFail()->batch;
+    $test->travel(1)->days();
+    $test->artisan('collections:freeze-batches')->assertSuccessful();
+    $test->travelBack();
+    $test->actingAs($admin)->withSession(cashSession())->post(route('collection-batches.remittances.store', $batch), [
+        'batch_version' => $batch->fresh()->version, 'handoff_reference' => 'PAGE-CLOSE-'.Str::upper(Str::random(6)), 'amount_ngn' => '1000.00',
+        'handoff_date' => $date, 'receiving_location' => 'Business till', 'source_attestation' => 'Counted the original contribution.', 'confirmed' => true,
+    ])->assertRedirect()->assertSessionHasNoErrors();
+    $test->post(route('collection-batches.review', $batch), ['batch_version' => $batch->fresh()->version,
+        'reason' => 'Independent review matches the original tender.', 'confirmed' => true])->assertRedirect()->assertSessionHasNoErrors();
+}
+
+/** Submit, approve and record an offline payout; `full` takes the exact cycle balance. */
+function payPageOffline(object $test, User $agent, User $admin, CustomerProfile $customer, CustomerAssignment $assignment, ThriftPlan $plan, string $type): WithdrawalRequest
+{
+    config()->set('withdrawals.offline_enabled', true);
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $available = app(WithdrawalBalanceService::class)->position($customer->fresh(), $plan->fresh())['cycle_available_kobo'];
+    $gross = $type === 'full' ? $available : 30000;
+    $instruction = [...withdrawalPayload($customer, $assignment, $plan->fresh()), 'type' => $type, 'method' => 'offline',
+        'gross_ngn' => sprintf('%d.%02d', intdiv($gross, 100), $gross % 100), 'destination_reference' => 'customer:'.$customer->id];
+    $withdrawals = app(WithdrawalService::class);
+    $quote = $withdrawals->preview($agent, $customer->fresh(), $instruction);
+    $withdrawal = $withdrawals->submit($agent, $customer->fresh(), [...$instruction, 'attempt_reference' => (string) Str::uuid(),
+        'preview_fingerprint' => $quote['preview_fingerprint'], 'quote_expires_at' => $quote['quote_expires_at'],
+        'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
+        'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'], 'instruction_attested' => true, 'confirmed' => true]);
+    $test->actingAs($admin)->withSession(cashSession())->post(route('withdrawals.approve', $withdrawal), [
+        'attempt_reference' => (string) Str::uuid(), 'version' => $withdrawal->version, 'confirmed' => true, 'decision_note' => 'Reviewed the page payout.',
+    ])->assertRedirect()->assertSessionHasNoErrors();
+    $test->post(route('withdrawals.offline-payout.store', $withdrawal), offlinePayload($withdrawal->fresh()))->assertRedirect()->assertSessionHasNoErrors();
+
+    return $withdrawal->fresh();
+}
+
+test('a full early payout closes the page and the renewed page takes its service charge again', function (): void {
+    [$agent, $customer, $assignment, $plan, $date] = approvedTerminationFixture(timing: FeeRuleTiming::FirstContribution);
+    $admin = pageClosureAdmin();
+    reconcilePageBatch($this, $admin, $date);
+
+    $withdrawal = payPageOffline($this, $agent, $admin, $customer, $assignment, $plan, 'full');
+
+    $plan->refresh();
+    expect($withdrawal->state)->toBe('posted')
+        ->and($plan->status)->toBe(ThriftPlanStatus::Closed)->and($plan->open_customer_profile_id)->toBeNull()
+        ->and($plan->closure_pending_at)->toBeNull()
+        ->and($plan->lifecycleEvents()->orderBy('id')->pluck('event_type')->all())->toBe(['early_termination_prepared', 'closed']);
+
+    $customer->refresh();
+    $rule = FeeRule::query()->findOrFail($plan->currentTermsRevision()->feeSnapshot->fee_rule_id);
+    $terms = ['name' => 'Next page', 'amount_ngn' => '2000.00', 'start_date' => $date, 'contribution_days' => 2,
+        'customer_visible_notes' => '', 'fee_rule_id' => $rule->id, 'fee_rule_version' => $rule->version,
+        'customer_version' => $customer->version, 'assignment_version' => $customer->currentAssignment->version,
+        'business_version' => BusinessProfile::current()->version, 'customer_agreement_attested' => true, 'predecessor_plan_id' => $plan->plan_id];
+    $plans = app(ThriftPlanService::class);
+    $terms['preview_fingerprint'] = $plans->preview($agent, $customer, $terms)['preview_fingerprint'];
+    $next = $plans->create($agent, $customer, (string) Str::uuid(), $terms)['plan'];
+    $collections = app(CollectionService::class);
+    $payload = collectionPayload($customer->fresh(), $customer->currentAssignment, $next, $date, '2000.00');
+    $collections->record($agent, $customer->fresh(), [...$payload, 'preview_fingerprint' => $collections->preview($agent, $customer->fresh(), $payload)['preview_fingerprint']]);
+
+    $fee = $next->currentTermsRevision()->feeSnapshot->obligation()->sole();
+    expect($next->predecessor_plan_id)->toBe($plan->id)
+        ->and($fee->settledAmountKobo())->toBe(10000)->and($fee->outstandingAmountKobo())->toBe(0)
+        ->and($plan->currentTermsRevision()->feeSnapshot->obligation()->sole()->settledAmountKobo())->toBe(10000);
+});
+
+test('a partial early payout keeps the page open without a new charge', function (): void {
+    [$agent, $customer, $assignment, $plan, $date] = approvedTerminationFixture(timing: FeeRuleTiming::FirstContribution);
+    $admin = pageClosureAdmin();
+    reconcilePageBatch($this, $admin, $date);
+
+    payPageOffline($this, $agent, $admin, $customer, $assignment, $plan, 'partial');
+
+    $plan->refresh();
+    expect($plan->status)->toBe(ThriftPlanStatus::Active)->and($plan->open_customer_profile_id)->toBe($customer->id)
+        ->and($plan->closure_pending_at)->toBeNull()
+        ->and($plan->lifecycleEvents()->count())->toBe(0)
+        ->and(DB::table('fee_obligations')->count())->toBe(1);
+});
+
+test('a blocked page closure stays pending and closes once its batch is reconciled', function (): void {
+    [$agent, $customer, $assignment, $plan, $date] = approvedTerminationFixture(timing: FeeRuleTiming::FirstContribution);
+    $admin = pageClosureAdmin();
+
+    payPageOffline($this, $agent, $admin, $customer, $assignment, $plan, 'full');
+
+    $plan->refresh();
+    expect($plan->status)->toBe(ThriftPlanStatus::Paused)->and($plan->closure_pending_at)->not->toBeNull()
+        ->and($plan->open_customer_profile_id)->toBe($customer->id);
+    $this->artisan('plans:close-pending')->expectsOutputToContain('Closed 0 pending pages.')->assertSuccessful();
+    expect($plan->fresh()->status)->toBe(ThriftPlanStatus::Paused);
+
+    reconcilePageBatch($this, $admin, $date);
+    $this->artisan('plans:close-pending')->expectsOutputToContain('Closed 1 pending pages.')->assertSuccessful();
+
+    $plan->refresh();
+    expect($plan->status)->toBe(ThriftPlanStatus::Closed)->and($plan->closure_pending_at)->toBeNull()
+        ->and($plan->open_customer_profile_id)->toBeNull()
+        ->and($plan->lifecycleEvents()->where('event_type', 'closed')->count())->toBe(1);
 });

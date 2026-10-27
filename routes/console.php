@@ -20,6 +20,10 @@ Schedule::command('withdrawals:expire')
     ->everyMinute()
     ->withoutOverlapping()->onOneServer();
 
+Schedule::command('plans:close-pending')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()->onOneServer();
+
 Schedule::command('withdrawals:reconcile-bank-payouts')
     ->everyMinute()
     ->withoutOverlapping()->onOneServer();

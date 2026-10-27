@@ -43,6 +43,17 @@ class PlanSettlementService
         Gate::forUser($actor)->authorize('managePlan', $plan->customerProfile);
         abort_unless(config('collections.settlement_enabled', false), 503, 'Plan settlement acceptance is not yet certified.');
         app(BusinessSettings::class)->ensureFeature('plan_creation');
+
+        return $this->evaluate($plan, $action);
+    }
+
+    /**
+     * Evaluate every settlement gate for a cycle without actor authorization. Callers own authorization and locking.
+     *
+     * @return array<string, mixed>
+     */
+    public function evaluate(ThriftPlan $plan, string $action = 'close'): array
+    {
         $customer = $plan->customerProfile;
         $position = app(WithdrawalBalanceService::class)->position($customer, $plan, DB::transactionLevel() > 0);
         $blockers = [];

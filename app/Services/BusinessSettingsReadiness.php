@@ -10,6 +10,7 @@ class BusinessSettingsReadiness
         $blocked = [
             'collection_cash' => ['Modules 07/10', 'Approved custody mapping, evidence, period and reconciliation release certification is unavailable.'],
             'withdrawal_cash' => ['Modules 08/10', 'Certified executor, funding, evidence, finality and recovery contracts are unavailable.'],
+            'withdrawal_offline' => ['Module 08', 'Owner acceptance of staff-recorded payouts made outside the platform is unavailable.'],
             'plan_creation' => ['Modules 05/06', 'Complete fee settlement and plan lifecycle release certification remains outstanding.'],
             'collections' => ['Module 07', 'At least one owner-certified collection method and period contract is required.'],
             'payout_execution' => ['Module 08', 'No production payout method is certified.'],

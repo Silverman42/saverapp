@@ -246,6 +246,10 @@ function submit(): void {
                                     v-if="methods.includes('bank_transfer')"
                                     value="bank_transfer"
                                     >Bank transfer</SelectItem
+                                ><SelectItem
+                                    v-if="methods.includes('offline')"
+                                    value="offline"
+                                    >Paid outside platform</SelectItem
                                 ></SelectContent
                             ></Select
                         >
@@ -281,11 +285,27 @@ function submit(): void {
                         </p>
                     </div>
                     <p
+                        v-else-if="form.method === 'offline'"
+                        class="text-muted-foreground text-sm sm:col-span-2"
+                    >
+                        Staff pay the customer by hand or by a bank transfer
+                        outside the app, then record the payment here. The
+                        customer does not need to confirm.
+                    </p>
+                    <p
                         v-else
                         class="text-muted-foreground text-sm sm:col-span-2"
                     >
                         The customer collects the cash in person, then confirms
                         they got it.
+                    </p>
+                    <p
+                        v-if="form.type === 'full'"
+                        class="text-muted-foreground text-sm sm:col-span-2"
+                    >
+                        Taking all savings before the cycle ends closes this
+                        page. The next page starts fresh with its own service
+                        charge.
                     </p>
                     <div class="grid gap-2 sm:col-span-2">
                         <Label for="withdrawal-reason"

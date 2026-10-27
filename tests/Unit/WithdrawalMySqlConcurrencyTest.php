@@ -5,10 +5,12 @@ use App\Enums\CustomerStatus;
 use App\Models\BankPayoutAttempt;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
+use App\Models\OfflinePayout;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use App\Services\BankPayoutService;
 use App\Services\CollectionLedgerService;
+use App\Services\OfflinePayoutService;
 use App\Services\WithdrawalBalanceService;
 use App\Services\WithdrawalService;
 use Illuminate\Http\Request;
@@ -23,6 +25,7 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 require_once __DIR__.'/../BankPayoutMySqlFixtures.php';
+require_once __DIR__.'/../OfflinePayoutFixtures.php';
 
 beforeEach(function (): void {
     if (config('database.default') !== 'mysql' || config('database.connections.mysql.database') !== 'saverapp_audit_testing') {
@@ -76,6 +79,28 @@ function withdrawalMysqlDeposit(int $receiptId, int $customerId, int $agentProfi
         });
 
         return 'deposited';
+    });
+}
+
+function withdrawalMysqlOffline(int $adminId, int $withdrawalId, int $version): Closure
+{
+    return bankMysqlWorker(static function () use ($adminId, $withdrawalId, $version): string {
+        config()->set('withdrawals.offline_enabled', true);
+        $request = Request::create('/withdrawals/offline-payout', 'POST');
+        $session = new Store('offline-worker', new ArraySessionHandler(600));
+        $session->put(['auth.fresh_until' => now()->addMinutes(10)->timestamp,
+            'auth.password_confirmed_at' => now()->timestamp, 'auth.mfa_confirmed_at' => now()->timestamp]);
+        $request->setLaravelSession($session);
+        try {
+            app(OfflinePayoutService::class)->record(User::findOrFail($adminId), WithdrawalRequest::findOrFail($withdrawalId), [
+                'attempt_reference' => (string) Str::uuid(), 'version' => $version, 'channel' => 'cash', 'external_reference' => null,
+                'paid_on' => now('Africa/Lagos')->toDateString(), 'note' => 'Race offline payout.',
+            ], $request);
+
+            return 'posted';
+        } catch (ConflictHttpException) {
+            return 'blocked';
+        }
     });
 }
 
@@ -185,4 +210,23 @@ test('WDL-AC-044 mysql execution-first resolves the same attempt to Payment fail
         ->and(BankPayoutAttempt::query()->count())->toBe(1)
         ->and(DB::table('withdrawal_reservations')->value('status'))->toBe('live')
         ->and($customer->fresh()->operational_status)->toBe(CustomerStatus::Restricted);
+});
+
+test('mysql two staff recording the same offline payout post it exactly once', function (): void {
+    Queue::fake();
+    [$admin, , , , $withdrawal] = offlinePayoutFixture($this);
+    $other = User::factory()->admin()->withTwoFactor()->create();
+    $other->givePermissionTo(AdminPermission::WithdrawalsReview);
+
+    $outcomes = bankMysqlRun([
+        withdrawalMysqlOffline($admin->id, $withdrawal->id, $withdrawal->version),
+        withdrawalMysqlOffline($other->id, $withdrawal->id, $withdrawal->version),
+    ]);
+
+    sort($outcomes);
+    expect($outcomes)->toBe(['blocked', 'posted'])
+        ->and(OfflinePayout::query()->count())->toBe(1)
+        ->and(DB::table('ledger_posting_groups')->where('event_type', 'offline_withdrawal')->count())->toBe(1)
+        ->and(DB::table('withdrawal_reservations')->where('id', $withdrawal->withdrawal_reservation_id)->value('status'))->toBe('consumed')
+        ->and($withdrawal->fresh()->state)->toBe('posted');
 });

@@ -154,6 +154,7 @@ const props = defineProps<{
         can_resume: boolean;
         can_cancel: boolean;
         can_renew: boolean;
+        closure_pending: boolean;
     };
     attempt_reference: string;
     directory_context: Record<string, string | number>;
@@ -439,7 +440,7 @@ const statusVariant = (
                                 query: { predecessor_plan_id: plan.id },
                             }).url
                         "
-                        >Start new plan</Link
+                        >Start new page</Link
                     ></Button
                 >
                 <DropdownMenu :modal="false" v-if="hasMoreActions">
@@ -491,6 +492,15 @@ const statusVariant = (
                 </DropdownMenu>
             </template>
         </PageHeader>
+
+        <p
+            v-if="actions.closure_pending"
+            role="status"
+            class="bg-muted rounded-xl p-4 text-sm"
+        >
+            All savings on this page were paid out. The page closes once its
+            collections are reconciled; then a new page can start.
+        </p>
 
         <Card>
             <CardHeader

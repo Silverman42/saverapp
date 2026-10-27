@@ -19,6 +19,12 @@ class WithdrawalMethodRegistry
             && app(PayoutProvider::class)->key() !== 'unavailable';
     }
 
+    /** Staff-recorded payouts made outside the platform: no gateway, no Customer confirmation. */
+    public function offlineAvailable(): bool
+    {
+        return config('withdrawals.offline_enabled') === true;
+    }
+
     /**
      * Methods a Customer withdrawal could currently be previewed with. Never throws: a missing gate simply omits the method.
      *
@@ -39,6 +45,9 @@ class WithdrawalMethodRegistry
                 // The business setting gate is closed; this method is not offered.
             }
         }
+        if ($this->offlineAvailable() && app(BusinessSettings::class)->featureEnabled('withdrawal_offline')) {
+            $methods[] = 'offline';
+        }
 
         return $methods;
     }
@@ -46,9 +55,12 @@ class WithdrawalMethodRegistry
     /** @return array{version: int, destination_reference: string, destination_mask: string, payout_destination_id: int|null, destination_version: int|null} */
     public function resolve(int $customerProfileId, string $method, string $destinationReference): array
     {
-        abort_unless(in_array($method, ['cash', 'bank_transfer'], true), 422, 'Choose a supported payout method.');
+        abort_unless(in_array($method, ['cash', 'bank_transfer', 'offline'], true), 422, 'Choose a supported payout method.');
         if ($method === 'bank_transfer') {
             return $this->resolveBank($customerProfileId, $destinationReference);
+        }
+        if ($method === 'offline') {
+            return $this->resolveOffline($customerProfileId, $destinationReference);
         }
         app(BusinessSettings::class)->ensureFeature('withdrawal_cash');
         app(BusinessSettings::class)->ensureFeature('payout_execution');
@@ -57,6 +69,18 @@ class WithdrawalMethodRegistry
 
         return ['version' => app(CashMethodCatalogue::class)->version('withdrawal'),
             'destination_reference' => 'customer:'.$customerProfileId, 'destination_mask' => 'Customer personally',
+            'payout_destination_id' => null, 'destination_version' => null];
+    }
+
+    /** @return array{version: int, destination_reference: string, destination_mask: string, payout_destination_id: int|null, destination_version: int|null} */
+    private function resolveOffline(int $customerProfileId, string $destinationReference): array
+    {
+        app(BusinessSettings::class)->ensureFeature('withdrawal_offline');
+        abort_unless($this->offlineAvailable(), 503, 'Offline payouts are not enabled.');
+        abort_unless($destinationReference === 'customer:'.$customerProfileId, 422, 'An offline payout is made to this Customer.');
+
+        return ['version' => (int) config('withdrawals.offline_method_version', 1),
+            'destination_reference' => 'customer:'.$customerProfileId, 'destination_mask' => 'Paid outside platform',
             'payout_destination_id' => null, 'destination_version' => null];
     }
 
