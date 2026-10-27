@@ -25,6 +25,7 @@ use RuntimeException;
  * @property string $phone
  * @property string $phone_normalized
  * @property string|null $address
+ * @property bool $offline_only
  * @property Gender|null $gender
  * @property string|null $occupation
  * @property string|null $photo_path
@@ -45,6 +46,7 @@ use RuntimeException;
     'phone',
     'phone_normalized',
     'address',
+    'offline_only',
     'gender',
     'occupation',
     'photo_path',
@@ -73,6 +75,7 @@ class CustomerProfile extends Model
             'operational_status' => CustomerStatus::class,
             'gender' => Gender::class,
             'next_of_kin' => 'array',
+            'offline_only' => 'boolean',
             'version' => 'integer',
         ];
     }
@@ -230,6 +233,34 @@ class CustomerProfile extends Model
                 ->where(fn (Builder $source): Builder => $source
                     ->whereColumn('fee_snapshots.source_id', 'customer_profiles.customer_id')
                     ->orWhereRaw('fee_snapshots.source_id = CAST(customer_profiles.id AS CHAR)')));
+    }
+
+    /**
+     * Get every registration fee agreement for this customer, original first.
+     *
+     * The original registration uses this customer's id as its source; registration fees
+     * raised again later use "{id}:{n}".
+     *
+     * @return HasMany<FeeSnapshot, $this>
+     */
+    public function registrationFeeSnapshots(): HasMany
+    {
+        return $this->hasMany(FeeSnapshot::class, 'customer_profile_id')
+            ->where('kind', 'registration')
+            ->where('source_type', 'registration')
+            ->orderBy('id');
+    }
+
+    /**
+     * Whether a registration fee source id belongs to this customer.
+     */
+    public function ownsRegistrationFeeSource(string $sourceId): bool
+    {
+        if (in_array($sourceId, [(string) $this->id, $this->customer_id], true)) {
+            return true;
+        }
+
+        return preg_match('/\A'.$this->id.':[1-9][0-9]*\z/', $sourceId) === 1;
     }
 
     /**

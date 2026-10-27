@@ -839,3 +839,12 @@ test('profile photo storage failure returns a recoverable validation error inste
     expect(fn () => app(ProfilePhotoService::class)->storePhoto($file))
         ->toThrow(ValidationException::class, 'The profile photo could not be stored. Please retry.');
 });
+
+test('CAM-U02: customer directory search matches part of a customer address', function (): void {
+    $admin = User::factory()->admin()->create();
+    $target = CustomerProfile::factory()->create(['address' => 'Stall 14, Oyingbo Market, Ebute Metta, Lagos']);
+    CustomerProfile::factory()->create(['address' => '3 Allen Avenue, Ikeja, Lagos']);
+
+    $this->actingAs($admin)->get(route('customers.index', ['search' => 'Oyingbo']))
+        ->assertInertia(fn (Assert $page) => $page->has('customers.data', 1)->where('customers.data.0.id', $target->customer_id));
+});

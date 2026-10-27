@@ -33,7 +33,8 @@ Field validation does not grant permission to edit a field. Section 4 defines th
 | Field                     | Required?        | Validation and ownership                                                                                                                                                                                                                                          |
 | ------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Full name                 | Yes              | One display-name field; 1–150 characters after trimming. Support Unicode names, single-word names, spaces, apostrophes, and hyphens. Do not require separate first and last names or an ASCII-only format.                                                        |
-| Email address             | Yes              | Valid email syntax; maximum 254 characters. Normalize and compare using Section 2.3. Unique across Customer, Agent, and Admin accounts, including inactive accounts. Verification belongs to Authentication.                                                      |
+| Email address             | Conditional      | Required unless the Customer is marked **Offline only** (module update CAM-U01, 27 October 2026). When supplied: valid email syntax; maximum 254 characters; normalized and compared using Section 2.3; unique across Customer, Agent, and Admin accounts, including inactive accounts. Verification belongs to Authentication. |
+| Offline only              | No (default off) | Agent-selected flag for a Customer who saves offline and will not use the app. An offline-only Customer may have no email, receives no invitation, and cannot sign in. Staff can later give app access by adding an email, which sends the first invitation and clears the flag. |
 | Phone number              | Yes              | Parse and store in international format using Section 2.3. Unique across all Customer profiles, including inactive and archived Customers.                                                                                                                        |
 | Customer ID               | System-generated | Immutable public reference using the proposed format in Section 2.4. Never entered by the registering Agent.                                                                                                                                                      |
 | Assigned Agent            | System-managed   | Reference an existing Agent. Initial assignment is the creating Agent; later changes use the reassignment workflow. Assignment eligibility belongs to the lifecycle rules.                                                                                        |
@@ -104,7 +105,7 @@ Proposed limits for Customer and Agent profile photos:
 
 The expanded acceptance checks below support Section 17's indexed requirements and release scenarios:
 
-1. A Customer can be registered with only their name, email, and phone entered by the Agent; IDs, attribution, registration time, and assignment are supplied by the system.
+1. A Customer can be registered with only their name, email, and phone entered by the Agent; IDs, attribution, registration time, and assignment are supplied by the system. An offline-only Customer can be registered with only their name and phone (CAM-U01).
 2. Names containing non-ASCII characters, apostrophes, hyphens, or a single word are accepted within the length limit.
 3. Equivalent normalized emails cannot create separate accounts; dots and plus suffixes are not silently removed.
 4. Equivalent local and international representations of the same Customer phone number are rejected as duplicates.
@@ -252,7 +253,7 @@ An **assigned Agent** means the Customer's current effective Agent, not an Agent
 
 Routine edits to address, gender, occupation, photo, and next of kin take effect immediately after validation; they do not introduce an approval queue or require fresh authentication beyond the valid session. Staff must make those changes at the Customer's request or to correct recorded information. The Customer receives an operational notification after a staff change.
 
-Optional fields may be cleared by an authorized editor. Required name, email, and phone fields may not be cleared. Removing a next-of-kin contact is an explicit action; an incomplete contact is not treated as a removal.
+Optional fields may be cleared by an authorized editor. Required name, email, and phone fields may not be cleared; email is not required for an offline-only Customer (CAM-U01). Removing a next-of-kin contact is an explicit action; an incomplete contact is not treated as a removal.
 
 ### 4.3 Name correction and confirmation
 
@@ -937,7 +938,7 @@ An Agent's Customer directory is not a business-wide list with hidden rows. Scop
 
 Filters include:
 
-- Search by name, normalized phone, email, Customer ID, or optional internal reference.
+- Search by name, normalized phone, email, Customer ID, optional internal reference, or part of the Customer's address (CAM-U02). The collections workspace search also matches the address.
 - Operational status and Authentication account state as separate controls.
 - Invitation delivery/activation state, using Authentication's invitation catalogue independently of account state.
 - Assigned Agent and assigned-Agent eligibility for Admins; an Agent viewer's assignment scope is fixed and cannot be broadened by a filter.
@@ -1283,6 +1284,8 @@ During staged implementation, a dependent section may show its documented unavai
 | CAM-FR-036 | Route/deduplicate scoped notifications under the event/channel matrix, with bounded retries and delivery failures independent of business commits.                      | Section 15                       |
 | CAM-FR-037 | Capture immutable durable audit events and protected change history, redact secrets, and enforce distinct audit/management/security/export boundaries.                  | Section 16                       |
 | CAM-FR-038 | Honor initial-scope limits and authoritative dependency contracts; unavailable or unsupported owning-module state cannot pass a gate or invent financial authority.     | Sections 17.1–17.3, 19           |
+| CAM-FR-039 | Register an offline-only Customer without email or invitation; require email for every other Customer; let staff later give app access by adding an email (module update CAM-U01). | Section 2.2; module update 27 October 2026 |
+| CAM-FR-040 | Match part of the Customer address in Customer directory and collections workspace search, within the viewer's scope (module update CAM-U02). | Section 13.2; module update 27 October 2026 |
 
 ### 17.5 Numbered acceptance scenarios
 
@@ -1347,6 +1350,8 @@ Each scenario must cover the stated outcome using the detailed field, permission
 | CAM-AC-055 | CAM-FR-011, CAM-FR-036                         | Fail/uncertainly accept operational and invitation delivery; apply bounded retries, distinct resend rules, safe diagnostics and read-state semantics without rollback, replay, or unchanged repeated alerts.                                                               |
 | CAM-AC-056 | CAM-FR-037                                     | Verify committed/failed/denied/conflicting changes and protected before/after references; events accurately identify actor/outcome and never contain raw failed identity, credentials, tokens, or unrestricted private-note payloads.                                      |
 | CAM-AC-057 | CAM-FR-037, CAM-FR-038                         | Try audit modification/read/export with baseline and split grants, fail remote indexing and durable local capture separately; preserve append-only/private access boundaries, tolerate indexing only with durability, and never silently drop a mutation's required audit. |
+| CAM-AC-058 | CAM-FR-039                                     | Register an offline-only Customer with no email while the invitation sender is not ready; no invitation is created or queued. A Customer who is not offline only cannot be registered without email. Giving app access saves the email and sends invitation generation 1. |
+| CAM-AC-059 | CAM-FR-040                                     | Search the Customer directory and collections workspace by part of an address; only scoped Customers whose address matches are returned.                                      |
 
 ### 17.6 Acceptance fixtures and evidence
 

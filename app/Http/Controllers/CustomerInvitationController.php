@@ -86,6 +86,38 @@ class CustomerInvitationController extends Controller
     }
 
     /**
+     * Give an offline-only customer app access by adding their email and inviting them.
+     */
+    public function enableOnlineAccess(
+        Request $request,
+        string $customer,
+        CustomerInvitationManagementService $service,
+        ResourceScopeService $scopeService,
+    ): RedirectResponse {
+        $viewer = $request->user();
+
+        /** @var CustomerProfile|null $customerProfile */
+        $customerProfile = $scopeService->forCustomers($viewer)
+            ->where('customer_id', $customer)
+            ->with(['user', 'currentAssignment'])
+            ->first();
+
+        if (! $customerProfile) {
+            abort(404, 'Record unavailable.');
+        }
+
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'email', 'max:254'],
+        ]);
+
+        $service->enableOnlineAccess($customerProfile, $viewer, $validated['email']);
+
+        Toast::success('App access enabled', 'Email saved and invitation queued for delivery.');
+
+        return redirect()->back();
+    }
+
+    /**
      * Cancel an invited customer's invitation.
      */
     public function cancel(

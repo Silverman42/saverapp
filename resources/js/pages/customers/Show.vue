@@ -16,6 +16,9 @@ import type {
     PlanFeeObligation,
 } from '@/components/CustomerFeesCard.vue';
 import CustomerInvitationCard from '@/components/CustomerInvitationCard.vue';
+import CustomerOfflineAccessCard from '@/components/CustomerOfflineAccessCard.vue';
+import RegistrationFeeChargeDialog from '@/components/RegistrationFeeChargeDialog.vue';
+import type { RegistrationFeePreview } from '@/components/RegistrationFeeChargeDialog.vue';
 import type { CustomerInvitation } from '@/components/CustomerInvitationCard.vue';
 import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
@@ -84,6 +87,7 @@ export type CustomerDetail = {
     email: string | null;
     phone: string;
     address: string | null;
+    offline_only: boolean;
     gender: string | null;
     occupation: string | null;
     internal_reference: string | null;
@@ -155,6 +159,9 @@ export type CustomerDetail = {
         archive_message: string;
         can_manage_invitation?: boolean;
         can_manage_status?: boolean;
+        can_enable_online_access?: boolean;
+        can_charge_registration_fee?: boolean;
+        can_collect_registration_fee?: boolean;
     };
 };
 
@@ -162,13 +169,24 @@ const props = defineProps<{
     customer: CustomerDetail;
     viewer_type: string;
     fee_obligations: PlanFeeObligation[];
+    registration_fee_preview: RegistrationFeePreview | null;
 }>();
 
-const planFeeObligations = computed(() =>
-    props.fee_obligations.filter(
-        (obligation) => obligation.kind !== 'registration',
-    ),
-);
+/**
+ * The original registration fee is shown from the fee snapshot. Registration fees
+ * raised again later are listed with the other fees.
+ */
+const planFeeObligations = computed(() => {
+    const firstRegistrationId = props.fee_obligations.find(
+        (obligation) => obligation.kind === 'registration',
+    )?.id;
+
+    return props.fee_obligations.filter(
+        (obligation) => obligation.id !== firstRegistrationId,
+    );
+});
+
+const chargeFeeOpen = ref(false);
 
 defineOptions({
     layout: {
@@ -342,6 +360,9 @@ const getAccountBadgeVariant = (
                     :variant="getAccountBadgeVariant(customer.account_state)"
                 >
                     Account: {{ customer.account_state_label }}
+                </Badge>
+                <Badge v-if="customer.offline_only" variant="secondary">
+                    Offline only
                 </Badge>
             </div>
         </div>
@@ -576,8 +597,32 @@ const getAccountBadgeVariant = (
                     :plan-fees="planFeeObligations"
                 />
 
+                <div
+                    v-if="
+                        customer.actions.can_charge_registration_fee &&
+                        registration_fee_preview
+                    "
+                    class="flex justify-end"
+                >
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="chargeFeeOpen = true"
+                    >
+                        <Plus class="size-4" />
+                        Charge registration fee
+                    </Button>
+                </div>
+
+                <CustomerOfflineAccessCard
+                    v-if="customer.offline_only && viewer_type !== 'customer'"
+                    :customer-id="customer.id"
+                    :customer-name="customer.name"
+                    :can-enable="!!customer.actions.can_enable_online_access"
+                />
+
                 <CustomerInvitationCard
-                    v-if="customer.invitation"
+                    v-if="customer.invitation && !customer.offline_only"
                     :customer-id="customer.id"
                     :customer-name="customer.name"
                     :customer-email="customer.email"
@@ -794,6 +839,14 @@ const getAccountBadgeVariant = (
         </div>
 
         <ManagementDeliveryPanel subject="customer" :reference="customer.id" />
+
+        <RegistrationFeeChargeDialog
+            v-if="registration_fee_preview"
+            v-model:open="chargeFeeOpen"
+            :customer-id="customer.id"
+            :preview="registration_fee_preview"
+            :can-collect="!!customer.actions.can_collect_registration_fee"
+        />
 
         <Dialog
             v-if="customer.pending_name_correction"

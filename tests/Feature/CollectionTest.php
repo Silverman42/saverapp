@@ -1771,3 +1771,15 @@ test('COL-AC-046: earnings and pending payouts cannot offset original Agent cash
     expect($batch->fresh()->status)->toBe('exception')
         ->and((int) DB::table('collection_batch_reviews')->where('collection_batch_id', $batch->id)->orderByDesc('id')->value('outstanding_kobo'))->toBe(200000);
 });
+
+test('CAM-U02: the collections workspace search matches part of a customer address', function (): void {
+    [$agent, $customer, , , $today] = collectionFixture();
+    config()->set('collections.enabled', true);
+    $customer->update(['address' => 'Stall 14, Oyingbo Market, Lagos']);
+
+    $this->actingAs($agent)->get(route('collections.index', ['date' => $today, 'search' => 'Oyingbo']))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('due_totals.slot_count', 1)
+            ->where('due_slots.data.0.customer_id', $customer->customer_id));
+    $this->get(route('collections.index', ['date' => $today, 'search' => 'Allen Avenue']))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('due_totals.slot_count', 0));
+});

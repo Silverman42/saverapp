@@ -269,6 +269,49 @@ class CustomerInvitationManagementService
     }
 
     /**
+     * Give an offline-only Customer app access: save their email and send the first invitation.
+     *
+     * @return array{invitation: Invitation}
+     *
+     * @throws ValidationException|HttpException
+     */
+    public function enableOnlineAccess(CustomerProfile $customerProfile, User $actor, string $email): array
+    {
+        $this->senderReadinessService->ensureReady(BusinessProfile::current());
+
+        return app(PlatformGuard::class)->transaction('mutation', function () use ($customerProfile, $actor, $email): array {
+            /** @var CustomerProfile $lockedProfile */
+            $lockedProfile = CustomerProfile::query()->whereKey($customerProfile->id)->lockForUpdate()->firstOrFail();
+            if (! $lockedProfile->offline_only) {
+                throw new ConflictHttpException('This Customer already has app access.');
+            }
+
+            $result = $this->correctEmail($lockedProfile->load('currentAssignment'), $actor, $email, 'Online access enabled for an offline-only Customer');
+
+            $lockedProfile->offline_only = false;
+            $lockedProfile->version++;
+            $lockedProfile->updated_by_user_id = $actor->id;
+            $lockedProfile->save();
+
+            AuditEvent::record(
+                eventType: 'customer.online_access_enabled',
+                targetType: CustomerProfile::class,
+                targetId: $lockedProfile->id,
+                targetReference: $lockedProfile->customer_id,
+                payload: [
+                    'customer_id' => $lockedProfile->customer_id,
+                    'email_normalized' => IdentityNormalizer::normalizeEmail($email),
+                    'generation' => $result['invitation']->generation,
+                ],
+                actor: $actor,
+                context: ['executor' => self::class],
+            );
+
+            return $result;
+        }, attempts: 3);
+    }
+
+    /**
      * Cancel an invitation for a Customer.
      *
      * @throws ValidationException|HttpException

@@ -121,6 +121,21 @@ class CustomerProfilePolicy
         return $this->managePlan($user, $customerProfile);
     }
 
+    /** The current eligible Agent, or an Admin who manages fees, may raise a registration fee again. */
+    public function chargeRegistrationFee(User $user, CustomerProfile $customerProfile): bool
+    {
+        if ($customerProfile->operational_status === CustomerStatus::Archived) {
+            return false;
+        }
+
+        return match ($user->user_type) {
+            UserType::Agent => $this->managePlan($user, $customerProfile),
+            UserType::Admin => $user->account_state === AccountState::Active
+                && $this->authorizationService->allows($user, AdminPermission::FeesManage),
+            default => false,
+        };
+    }
+
     /** The current eligible Agent may request settlement of an Active or Inactive Customer's existing savings. */
     public function initiateWithdrawal(User $user, CustomerProfile $customerProfile): bool
     {

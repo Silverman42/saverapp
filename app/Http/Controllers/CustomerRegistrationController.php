@@ -92,7 +92,10 @@ class CustomerRegistrationController extends Controller
             'attempt_reference' => ['required', 'string', 'max:100'],
             'fee_rule_version' => ['required', 'integer'],
             'name' => ['required', 'string', 'min:1', 'max:150'],
-            'email' => ['required', 'string', 'email', 'max:254'],
+            'offline_only' => ['sometimes', 'boolean'],
+            'email' => ['nullable', 'required_unless:offline_only,true,1', 'string', 'email', 'max:254'],
+            'registration_fee_payment' => ['sometimes', 'string', 'in:paid,part,pending'],
+            'registration_fee_amount_paid' => ['nullable', 'required_if:registration_fee_payment,part', 'string', 'max:20'],
             'phone' => ['required', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:500'],
             'gender' => ['nullable', 'string', 'in:female,male,other,prefer_not_to_say'],
@@ -117,9 +120,11 @@ class CustomerRegistrationController extends Controller
             photo: $photo,
         );
 
-        $message = $result['replayed']
-            ? 'Existing Customer registration resolved.'
-            : 'Customer registered successfully. Invitation queued for delivery.';
+        $message = match (true) {
+            $result['replayed'] => 'Existing Customer registration resolved.',
+            $result['customer']->offline_only => 'Customer registered for offline use. No invitation was sent.',
+            default => 'Customer registered successfully. Invitation queued for delivery.',
+        };
 
         Toast::success('Customer registered', $message);
 

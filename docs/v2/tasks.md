@@ -1,5 +1,13 @@
 # Version 2 Module Implementation Register
 
+### Module updates (offline Customers, address search, registration fee options), 27 October 2026
+
+Product-owner changes to Modules 04 and 05, recorded in `implementation_plan/module-updates-2026-10.md`. The specs carry CAM-FR-039/040, CAM-AC-058/059, FEE-FR-037/038 and FEE-AC-049/050.
+
+- **Code.** Offline-only Customers (optional email, no invitation, later "Give app access"); address in Customer directory and collections search; registration fee Pending / Part payment / Paid in full at registration; manual repeat registration fee. Migration `2026_10_27_065739_add_offline_only_to_customer_profiles_and_nullable_user_email` makes user email nullable.
+- **Evidence.** 13 new feature cases. Full suite 2,924 tests: 2,719 passed, 205 skipped, 0 failed. Pint and `vue-tsc` pass.
+- **Open.** Offline payout and page close after a full early withdrawal (WDL-U01, TPC-U01), and dashboard tabs (DSH-U01), are on separate branches. No browser check yet.
+
 ### Modules 11–16 acceptance closure, 10 October 2026
 
 Branch `feature/modules-11-16`. Locally closable scenarios in Modules 11–16 were exercised; scenarios gated on production, provider, legal, retention or device evidence keep their recorded blockers.

@@ -134,7 +134,7 @@ if ($cloud) {
         ."  echo \"Recording \$1...\"\n"
         ."  local result\n"
         ."  result=\"\$(\"\$CLOUD\" command:run {$environment} --cmd=\"\$2\" --json -n)\"\n"
-        ."  if ! printf '%s' \"\$result\" | php -r '\$r = json_decode(stream_get_contents(STDIN), true); echo trim(\$r[\"output\"] ?? \"\"), PHP_EOL; exit(((\$r[\"exitCode\"] ?? 1) === 0) ? 0 : 1);'; then\n"
+        ."  if ! printf '%s' \"\$result\" | php -r '\$lines = preg_split(\"/\\R/\", trim(stream_get_contents(STDIN))); \$r = json_decode((string) end(\$lines), true); echo is_array(\$r) ? trim(\$r[\"output\"] ?? \"\") : implode(PHP_EOL, \$lines), PHP_EOL; exit(((\$r[\"exitCode\"] ?? 1) === 0) ? 0 : 1);'; then\n"
         ."    echo \"Failed on \$1; stopping. Fix the cause and re-run (already recorded items are accepted again).\" >&2\n"
         ."    exit 1\n"
         ."  fi\n"

@@ -194,7 +194,7 @@ function applyFilters(): void {
                         v-model="search"
                         class="w-fit pl-9"
                         maxlength="100"
-                        placeholder="Name or ID"
+                        placeholder="Name, ID or address"
                     />
                 </div>
             </div>

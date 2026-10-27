@@ -15,10 +15,10 @@ enum FeeObligationStatus: string
     {
         return match ($this) {
             self::Pending => 'Pending',
-            self::PartiallySettled => 'Partially settled',
+            self::PartiallySettled => 'Part payment',
             self::Settled => 'Settled',
             self::Waived => 'Waived',
-            self::PartiallySettledAndWaived => 'Partially settled and waived',
+            self::PartiallySettledAndWaived => 'Part payment and waived',
             self::Cancelled => 'Cancelled',
         };
     }

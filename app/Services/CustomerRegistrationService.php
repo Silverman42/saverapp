@@ -39,7 +39,18 @@ class CustomerRegistrationService
         protected FeeObligationService $feeObligationService,
         protected InvitationSenderReadinessService $senderReadinessService,
         protected ProfilePhotoService $profilePhotoService,
+        protected RegistrationFeePaymentService $registrationFeePaymentService,
     ) {}
+
+    /**
+     * Whether the registration payload asks for an offline-only Customer without app access.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function isOfflineOnly(array $data): bool
+    {
+        return filter_var($data['offline_only'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
 
     /**
      * Compute a deterministic payload fingerprint for a customer registration.
@@ -50,7 +61,8 @@ class CustomerRegistrationService
     {
         $normalized = [
             'name' => trim((string) ($data['name'] ?? '')),
-            'email' => IdentityNormalizer::normalizeEmail((string) ($data['email'] ?? '')),
+            'offline_only' => $this->isOfflineOnly($data),
+            'email' => filled($data['email'] ?? null) ? IdentityNormalizer::normalizeEmail((string) $data['email']) : null,
             'phone' => PhoneNormalizer::normalize((string) ($data['phone'] ?? '')),
             'address' => filled($data['address'] ?? null) ? trim((string) $data['address']) : null,
             'gender' => filled($data['gender'] ?? null) ? (string) $data['gender'] : null,
@@ -58,6 +70,8 @@ class CustomerRegistrationService
             'internal_reference' => InternalReferenceNormalizer::normalize($data['internal_reference'] ?? null),
             'notes' => filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null,
             'fee_rule_version' => (int) ($data['fee_rule_version'] ?? 0),
+            'registration_fee_payment' => (string) ($data['registration_fee_payment'] ?? RegistrationFeePaymentService::PENDING),
+            'registration_fee_amount_paid' => filled($data['registration_fee_amount_paid'] ?? null) ? trim((string) $data['registration_fee_amount_paid']) : null,
         ];
 
         return hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
@@ -86,8 +100,12 @@ class CustomerRegistrationService
     {
         $business = BusinessProfile::current();
 
-        // 1. Check invitation sender readiness
-        $this->senderReadinessService->ensureReady($business);
+        $offlineOnly = $this->isOfflineOnly($data);
+
+        // 1. Check invitation sender readiness (offline-only Customers receive no invitation)
+        if (! $offlineOnly) {
+            $this->senderReadinessService->ensureReady($business);
+        }
 
         $fingerprint = $this->fingerprint($data);
 
@@ -145,6 +163,7 @@ class CustomerRegistrationService
             $data,
             $photoPath,
             $existingAttempt,
+            $offlineOnly,
         ): array {
             // Lock and re-verify Agent credentials & eligibility at commit
             /** @var User $freshAgent */
@@ -179,8 +198,21 @@ class CustomerRegistrationService
             );
 
             $name = trim((string) $data['name']);
-            $email = trim((string) $data['email']);
+            $email = filled($data['email'] ?? null) ? trim((string) $data['email']) : null;
             $emailNormalized = IdentityNormalizer::normalizeEmail($email);
+
+            if ($email === null && ! $offlineOnly) {
+                throw ValidationException::withMessages([
+                    'email' => ['Enter an email address, or mark the Customer as offline only.'],
+                ]);
+            }
+
+            $feePaymentOption = (string) ($data['registration_fee_payment'] ?? RegistrationFeePaymentService::PENDING);
+            $feeAmountCollectedKobo = $this->registrationFeePaymentService->amountCollectedKobo(
+                $feePaymentOption,
+                $data['registration_fee_amount_paid'] ?? null,
+                $registrationQuote->amountKobo,
+            );
             $phone = trim((string) $data['phone']);
             $phoneNormalized = PhoneNormalizer::normalize($phone);
 
@@ -194,7 +226,7 @@ class CustomerRegistrationService
             $internalReferenceNormalized = InternalReferenceNormalizer::normalize($internalReference);
 
             // Uniqueness checks under lock
-            if (User::query()->whereNormalizedEmail($emailNormalized)->lockForUpdate()->exists()) {
+            if ($emailNormalized !== null && User::query()->whereNormalizedEmail($emailNormalized)->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages([
                     'email' => ['The email address has already been registered.'],
                 ]);
@@ -278,6 +310,7 @@ class CustomerRegistrationService
                 'phone' => $phone,
                 'phone_normalized' => $phoneNormalized,
                 'address' => filled($data['address'] ?? null) ? trim((string) $data['address']) : null,
+                'offline_only' => $offlineOnly,
                 'gender' => $genderValue,
                 'occupation' => filled($data['occupation'] ?? null) ? trim((string) $data['occupation']) : null,
                 'internal_reference' => $internalReference,
@@ -340,24 +373,31 @@ class CustomerRegistrationService
             ]);
 
             // Assessment evidence is committed with the Customer, snapshot, audit and attempt.
-            $this->feeObligationService->assessRegistrationSnapshot($feeSnapshot, $freshAgent);
+            $feeObligation = $this->feeObligationService->assessRegistrationSnapshot($feeSnapshot, $freshAgent);
 
-            // Create Invitation challenge (7-day validity for customer)
+            // Record the registration fee the Agent collected now (paid in full or part payment)
+            if ($feeObligation !== null && $feeAmountCollectedKobo > 0) {
+                $this->registrationFeePaymentService->collect($freshAgent, $customerProfile, $feeObligation, $feeAmountCollectedKobo, $attemptReference);
+            }
+
+            // Create Invitation challenge (7-day validity for customer); offline-only Customers get none
             $plainToken = Str::random(64);
-            $tokenHash = hash('sha256', $plainToken);
+            $invitation = null;
 
-            $invitation = Invitation::create([
-                'user_id' => $user->id,
-                'target_email' => $user->email,
-                'target_email_normalized' => $user->email_normalized,
-                'role' => UserType::Customer->value,
-                'token_hash' => $tokenHash,
-                'generation' => 1,
-                'status' => InvitationStatus::PendingDelivery,
-                'delivery_status' => DeliveryStatus::Pending,
-                'expires_at' => now()->addDays(7),
-                'invited_by_user_id' => $freshAgent->id,
-            ]);
+            if (! $offlineOnly) {
+                $invitation = Invitation::create([
+                    'user_id' => $user->id,
+                    'target_email' => $user->email,
+                    'target_email_normalized' => $user->email_normalized,
+                    'role' => UserType::Customer->value,
+                    'token_hash' => hash('sha256', $plainToken),
+                    'generation' => 1,
+                    'status' => InvitationStatus::PendingDelivery,
+                    'delivery_status' => DeliveryStatus::Pending,
+                    'expires_at' => now()->addDays(7),
+                    'invited_by_user_id' => $freshAgent->id,
+                ]);
+            }
 
             // Bind attempt to committed record
             $attempt->status = CreationAttemptStatus::Committed;
@@ -367,10 +407,13 @@ class CustomerRegistrationService
                 'customer_id' => $customerProfile->customer_id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'offline_only' => $offlineOnly,
                 'operational_status' => $customerProfile->operational_status->value,
                 'account_state' => $user->account_state->value,
                 'fee_version' => $currentRule->version,
                 'fee_amount_kobo' => $registrationQuote->amountKobo,
+                'fee_payment' => $feePaymentOption,
+                'fee_amount_collected_kobo' => $feeAmountCollectedKobo,
             ];
             $attempt->save();
 
@@ -383,6 +426,7 @@ class CustomerRegistrationService
                 payload: [
                     'name' => $user->name,
                     'email_normalized' => $user->email_normalized,
+                    'offline_only' => $offlineOnly,
                     'phone_normalized' => $customerProfile->phone_normalized,
                     'operational_status' => $customerProfile->operational_status->value,
                     'account_state' => $user->account_state->value,
@@ -390,6 +434,8 @@ class CustomerRegistrationService
                     'fee_amount_kobo' => $registrationQuote->amountKobo,
                     'fee_quote_source_type' => $registrationQuote->sourceType,
                     'fee_quote_source_id' => $registrationQuote->sourceId,
+                    'fee_payment' => $feePaymentOption,
+                    'fee_amount_collected_kobo' => $feeAmountCollectedKobo,
                 ],
                 actor: $freshAgent,
 
@@ -397,9 +443,11 @@ class CustomerRegistrationService
             );
 
             // Safe post-commit queued delivery
-            DB::afterCommit(function () use ($invitation, $plainToken): void {
-                app(InvitationDeliveryIssues::class)->dispatch($invitation->id, $plainToken, 1);
-            });
+            if ($invitation !== null) {
+                DB::afterCommit(function () use ($invitation, $plainToken): void {
+                    app(InvitationDeliveryIssues::class)->dispatch($invitation->id, $plainToken, 1);
+                });
+            }
 
             return [
                 'customer' => $customerProfile->load(['user', 'currentAssignment.agentProfile.user']),

@@ -1,0 +1,14 @@
+{
+    "id": "comm-a2f68b01-7f61-47d0-8085-871fa08a6c42",
+    "command": "php artisan tinker --execute 'echo App\\Models\\User::where(\"email\", \"admin@graciousglobal.app\")->value(\"id\");'",
+    "status": "command.success",
+    "output": "1\n",
+    "exitCode": 0,
+    "startedAt": "2026-10-12T09:36:18.000000Z",
+    "finishedAt": "2026-10-12T09:36:19.000000Z",
+    "createdAt": "2026-10-12T09:36:17.000000Z",
+    "updatedAt": null,
+    "environment": null,
+    "instance": null,
+    "initiator": null
+}

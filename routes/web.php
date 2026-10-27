@@ -50,6 +50,7 @@ use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\CustomerReassignmentController;
 use App\Http\Controllers\CustomerRecoveryController;
 use App\Http\Controllers\CustomerRegistrationController;
+use App\Http\Controllers\CustomerRegistrationFeeController;
 use App\Http\Controllers\CustomerStatementController;
 use App\Http\Controllers\CustomerStatusController;
 use App\Http\Controllers\DashboardController;
@@ -260,6 +261,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('customers/{customer}/invitation/resend', [CustomerInvitationController::class, 'resend'])->name('customers.invitations.resend');
     Route::post('customers/{customer}/invitation/correct-email', [CustomerInvitationController::class, 'correctEmail'])->name('customers.invitations.correct-email');
     Route::post('customers/{customer}/invitation/cancel', [CustomerInvitationController::class, 'cancel'])->name('customers.invitations.cancel');
+    Route::post('customers/{customer}/online-access', [CustomerInvitationController::class, 'enableOnlineAccess'])->name('customers.online-access.enable');
+    Route::post('customers/{customer}/registration-fees', [CustomerRegistrationFeeController::class, 'store'])->name('customers.registration-fees.store');
 
     // Agent Registration and Attempts (CAM-T05)
     Route::get('agents/create', [AgentRegistrationController::class, 'create'])->name('agents.create');

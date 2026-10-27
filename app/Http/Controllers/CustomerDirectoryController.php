@@ -190,6 +190,8 @@ class CustomerDirectoryController extends Controller
                     $searchQuery->orWhere('customer_profiles.internal_reference_normalized', 'like', "%{$normalizedRef}%");
                 }
 
+                $searchQuery->orWhere('customer_profiles.address', 'like', "%{$search}%");
+
                 $searchQuery->orWhere('customer_profiles.phone', 'like', "%{$search}%");
                 $normalizedPhone = PhoneNormalizer::normalize($search);
                 if ($normalizedPhone !== null) {

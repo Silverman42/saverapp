@@ -269,7 +269,7 @@ const getAccountBadgeVariant = (
             title="All customers"
             :description="`${customers.total} customer${customers.total === 1 ? '' : 's'}`"
             :search-value="filterForm.search"
-            search-placeholder="Search by name, phone or email"
+            search-placeholder="Search by name, phone, email or address"
             :filters-open="false"
             :active-filter-count="activeFilterCount"
             @update:search-value="filterForm.search = $event"

@@ -908,3 +908,118 @@ test('FEE-AC-022: actual outstanding registration and repeated contributions nev
     expect(registrationSavingsAcceptanceRows())->toBe($before);
     Queue::assertPushed(DeliverFeeApplicationNotificationIntent::class, 1);
 });
+
+function registrationFeeOptionsCollectionsOpen(): void
+{
+    config()->set('collections.enabled', true);
+    FinancialPeriod::factory()->create(['month' => now('Africa/Lagos')->startOfMonth()->toDateString()]);
+}
+
+test('FEE-U01: the agent records the registration fee as paid, part paid or pending when registering', function (string $option, ?string $amountPaid, string $status, int $settledKobo): void {
+    $this->freezeTime();
+    Queue::fake([DeliverCustomerInvitationJob::class, DeliverCollectionNotificationIntent::class, MaterializeNotificationIntent::class]);
+    [, $agent, $rule] = registrationAcceptanceFixture($this, amountNgn: '1000.00');
+    registrationFeeOptionsCollectionsOpen();
+
+    $this->actingAs($agent)->post(route('customers.store'), [
+        ...registrationAcceptancePayload($rule),
+        'registration_fee_payment' => $option,
+        'registration_fee_amount_paid' => $amountPaid,
+    ])->assertSessionHasNoErrors()->assertRedirect();
+
+    $obligation = FeeObligation::query()->sole();
+    expect($obligation->status->value)->toBe($status)
+        ->and($obligation->settledAmountKobo())->toBe($settledKobo)
+        ->and($obligation->outstandingAmountKobo())->toBe(100000 - $settledKobo);
+    $this->assertDatabaseCount('collection_receipts', $settledKobo > 0 ? 1 : 0);
+    if ($settledKobo > 0) {
+        $this->assertDatabaseHas('collection_receipts', ['fee_amount_kobo' => $settledKobo, 'savings_amount_kobo' => 0, 'method' => 'cash']);
+    }
+})->with([
+    'paid in full' => ['paid', null, 'settled', 100000],
+    'part payment' => ['part', '400.00', 'partially_settled', 40000],
+    'pending' => ['pending', null, 'pending', 0],
+]);
+
+test('FEE-U01: a part payment must be less than the registration fee', function (): void {
+    Queue::fake([DeliverCustomerInvitationJob::class]);
+    [, $agent, $rule] = registrationAcceptanceFixture($this, amountNgn: '1000.00');
+    registrationFeeOptionsCollectionsOpen();
+
+    $this->actingAs($agent)->post(route('customers.store'), [
+        ...registrationAcceptancePayload($rule),
+        'registration_fee_payment' => 'part',
+        'registration_fee_amount_paid' => '1000.00',
+    ])->assertSessionHasErrors(['registration_fee_amount_paid' => 'A part payment must be less than the full registration fee. Choose "Paid in full" instead.']);
+
+    $this->assertDatabaseCount('customer_profiles', 0);
+    $this->assertDatabaseCount('collection_receipts', 0);
+});
+
+test('FEE-U02: the assigned agent can charge a registration fee again, once per request', function (): void {
+    $this->freezeTime();
+    Queue::fake([DeliverCustomerInvitationJob::class, DeliverCollectionNotificationIntent::class, MaterializeNotificationIntent::class]);
+    [, $agent, $rule] = registrationAcceptanceFixture($this, amountNgn: '1000.00');
+    registrationFeeOptionsCollectionsOpen();
+    $this->actingAs($agent)->post(route('customers.store'), registrationAcceptancePayload($rule))->assertRedirect();
+    $customer = CustomerProfile::query()->sole();
+
+    $charge = ['attempt_reference' => (string) Str::uuid(), 'fee_rule_version' => $rule->version,
+        'registration_fee_payment' => 'part', 'registration_fee_amount_paid' => '250.00', 'reason' => 'Returning customer'];
+    $this->post(route('customers.registration-fees.store', $customer->customer_id), $charge)
+        ->assertRedirect(route('customers.show', $customer->customer_id));
+    $this->post(route('customers.registration-fees.store', $customer->customer_id), $charge)->assertRedirect();
+
+    $obligations = FeeObligation::query()->orderBy('id')->get();
+    expect($obligations)->toHaveCount(2)
+        ->and($obligations[0]->source_id)->toBe((string) $customer->id)
+        ->and($obligations[0]->status->value)->toBe('pending')
+        ->and($obligations[1]->source_id)->toBe($customer->id.':2')
+        ->and($obligations[1]->assessedAmountKobo())->toBe(100000)
+        ->and($obligations[1]->settledAmountKobo())->toBe(25000);
+    $this->assertDatabaseCount('collection_receipts', 1);
+
+    // The new fee can be paid later with an ordinary fee-only receipt.
+    $receipt = ['attempt_reference' => (string) Str::uuid(), 'customer_version' => $customer->fresh()->version,
+        'assignment_version' => $customer->currentAssignment->version, 'business_version' => BusinessProfile::current()->version,
+        'plan_id' => null, 'plan_version' => null, 'received_date' => now('Africa/Lagos')->toDateString(), 'savings_ngn' => '0.00',
+        'fees' => [['obligation_id' => $obligations[1]->id, 'amount_ngn' => '750.00']], 'allocations' => [],
+        'late_reason' => '', 'notes' => '', 'confirmed' => true];
+    $receipt['preview_fingerprint'] = $this->postJson(route('customers.collections.preview', $customer->customer_id), $receipt)->assertOk()->json('preview_fingerprint');
+    $this->postJson(route('customers.collections.store', $customer->customer_id), $receipt)->assertRedirect();
+    expect($obligations[1]->fresh()->status->value)->toBe('settled');
+});
+
+test('FEE-U02: an admin who manages fees can raise a pending registration fee but cannot record cash', function (): void {
+    Queue::fake([DeliverCustomerInvitationJob::class]);
+    [$admin, $agent, $rule] = registrationAcceptanceFixture($this, amountNgn: '1000.00');
+    $this->actingAs($agent)->post(route('customers.store'), registrationAcceptancePayload($rule))->assertRedirect();
+    $customer = CustomerProfile::query()->sole();
+    $charge = ['fee_rule_version' => $rule->version, 'reason' => 'Annual re-registration'];
+
+    $this->actingAs($admin)->post(route('customers.registration-fees.store', $customer->customer_id), [
+        ...$charge, 'attempt_reference' => (string) Str::uuid(), 'registration_fee_payment' => 'paid',
+    ])->assertSessionHasErrors(['registration_fee_payment' => 'Only the assigned Agent can record a registration fee payment. Choose "Pending".']);
+
+    $this->post(route('customers.registration-fees.store', $customer->customer_id), [
+        ...$charge, 'attempt_reference' => (string) Str::uuid(), 'registration_fee_payment' => 'pending',
+    ])->assertRedirect();
+
+    expect(FeeObligation::query()->where('source_id', $customer->id.':2')->sole()->status->value)->toBe('pending');
+});
+
+test('FEE-U02: an agent who is not assigned to the customer cannot charge a registration fee', function (): void {
+    Queue::fake([DeliverCustomerInvitationJob::class]);
+    [, $agent, $rule] = registrationAcceptanceFixture($this, amountNgn: '1000.00');
+    $this->actingAs($agent)->post(route('customers.store'), registrationAcceptancePayload($rule))->assertRedirect();
+    $customer = CustomerProfile::query()->sole();
+    $otherAgent = User::factory()->agent()->withTwoFactor()->create();
+    AgentProfile::factory()->active()->create(['user_id' => $otherAgent->id]);
+
+    $this->actingAs($otherAgent)->post(route('customers.registration-fees.store', $customer->customer_id), [
+        'attempt_reference' => (string) Str::uuid(), 'fee_rule_version' => $rule->version,
+        'registration_fee_payment' => 'pending', 'reason' => 'Returning customer',
+    ])->assertNotFound();
+
+    $this->assertDatabaseCount('fee_obligations', 1);
+});

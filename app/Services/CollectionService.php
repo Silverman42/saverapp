@@ -569,7 +569,7 @@ class CollectionService
         }
         if ($snapshot->getRawOriginal('kind') === 'registration'
             && ($snapshot->source_type !== 'registration'
-                || ! in_array($snapshot->source_id, [(string) $customer->id, $customer->customer_id], true))) {
+                || ! $customer->ownsRegistrationFeeSource($snapshot->source_id))) {
             throw new ServiceUnavailableHttpException(null, 'The selected fee agreement is unavailable.');
         }
         if ($snapshot->getRawOriginal('kind') === 'manual') {

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
     Select,
     SelectContent,
@@ -79,7 +80,10 @@ const form = useForm({
     attempt_reference: props.attempt_reference,
     fee_rule_version: props.fee_preview.version ?? 0,
     name: '',
+    offline_only: false,
     email: '',
+    registration_fee_payment: 'pending' as 'paid' | 'part' | 'pending',
+    registration_fee_amount_paid: '',
     phone: '',
     address: '',
     gender: '' as string,
@@ -106,6 +110,24 @@ const hasMoreOptionErrors = computed(() =>
         ] as const
     ).some((field) => Boolean(form.errors[field])),
 );
+
+const headerDescription = computed(() =>
+    form.offline_only
+        ? 'This customer will save offline only. They will not get an email or app access.'
+        : 'We will email them an invite to set up their account.',
+);
+
+const feePaymentHelp = computed(() => {
+    if (form.registration_fee_payment === 'paid') {
+        return `Record ${props.fee_preview.formatted_amount} collected in cash now.`;
+    }
+
+    if (form.registration_fee_payment === 'part') {
+        return 'Record the cash collected now. The rest stays owed.';
+    }
+
+    return 'The customer will owe the full fee after you add them.';
+});
 
 const onPhotoChange = (event: Event): void => {
     const target = event.target as HTMLInputElement;
@@ -140,10 +162,7 @@ const submit = (): void => {
         <Head title="Register Customer" />
 
         <div class="mx-auto w-full max-w-3xl space-y-6">
-            <PageHeader
-                title="Add customer"
-                description="We will email them an invite to set up their account."
-            />
+            <PageHeader title="Add customer" :description="headerDescription" />
 
             <Alert v-if="!fee_preview.available" variant="destructive">
                 <ShieldAlert class="size-4" />
@@ -166,13 +185,71 @@ const submit = (): void => {
                         {{ fee_preview.formatted_amount }}
                     </p>
                 </div>
-                <p class="text-muted-foreground text-sm">
-                    {{
-                        fee_preview.is_zero
-                            ? 'This customer will not pay a fee.'
-                            : 'The customer will owe this fee after you add them.'
-                    }}
+                <p
+                    v-if="fee_preview.is_zero"
+                    class="text-muted-foreground text-sm"
+                >
+                    This customer will not pay a fee.
                 </p>
+                <div v-else class="grid gap-4 sm:grid-cols-2">
+                    <div class="space-y-1.5">
+                        <Label for="registration-fee-payment"
+                            >Fee payment</Label
+                        >
+                        <Select v-model="form.registration_fee_payment">
+                            <SelectTrigger
+                                id="registration-fee-payment"
+                                class="w-full"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="part"
+                                    >Part payment</SelectItem
+                                >
+                                <SelectItem value="paid"
+                                    >Paid in full</SelectItem
+                                >
+                            </SelectContent>
+                        </Select>
+                        <p class="text-muted-foreground text-xs">
+                            {{ feePaymentHelp }}
+                        </p>
+                        <p
+                            v-if="form.errors.registration_fee_payment"
+                            class="text-destructive text-xs"
+                        >
+                            {{ form.errors.registration_fee_payment }}
+                        </p>
+                    </div>
+                    <div
+                        v-if="form.registration_fee_payment === 'part'"
+                        class="space-y-1.5"
+                    >
+                        <Label for="registration-fee-amount-paid">
+                            Amount collected (₦)
+                            <span class="text-destructive">*</span>
+                        </Label>
+                        <Input
+                            id="registration-fee-amount-paid"
+                            v-model="form.registration_fee_amount_paid"
+                            inputmode="decimal"
+                            placeholder="e.g. 500.00"
+                            required
+                            :class="{
+                                'border-destructive':
+                                    form.errors.registration_fee_amount_paid,
+                            }"
+                        />
+                        <p
+                            v-if="form.errors.registration_fee_amount_paid"
+                            class="text-destructive text-xs"
+                        >
+                            {{ form.errors.registration_fee_amount_paid }}
+                        </p>
+                    </div>
+                </div>
                 <MoreDetails label="What the customer sees">
                     <p class="text-muted-foreground text-xs">
                         {{ fee_preview.customer_description }}
@@ -192,6 +269,24 @@ const submit = (): void => {
                         >
                     </CardHeader>
                     <CardContent class="space-y-5">
+                        <div
+                            class="flex items-start justify-between gap-4 rounded-lg border p-3"
+                        >
+                            <div class="space-y-0.5">
+                                <Label for="customer-offline-only"
+                                    >Offline only</Label
+                                >
+                                <p class="text-muted-foreground text-xs">
+                                    For customers without email who will not use
+                                    the app. You can give them app access later.
+                                </p>
+                            </div>
+                            <Switch
+                                id="customer-offline-only"
+                                v-model="form.offline_only"
+                            />
+                        </div>
+
                         <div class="grid gap-5 sm:grid-cols-2">
                             <div class="space-y-1.5">
                                 <Label for="customer-name">
@@ -218,14 +313,23 @@ const submit = (): void => {
                             <div class="space-y-1.5">
                                 <Label for="customer-email">
                                     Email
-                                    <span class="text-destructive">*</span>
+                                    <span
+                                        v-if="!form.offline_only"
+                                        class="text-destructive"
+                                        >*</span
+                                    >
+                                    <span
+                                        v-else
+                                        class="text-muted-foreground font-normal"
+                                        >(optional)</span
+                                    >
                                 </Label>
                                 <Input
                                     id="customer-email"
                                     v-model="form.email"
                                     type="email"
                                     placeholder="e.g. ngozi@example.ng"
-                                    required
+                                    :required="!form.offline_only"
                                     :class="{
                                         'border-destructive': form.errors.email,
                                     }"

@@ -399,7 +399,7 @@ class FeeSavingsApplicationService
             throw new ConflictHttpException('The original fee source is unavailable.');
         }
         if ($snapshot->kind === FeeRuleKind::Registration
-            && ($snapshot->source_type !== 'registration' || ! in_array($snapshot->source_id, [(string) $customer->id, $customer->customer_id], true))) {
+            && ($snapshot->source_type !== 'registration' || ! $customer->ownsRegistrationFeeSource($snapshot->source_id))) {
             throw new ConflictHttpException('The registration fee has no matching Customer source.');
         }
         if ($snapshot->kind === FeeRuleKind::Plan) {

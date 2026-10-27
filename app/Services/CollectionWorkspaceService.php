@@ -54,7 +54,8 @@ class CollectionWorkspaceService
         if ($search !== '') {
             $work->where(static function (Builder $query) use ($search): void {
                 $query->where('customers.customer_id', 'like', "%{$search}%")
-                    ->orWhere('users.name', 'like', "%{$search}%");
+                    ->orWhere('users.name', 'like', "%{$search}%")
+                    ->orWhere('customers.address', 'like', "%{$search}%");
             });
         }
         $work->select('slots.id', 'slots.active_ordinal as ordinal', 'slots.expected_amount_kobo as target_kobo',

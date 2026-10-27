@@ -14,6 +14,7 @@ use App\Services\CustomerNameCorrectionService;
 use App\Services\CustomerRecoveryService;
 use App\Services\FeeObligationService;
 use App\Services\LedgerTransactionReadService;
+use App\Services\RegistrationFeeService;
 use App\Services\ResourceScopeService;
 use App\Support\MoneyFormatter;
 use Carbon\CarbonImmutable;
@@ -134,6 +135,7 @@ class CustomerProfileController extends Controller
             'email' => $user?->email,
             'phone' => $customerProfile->phone,
             'address' => $customerProfile->address,
+            'offline_only' => $customerProfile->offline_only,
             'gender' => $customerProfile->gender?->value,
             'occupation' => $customerProfile->occupation,
             'internal_reference' => $customerProfile->internal_reference,
@@ -220,6 +222,9 @@ class CustomerProfileController extends Controller
                     && Gate::forUser($viewer)->allows('manageLifecycle', $customerProfile),
                 'archive_message' => 'Review archival checks from Manage status.',
                 'can_manage_invitation' => $canManageInvitation,
+                'can_enable_online_access' => $customerProfile->offline_only && $canManageInvitation,
+                'can_charge_registration_fee' => Gate::forUser($viewer)->allows('chargeRegistrationFee', $customerProfile),
+                'can_collect_registration_fee' => Gate::forUser($viewer)->allows('recordCollection', $customerProfile),
                 'can_manage_status' => $viewer->user_type === UserType::Admin
                     && $authorizationService->allows($viewer, AdminPermission::CustomersManage),
             ],
@@ -280,6 +285,9 @@ class CustomerProfileController extends Controller
             'customer' => $profileData,
             'viewer_type' => $viewer->user_type->value,
             'fee_obligations' => $feeObligationService->customerObligations($customerProfile),
+            'registration_fee_preview' => $profileData['actions']['can_charge_registration_fee']
+                ? app(RegistrationFeeService::class)->previewFee()
+                : null,
         ]);
     }
 }

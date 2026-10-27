@@ -181,6 +181,8 @@ class PlatformCatalogue
         'customers.collections.store' => 'financial',
         'customers.invitations.cancel' => 'mutation',
         'customers.invitations.correct-email' => 'mutation',
+        'customers.online-access.enable' => 'mutation',
+        'customers.registration-fees.store' => 'financial',
         'customers.invitations.resend' => 'mutation',
         'customers.name-corrections.accept' => 'mutation',
         'customers.name-corrections.cancel' => 'mutation',

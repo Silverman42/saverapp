@@ -55,7 +55,7 @@ class DeliverCustomerHandoverNotice implements ShouldQueue
     private function authorized(\stdClass $notice, array $payload): bool
     {
         $recipient = User::query()->where('id', $notice->recipient_user_id)->first();
-        if ($recipient === null) {
+        if ($recipient === null || blank($payload['email'] ?? $recipient->email)) {
             return false;
         }
         if ($notice->audience_type === 'subject_customer') {

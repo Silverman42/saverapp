@@ -1133,3 +1133,96 @@ test('Customer activation completes account setup, sets password, marks active, 
 
     expect(AuditEvent::query()->where('event_type', 'customer.activated')->exists())->toBeTrue();
 });
+
+test('CAM-U01: an offline-only customer registers without an email, invitation or invitation sender', function (): void {
+    Queue::fake();
+    $business = BusinessProfile::current();
+    $business->is_invitation_sender_verified = false;
+    $business->save();
+
+    $rule = publishFeeRule();
+    $agent = createEligibleAgent();
+
+    $response = $this->actingAs($agent)->post(route('customers.store'), [
+        'attempt_reference' => (string) Str::uuid(),
+        'fee_rule_version' => $rule->version,
+        'offline_only' => '1',
+        'name' => 'Mama Nkechi',
+        'phone' => '+2348011112222',
+        'address' => 'Stall 14, Oyingbo Market, Lagos',
+    ]);
+
+    $customer = CustomerProfile::query()->sole();
+    $response->assertRedirect(route('customers.show', $customer->customer_id));
+    assertToast($response, 'success', 'Customer registered');
+
+    expect($customer->offline_only)->toBeTrue()
+        ->and($customer->user->email)->toBeNull()
+        ->and($customer->user->email_normalized)->toBeNull()
+        ->and($customer->user->account_state)->toBe(AccountState::Invited)
+        ->and(FeeObligation::query()->sole()->status)->toBe(FeeObligationStatus::Pending);
+    $this->assertDatabaseCount('invitations', 0);
+    Queue::assertNotPushed(DeliverCustomerInvitationJob::class);
+});
+
+test('CAM-U01: two offline-only customers can both have no email', function (): void {
+    Queue::fake();
+    $rule = publishFeeRule();
+    $agent = createEligibleAgent();
+
+    foreach (['+2348011112222', '+2348011113333'] as $phone) {
+        $this->actingAs($agent)->post(route('customers.store'), [
+            'attempt_reference' => (string) Str::uuid(),
+            'fee_rule_version' => $rule->version,
+            'offline_only' => '1',
+            'name' => 'Offline Customer',
+            'phone' => $phone,
+        ])->assertSessionHasNoErrors();
+    }
+
+    expect(CustomerProfile::query()->where('offline_only', true)->count())->toBe(2);
+});
+
+test('CAM-U01: a customer who is not offline only must give an email', function (): void {
+    $rule = publishFeeRule();
+    $agent = createEligibleAgent();
+
+    $this->actingAs($agent)->post(route('customers.store'), [
+        'attempt_reference' => (string) Str::uuid(),
+        'fee_rule_version' => $rule->version,
+        'offline_only' => '0',
+        'name' => 'Online Customer',
+        'phone' => '+2348011112222',
+    ])->assertSessionHasErrors(['email' => 'The email field is required unless offline only is in true, 1.']);
+
+    $this->assertDatabaseCount('customer_profiles', 0);
+});
+
+test('CAM-U01: giving an offline-only customer app access saves the email and sends the first invitation', function (): void {
+    Queue::fake();
+    $rule = publishFeeRule();
+    $agent = createEligibleAgent();
+    $this->actingAs($agent)->post(route('customers.store'), [
+        'attempt_reference' => (string) Str::uuid(),
+        'fee_rule_version' => $rule->version,
+        'offline_only' => '1',
+        'name' => 'Mama Nkechi',
+        'phone' => '+2348011112222',
+    ]);
+    $customer = CustomerProfile::query()->sole();
+
+    $this->post(route('customers.online-access.enable', $customer->customer_id), ['email' => 'nkechi@example.ng'])
+        ->assertRedirect();
+
+    $customer->refresh();
+    expect($customer->offline_only)->toBeFalse()
+        ->and($customer->user->email)->toBe('nkechi@example.ng');
+    $invitation = Invitation::query()->sole();
+    expect($invitation->target_email)->toBe('nkechi@example.ng')
+        ->and($invitation->generation)->toBe(1);
+    Queue::assertPushed(DeliverCustomerInvitationJob::class, fn ($job): bool => $job->invitationId === $invitation->id);
+    expect(AuditEvent::query()->where('event_type', 'customer.online_access_enabled')->exists())->toBeTrue();
+
+    $this->post(route('customers.online-access.enable', $customer->customer_id), ['email' => 'other@example.ng'])
+        ->assertConflict();
+});

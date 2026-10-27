@@ -117,7 +117,7 @@ class DeliverCustomerStatusNotificationIntent implements ShouldQueue
             }
 
             return match ($intent->channel) {
-                'mail' => true,
+                'mail' => filled($recipient->email),
                 'database' => $recipient->account_state === AccountState::Active,
                 default => false,
             };

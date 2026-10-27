@@ -164,6 +164,12 @@ If pricing changed after preview, commit nothing and require re-review/reconfirm
 
 Authentication presents and records acknowledgement of exactly that snapshot. Resend, invited-email correction, activation, cancellation, invitation expiry, reassignment, archival restoration, or Agent return cannot reprice/reassess registration. An unpaid registration fee remains outstanding after activation; acknowledgement creates neither payment nor earnings. There is no automatic savings deduction for it. An Admin may explicitly waive it or, as a proposed exceptional settlement, apply it to savings only through Section 8 with a disclosed reason/source confirmation and sufficient availability; the invitation's original stated amount remains preserved.
 
+### 6.1 Payment at registration and repeat registration fees (module update, 27 October 2026)
+
+**FEE-U01 — payment option at registration.** When registering a Customer the Agent records the registration fee as **Pending** (nothing collected), **Part payment** (enters the cash amount collected, which must be more than zero and less than the fee) or **Paid in full**. A Part or Paid amount is posted as an ordinary cash fee-only collection receipt against the new obligation inside the registration transaction, so it settles the fee through the normal custody and ledger path. If the receipt cannot be recorded (for example collections are off or the financial period is closed), registration fails with the reason and nothing is saved. The obligation status shown to staff is derived from its entries: Pending, Part payment, or Settled.
+
+**FEE-U02 — the registration fee is not one-time.** The assigned Agent, or an Admin with `fees.manage`, may raise a registration fee again for a non-Archived Customer, with a reason. Each new charge is priced from the current published registration rule and gets its own immutable snapshot and obligation with source `registration` / `{customer profile id}:{n}` (the original registration keeps source `{customer profile id}`). The same Pending / Part payment / Paid option applies; only the assigned Agent can record cash collected at that moment. Requests are idempotent by attempt reference. A repeat fee is never raised automatically by resend, activation, reassignment, restoration or plan renewal; it is always an explicit staff action. Repeat fees are paid later through ordinary fee-only receipts.
+
 Invitation cancellation does not automatically waive a valid obligation. Outstanding registration fees block Customer archival under Module 04 unless settled or explicitly waived. Module 06 separately defines the relevant cycle-obligation closure gates; an unrelated registration debt cannot silently reprice the cycle. Do not delete an unactivated Customer to discard unpaid fees or free their identity.
 
 ## 7. Obligation lifecycle and settlement
@@ -185,7 +191,7 @@ The outstanding balance/state derives from effective entries, not an editable st
 | Partially paid and waived      | No outstanding; mixed settlement/waiver                  | Read; refund only against paid/applied portion.                                                  |
 | Corrected/cancelled assessment | Linked cancellation removes unearned obligation          | Read historical assessment; no collection of cancelled remainder.                                |
 
-No manual state reset. Registration/cycle obligation uniqueness is `(Customer, registration event)` or `(cycle, agreed fee trigger)`; per-withdrawal percentage uniqueness includes the withdrawal posting ID. Once-only triggers retain durable markers even when processing responses are lost.
+No manual state reset. Registration/cycle obligation uniqueness is `(Customer, registration event)`, where each explicit repeat registration fee (FEE-U02) is its own registration event or `(cycle, agreed fee trigger)`; per-withdrawal percentage uniqueness includes the withdrawal posting ID. Once-only triggers retain durable markers even when processing responses are lost.
 
 ### 7.3 External fee receipt
 
@@ -402,6 +408,8 @@ Do not invent a ledger mutation endpoint to fill missing approval/payout authori
 | FEE-FR-034 | Capture append-only protected audit evidence with separate detailed-read/export grants and durable financial links.                                                                                      | Section 13.2          |
 | FEE-FR-035 | Honor initial-scope restrictions/decision gates and cross-module ownership; unsupported integrations remain Blocked.                                                                                     | Sections 2, 14, 17    |
 | FEE-FR-036 | Quote early termination under disclosed full fixed/one-day or actual-principal completion-percentage defaults; prohibit duplicate/negative-net withdrawal fees and debt from zero-activity cancellation. | Section 5.2           |
+| FEE-FR-037 | Record a registration fee as Pending, Part payment (amount) or Paid in full at registration, posting the collected amount as a fee-only cash receipt in the same transaction (module update FEE-U01). | Section 6.1 |
+| FEE-FR-038 | Let the assigned Agent or a `fees.manage` Admin explicitly raise a registration fee again, with its own snapshot and obligation, idempotently and with audit (module update FEE-U02). | Section 6.1 |
 
 ## 16. Acceptance criteria and evidence
 
@@ -457,6 +465,8 @@ These are future verification scenarios, not claims of implementation or complet
 | FEE-AC-046 | FEE-FR-035                         | Unsupported percentage-first/stacked fees, penalties, unsupported early-completion policy, destination/payout authority or unavailable accounting owner remains Blocked; no invented role/capability.                                                                                                                                                                    |
 | FEE-AC-047 | FEE-FR-025, FEE-FR-030             | Race two business draws; one cannot exceed net earned-undrawn or conservatively free remitted cash. Customer payout reservations inside liability are not double-subtracted; original Agent receivables are not cash backing. Linked business-only correction requires original evidence and actual returned funds when applicable, with no Customer reversal authority. |
 | FEE-AC-048 | FEE-FR-036, FEE-FR-009, FEE-FR-010 | Terminate incomplete funded cycle: full agreed fixed/one-day or percentage on net posted principal before withdrawals is quoted once; zero-activity cancellation has no fee. Prior paid/waived fee never reappears; negative/zero net payout quote is rejected without silent cap/pro-rata; insufficient fee settlement blocks final closure.                            |
+| FEE-AC-049 | FEE-FR-037 | Register with each payment option; Paid settles the obligation with one fee-only receipt, Part leaves the remainder outstanding, Pending creates no receipt, and a part amount equal to the fee is rejected with nothing saved. |
+| FEE-AC-050 | FEE-FR-038 | The assigned Agent raises a second registration fee with a part payment; a replay creates nothing new; the remainder settles through a later receipt. An Admin can raise only a Pending fee; an unassigned Agent gets 404. |
 
 Required fixtures include baseline and split-grant Admins; Active/Inactive/Suspended/offboarding Agents; assigned/reassigned Customers in all statuses and invited/activated accounts; explicit zero/missing/changed fee versions; partially settled/waived/refunded obligations; first/completion/withdrawal fee cases; posted/reversed/held receipts; sufficient/insufficient/reserved balances; missing integrations; and simultaneous/unknown-outcome mutation attempts.
 
