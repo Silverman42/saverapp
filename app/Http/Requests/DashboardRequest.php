@@ -40,6 +40,7 @@ class DashboardRequest extends FormRequest
             'agent_basis' => ['nullable', Rule::in(['current', 'recording'])],
             'agent' => ['nullable', 'string', 'max:32', 'regex:/\A[A-Z0-9-]+\z/'],
             'page_size' => ['nullable', 'integer', Rule::in([25, 50, 100])],
+            'tab' => ['nullable', Rule::in(['today', 'overview', 'collections', 'requests', 'finance'])],
         ];
     }
 
@@ -61,7 +62,8 @@ class DashboardRequest extends FormRequest
     /** @return array<string, mixed> */
     public function filters(string $timezone): array
     {
-        $filters = $this->validated();
+        // The tab only chooses which sections are shown; it never changes what is read.
+        $filters = array_diff_key($this->validated(), ['tab' => true]);
         $today = CarbonImmutable::now($timezone);
         $configuration = app(BusinessSettings::class)->resolve();
         $defaults = $configuration['values'];

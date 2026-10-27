@@ -159,6 +159,19 @@ Actual collection against today's expectations is `covered_due`, not money recei
 | `open_reconciliation_exceptions` | Distinct current exception IDs by severity/age/recording Agent. A shortage does not change Customer liability.                                                                  |
 | `reconciled_batches`             | Distinct batch revisions in authoritative reconciled state; supplements count separately or as revisions according to Module 07, never both.                                    |
 
+### 6.5 Today metrics (Agent and Admin)
+
+These four figures always cover the business-local today in the Business Configuration timezone (the local day converted to its UTC range). The period filter, Customer/plan status filters and Agent attribution filters never change them. Customers do not see this section.
+
+| Code / label                     | Definition                                                                                                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `customers_registered_today`     | Distinct Customer profiles created today within the viewer's authorized Customer scope, including Archived Customers. Drill-down: `customer-summary`.                                                                                     |
+| `registration_fee_charged_today` | Registration fee obligation entries recorded today: assessments plus approved assessment increases, less approved assessment reductions. Charged, not cash collected; waivers and settlements are excluded. Drill-down: `fees` for today. |
+| `service_charge_deducted_today`  | Sum of fee savings applications recorded today on plan (page) fee obligations: the service charge taken from Customer savings. Registration and manual fees are excluded. Drill-down: `fees` for today.                                   |
+| `deposits_today`                 | Savings component of posted, projected receipts whose received date is today; excludes external fees. Admin scope is all authorized Customers; an Agent sees receipts they recorded. Drill-down: `contributions` for today (Admin only).  |
+
+The registration count stays readable when the ledger is unverified; the three money figures then show as not available and the section is Partial. Definitions are versioned in the metric catalogue (`definition_version` 10).
+
 ## 7. Role dashboards
 
 ### 7.1 Customer dashboard
@@ -201,6 +214,20 @@ Primary cards and sections:
 - Pending withdrawal/reversal review counts, aged items, plan/closure/archive blockers, ledger integrity incidents and delivery/source failures where the current Admin may see them.
 
 Charts show explicit unit/date basis: contribution and receipt trends, scheduled vs covered slot targets, successful net payouts, net fee recognition and custody/reconciliation. No stacked chart combines liability, income and assets into a fake total. Admin can filter by Customer status, plan state, recording/current/historical Agent basis, method and date. Admin cannot record a collection, create/manage a plan, initiate Agent-side withdrawal/reversal or mutate finances from the dashboard.
+
+### 7.4 Dashboard tabs
+
+Agent and Admin dashboards group sections into tabs. A tab with no sections for the viewer is hidden. The Customer dashboard keeps its single view.
+
+| Tab                 | Sections                                                                  |
+| ------------------- | ------------------------------------------------------------------------- |
+| Today               | Today metrics (Section 6.5)                                               |
+| Overview            | Customers and plans, savings, more numbers                                |
+| Collections         | Payments received, today's schedule                                       |
+| Requests & activity | Waiting for review, recent activity, cash on hand; Agent money in and out |
+| Finance (Admin)     | Money in and out, business cash, issues to check                          |
+
+The active tab is kept in `?tab=` (`today`, `overview`, `collections`, `requests`, `finance`). It only chooses what is shown: it is not a read filter, does not change the scope hash and is not returned in `filters`. Switching tabs updates the URL in place without a new read; refresh polling is unchanged.
 
 ## 8. Tasks, exceptions and drill-down
 
@@ -323,6 +350,7 @@ Projection rebuild is deterministic from authoritative sources and promotes only
 | DSH-FR-026 | Measure the proposed p95 targets under the declared capacity/network/device profile.                                            | 14.1      |
 | DSH-FR-027 | Monitor/rebuild projections safely and retain last verified or unavailable states through failure/recovery.                     | 14.2      |
 | DSH-FR-028 | Block release of metrics whose owner, formula, scope, cutoff, accounting or privacy contract is unresolved.                     | 2, 16, 18 |
+| DSH-FR-029 | Show fixed business-local today figures for staff and group staff dashboard sections into tabs.                                 | 6.5, 7.4  |
 
 ## 16. Acceptance scenarios and traceability
 
@@ -360,6 +388,7 @@ A scenario is **Blocked**, not Passed, when an owner integration/policy is unava
 | DSH-AC-028 | DSH-FR-026             | Load declared dataset/concurrency/network/device profile; above-fold p95 ≤3s, cached filter p95 ≤1s and shell ≤1.5s, or release target is not claimed.                                    |
 | DSH-AC-029 | DSH-FR-027             | Corrupt/rebuild projection and fail promotion; mismatch alerts, affected metrics become stale/unavailable, last verified remains labelled and rebuilt totals reconcile before promotion.  |
 | DSH-AC-030 | DSH-FR-028             | Disable each owner/contract or present undefined Module 08 state; affected metric/scenario is Blocked with no invented formula/status/permission.                                         |
+| DSH-AC-031 | DSH-FR-029             | Today figures stay on the local day under `period=week`, with scoped Agent values; unknown `tab` values fail.                                                                             |
 
 ## 17. Worked metric examples
 

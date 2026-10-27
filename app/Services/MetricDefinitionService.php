@@ -6,10 +6,17 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 9;
+    public const VERSION = 10;
+
+    /** @var list<string> Dashboard metrics fixed to the business-local today, whatever period is selected. */
+    public const TODAY_METRICS = ['customers_registered_today', 'registration_fee_charged_today', 'service_charge_deducted_today', 'deposits_today'];
 
     /** @var array<string, string> Dashboard metric codes whose report section reproduces the same total at the same scope. */
     public const DRILL_DOWN_REPORTS = [
+        'customers_registered_today' => 'customer-summary',
+        'registration_fee_charged_today' => 'fees',
+        'service_charge_deducted_today' => 'fees',
+        'deposits_today' => 'contributions',
         'customer_liability' => 'customer-summary',
         'live_payout_reservations' => 'customer-summary',
         'available_savings' => 'customer-summary',
@@ -23,6 +30,10 @@ class MetricDefinitionService
 
     /** @var array<string, array{title: string, source: string, date_basis: string, definition: string}> */
     private const DEFINITIONS = [
+        'customers_registered_today' => ['title' => 'Customers registered today', 'source' => 'customer management', 'date_basis' => 'business local today', 'definition' => 'Customer profiles created today in the business timezone within the authorized scope, including archived Customers.'],
+        'registration_fee_charged_today' => ['title' => 'Registration fee charged today', 'source' => 'fee obligation entries', 'date_basis' => 'business local today', 'definition' => 'Registration fee assessments plus approved increases, less approved reductions, recorded today. Charged, not cash collected.'],
+        'service_charge_deducted_today' => ['title' => 'Service charge deducted today', 'source' => 'fee savings applications', 'date_basis' => 'business local today', 'definition' => 'Plan (page) service charge taken from Customer savings today. Excludes registration and manual fees.'],
+        'deposits_today' => ['title' => 'Deposits today', 'source' => 'verified collection receipts', 'date_basis' => 'business local today', 'definition' => 'Savings component of posted receipts with today’s received date; Agents see receipts they recorded. Excludes fees.'],
         'customer_liability' => ['title' => 'Customer savings liability', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Posted Customer savings liability, including archived Customers within the selected authorized scope.'],
         'live_payout_reservations' => ['title' => 'Live payout reservations', 'source' => 'withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Live gross reservations; not posted savings debits.'],
         'available_savings' => ['title' => 'Available savings', 'source' => 'ledger + withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Verified liability less live gross reservations, subtracted once.'],
