@@ -328,6 +328,39 @@ test('rollback publishes a new higher version and retains intervening values', f
     expect(BusinessProfile::current()->version)->toBe(3)->and(BusinessProfile::current()->display_name)->toBe('SaverApp');
     expect(BusinessConfigurationVersion::query()->where('version', 2)->sole()->values['display_name'])->toBe('New name');
 });
+test('a setting added after the effective version resolves to its default and can be published and rolled back', function () {
+    $actor = configurationManager();
+    $profile = BusinessProfile::current();
+    $catalogue = app(BusinessSettingsCatalogue::class);
+    $legacyValues = $catalogue->initialValues($profile);
+    unset($legacyValues['withdrawal_offline']);
+    $legacy = BusinessConfigurationVersion::create(['business_profile_id' => $profile->id, 'version' => $profile->version, 'base_version' => $profile->version,
+        'values' => $legacyValues, 'values_hash' => $catalogue->hash($legacyValues), 'changed_codes' => array_keys($legacyValues),
+        'dependency_hash' => app(BusinessSettingsReadiness::class)->hash(), 'actor_user_id' => null, 'reason' => 'Version published before the setting existed.',
+        'source' => 'trusted_import', 'requested_effective_at' => now()]);
+    DB::table('business_configuration_work')->insert(['configuration_id' => $legacy->id, 'status' => 'effective', 'effective_at' => now(), 'updated_at' => now()]);
+    DB::table('business_profiles')->where('id', $profile->id)->update(['effective_configuration_id' => $legacy->id]);
+
+    $settings = app(BusinessSettings::class);
+    expect($settings->resolve()['values']['withdrawal_offline'])->toBeFalse();
+    $this->actingAs($actor)->get(route('admin.business-settings.index'))->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->where('settings.values.withdrawal_offline', false));
+
+    config()->set('withdrawals.offline_enabled', true);
+    LedgerAccount::query()->update(['mapping_status' => 'mapped']);
+    config()->set('app.financial_release_revision', 'offline-setting-test-release');
+    $evidence = app(FinancialReleaseEvidenceService::class);
+    foreach ($evidence::ROLES as $role) {
+        $evidence->record($actor, ['capability' => 'withdrawal_offline', 'owner_role' => $role,
+            'version' => 1, 'state' => 'accepted', 'dependency_hash' => $evidence->dependencyHash(),
+            'valid_until' => now()->addDay()->toIso8601String(), 'evidence' => 'TEST FIXTURE current offline payout release evidence.']);
+    }
+    publishConfiguration($actor, configurationDraft($actor, ['withdrawal_offline' => true]));
+    expect($settings->featureEnabled('withdrawal_offline'))->toBeTrue();
+
+    $rollback = $settings->rollbackDraft($actor, $legacy->id, (string) Str::uuid());
+    expect(BusinessConfigurationDraft::query()->findOrFail($rollback['draft_id'])->patch)->toBe(['withdrawal_offline' => false]);
+});
 test('published evidence rejects model and direct database mutation', function () {
     $version = app(BusinessSettings::class)->import();
     expect(fn () => $version->update(['source' => 'tampered']))->toThrow(LogicException::class);

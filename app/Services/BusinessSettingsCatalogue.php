@@ -14,7 +14,41 @@ class BusinessSettingsCatalogue
     /** @return array<string, array{label: string, group: string, default: mixed, rules: list<string>, editable: bool, help: string}> */
     public function definitions(): array
     {
-        $items = [
+        $items = $this->items();
+        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
+        if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
+            $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
+        }
+        $readOnly = [...$readOnly, 'collection_other', 'manual_charges', 'fee_refunds', 'cash_disbursements'];
+        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email'] as $code) {
+            if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
+                $readOnly = array_values(array_diff($readOnly, [$code]));
+            }
+        }
+        $result = [];
+        foreach ($items as $code => [$label, $group, $default, $rules]) {
+            $result[$code] = ['label' => $label, 'group' => $group, 'default' => $default, 'rules' => $rules,
+                'editable' => ! in_array($code, $readOnly, true),
+                'help' => in_array($code, $readOnly, true) ? 'Fixed policy or unavailable owner certification. See readiness.' : 'Applies prospectively. Historical records retain their snapshots.'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Default value of every setting, so versions published before a setting existed still resolve it.
+     *
+     * @return array<string, mixed>
+     */
+    public function defaults(): array
+    {
+        return array_map(fn (array $item): mixed => $item[2], $this->items());
+    }
+
+    /** @return array<string, array{0: string, 1: string, 2: mixed, 3: list<string>}> */
+    private function items(): array
+    {
+        return [
             'display_name' => ['Display name', 'Business profile', 'SaverApp', ['required', 'string', 'max:150']],
             'legal_name' => ['Legal name', 'Business profile', null, ['nullable', 'string', 'max:200']],
             'support_email' => ['Support email', 'Business profile', null, ['nullable', 'email', 'max:254']],
@@ -58,24 +92,6 @@ class BusinessSettingsCatalogue
             'fee_refunds' => ['Fee refund entitlements', 'Features & readiness', false, ['required', 'boolean']],
             'cash_disbursements' => ['Cash refunds and earnings draws', 'Features & readiness', false, ['required', 'boolean']],
         ];
-        $readOnly = ['dashboard_financial_range', 'brand_accent', 'brand_foreground', 'timezone', 'day_boundary', 'locale', 'currency', 'minor_digits', 'in_app_notifications', 'transactional_email', 'collection_cash', 'collection_transfer', 'collection_pos', 'withdrawal_cash', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports'];
-        if (app(BusinessSettingsReadiness::class)->checks()['collections']['state'] === 'Ready to enable') {
-            $readOnly = array_values(array_diff($readOnly, ['collection_cash', 'collections']));
-        }
-        $readOnly = [...$readOnly, 'collection_other', 'manual_charges', 'fee_refunds', 'cash_disbursements'];
-        foreach (['collection_transfer', 'collection_pos', 'collection_other', 'plan_creation', 'withdrawal_cash', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email'] as $code) {
-            if ((app(BusinessSettingsReadiness::class)->checks()[$code]['state'] ?? '') === 'Ready to enable') {
-                $readOnly = array_values(array_diff($readOnly, [$code]));
-            }
-        }
-        $result = [];
-        foreach ($items as $code => [$label, $group, $default, $rules]) {
-            $result[$code] = ['label' => $label, 'group' => $group, 'default' => $default, 'rules' => $rules,
-                'editable' => ! in_array($code, $readOnly, true),
-                'help' => in_array($code, $readOnly, true) ? 'Fixed policy or unavailable owner certification. See readiness.' : 'Applies prospectively. Historical records retain their snapshots.'];
-        }
-
-        return $result;
     }
 
     /** @return array<string, mixed> */

@@ -75,7 +75,7 @@ class BusinessSettings
             throw new LogicException('Effective configuration integrity could not be verified.');
         }
 
-        return ['version' => $version->version, 'configuration_id' => $version->id, 'values' => $values, 'source' => $version->source];
+        return ['version' => $version->version, 'configuration_id' => $version->id, 'values' => array_replace($this->catalogue->defaults(), $values), 'source' => $version->source];
     }
 
     /** @return array<string, mixed> */
@@ -268,13 +268,14 @@ class BusinessSettings
         return $this->operation($actor, 'rollback', $operation, compact('configurationId'), function (User $current) use ($configurationId): array {
             $previous = BusinessConfigurationVersion::query()->findOrFail($configurationId);
             $snapshot = $this->resolve(true);
+            $previousValues = array_replace($this->catalogue->defaults(), $previous->values);
             $patch = [];
             foreach ($this->catalogue->definitions() as $code => $definition) {
-                if (($previous->values[$code] ?? null) !== ($snapshot['values'][$code] ?? null)) {
+                if ($previousValues[$code] !== ($snapshot['values'][$code] ?? null)) {
                     if (! $definition['editable']) {
                         throw new ConflictHttpException('This rollback includes a fixed or unavailable setting.');
                     }
-                    $patch[$code] = $previous->values[$code];
+                    $patch[$code] = $previousValues[$code];
                 }
             }
             $normalized = $this->catalogue->validatePatch($patch, $snapshot['values']);
