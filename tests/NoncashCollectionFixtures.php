@@ -7,7 +7,6 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Services\FeeObligationService;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -17,11 +16,8 @@ require_once __DIR__.'/ReversalFixtures.php';
 function noncashFixture(object $test, string $method = 'transfer', string $custody = 'business_bank_ngn', int $feeKobo = 0, string $savings = '2000.00'): array
 {
     config()->set(['collections.enabled' => true, 'collections.noncash_enabled' => true,
-        'collections.receipt_corrections_enabled' => true, 'collections.evidence_scanner_binary' => '/opt/clamav/bin/clamdscan',
-        'collections.evidence_scanner_version' => 'test-signatures-1']);
+        'collections.receipt_corrections_enabled' => true]);
     Storage::fake('collection_evidence');
-    Process::fake(['*clamdscan*' => Process::result()]);
-    Process::preventStrayProcesses();
     [$agent, $customer, $assignment, $plan, $date] = collectionFixture(3, 0, 200000, $feeKobo, feeSource: FeeSettlementSource::ExternalReceipt);
     $admin = User::factory()->admin()->withTwoFactor()->create();
     $admin->givePermissionTo([AdminPermission::BusinessSettingsManage, AdminPermission::ReconciliationManage]);

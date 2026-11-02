@@ -6,10 +6,8 @@ use App\Models\User;
 use App\Services\AuditCapture;
 use App\Services\CollectionMethodCatalogue;
 use App\Services\CollectionPaymentEvidenceService;
-use App\Services\PlatformState;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -21,8 +19,6 @@ require_once __DIR__.'/../CollectionFixtures.php';
 beforeEach(function (): void {
     config()->set([
         'collections.noncash_enabled' => true,
-        'collections.evidence_scanner_binary' => '/opt/clamav/bin/clamdscan',
-        'collections.evidence_scanner_version' => 'test-signatures-1',
     ]);
     Storage::fake('collection_evidence');
     Process::fake();
@@ -122,15 +118,6 @@ test('scanned evidence remains private posts no money and replays without orphan
     Storage::disk('collection_evidence')->assertCount('files', 1);
 });
 
-test('evidence scanning rejects infected files and unavailable scanners without durable proof', function (int $exitCode, int $status): void {
-    [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
-    $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
-    Process::fake(['*' => Process::result(exitCode: $exitCode)]);
-    $this->actingAs($agent)->postJson(route('customers.collection-evidence.store', $customer), paymentEvidencePayload($customer, $assignment, $date, $method))->assertStatus($status);
-    $this->assertDatabaseCount('collection_payment_evidence', 0);
-    Storage::disk('collection_evidence')->assertDirectoryEmpty('files');
-})->with([[1, 422], [2, 503]]);
-
 test('evidence upload rejects missing attachments invalid bytes stale assignments and disabled methods', function (): void {
     [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
     $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
@@ -189,30 +176,6 @@ test('collection proof method files and reviews cannot be overwritten or deleted
         expect(fn () => DB::table($table)->delete())->toThrow(QueryException::class);
         expect(fn () => DB::table($table)->update(['created_at' => now()->subDay()]))->toThrow(QueryException::class);
     }
-});
-
-test('unconfigured scanning cannot label an upload clean', function (): void {
-    [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
-    $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
-    config()->set('collections.evidence_scanner_version', null);
-    $this->actingAs($agent)->postJson(route('customers.collection-evidence.store', $customer), paymentEvidencePayload($customer, $assignment, $date, $method))->assertServiceUnavailable();
-    $this->assertDatabaseCount('collection_payment_evidence', 0);
-    Storage::disk('collection_evidence')->assertDirectoryEmpty('files');
-    Process::assertNothingRan();
-});
-
-test('evidence preparation rechecks platform state after scanning', function (): void {
-    [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
-    $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
-    Process::fake(function () {
-        app(PlatformState::class)->transition(['mode' => 'read_only', 'expected_version' => 1, 'operation_id' => (string) Str::uuid(),
-            'operator' => 'test-ops', 'reason' => 'Pause during evidence preparation', 'incident' => 'TEST-1', 'expires_at' => null]);
-
-        return Process::result();
-    });
-    $this->actingAs($agent)->postJson(route('customers.collection-evidence.store', $customer), paymentEvidencePayload($customer, $assignment, $date, $method))->assertServiceUnavailable();
-    $this->assertDatabaseCount('collection_payment_evidence', 0);
-    Storage::disk('collection_evidence')->assertDirectoryEmpty('files');
 });
 
 test('audit failure rolls back proof and clears staged files', function (): void {
@@ -330,7 +293,7 @@ test('direct evidence owner rejects unsupported or oversized bytes before stagin
     Process::assertNothingRan();
 })->with(['svg', 'oversize']);
 
-test('an exact five megabyte valid image is scanned privately with its full bytes and no financial posting', function (): void {
+test('an exact five megabyte valid image is stored privately with its full bytes and no financial posting', function (): void {
     [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
     $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->assertCreated()->json('method_version_id');
     $payload = paymentEvidencePayload($customer, $assignment, $date, $method);
@@ -341,10 +304,7 @@ test('an exact five megabyte valid image is scanned privately with its full byte
     $stored = DB::table('collection_evidence_files')->sole();
     expect($stored->byte_size)->toBe(5120 * 1024)->and($stored->mime_type)->toBe('image/png')
         ->and($stored->checksum)->toBe(hash('sha256', $file->getContent()))
-        ->and($stored->scanner_version)->toBe('test-signatures-1')
         ->and(Storage::disk('collection_evidence')->get($stored->storage_path))->toBe($file->getContent());
-    Process::assertRanTimes(static fn (PendingProcess $process): bool => is_array($process->command)
-        && $process->command[0] === config('collections.evidence_scanner_binary'), 1);
     unset($baseline['collection_payment_evidence'], $baseline['collection_evidence_files']);
     $after = evidenceBoundaryOwnerRows();
     unset($after['collection_payment_evidence'], $after['collection_evidence_files']);

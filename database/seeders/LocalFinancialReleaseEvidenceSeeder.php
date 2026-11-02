@@ -49,7 +49,7 @@ class LocalFinancialReleaseEvidenceSeeder extends Seeder
                 ]);
             }
         }
-        $this->command?->info('Non-cash collections also need COLLECTIONS_NONCASH_ENABLED and an evidence scanner (or COLLECTION_EVIDENCE_SCANNER_FAKE locally). '
+        $this->command?->info('Non-cash collections also need COLLECTIONS_NONCASH_ENABLED. '
             .'Publishing a collection method changes the dependency hash, so re-run this seeder afterwards.');
     }
 }

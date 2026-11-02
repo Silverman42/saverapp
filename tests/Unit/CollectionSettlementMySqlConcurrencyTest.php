@@ -13,7 +13,6 @@ use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -35,9 +34,7 @@ function mysqlSettlementClaim(int $actorId, int $batchId, array $payload, string
         if (DB::getDriverName() !== 'mysql' || DB::connection()->getDatabaseName() !== 'saverapp_audit_testing') {
             throw new RuntimeException('Unsafe settlement race database.');
         }
-        config()->set(['filesystems.disks.collection_evidence.root' => $evidenceRoot,
-            'collections.evidence_scanner_binary' => '/opt/clamav/bin/clamdscan', 'collections.evidence_scanner_version' => 'test-signatures-1']);
-        Process::fake(['*clamdscan*' => Process::result()]);
+        config()->set(['filesystems.disks.collection_evidence.root' => $evidenceRoot]);
         $request = Request::create('/collection-settlements', 'POST');
         $session = new Store('settlement-test', new ArraySessionHandler(600));
         $session->put(['auth.fresh_until' => now()->addMinutes(10)->timestamp, 'auth.password_confirmed_at' => now()->timestamp, 'auth.mfa_confirmed_at' => now()->timestamp]);
@@ -60,7 +57,6 @@ test('mysql competing settlements transfer each clearing batch into bank custody
     unset($payload['files']);
     $otherReviewer = User::factory()->admin()->withTwoFactor()->create();
     $otherReviewer->givePermissionTo(AdminPermission::ReconciliationManage);
-    Process::preventStrayProcesses(false);
     $root = Storage::disk('collection_evidence')->path('');
     $outcomes = Concurrency::driver('process')->run([
         mysqlSettlementClaim($admin->id, $batch->id, $payload, $root, $file->getPathname()),

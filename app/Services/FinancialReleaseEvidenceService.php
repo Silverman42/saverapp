@@ -136,7 +136,7 @@ class FinancialReleaseEvidenceService
     }
 
     /**
-     * Method-specific prerequisites: custody, scanning and switch for non-cash collections, and a configured provider for bank payouts.
+     * Method-specific prerequisites: custody and switch for non-cash collections, and a configured provider for bank payouts.
      *
      * @return list<string>
      */
@@ -167,9 +167,6 @@ class FinancialReleaseEvidenceService
         }
         if (config('collections.noncash_enabled') !== true) {
             $blockers[] = 'non-cash collection switch';
-        }
-        if (! app(CollectionEvidenceScanner::class)->isConfigured()) {
-            $blockers[] = 'evidence scanner';
         }
 
         return $blockers;

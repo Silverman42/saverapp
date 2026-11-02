@@ -11,11 +11,9 @@ use App\Services\CollectionSettlementService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\FinancialCashPosition;
 use App\Services\LedgerTransactionProjectionService;
-use App\Services\PlatformState;
 use App\Services\ReportReadService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
@@ -56,7 +54,6 @@ test('partial and final POS settlements move clearing to bank once and leave sav
     expect(DB::table('ledger_entries')->where('ledger_account_id', $incomeAccount->id)->orderBy('id')->get()->all())->toEqual($recognizedIncome);
     app(LedgerTransactionProjectionService::class)->rebuild();
     $this->assertDatabaseCount('ledger_transaction_references', 3);
-    Process::assertRan(fn ($process): bool => is_array($process->command) && $process->command[0] === '/opt/clamav/bin/clamdscan');
 });
 
 test('a settlement reference cannot change and a bank credit cannot be claimed as a payment receipt', function (string $method): void {
@@ -100,19 +97,6 @@ test('invalid clearing settlement leaves every financial and evidence owner unch
     expect(Storage::disk('collection_evidence')->allFiles('files'))->toHaveCount(1);
 })->with(['excess', 'stale', 'future', 'before-capture', 'wrong-destination', 'unmapped', 'closed', 'open-batch']);
 
-test('settlement scan failure and unavailable scanner cannot claim custody', function (int $exitCode): void {
-    [, , , , $batch, $payload] = settlementFixture($this);
-    Process::fake(['*clamdscan*' => Process::result(exitCode: $exitCode)]);
-    $response = $this->postJson(route('collection-batches.settlements.store', $batch), $payload);
-    if ($exitCode === 1) {
-        $response->assertUnprocessable();
-    } else {
-        $response->assertServiceUnavailable();
-    }
-    $this->assertDatabaseCount('collection_settlements', 0);
-    expect(Storage::disk('collection_evidence')->allFiles('files'))->toHaveCount(1);
-})->with([1, 2]);
-
 test('settlement audit failure rolls the journal reference claim files and batch version back together', function (): void {
     [, , , $admin, $batch, $payload] = settlementFixture($this);
     $this->mock(AuditCapture::class)->shouldReceive('record')->once()->andThrow(new RuntimeException('Injected settlement audit failure'));
@@ -145,30 +129,6 @@ test('settlement submission rejects Agent Customer and ungranted Admin financial
     $this->actingAs(User::factory()->admin()->withTwoFactor()->create())->postJson($route, $payload)->assertForbidden();
     $this->assertDatabaseCount('collection_settlements', 0);
 });
-
-test('settlement rechecks revoked authority and financial freeze after scanning before posting', function (string $change): void {
-    [, , , $admin, $batch, $payload] = settlementFixture($this);
-    Process::fake(function () use ($change, $admin) {
-        if ($change === 'permission') {
-            $admin->revokePermissionTo(AdminPermission::ReconciliationManage);
-        } else {
-            app(PlatformState::class)->transition(['mode' => 'financial_freeze', 'expected_version' => 1,
-                'operation_id' => (string) Str::uuid(), 'operator' => 'test-ops', 'reason' => 'Pause during bank evidence preparation',
-                'incident' => 'SETTLEMENT-1', 'expires_at' => null]);
-        }
-
-        return Process::result();
-    });
-    $response = $this->postJson(route('collection-batches.settlements.store', $batch), $payload);
-    if ($change === 'permission') {
-        $response->assertForbidden();
-    } else {
-        $response->assertServiceUnavailable();
-    }
-    $this->assertDatabaseCount('collection_settlements', 0);
-    $this->assertDatabaseCount('collection_bank_reference_claims', 0);
-    expect(Storage::disk('collection_evidence')->allFiles('files'))->toHaveCount(1);
-})->with(['permission', 'platform']);
 
 test('settlement retention preserves published files and tampered evidence blocks batch reconciliation', function (): void {
     [, , , , $batch, $payload] = settlementFixture($this);

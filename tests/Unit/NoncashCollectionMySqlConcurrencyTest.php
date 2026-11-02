@@ -22,7 +22,6 @@ use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
@@ -39,10 +38,8 @@ beforeEach(function (): void {
         $this->markTestSkipped('Requires the isolated saverapp_audit_testing MySQL database.');
     }
     $this->artisan('migrate:fresh', ['--no-interaction' => true])->assertSuccessful();
-    config()->set(['collections.enabled' => true, 'collections.noncash_enabled' => true,
-        'collections.evidence_scanner_binary' => '/opt/clamav/bin/clamdscan', 'collections.evidence_scanner_version' => 'test-signatures-1']);
+    config()->set(['collections.enabled' => true, 'collections.noncash_enabled' => true]);
     Storage::fake('collection_evidence');
-    Process::fake(['*clamdscan*' => Process::result()]);
 });
 
 function noncashMysqlClaim(int $actorId, int $customerId, array $payload, string $evidenceRoot): Closure
@@ -180,7 +177,6 @@ test('mysql competing exception resolution reopening and renewed resolution reta
     $opened = DB::table('collection_exception_events')->sole();
     $earlierEvents = [$opened];
     $earlierProofs = [];
-    Process::preventStrayProcesses(false);
 
     foreach (['resolve', 'reopen', 'resolve'] as $index => $action) {
         $version = $initialVersion + $index;
@@ -254,7 +250,6 @@ test('mysql competing cash shortage resolution reopening and renewed resolution 
     expect(app(CollectionBatchPosition::class)->read($batch))->toBe([
         'expected_kobo' => 200000, 'received_kobo' => 200000, 'outstanding_kobo' => 0, 'settlement_pending' => false,
     ]);
-    Process::preventStrayProcesses(false);
 
     foreach (['resolve', 'reopen', 'resolve'] as $index => $action) {
         $version = $initialVersion + $index;

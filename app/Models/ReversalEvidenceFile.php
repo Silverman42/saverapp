@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
 
 /**
- * An immutable, scanned evidence file attached to a reversal request. Supplements add files; nothing replaces or removes one.
+ * An immutable evidence file attached to a reversal request. Supplements add files; nothing replaces or removes one.
  *
  * @property int $id
  * @property int $reversal_request_id
@@ -17,11 +17,9 @@ use RuntimeException;
  * @property string $checksum
  * @property string $mime_type
  * @property int $byte_size
- * @property string $scanner_version
- * @property CarbonImmutable $scanned_at
  * @property CarbonImmutable $created_at
  */
-#[Fillable(['reversal_request_id', 'storage_path', 'checksum', 'mime_type', 'byte_size', 'scanner_version', 'scanned_at', 'uploaded_by_user_id', 'created_at'])]
+#[Fillable(['reversal_request_id', 'storage_path', 'checksum', 'mime_type', 'byte_size', 'uploaded_by_user_id', 'created_at'])]
 class ReversalEvidenceFile extends Model
 {
     public $timestamps = false;
@@ -31,7 +29,7 @@ class ReversalEvidenceFile extends Model
 
     protected function casts(): array
     {
-        return ['byte_size' => 'integer', 'scanned_at' => 'immutable_datetime', 'created_at' => 'immutable_datetime'];
+        return ['byte_size' => 'integer', 'created_at' => 'immutable_datetime'];
     }
 
     protected static function booted(): void

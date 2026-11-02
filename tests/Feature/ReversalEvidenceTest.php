@@ -12,7 +12,6 @@ use App\Models\User;
 use App\Services\CollectionService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -22,12 +21,10 @@ require_once __DIR__.'/../WithdrawalFixtures.php';
 require_once __DIR__.'/../CollectionFixtures.php';
 
 /** @return array{0: User, 1: CustomerProfile, 2: CustomerAssignment, 3: LedgerPostingGroup} */
-function evidenceFixture(bool $scanner = true): array
+function evidenceFixture(): array
 {
-    config()->set(['collections.enabled' => true, 'collections.receipt_corrections_enabled' => true,
-        'collections.evidence_scanner_binary' => $scanner ? '/opt/clamav/bin/clamdscan' : null, 'collections.evidence_scanner_version' => 'test-signatures-1']);
+    config()->set(['collections.enabled' => true, 'collections.receipt_corrections_enabled' => true]);
     Storage::fake('collection_evidence');
-    Process::fake(['*clamdscan*' => Process::result()]);
     [$agent, $customer, $assignment, $plan, $date] = collectionFixture(1, slotAmountKobo: 200000);
     $collection = app(CollectionService::class);
     $payload = collectionPayload($customer, $assignment, $plan, $date, '2000.00');
@@ -56,7 +53,7 @@ test('protected evidence files are scanned, stored once and bound to the request
 
     $request = ReversalRequest::query()->sole();
     $files = ReversalEvidenceFile::query()->get();
-    expect($files)->toHaveCount(2)->and($files->every(fn ($file): bool => $file->scanner_version === 'test-signatures-1' && Storage::disk('collection_evidence')->exists($file->storage_path)))->toBeTrue()
+    expect($files)->toHaveCount(2)->and($files->every(fn ($file): bool => Storage::disk('collection_evidence')->exists($file->storage_path)))->toBeTrue()
         ->and($request->evidenceFiles()->count())->toBe(2)
         ->and(DB::table('canonical_audit_events')->where('event_type', 'reversal.evidence_added')->count())->toBe(1);
 });
@@ -75,14 +72,6 @@ test('unsafe evidence and excess files create no request and leave no stored byt
     expect(ReversalRequest::query()->count())->toBe(0)->and(ReversalEvidenceFile::query()->count())->toBe(0)
         ->and(Storage::disk('collection_evidence')->allFiles())->toBe([]);
 })->with(['four files', 'unsupported type', 'oversize image', 'disguised content']);
-
-test('an unavailable scanner fails closed without a request', function (): void {
-    [$agent, $customer, $assignment, $original] = evidenceFixture(scanner: false);
-
-    submitCorrection($this, $agent, $customer, $assignment, $original, [UploadedFile::fake()->image('proof.png')])->assertStatus(503);
-
-    expect(ReversalRequest::query()->count())->toBe(0)->and(Storage::disk('collection_evidence')->allFiles())->toBe([]);
-});
 
 test('a replayed submission with the same files stores nothing twice', function (): void {
     [$agent, $customer, $assignment, $original] = evidenceFixture();

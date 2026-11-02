@@ -11,7 +11,6 @@ use App\Models\User;
 use App\Services\LedgerTransactionProjectionService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
@@ -30,11 +29,9 @@ function revGapListedIds(TestResponse $response): array
     return array_column(revGapProps($response)['requests']['data'], 'id');
 }
 
-function revGapEvidenceScanner(): void
+function revGapEvidenceStorage(): void
 {
-    config()->set(['collections.evidence_scanner_binary' => '/opt/clamav/bin/clamdscan', 'collections.evidence_scanner_version' => 'test-signatures-1']);
     Storage::fake('collection_evidence');
-    Process::fake(['*clamdscan*' => Process::result()]);
 }
 
 test('REV-AC-028: the index lists only the requests inside the viewer scope and counts follow the filter', function (): void {
@@ -89,7 +86,7 @@ test('REV-AC-028: pagination stays inside the viewer scope across pages', functi
 });
 
 test('REV-AC-029: Customer-facing views, statement and notices omit internal evidence and claim no physical return', function (): void {
-    revGapEvidenceScanner();
+    revGapEvidenceStorage();
     ['agent' => $agent, 'customer' => $customer, 'original' => $original] = revGapReceipt();
     app(LedgerTransactionProjectionService::class)->rebuild();
     $quote = revGapQuote($this, $agent, $original);
@@ -137,7 +134,7 @@ test('REV-AC-029: Customer-facing views, statement and notices omit internal evi
 });
 
 test('REV-AC-031: submission, evidence access and every decision are audited with masked fields', function (): void {
-    revGapEvidenceScanner();
+    revGapEvidenceStorage();
     ['agent' => $agent, 'original' => $original] = revGapReceipt();
     app(LedgerTransactionProjectionService::class)->rebuild();
     $admin = revGapAdmin();

@@ -9,13 +9,11 @@ use App\Services\BusinessSettings;
 use App\Services\BusinessSettingsCatalogue;
 use App\Services\BusinessSettingsReadiness;
 use App\Services\CollectionBatchPosition;
-use App\Services\CollectionEvidenceScanner;
 use App\Services\FinancialReleaseEvidenceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 require_once __DIR__.'/../NoncashCollectionFixtures.php';
 require_once __DIR__.'/../CashExecutionFixtures.php';
@@ -54,21 +52,17 @@ function publishNoncashSettings(User $actor, array $patch): void
     $settings->publish($actor, $draft['draft_id'], $draft['revision'], $preview['reference'], 'Enable reviewed collection method', (string) Str::uuid(), $request);
 }
 
-test('non-cash readiness requires owner evidence, custody mapping, the switch and a scanner', function (string $capability, string $custody): void {
+test('non-cash readiness requires owner evidence, custody mapping, and the switch', function (string $capability, string $custody): void {
     $actor = User::factory()->admin()->withTwoFactor()->create();
     $actor->givePermissionTo(AdminPermission::BusinessSettingsManage);
     $readiness = fn (): array => app(BusinessSettingsReadiness::class)->checks()[$capability];
     expect($readiness()['state'])->toBe('Unavailable')
         ->and(app(BusinessSettingsCatalogue::class)->definitions()[$capability]['editable'])->toBeFalse();
 
-    config()->set(['collections.noncash_enabled' => true, 'collections.evidence_scanner_fake' => true]);
+    config()->set('collections.noncash_enabled', true);
     recordNoncashOwnerEvidence($actor, [$capability]);
     expect($readiness())->blocker->toBe('')->state->toBe('Ready to enable')
         ->and(app(BusinessSettingsCatalogue::class)->definitions()[$capability]['editable'])->toBeTrue();
-
-    config()->set('collections.evidence_scanner_fake', false);
-    expect($readiness())->state->toBe('Unavailable')->blocker->toContain('evidence scanner');
-    config()->set('collections.evidence_scanner_fake', true);
 
     config()->set('collections.noncash_enabled', false);
     expect($readiness())->state->toBe('Unavailable')->blocker->toContain('non-cash collection switch');
@@ -118,16 +112,4 @@ test('an Other method with Agent custody reconciles through a cash handoff', fun
 
     expect(app(CollectionBatchPosition::class)->read($batch->fresh()))
         ->expected_kobo->toBe(200000)->received_kobo->toBe(200000)->outstanding_kobo->toBe(0);
-});
-
-test('the fake evidence scanner only works in local or testing environments', function (): void {
-    config()->set(['collections.evidence_scanner_fake' => true, 'collections.evidence_scanner_binary' => null]);
-    $scanner = app(CollectionEvidenceScanner::class);
-    expect($scanner->isConfigured())->toBeTrue()
-        ->and($scanner->scan('/tmp/unused'))->toBe(CollectionEvidenceScanner::LOCAL_FAKE_VERSION);
-
-    app()->detectEnvironment(fn (): string => 'production');
-    expect($scanner->isConfigured())->toBeFalse()
-        ->and(fn () => $scanner->scan('/tmp/unused'))->toThrow(ServiceUnavailableHttpException::class);
-    app()->detectEnvironment(fn (): string => 'testing');
 });

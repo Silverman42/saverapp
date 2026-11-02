@@ -187,7 +187,7 @@ class ReversalService
     }
 
     /**
-     * Add scanned evidence files to a still-pending request. Files are immutable: a supplement only adds, up to three in total.
+     * Add evidence files to a still-pending request. Files are immutable: a supplement only adds, up to three in total.
      *
      * @param  list<UploadedFile>  $uploads
      */
@@ -244,7 +244,7 @@ class ReversalService
 
     /**
      * @param  list<UploadedFile>  $uploads
-     * @return list<array{storage_path: string, checksum: string, mime_type: string, byte_size: int, scanner_version: string, scanned_at: mixed, created_at: mixed}>
+     * @return list<array{storage_path: string, checksum: string, mime_type: string, byte_size: int, created_at: mixed}>
      */
     private function prepareEvidence(array $uploads, int $existing = 0): array
     {
