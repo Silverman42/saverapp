@@ -162,6 +162,17 @@ class DashboardReadService
                     return app(FinancialWorkflowReadService::class)->businessPosition($viewer);
                 });
             }
+            if ($viewer->user_type === UserType::Admin) {
+                $revenue = null;
+                $readRevenue = function () use (&$revenue, $viewer, $filters, $state, $manifest): array {
+                    $this->requireLedger($state);
+
+                    return $revenue ??= app(RevenueReadService::class)->read($viewer, $filters, CarbonImmutable::parse($manifest['cutoff'])->toDateTimeString(), $state['watermark']);
+                };
+                $sections['revenue_summary'] = $this->section('revenue_summary', $manifest, fn (): array => $readRevenue()['summary']);
+                $sections['revenue_channels'] = $this->section('revenue_channels', $manifest, fn (): array => $readRevenue()['channels']);
+                $sections['revenue_fee_types'] = $this->section('revenue_fee_types', $manifest, fn (): array => $readRevenue()['fee_types']);
+            }
             if ($viewer->user_type === UserType::Admin && empty($filters['agent'])
                 && ($this->authorization->allows($viewer, AdminPermission::WithdrawalsReview) || $this->authorization->allows($viewer, AdminPermission::ReconciliationManage))) {
                 $sections['incidents'] = $this->section('incidents', $manifest, fn (): array => $this->incidentQueues($viewer, 5));

@@ -14,7 +14,8 @@ export type DashboardTab =
     | 'overview'
     | 'collections'
     | 'requests'
-    | 'finance';
+    | 'finance'
+    | 'revenue';
 
 export type DashboardMetric = {
     code: string;
