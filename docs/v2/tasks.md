@@ -774,6 +774,18 @@ Dependencies: Modules 01–15
 
 Modules 05–10 and dependent document/report owners remain **In Progress** under the approved cash-only plan. Implemented local slices include explicitly delegated cash execution, immutable method contracts, full-return withdrawal recovery/compensation, savings/mixed/fee-only receipt reclassification, controlled manual charges and deduction compensation, cash-backed fee concessions/draws, and encrypted queued CSV/PDF artifacts with supersession and fenced retries. Complete local PHP suite: 964 passed / 7,339 assertions, with 48 environment-dependent skips; three isolated MySQL races / 24 assertions. Changed-owner PHPStan, Pint, changed-frontend lint/format, TypeScript and production build pass. Repository-wide PHPStan retains 91 diagnostics and the repository-wide frontend formatting check remains unsuccessful. Controlled unapplied replacements, complete plan fee dependencies, partial/uncertain exception owners, artifact notices/shared recovery, authenticated browser acceptance and production certification remain outstanding. Flags remain false. Existing plan checkpoints record evidence; focused tests do not imply complete acceptance.
 
+## Module 17 — Financial Notes
+
+Source: [`17-financial-notes.md`](./modules/17-financial-notes.md)
+Dependencies: Modules 01, 03, 14, 16
+
+| Task | Specification reference | Status | Evidence or blocker |
+| ---- | ----------------------- | ------ | ------------------- |
+| Write the module specification from the 2 November 2026 product-owner decisions. | Sections 1–13 | Completed | Credit/Debit type, required amount, optional category, `financial.notes.manage`, edit plus audited archive/restore. |
+| Add `financial.notes.manage` to the permission catalogue, audit catalogue and platform route catalogue. | FNT-FR-001, 002, 009; Section 10 | Done | Migration `2026_11_02_154650_add_financial_notes_permission`; `AuditCatalogue` `financial_note` family; four `mutation` routes in `PlatformCatalogue`. `PermissionCatalogueTest` and `AdminPermissionManagementTest` updated to 16 permissions. Module 03 specification updated. |
+| Build notes storage, service, controller and Admin page. | FNT-FR-003–008, 010, 011 | Done | `financial_notes` table, `FinancialNoteService` (PlatformGuard transaction, actor re-check, version check), `FinancialNoteController`, `admin/financial-notes/Index` page, sidebar item and help article. `FinancialNoteTest` 12 / 12 (FNT-AC-001–007). Related Authz, audit, platform, help and ledger suites pass; Pint, `vue-tsc` and build pass. |
+| Browser acceptance at 390 px in light and dark themes. | FNT-AC-009 | To Do | Not yet run. |
+
 ## Financial workflow release-readiness checkpoint — 1 October 2026
 
 Source: Modules 05–10, 12, 13 and 16; [release package](./implementation_plan/financial-workflow-release-readiness.md). The coordinated work remains **In Progress**. Earlier partial acceptance statements are not promoted to full acceptance by this checkpoint.

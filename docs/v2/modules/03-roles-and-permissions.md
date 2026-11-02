@@ -253,6 +253,7 @@ Version 2 uses the following closed permission catalogue.
 | `security.operations.manage` | Security operations           | View non-secret security events, review Customer assisted recovery, manage permitted authentication locks, and perform the Agent security operations assigned to this permission.                                                    |
 | `audit.view`                 | Audit-log access              | Search and view business audit events, subject to masking and export restrictions.                                                                                                                                                   |
 | `reports.export`             | Report export                 | Export business reports and statements containing business-wide or multi-Customer information.                                                                                                                                       |
+| `financial.notes.manage`     | Financial notes               | Create, edit, archive, and restore Admin financial notes about business revenue and expenses (Module 17). Notes are memos only and never post to the ledger or change any balance. |
 
 Permission codes are stable identifiers. Display names may change without changing the stored code.
 
@@ -281,6 +282,7 @@ Permission codes are stable identifiers. Display names may change without changi
 | View detailed audit log                | No                                      | No                                        | `audit.view`                 |
 | View business-wide reports             | No                                      | No                                        | Business-wide baseline       |
 | Export business-wide reports           | No                                      | No                                        | `reports.export`             |
+| Keep Admin financial notes             | No                                      | No                                        | `financial.notes.manage`     |
 
 The detailed domain modules may add status and workflow prerequisites, but they cannot grant a role an action marked **No** without an explicit revision to this module and the User Types baseline.
 
@@ -294,6 +296,7 @@ Granular permissions do not imply one another unless explicitly stated.
 - `withdrawals.review` does not grant `reversals.review`.
 - `fees.manage` does not grant `deductions.manage`.
 - `audit.view` does not grant `reports.export`.
+- `financial.notes.manage` grants no ledger, fee, report, or reconciliation authority; notes never change financial records.
 - `business.settings.manage` does not grant Admin or security management.
 
 The interface may group permissions for convenience, but selecting a group must resolve to visible, explicit individual grants.

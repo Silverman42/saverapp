@@ -12,6 +12,7 @@ export type AdminPermission =
     | 'deductions.manage'
     | 'reconciliation.manage'
     | 'financial.periods.manage'
+    | 'financial.notes.manage'
     | 'business.settings.manage'
     | 'security.operations.manage'
     | 'audit.view'

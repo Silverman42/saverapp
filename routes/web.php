@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\FeeActionAttemptController;
 use App\Http\Controllers\Admin\FeeOverviewController;
 use App\Http\Controllers\Admin\FeeRefundController;
 use App\Http\Controllers\Admin\FeeSavingsApplicationController;
+use App\Http\Controllers\Admin\FinancialNoteController;
 use App\Http\Controllers\Admin\FinancialPeriodController;
 use App\Http\Controllers\Admin\LockoutController;
 use App\Http\Controllers\Admin\ManualChargeController;
@@ -328,6 +329,13 @@ Route::middleware(['auth'])->group(function () {
                 ->where('month', '[0-9]{4}-[0-9]{2}')->name('close');
             Route::post('{month}/reopen', [FinancialPeriodController::class, 'reopen'])
                 ->where('month', '[0-9]{4}-[0-9]{2}')->name('reopen');
+        });
+        Route::prefix('financial-notes')->name('financial-notes.')->group(function (): void {
+            Route::get('/', [FinancialNoteController::class, 'index'])->name('index');
+            Route::post('/', [FinancialNoteController::class, 'store'])->name('store');
+            Route::put('{note}', [FinancialNoteController::class, 'update'])->whereUuid('note')->name('update');
+            Route::post('{note}/archive', [FinancialNoteController::class, 'archive'])->whereUuid('note')->name('archive');
+            Route::post('{note}/restore', [FinancialNoteController::class, 'restore'])->whereUuid('note')->name('restore');
         });
         Route::prefix('business-settings')->name('business-settings.')->group(function (): void {
             Route::get('/', [BusinessSettingsController::class, 'index'])->name('index');

@@ -15,6 +15,7 @@ enum AdminPermission: string
     case DeductionsManage = 'deductions.manage';
     case ReconciliationManage = 'reconciliation.manage';
     case FinancialPeriodsManage = 'financial.periods.manage';
+    case FinancialNotesManage = 'financial.notes.manage';
     case BusinessSettingsManage = 'business.settings.manage';
     case SecurityOperationsManage = 'security.operations.manage';
     case AuditView = 'audit.view';
@@ -37,6 +38,7 @@ enum AdminPermission: string
             self::DeductionsManage => 'Deduction management',
             self::ReconciliationManage => 'Reconciliation management',
             self::FinancialPeriodsManage => 'Financial period management',
+            self::FinancialNotesManage => 'Financial notes',
             self::BusinessSettingsManage => 'Business configuration',
             self::SecurityOperationsManage => 'Security operations',
             self::AuditView => 'Audit-log access',
@@ -61,6 +63,7 @@ enum AdminPermission: string
             self::DeductionsManage => 'Perform the Admin deduction actions defined by the Deductions module, subject to confirmation and audit rules.',
             self::ReconciliationManage => 'Review Agent collection submissions, record reconciliation outcomes, and resolve reconciliation exceptions through the approved workflow.',
             self::FinancialPeriodsManage => 'Open, close, and reopen cash receipt booking months with fresh authentication, a reason, and audit history.',
+            self::FinancialNotesManage => 'Create, edit, archive, and restore Admin financial notes about business revenue and expenses. Notes are memos only and never post to the ledger or change any balance.',
             self::BusinessSettingsManage => 'Update general and operational business settings. Security-sensitive changes require fresh authentication.',
             self::SecurityOperationsManage => 'View non-secret security events, review Customer assisted recovery, manage permitted authentication locks, and perform the Agent security operations assigned to this permission.',
             self::AuditView => 'Search and view business audit events, subject to masking and export restrictions.',
