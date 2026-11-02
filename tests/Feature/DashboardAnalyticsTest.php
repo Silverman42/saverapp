@@ -8,6 +8,8 @@ use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
+use App\Enums\LedgerAccountCode;
+use App\Enums\LedgerEntrySide;
 use App\Enums\ThriftPlanStatus;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AgentProfile;
@@ -19,12 +21,15 @@ use App\Models\CustomerProfile;
 use App\Models\FeeRule;
 use App\Models\FeeSnapshot;
 use App\Models\FinancialPeriod;
+use App\Models\LedgerAccount;
+use App\Models\LedgerPostingGroup;
 use App\Models\PlanTermsRevision;
 use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
 use App\Models\User;
 use App\Services\DashboardReadService;
 use App\Services\LedgerTransactionProjectionService;
+use App\Services\RevenueReadService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -664,3 +669,82 @@ test('the dashboard tab is accepted for display only and unknown tabs are reject
         ->missing('filters.tab')->has('dashboard.sections.today'));
     $this->getJson(route('admin.dashboard', ['tab' => 'secrets']))->assertUnprocessable()->assertJsonValidationErrors('tab');
 });
+
+function dashboardRevenuePosting(string $eventType, LedgerEntrySide $side, int $amount, string $occurredOn, ?int $obligationId = null): void
+{
+    $key = (string) Str::uuid();
+    $income = LedgerAccount::query()->where('code', LedgerAccountCode::FeeIncome->value)->sole();
+    $cash = LedgerAccount::query()->where('code', LedgerAccountCode::BusinessCash->value)->sole();
+    $group = LedgerPostingGroup::create([
+        'posting_reference' => 'REV-'.$key, 'idempotency_key' => 'revenue-'.$key, 'payload_hash' => str_repeat('a', 64),
+        'source_type' => 'test', 'source_id' => $key, 'event_type' => $eventType, 'currency' => 'NGN',
+        'occurred_at' => $occurredOn.' 12:00:00', 'occurred_on' => $occurredOn, 'business_timezone' => 'Africa/Lagos', 'committed_at' => now(),
+    ]);
+    $group->entries()->createMany([
+        ['line_number' => 1, 'ledger_account_id' => $income->id, 'side' => $side, 'amount_kobo' => $amount, 'fee_obligation_id' => $obligationId],
+        ['line_number' => 2, 'ledger_account_id' => $cash->id, 'side' => $side === LedgerEntrySide::Credit ? LedgerEntrySide::Debit : LedgerEntrySide::Credit, 'amount_kobo' => $amount],
+    ]);
+}
+
+function dashboardRevenue(User $admin, string $from, string $to): array
+{
+    return app(RevenueReadService::class)->read($admin, ['from' => $from, 'to' => $to], now()->toDateTimeString(), (int) LedgerPostingGroup::query()->max('id'));
+}
+
+test('the revenue tab splits period fee income by channel and fee type and nets refunds and reversals', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-09-26 12:00:00', 'Africa/Lagos'));
+    [$agent, $customer] = dashboardFixture();
+    $snapshot = FeeSnapshot::query()->firstOrFail()->id;
+    $registration = dashboardFeeObligation($customer, 'registration', $snapshot, $agent->id);
+    $plan = dashboardFeeObligation($customer, 'plan', $snapshot, $agent->id);
+    $manual = dashboardFeeObligation($customer, 'manual', $snapshot, $agent->id);
+    dashboardRevenuePosting('external_fee_receipt', LedgerEntrySide::Credit, 10000, '2026-09-25', $registration);
+    dashboardRevenuePosting('unapplied_fee_application', LedgerEntrySide::Credit, 2000, '2026-09-24', $manual);
+    dashboardRevenuePosting('savings_fee_application', LedgerEntrySide::Credit, 3000, '2026-09-26', $plan);
+    dashboardRevenuePosting('cash_withdrawal', LedgerEntrySide::Credit, 4000, '2026-09-26');
+    dashboardRevenuePosting('closed', LedgerEntrySide::Credit, 500, '2026-09-21', $plan);
+    dashboardRevenuePosting('savings_fee_refund', LedgerEntrySide::Debit, 1500, '2026-09-26', $plan);
+    dashboardRevenuePosting('receipt_compensated', LedgerEntrySide::Debit, 1000, '2026-09-26', $registration);
+    dashboardRevenuePosting('external_fee_receipt', LedgerEntrySide::Credit, 99900, '2026-09-20', $registration);
+
+    $revenue = dashboardRevenue(User::factory()->admin()->create(), '2026-09-21', '2026-09-26');
+
+    expect(collect($revenue['summary']['metrics'])->pluck('value', 'code')->all())->toBe([
+        'revenue_gross' => 19500, 'revenue_refunds' => 1500, 'revenue_reversals' => 1000, 'revenue_net' => 17000,
+    ]);
+    expect(collect($revenue['channels']['metrics'])->pluck('value', 'code')->all())->toBe([
+        'revenue_collections' => 10000, 'revenue_held_funds' => 2000, 'revenue_savings' => 3000,
+        'revenue_withdrawals' => 4000, 'revenue_other_channels' => 500,
+    ]);
+    expect(collect($revenue['fee_types']['metrics'])->pluck('value', 'code')->all())->toBe([
+        'revenue_registration_fees' => 10000, 'revenue_plan_fees' => 3500, 'revenue_manual_fees' => 2000,
+        'revenue_withdrawal_fees' => 4000, 'revenue_other_fees' => 0,
+    ]);
+});
+
+test('revenue shows a negative net when only earlier income was undone in the period', function (): void {
+    dashboardRevenuePosting('receipt_compensated', LedgerEntrySide::Debit, 1000, '2026-09-26');
+
+    $net = collect(dashboardRevenue(User::factory()->admin()->create(), '2026-09-26', '2026-09-26')['summary']['metrics'])->firstWhere('code', 'revenue_net');
+
+    expect($net['value'])->toBe(-1000)
+        ->and($net['display'])->toBe('-₦10.00');
+});
+
+test('only admins receive the revenue tab sections', function (string $role): void {
+    $fixture = dashboardFixture();
+    app(LedgerTransactionProjectionService::class)->rebuild();
+    $viewer = match ($role) {
+        'customer' => $fixture[1]->user,
+        'agent' => $fixture[0],
+        'admin' => User::factory()->admin()->create(),
+    };
+
+    $this->actingAs($viewer)->get(route($role.'.dashboard', $role === 'customer' ? [] : ['tab' => 'revenue']))->assertInertia(fn (Assert $page) => $role === 'admin'
+        ? $page->where('dashboard.sections.revenue_summary.status', 'Current')
+            ->where('dashboard.sections.revenue_channels.status', 'Current')
+            ->where('dashboard.sections.revenue_fee_types.status', 'Current')
+        : $page->missing('dashboard.sections.revenue_summary')
+            ->missing('dashboard.sections.revenue_channels')
+            ->missing('dashboard.sections.revenue_fee_types'));
+})->with(['customer', 'agent', 'admin']);

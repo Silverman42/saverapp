@@ -64,6 +64,9 @@ const titles: Record<string, string> = {
     financial_movements: 'Money in and out',
     financial_cash_position: 'Business cash',
     incidents: 'Issues to check',
+    revenue_summary: 'Fee revenue',
+    revenue_channels: 'Revenue by channel',
+    revenue_fee_types: 'Revenue by fee type',
     gated: 'More numbers',
 };
 const heading = computed(
@@ -88,10 +91,12 @@ const tabLabels: Record<DashboardTab, string> = {
     collections: 'Collections',
     requests: 'Requests & activity',
     finance: 'Finance',
+    revenue: 'Revenue',
 };
-// Finance is an Admin tab; other roles see their money movements with activity.
+// Finance and Revenue are Admin tabs; other roles see their money movements with activity.
 function tabFor(code: string): DashboardTab {
     if (code === 'today') return 'today';
+    if (code.startsWith('revenue_')) return 'revenue';
     if (code === 'collections' || code === 'schedule') return 'collections';
     if (code === 'requests' || code === 'activity' || code === 'custody')
         return 'requests';

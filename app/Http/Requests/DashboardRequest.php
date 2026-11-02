@@ -40,7 +40,7 @@ class DashboardRequest extends FormRequest
             'agent_basis' => ['nullable', Rule::in(['current', 'recording'])],
             'agent' => ['nullable', 'string', 'max:32', 'regex:/\A[A-Z0-9-]+\z/'],
             'page_size' => ['nullable', 'integer', Rule::in([25, 50, 100])],
-            'tab' => ['nullable', Rule::in(['today', 'overview', 'collections', 'requests', 'finance'])],
+            'tab' => ['nullable', Rule::in(['today', 'overview', 'collections', 'requests', 'finance', 'revenue'])],
         ];
     }
 
