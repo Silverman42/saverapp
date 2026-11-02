@@ -40,10 +40,10 @@ test('permission tables exist with required custom metadata columns', function (
     ]))->toBeTrue();
 });
 
-test('closed permission catalogue is seeded with exactly 15 active permissions', function () {
+test('closed permission catalogue is seeded with exactly 16 active permissions', function () {
     $permissions = Permission::query()->where('guard_name', 'web')->get();
 
-    expect($permissions)->toHaveCount(15);
+    expect($permissions)->toHaveCount(16);
 
     $expectedEnumValues = AdminPermission::values();
     $dbPermissionNames = $permissions->pluck('name')->all();
@@ -120,6 +120,10 @@ test('admin permission enum matches section 7.2 specification exactly', function
             'displayName' => 'Audit-log access',
             'description' => 'Search and view business audit events, subject to masking and export restrictions.',
         ],
+        'financial.notes.manage' => [
+            'displayName' => 'Financial notes',
+            'description' => 'Create, edit, archive, and restore Admin financial notes about business revenue and expenses. Notes are memos only and never post to the ledger or change any balance.',
+        ],
         'reports.export' => [
             'displayName' => 'Report export',
             'description' => 'Export business reports and statements containing business-wide or multi-Customer information.',
@@ -128,7 +132,7 @@ test('admin permission enum matches section 7.2 specification exactly', function
 
     $expected['cash.execute'] = ['displayName' => 'Cash execution',
         'description' => 'Execute approved cash payments and record custody evidence. This does not grant withdrawal review, fee management, or reversal authority.'];
-    expect(AdminPermission::cases())->toHaveCount(15);
+    expect(AdminPermission::cases())->toHaveCount(16);
 
     foreach (AdminPermission::cases() as $case) {
         expect($expected)->toHaveKey($case->value);

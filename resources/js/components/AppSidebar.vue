@@ -7,6 +7,7 @@ import {
     CircleHelp,
     Coins,
     LayoutDashboard,
+    NotebookPen,
     Palette,
     Receipt,
     ChartNoAxesCombined,
@@ -33,6 +34,7 @@ import {
 import { dashboard, help } from '@/routes';
 import { index as businessSettings } from '@/routes/admin/business-settings';
 import { index as financialPeriodsIndex } from '@/routes/admin/financial-periods';
+import { index as financialNotesIndex } from '@/routes/admin/financial-notes';
 import { index as notificationInbox } from '@/routes/notifications';
 import { index as auditIndex } from '@/routes/admin/audit';
 import { index as recoveryQueue } from '@/routes/customer-recovery';
@@ -228,6 +230,16 @@ const adminNavItems = computed<NavItem[]>(() => {
             title: 'Booking months',
             href: financialPeriodsIndex(),
             icon: WalletCards,
+        });
+    }
+
+    if (
+        (page.props.auth?.permissions ?? []).includes('financial.notes.manage')
+    ) {
+        items.push({
+            title: 'Financial notes',
+            href: financialNotesIndex(),
+            icon: NotebookPen,
         });
     }
 

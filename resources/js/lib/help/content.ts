@@ -36,6 +36,7 @@ export const permissionLabels: Record<AdminPermission, string> = {
     "deductions.manage": "Deduction management",
     "reconciliation.manage": "Reconciliation management",
     "financial.periods.manage": "Booking months",
+    "financial.notes.manage": "Financial notes",
     "business.settings.manage": "Business configuration",
     "security.operations.manage": "Security operations",
     "audit.view": "Activity log access",
@@ -815,6 +816,24 @@ const adminSections: HelpSection[] = [
                     "A month must be open before receipts can be recorded in it.",
                     "Close it after it ends, once all cash handovers and batches are reconciled.",
                     "You can reopen a closed month. Every action needs a reason.",
+                ],
+            },
+        ],
+    },
+    {
+        id: "admin-financial-notes",
+        title: "Financial notes",
+        audience: "admin",
+        summary: "Keeping private notes about business income and expenses.",
+        articles: [
+            {
+                id: "admin-financial-notes-what",
+                question: "What are financial notes?",
+                permission: "financial.notes.manage",
+                answer: [
+                    "Financial notes are private records of money the business receives (credit) or spends (debit), such as rent or sponsorship.",
+                    "They are notes only. They do not post money, change any balance, or appear in reports.",
+                    "You can edit a note, or archive it to hide it from the list and totals. Archived notes can be restored.",
                 ],
             },
         ],
