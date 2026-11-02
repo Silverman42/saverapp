@@ -26,7 +26,6 @@ class FinancialReleaseEvidenceService
     {
         return AuditProjection::digest([
             'schema' => 1,
-            'migrations' => DB::table('migrations')->orderBy('migration')->pluck('migration')->all(),
             'mappings' => LedgerAccount::query()->orderBy('code')->get(['code', 'account_class', 'normal_balance', 'currency', 'mapping_status', 'version'])->toArray(),
             'methods' => DB::table('cash_method_versions')->orderBy('id')->get()->toArray(),
             'collection_methods' => Schema::hasTable('collection_method_versions') ? DB::table('collection_method_versions')->orderBy('id')->get()->toArray() : [],

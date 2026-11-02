@@ -137,3 +137,14 @@ test('owner evidence releases the formerly fixed capabilities in production and 
         ->and($checks['withdrawal_transfer']['blocker'])->toContain('bank payout provider')
         ->and($definitions['withdrawal_transfer']['editable'])->toBeFalse();
 });
+
+test('a new migration keeps owner evidence current while a ledger mapping change does not', function () {
+    $evidence = app(FinancialReleaseEvidenceService::class);
+    $hash = $evidence->dependencyHash();
+
+    DB::table('migrations')->insert(['migration' => '2099_01_01_000000_routine_schema_change', 'batch' => 99]);
+    expect($evidence->dependencyHash())->toBe($hash);
+
+    LedgerAccount::query()->where('code', 'business_bank_ngn')->increment('version');
+    expect($evidence->dependencyHash())->not->toBe($hash);
+});
