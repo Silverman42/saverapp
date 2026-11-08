@@ -63,6 +63,7 @@ const props = defineProps<{
         id: string;
         status: string;
         live_withdrawal_id: string | null;
+        cycle_available_kobo: number | null;
     }>;
     methods: string[];
     cash_destination_reference: string;
@@ -117,6 +118,26 @@ const liveWithdrawalId = computed(
 const reviewOpen = ref(false);
 const money = (kobo: number): string =>
     `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const selectedCycleKobo = computed(
+    () =>
+        props.plans.find((plan) => plan.id === form.plan_id)
+            ?.cycle_available_kobo ?? null,
+);
+const amountIsFixed = computed(
+    () =>
+        (form.type === 'full' || form.type === 'end_of_cycle') &&
+        selectedCycleKobo.value !== null,
+);
+watch(
+    () => [form.type, form.plan_id],
+    (_, [previousType]) => {
+        if (amountIsFixed.value) {
+            form.gross_ngn = ((selectedCycleKobo.value ?? 0) / 100).toFixed(2);
+        } else if (previousType !== 'partial' && form.type === 'partial') {
+            form.gross_ngn = '';
+        }
+    },
+);
 watch(
     () => form.method,
     (method) => {
@@ -274,12 +295,21 @@ function submit(): void {
                             v-model="form.gross_ngn"
                             inputmode="decimal"
                             placeholder="1000.00"
+                            :readonly="amountIsFixed"
                             aria-describedby="withdrawal-gross-help"
                         />
                         <p
                             id="withdrawal-gross-help"
                             class="text-muted-foreground text-xs"
                         >
+                            <template
+                                v-if="
+                                    amountIsFixed && selectedCycleKobo !== null
+                                "
+                                >Filled in with all savings in this cycle ({{
+                                    money(selectedCycleKobo)
+                                }}).
+                            </template>
                             Any fees come out of this amount.
                         </p>
                     </div>

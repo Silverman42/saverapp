@@ -133,12 +133,12 @@ const statusLabels: Record<DashboardSection['status'], string> = {
                 />
                 <div v-if="section.trend" class="space-y-3">
                     <h3 class="text-sm font-medium">
-                        Savings received, last 30 days
+                        Customers deposits, last 30 days
                     </h3>
                     <div class="max-h-64 overflow-y-auto rounded-xl border">
                         <table class="w-full text-left text-sm">
                             <caption class="sr-only">
-                                Savings received by date, last 30 days
+                                Customers deposits by date, last 30 days
                             </caption>
                             <thead class="text-muted-foreground text-xs">
                                 <tr>
@@ -171,7 +171,7 @@ const statusLabels: Record<DashboardSection['status'], string> = {
                                         colspan="2"
                                         class="text-muted-foreground p-3"
                                     >
-                                        No savings received in the last 30 days.
+                                        No customer deposits in the last 30 days.
                                     </td>
                                 </tr>
                             </tbody>

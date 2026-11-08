@@ -20,7 +20,7 @@ class ReviewCollectionEvidenceRequest extends FormRequest
             'operation_reference' => ['required', 'uuid'],
             'expected_version' => ['required', 'integer', 'min:0'],
             'outcome' => ['required', 'in:verified,rejected'],
-            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'reason' => ['required_if:outcome,rejected', 'nullable', 'string', 'min:10', 'max:2000'],
             'verified_reference' => ['required_if:outcome,verified', 'nullable', 'string', 'max:120'],
             'verified_amount_ngn' => ['required_if:outcome,verified', 'nullable', 'string', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'verified_destination_key' => ['required_if:outcome,verified', 'nullable', 'string', 'max:100'],

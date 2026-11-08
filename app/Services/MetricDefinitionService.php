@@ -6,7 +6,7 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 10;
+    public const VERSION = 11;
 
     /** @var list<string> Dashboard metrics fixed to the business-local today, whatever period is selected. */
     public const TODAY_METRICS = ['customers_registered_today', 'registration_fee_charged_today', 'service_charge_deducted_today', 'deposits_today'];
@@ -37,10 +37,11 @@ class MetricDefinitionService
         'customer_liability' => ['title' => 'Customer savings liability', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Posted Customer savings liability, including archived Customers within the selected authorized scope.'],
         'live_payout_reservations' => ['title' => 'Live payout reservations', 'source' => 'withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Live gross reservations; not posted savings debits.'],
         'available_savings' => ['title' => 'Available savings', 'source' => 'ledger + withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Verified liability less live gross reservations, subtracted once.'],
-        'received_savings' => ['title' => 'Savings received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Posted receipt savings component; excludes external fees and remittances.'],
-        'received_fees' => ['title' => 'External fees received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'External fee tender; separate from savings and recognized earnings.'],
+        'received_savings' => ['title' => 'Customers Deposits (Liability)', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Posted receipt savings component; excludes external fees and remittances.'],
+        'received_fees' => ['title' => 'Service Charge', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'External fee tender; separate from savings and recognized earnings.'],
         'cash_received' => ['title' => 'Cash tender received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on cash receipts only, counted once; excludes transfer, POS and configured Other methods.'],
-        'total_received' => ['title' => 'Total tender received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender across supported methods, counted once; excludes remittances and subsequent clearing settlements.'],
+        'transfer_received' => ['title' => 'Transfer Tender', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on bank transfer receipts only, counted once; excludes cash, POS and configured Other methods.'],
+        'total_received' => ['title' => 'Total Deposits (Assets)', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender across supported methods, counted once; excludes remittances and subsequent clearing settlements.'],
         'posted_receipt_count' => ['title' => 'Posted receipts', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Distinct verified receipts, not slot allocations.'],
         'agent_receivable' => ['title' => 'Agent cash responsibility', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Original recording-Agent responsibility after posted remittances; reassignment does not transfer it.'],
         'business_cash' => ['title' => 'Business cash custody', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Posted business cash asset; separate from profit and Customer savings.'],

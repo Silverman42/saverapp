@@ -19,10 +19,12 @@ use App\Services\AgentEligibilityService;
 use App\Services\CollectionReadService;
 use App\Services\NotificationPipeline;
 use App\Services\PlatformState;
+use App\Services\WithdrawalBalanceService;
 use App\Services\WithdrawalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 require_once __DIR__.'/../WithdrawalFixtures.php';
@@ -292,4 +294,15 @@ test('platform freeze retains an expired reservation and permits authorized orig
     expect($withdrawal->fresh()->state)->toBe('pending_review');
     $this->actingAs(User::factory()->customer()->create())->get(route('withdrawals.attempts.show', $attempt))->assertForbidden();
     $this->assertDatabaseCount('withdrawal_requests', 1);
+});
+
+test('the request page gives each plan its cycle savings so full withdrawals prefill the amount', function (): void {
+    [$agent, $customer, , $plan] = withdrawalFixture();
+    $cycleSavings = app(WithdrawalBalanceService::class)->position($customer, $plan)['cycle_available_kobo'];
+
+    expect($cycleSavings)->toBeGreaterThan(0);
+    $this->actingAs($agent)->get(route('customers.withdrawals.create', $customer->customer_id))->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('plans.0.id', $plan->plan_id)
+            ->where('plans.0.cycle_available_kobo', $cycleSavings));
 });

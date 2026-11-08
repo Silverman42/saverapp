@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, router } from '@inertiajs/vue3';
-import { LogOut, Settings } from '@lucide/vue';
+import { Eye, EyeOff, LogOut, Settings } from '@lucide/vue';
+import { computed } from 'vue';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -8,6 +9,7 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import UserInfo from '@/components/UserInfo.vue';
+import { useAmountVisibility } from '@/composables/useAmountVisibility';
 import { logout } from '@/routes';
 import { edit } from '@/routes/profile';
 import type { User } from '@/types';
@@ -20,7 +22,15 @@ const handleLogout = () => {
     router.flushAll();
 };
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+const isAgent = computed(() => props.user.user_type === 'agent');
+const { amountsHidden, toggleAmounts } = useAmountVisibility();
+
+const handleToggleAmounts = (event: Event) => {
+    event.preventDefault();
+    toggleAmounts();
+};
 </script>
 
 <template>
@@ -31,6 +41,16 @@ defineProps<Props>();
     </DropdownMenuLabel>
     <DropdownMenuSeparator />
     <DropdownMenuGroup>
+        <DropdownMenuItem
+            v-if="isAgent"
+            class="cursor-pointer"
+            data-test="toggle-amounts"
+            @select="handleToggleAmounts"
+        >
+            <Eye v-if="amountsHidden" class="mr-2 h-4 w-4" />
+            <EyeOff v-else class="mr-2 h-4 w-4" />
+            {{ amountsHidden ? 'Show amounts' : 'Hide amounts' }}
+        </DropdownMenuItem>
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
                 <Settings class="mr-2 h-4 w-4" />

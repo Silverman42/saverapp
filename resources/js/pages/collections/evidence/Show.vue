@@ -5,7 +5,8 @@ import {
 } from '@/lib/operation-reference';
 import { HttpResponseError } from '@inertiajs/core';
 import { Head, Link, router, useHttp } from '@inertiajs/vue3';
-import { onMounted, ref, watch } from 'vue';
+import { CircleCheck, CircleX } from '@lucide/vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import FormSheet from '@/components/FormSheet.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -72,6 +73,35 @@ const resultRequest = useHttp<
 const fileRequest = useHttp<Record<string, never>, { url: string }>({});
 const money = (amount: number) =>
     `₦${(amount / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const nairaToKobo = (value: string): number | null => {
+    const match = /^(\d{1,12})(?:\.(\d{1,2}))?$/.exec(value.trim());
+
+    return match
+        ? Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
+        : null;
+};
+type ClaimMatch = 'empty' | 'match' | 'mismatch';
+const claimMatch = (value: string, matches: boolean): ClaimMatch =>
+    value.trim() === '' ? 'empty' : matches ? 'match' : 'mismatch';
+const referenceMatch = computed(() =>
+    claimMatch(
+        form.verified_reference,
+        form.verified_reference.trim().toUpperCase() ===
+            props.evidence.method_reference,
+    ),
+);
+const amountMatch = computed(() =>
+    claimMatch(
+        form.verified_amount_ngn,
+        nairaToKobo(form.verified_amount_ngn) === props.evidence.amount_kobo,
+    ),
+);
+const destinationMatch = computed(() =>
+    claimMatch(
+        form.verified_destination_key,
+        form.verified_destination_key === props.evidence.destination_key,
+    ),
+);
 onMounted(() => {
     try {
         const saved = sessionStorage.getItem(key);
@@ -418,46 +448,95 @@ async function download(id: number): Promise<void> {
                     </div>
                     <template v-if="form.outcome === 'verified'">
                         <p class="text-muted-foreground text-xs">
-                            Enter what you see on the bank or POS record.
+                            Enter what you see on the bank or POS record, not
+                            what the sender claimed. Each field shows whether it
+                            matches the claim.
                         </p>
-                        <div class="grid gap-2">
-                            <Label for="matched-reference">Reference</Label
-                            ><Input
-                                id="matched-reference"
+                        <div
+                            v-for="field in [
+                                {
+                                    id: 'matched-reference',
+                                    label: 'Reference',
+                                    claimed: evidence.method_reference,
+                                    status: referenceMatch,
+                                },
+                                {
+                                    id: 'matched-amount',
+                                    label: 'Amount (NGN)',
+                                    claimed: money(evidence.amount_kobo),
+                                    status: amountMatch,
+                                },
+                                {
+                                    id: 'matched-destination',
+                                    label: 'Account it was paid into',
+                                    claimed: evidence.destination_key,
+                                    status: destinationMatch,
+                                },
+                            ]"
+                            :key="field.id"
+                            class="grid gap-2"
+                        >
+                            <Label :for="field.id">{{ field.label }}</Label>
+                            <Input
+                                v-if="field.id === 'matched-reference'"
+                                :id="field.id"
                                 v-model="form.verified_reference"
                                 maxlength="120"
+                                :aria-describedby="`${field.id}-claim`"
                                 required
                             />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="matched-amount">Amount (NGN)</Label
-                            ><Input
-                                id="matched-amount"
+                            <Input
+                                v-else-if="field.id === 'matched-amount'"
+                                :id="field.id"
                                 v-model="form.verified_amount_ngn"
                                 inputmode="decimal"
+                                :aria-describedby="`${field.id}-claim`"
                                 required
                             />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="matched-destination"
-                                >Account it was paid into</Label
-                            ><Input
-                                id="matched-destination"
+                            <Input
+                                v-else
+                                :id="field.id"
                                 v-model="form.verified_destination_key"
                                 maxlength="100"
+                                :aria-describedby="`${field.id}-claim`"
                                 required
                             />
+                            <p
+                                :id="`${field.id}-claim`"
+                                class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+                                aria-live="polite"
+                            >
+                                <span class="text-muted-foreground break-all"
+                                    >Claimed: {{ field.claimed }}</span
+                                >
+                                <span
+                                    v-if="field.status === 'match'"
+                                    class="inline-flex items-center gap-1 text-green-700 dark:text-green-400"
+                                    ><CircleCheck class="size-3.5" />
+                                    Matches</span
+                                >
+                                <span
+                                    v-else-if="field.status === 'mismatch'"
+                                    class="text-destructive inline-flex items-center gap-1"
+                                    ><CircleX class="size-3.5" /> Does not
+                                    match</span
+                                >
+                            </p>
                         </div>
                     </template>
                     <div class="grid gap-2">
-                        <Label for="review-reason">Note</Label
+                        <Label for="review-reason">{{
+                            form.outcome === 'rejected'
+                                ? 'Why are you rejecting it?'
+                                : 'Note (optional)'
+                        }}</Label
                         ><textarea
                             id="review-reason"
                             v-model="form.reason"
                             class="bg-background min-h-24 rounded-md border p-3 text-sm"
                             minlength="10"
                             maxlength="2000"
-                            required
+                            :required="form.outcome === 'rejected'"
                         />
                     </div>
                     <label class="flex items-start gap-2 text-sm"

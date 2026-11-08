@@ -33,6 +33,7 @@ import {
 import { create as createCollection } from '@/routes/customers/collections';
 import { index as customersIndex } from '@/routes/customers';
 import { index as batchesIndex } from '@/routes/collection-batches';
+import { show as showPlan } from '@/routes/plans';
 
 type Receipt = {
     id: string;
@@ -349,6 +350,13 @@ function applyFilters(): void {
                                     >· {{ money(slot.advance_kobo) }} paid
                                     early</span
                                 >
+                                ·
+                                <Link
+                                    :href="showPlan(slot.plan_id)"
+                                    class="text-foreground underline underline-offset-4"
+                                    :aria-label="`View plan ${slot.plan_id}`"
+                                    >{{ slot.plan_id }}</Link
+                                >
                             </p>
                         </div>
                         <div class="flex flex-wrap items-center gap-3">
@@ -451,6 +459,15 @@ function applyFilters(): void {
                             <p class="text-muted-foreground mt-0.5 text-xs">
                                 {{ receipt.method }} ·
                                 {{ receipt.received_date }} · {{ receipt.id }}
+                                <template v-if="receipt.plan_id">
+                                    ·
+                                    <Link
+                                        :href="showPlan(receipt.plan_id)"
+                                        class="text-foreground underline underline-offset-4"
+                                        :aria-label="`View plan ${receipt.plan_id}`"
+                                        >{{ receipt.plan_id }}</Link
+                                    >
+                                </template>
                             </p>
                         </div>
                         <div class="flex flex-wrap items-center gap-3">

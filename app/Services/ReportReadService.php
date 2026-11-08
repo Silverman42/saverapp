@@ -1077,7 +1077,8 @@ class ReportReadService
                     'receipts.timezone as receipt_timezone', 'recording_agents.agent_id as recording_agent', 'plans.plan_id as plan',
                     'projection.status as correction_state', 'projection.gross_amount_kobo as _projected_tender', 'receipts.savings_amount_kobo as received_savings',
                     'receipts.fee_amount_kobo as received_fees', 'receipts.tender_amount_kobo as total_received', 'receipts.method_label as method')
-                ->selectRaw("CASE WHEN receipts.method = 'cash' THEN receipts.tender_amount_kobo ELSE 0 END AS cash_received");
+                ->selectRaw("CASE WHEN receipts.method = 'cash' THEN receipts.tender_amount_kobo ELSE 0 END AS cash_received")
+                ->selectRaw("CASE WHEN receipts.method = 'transfer' THEN receipts.tender_amount_kobo ELSE 0 END AS transfer_received");
             if (($filters['agent_basis'] ?? '') === 'recording') {
                 $query->where('receipts.recording_agent_profile_id', $agentId);
             }
@@ -1089,7 +1090,7 @@ class ReportReadService
                 ->selectRaw('COALESCE(allocations.slots, 0) AS allocation_count');
             $date = 'receipts.received_date';
             $id = 'receipts.id';
-            $money = ['received_savings', 'received_fees', 'cash_received', 'total_received'];
+            $money = ['received_savings', 'received_fees', 'cash_received', 'transfer_received', 'total_received'];
             $counts = ['posted_receipt_count' => null];
             $columns = ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer', 'date' => 'Received date',
                 'committed_at' => 'Committed (UTC)', 'receipt_timezone' => 'Receipt timezone', 'plan' => 'Plan', 'method' => 'Method',

@@ -156,7 +156,7 @@ class CollectionPaymentEvidenceService
             $id = DB::table('collection_evidence_reviews')->insertGetId([
                 'operation_reference' => $data['operation_reference'], 'payload_hash' => $hash,
                 'collection_payment_evidence_id' => $evidence->id, 'version' => $version + 1, 'outcome' => $data['outcome'],
-                'reviewed_by_user_id' => $actor->id, 'reason' => Crypt::encryptString($data['reason']), 'created_at' => now(),
+                'reviewed_by_user_id' => $actor->id, 'reason' => Crypt::encryptString($data['reason'] ?? ''), 'created_at' => now(),
             ]);
             AuditEvent::record('collection.evidence_reviewed', 'collection_payment_evidence', $evidence->id, $reference,
                 ['review_id' => $id, 'version' => $version + 1, 'outcome' => $data['outcome']], $actor);

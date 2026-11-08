@@ -254,6 +254,7 @@ test('one receipt allocated across slots is counted once and grouped totals reco
 
     expect($data['sections']['primary']['total'])->toBe(1);
     expect(reportValue($data, 'received_savings'))->toBe(300000);
+    expect(reportValue($data, 'transfer_received'))->toBe(0);
     expect(reportValue($data, 'posted_receipt_count'))->toBe(1);
     expect($data['sections']['primary']['rows'][0]['allocation_count'])->toBe(2);
     expect($data['sections']['primary']['groups'][0]['metrics'][0]['value'])->toBe(300000);

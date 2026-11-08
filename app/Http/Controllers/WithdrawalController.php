@@ -14,6 +14,7 @@ use App\Models\CashRecovery;
 use App\Models\CustomerPayoutDestination;
 use App\Models\CustomerProfile;
 use App\Models\OfflinePayout;
+use App\Models\ThriftPlan;
 use App\Models\WithdrawalAttempt;
 use App\Models\WithdrawalRequest;
 use App\Services\AuthorizationService;
@@ -61,7 +62,7 @@ class WithdrawalController extends Controller
         ]);
     }
 
-    public function create(string $customer, Request $request, WithdrawalMethodRegistry $methods): Response
+    public function create(string $customer, Request $request, WithdrawalMethodRegistry $methods, WithdrawalBalanceService $balances): Response
     {
         $profile = CustomerProfile::query()->where('customer_id', $customer)->firstOrFail();
         Gate::authorize('initiateWithdrawal', $profile);
@@ -70,7 +71,8 @@ class WithdrawalController extends Controller
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
             'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])->get()
                 ->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value,
-                    'live_withdrawal_id' => WithdrawalRequest::query()->where('live_thrift_plan_id', $plan->id)->value('withdrawal_id')]),
+                    'live_withdrawal_id' => WithdrawalRequest::query()->where('live_thrift_plan_id', $plan->id)->value('withdrawal_id'),
+                    'cycle_available_kobo' => $this->cycleAvailableKobo($balances, $profile, $plan)]),
             'methods' => $methods->availableMethods(),
             'cash_destination_reference' => 'customer:'.$profile->id,
             'bank_destinations' => CustomerPayoutDestination::query()->where('customer_profile_id', $profile->id)->where('status', 'verified')->get()
@@ -234,5 +236,17 @@ class WithdrawalController extends Controller
             'state' => $withdrawal->state, 'held' => $withdrawal->held, 'hold_reason' => $withdrawal->hold_reason,
             'submitted_at' => $withdrawal->submitted_at->toIso8601String(),
         ];
+    }
+
+    /**
+     * Read the plan's withdrawable cycle savings so full withdrawals can prefill their amount.
+     */
+    private function cycleAvailableKobo(WithdrawalBalanceService $balances, CustomerProfile $profile, ThriftPlan $plan): ?int
+    {
+        try {
+            return $balances->position($profile, $plan)['cycle_available_kobo'];
+        } catch (RuntimeException) {
+            return null;
+        }
     }
 }

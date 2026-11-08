@@ -347,3 +347,16 @@ test('an unavailable POS custody mapping removes the method and prevents publish
     expect(evidenceBoundaryOwnerRows())->toEqual($baseline)
         ->and(DB::table('canonical_audit_events')->count())->toBe($audits);
 });
+
+test('a note is optional when verifying payment evidence but required when rejecting it', function (): void {
+    [$agent, $customer, $assignment, $date, $admin] = paymentEvidenceFixture();
+    $method = $this->actingAs($admin)->withSession(paymentEvidenceFreshSession())->postJson(route('collection-methods.store'), paymentEvidenceMethod())->json('method_version_id');
+    $reference = $this->actingAs($agent)->postJson(route('customers.collection-evidence.store', $customer), paymentEvidencePayload($customer, $assignment, $date, $method))->assertCreated()->json('evidence_reference');
+    $this->actingAs($admin)->withSession(paymentEvidenceFreshSession());
+
+    $this->postJson(route('collection-evidence.review', $reference), [...paymentEvidenceReview('rejected'), 'reason' => ''])
+        ->assertUnprocessable()->assertJsonValidationErrors('reason');
+    $this->postJson(route('collection-evidence.review', $reference), [...paymentEvidenceReview(), 'reason' => ''])
+        ->assertOk()->assertJsonPath('status', 'verified');
+    $this->assertDatabaseCount('collection_evidence_reviews', 1);
+});

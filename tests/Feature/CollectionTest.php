@@ -115,7 +115,8 @@ test('COL-AC-059: reassigned receipt history grants recording to the replacement
     $this->actingAs($agent)->get(route('collections.index', ['date' => $today]))->assertInertia(fn ($page) => $page->has('receipts.data', 0));
     $this->get(route('collections.show', $receipt))->assertNotFound();
     $this->actingAs($replacement->user)->get(route('collections.index', ['date' => $today]))->assertInertia(fn ($page) => $page
-        ->has('receipts.data', 1)->where('receipts.data.0.id', $receipt->receipt_reference)->where('receipts.data.0.can_record', true));
+        ->has('receipts.data', 1)->where('receipts.data.0.id', $receipt->receipt_reference)->where('receipts.data.0.can_record', true)
+        ->where('receipts.data.0.plan_id', $plan->plan_id));
 
     expect(DB::table('collection_receipts')->where('id', $receipt->id)->first())->toEqual($originalReceipt)
         ->and(DB::table('ledger_entries')->orderBy('id')->get()->all())->toEqual($before);
@@ -1196,7 +1197,8 @@ test('COL-AC-037/039: daily workspace separates due coverage from cash received'
             ->where('due_totals.outstanding_kobo', 0)
             ->where('due_slots.data.0.status', 'paid')
             ->where('due_slots.data.0.funded_kobo', 200000)
-            ->where('due_slots.data.0.advance_kobo', 0));
+            ->where('due_slots.data.0.advance_kobo', 0)
+            ->where('due_slots.data.0.plan_id', $plan->plan_id));
 
     $this->get(route('collections.index', ['date' => $today, 'status' => 'paid', 'search' => $customer->customer_id]))->assertOk()
         ->assertInertia(fn ($page) => $page->where('due_totals.slot_count', 1)
