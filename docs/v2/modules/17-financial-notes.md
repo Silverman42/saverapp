@@ -73,10 +73,12 @@ Product decisions confirmed by the product owner on 2 November 2026:
 | Field       | Required | Rules                                                                 |
 | ----------- | -------- | --------------------------------------------------------------------- |
 | Type        | Yes      | `credit` or `debit`.                                                  |
+| Status      | Yes      | `pending`, `cancelled` or `completed`; defaults to `pending`. Stored as `progress_status` (separate from the active/archived `status`). |
 | Title       | Yes      | Trimmed, 1–150 characters.                                            |
 | Amount (₦)  | Yes      | Greater than zero, at most two decimals, within the shared maximum (`MoneyAmount`). Stored as kobo. |
 | Note date   | Yes      | `YYYY-MM-DD`. Past and future dates are allowed.                      |
 | Category    | No       | Trimmed, up to 80 characters; blank becomes empty. Previously used categories are suggested. |
+| Link        | No       | Trimmed `http`/`https` URL, up to 2,048 characters; blank becomes empty. Opens in a new tab. |
 | Body        | Yes      | Up to 5,000 characters.                                               |
 | Version     | On edit  | The version the Admin last saw.                                       |
 
@@ -96,7 +98,7 @@ A stale version, or archiving an already archived note, is rejected without chan
 
 ## 7. Screens and accessibility
 
-- **Financial notes page** (`/admin/financial-notes`): header and description, an "Add note" action, Credit / Debit / Net summary tiles, a filter row, and a paginated list (25 per page, newest note date first). Each row shows title, type badge, category, a two-line body preview, date, last editor, signed amount, and Edit / Archive or Restore actions.
+- **Financial notes page** (`/admin/financial-notes`): header and description, an "Add note" action, Credit / Debit / Net summary tiles, a filter row, and a paginated list (25 per page, newest note date first). Each row shows title, type badge, status badge, category, a two-line body preview, date, last editor, link (when set), signed amount, and Edit / Archive or Restore actions.
 - **Add/Edit sheet:** the fields in Section 5 with inline errors. It states that notes do not post money or change balances.
 - **Archive/Restore dialog:** confirms the action and explains the effect on the list and totals.
 - Empty states distinguish "no notes yet", "no archived notes", and "no matches".
@@ -113,13 +115,13 @@ A stale version, or archiving an already archived note, is rejected without chan
 
 | Event                     | When                     | Recorded fields                                                     |
 | ------------------------- | ------------------------ | ------------------------------------------------------------------- |
-| `financial_note.created`  | A note is created        | type, amount_kobo, note_date, status, version, changed_fields       |
+| `financial_note.created`  | A note is created        | type, progress_status, amount_kobo, note_date, status, version, changed_fields |
 | `financial_note.updated`  | An edit changes a field  | same, with the changed field names                                  |
 | `financial_note.archived` | A note is archived       | same, `changed_fields = [status]`                                   |
 | `financial_note.restored` | A note is restored       | same, `changed_fields = [status]`                                   |
 
 - Target is the note's `reference`; the actor and `required_permission = financial.notes.manage` are recorded in context.
-- Free text (title, category, body) is kept on the note row and not copied into audit payloads, so personal or sensitive text in a note does not enter the audit stream.
+- Free text (title, category, link, body) is kept on the note row and not copied into audit payloads, so personal or sensitive text in a note does not enter the audit stream.
 - Events follow Module 14 retention as business evidence.
 
 ## 10. Owning-module contracts
@@ -137,12 +139,12 @@ A stale version, or archiving an already archived note, is rejected without chan
 | ---------- | ------------------------------------------------------------------------------------------------------------ | ----------- |
 | FNT-FR-001 | Restrict every note view and action to Admins holding a valid direct `financial.notes.manage` grant.         | Section 4   |
 | FNT-FR-002 | Re-check authorization inside the write transaction after locking the actor.                                | Section 4.2 |
-| FNT-FR-003 | Capture type, title, amount, note date, optional category, and body with the Section 5 validation.          | Section 5   |
+| FNT-FR-003 | Capture type, status, title, amount, note date, optional category, optional link, and body with the Section 5 validation. | Section 5   |
 | FNT-FR-004 | Store amounts as positive integer kobo; reject zero, negative, and over-precision input.                     | Section 3   |
 | FNT-FR-005 | Allow editing of active notes with optimistic version checks.                                                | Section 6   |
 | FNT-FR-006 | Archive (soft delete) and restore notes; never hard-delete.                                                  | Section 6   |
-| FNT-FR-007 | List, search, and filter notes by type, category, date range, and status, paginated.                        | Section 7   |
-| FNT-FR-008 | Show credit, debit, and net totals for the filtered notes; archived notes are excluded unless viewing them. | Section 7   |
+| FNT-FR-007 | List, search, and filter notes by type, status (pending/cancelled/completed), category, date range, and active/archived, paginated. | Section 7   |
+| FNT-FR-008 | Show credit, debit, and net totals for the filtered notes; cancelled notes are always excluded, and archived notes are excluded unless viewing them. | Section 7   |
 | FNT-FR-009 | Record an audit event for each create, edit, archive, and restore, without free text.                       | Section 9   |
 | FNT-FR-010 | Never read, write, or influence ledger, balance, fee, collection, cash, report, or export records.          | Section 2.2 |
 | FNT-FR-011 | Show the sidebar entry and help article only to Admins holding the permission.                              | Section 7   |

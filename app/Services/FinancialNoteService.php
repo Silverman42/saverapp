@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AdminPermission;
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
@@ -17,12 +18,12 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 class FinancialNoteService
 {
-    private const EDITABLE_FIELDS = ['type', 'title', 'amount_kobo', 'note_date', 'category', 'body'];
+    private const EDITABLE_FIELDS = ['type', 'progress_status', 'title', 'amount_kobo', 'note_date', 'category', 'link', 'body'];
 
     public function __construct(private AuthorizationService $authorization) {}
 
     /**
-     * @param  array{type: string, title: string, amount_kobo: int, note_date: string, category: ?string, body: string}  $values
+     * @param  array{type: string, progress_status: string, title: string, amount_kobo: int, note_date: string, category: ?string, link: ?string, body: string}  $values
      */
     public function create(User $actor, array $values): FinancialNote
     {
@@ -46,7 +47,7 @@ class FinancialNoteService
     }
 
     /**
-     * @param  array{type: string, title: string, amount_kobo: int, note_date: string, category: ?string, body: string}  $values
+     * @param  array{type: string, progress_status: string, title: string, amount_kobo: int, note_date: string, category: ?string, link: ?string, body: string}  $values
      */
     public function update(User $actor, FinancialNote $note, int $version, array $values): FinancialNote
     {
@@ -127,16 +128,18 @@ class FinancialNoteService
     }
 
     /**
-     * Free text (title, category, body) stays on the note row and out of the audit payload.
+     * Free text (title, category, link, body) stays on the note row and out of the audit payload.
      *
      * @param  list<string>  $changedFields
      */
     private function audit(string $action, FinancialNote $note, User $actor, array $changedFields): void
     {
         $type = $note->type instanceof FinancialNoteType ? $note->type->value : (string) $note->type;
+        $progressStatus = $note->progress_status instanceof FinancialNoteProgress ? $note->progress_status->value : (string) $note->progress_status;
 
         AuditEvent::record('financial_note.'.$action, FinancialNote::class, $note->id, $note->reference, [
             'type' => $type,
+            'progress_status' => $progressStatus,
             'amount_kobo' => $note->amount_kobo,
             'note_date' => $note->note_date->toDateString(),
             'status' => $note->status,

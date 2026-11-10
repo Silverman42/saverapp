@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\AdminPermission;
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\FinancialNoteRequest;
@@ -33,6 +34,7 @@ class FinancialNoteController extends Controller
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'type' => ['nullable', Rule::enum(FinancialNoteType::class)],
+            'progress_status' => ['nullable', Rule::enum(FinancialNoteProgress::class)],
             'category' => ['nullable', 'string', 'max:80'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
@@ -44,6 +46,7 @@ class FinancialNoteController extends Controller
         $filtered = $this->filteredQuery($businessId, $filters);
 
         $totals = (clone $filtered)->toBase()
+            ->where('progress_status', '!=', FinancialNoteProgress::Cancelled->value)
             ->selectRaw('type, SUM(amount_kobo) as total_kobo')
             ->groupBy('type')
             ->pluck('total_kobo', 'type');
@@ -58,11 +61,14 @@ class FinancialNoteController extends Controller
             'reference' => $note->reference,
             'type' => $note->type->value,
             'type_label' => $note->type->label(),
+            'progress_status' => $note->progress_status->value,
+            'progress_status_label' => $note->progress_status->label(),
             'title' => $note->title,
             'amount_ngn' => MoneyFormatter::decimal($note->amount_kobo),
             'amount_display' => MoneyFormatter::formatNaira($note->amount_kobo),
             'note_date' => $note->note_date->toDateString(),
             'category' => $note->category,
+            'link' => $note->link,
             'body' => $note->body,
             'status' => $note->status,
             'version' => $note->version,
@@ -122,7 +128,7 @@ class FinancialNoteController extends Controller
     }
 
     /**
-     * @param  array{search?: ?string, type?: ?string, category?: ?string, from?: ?string, to?: ?string, status: string}  $filters
+     * @param  array{search?: ?string, type?: ?string, progress_status?: ?string, category?: ?string, from?: ?string, to?: ?string, status: string}  $filters
      * @return Builder<FinancialNote>
      */
     private function filteredQuery(int $businessId, array $filters): Builder
@@ -131,6 +137,7 @@ class FinancialNoteController extends Controller
             ->where('business_profile_id', $businessId)
             ->where('status', $filters['status'])
             ->when($filters['type'] ?? null, fn (Builder $query, string $type) => $query->where('type', $type))
+            ->when($filters['progress_status'] ?? null, fn (Builder $query, string $progressStatus) => $query->where('progress_status', $progressStatus))
             ->when($filters['category'] ?? null, fn (Builder $query, string $category) => $query->where('category', $category))
             ->when($filters['from'] ?? null, fn (Builder $query, string $from) => $query->whereDate('note_date', '>=', $from))
             ->when($filters['to'] ?? null, fn (Builder $query, string $to) => $query->whereDate('note_date', '<=', $to))

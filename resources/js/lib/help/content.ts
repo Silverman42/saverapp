@@ -834,6 +834,7 @@ const adminSections: HelpSection[] = [
                     "Financial notes are private records of money the business receives (credit) or spends (debit), such as rent or sponsorship.",
                     "They are notes only. They do not post money, change any balance, or appear in reports.",
                     "You can edit a note, or archive it to hide it from the list and totals. Archived notes can be restored.",
+                    "Give each note a status: Pending, Cancelled or Completed. Cancelled notes stay in the list but are left out of the totals. You can also add a link, such as a receipt or invoice.",
                 ],
             },
         ],

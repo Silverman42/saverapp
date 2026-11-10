@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AdminPermission;
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use App\Models\AuditEvent;
 use App\Models\FinancialNote;
@@ -23,10 +24,12 @@ function financialNotePayload(array $overrides = []): array
 {
     return [
         'type' => 'debit',
+        'progress_status' => 'pending',
         'title' => 'Office rent',
         'amount_ngn' => '12,500.50',
         'note_date' => '2026-10-15',
         'category' => 'Rent',
+        'link' => 'https://example.com/receipts/rent-october',
         'body' => 'Paid October rent to the landlord.',
         ...$overrides,
     ];
@@ -71,12 +74,25 @@ test('creating a note stores the amount in kobo and records an audit event witho
         ->and($note->amount_kobo)->toBe(1_250_050)
         ->and($note->note_date->toDateString())->toBe('2026-10-15')
         ->and($note->category)->toBe('Rent')
+        ->and($note->progress_status)->toBe(FinancialNoteProgress::Pending)
+        ->and($note->link)->toBe('https://example.com/receipts/rent-october')
         ->and($note->status)->toBe(FinancialNote::STATUS_ACTIVE)
         ->and($note->created_by_user_id)->toBe($admin->id)
         ->and($ledgerCounts())->toBe($before);
 
     $event = AuditEvent::query()->where('event_type', 'financial_note.created')->sole();
-    expect($event->target_reference)->toBe($note->reference);
+    expect($event->target_reference)->toBe($note->reference)
+        ->and(json_encode($event->toArray()))->toContain('progress_status')->not->toContain('example.com');
+});
+
+test('a blank link is saved as empty', function (): void {
+    $this->actingAs(financialNoteManager())
+        ->post(route('admin.financial-notes.store'), financialNotePayload(['link' => '  ', 'progress_status' => 'completed']))
+        ->assertSessionHasNoErrors();
+
+    $note = FinancialNote::query()->sole();
+    expect($note->link)->toBeNull()
+        ->and($note->progress_status)->toBe(FinancialNoteProgress::Completed);
 });
 
 test('invalid note input is rejected without saving', function (array $overrides, string $field): void {
@@ -93,6 +109,10 @@ test('invalid note input is rejected without saving', function (array $overrides
     'missing title' => [['title' => ''], 'title'],
     'missing body' => [['body' => ''], 'body'],
     'bad date' => [['note_date' => '15/10/2026'], 'note_date'],
+    'missing status' => [['progress_status' => ''], 'progress_status'],
+    'unknown status' => [['progress_status' => 'archived'], 'progress_status'],
+    'link without scheme' => [['link' => 'not a url'], 'link'],
+    'non-web link' => [['link' => 'javascript:alert(1)'], 'link'],
 ]);
 
 test('editing a note bumps its version, audits changed fields and rejects a stale version', function (): void {
@@ -160,4 +180,25 @@ test('filters narrow the list and the credit, debit and net totals', function ()
 
     $this->get(route('admin.financial-notes.index', ['type' => 'debit', 'search' => 'lap']))
         ->assertInertia(fn (Assert $page) => $page->has('notes.data', 1)->where('notes.data.0.title', 'Laptop'));
+});
+
+test('cancelled notes are listed but left out of the totals and can be filtered by status', function (): void {
+    $admin = financialNoteManager();
+    FinancialNote::factory()->credit()->completed()->create(['amount_kobo' => 100_000, 'title' => 'Sponsorship']);
+    FinancialNote::factory()->debit()->create(['amount_kobo' => 30_000, 'title' => 'Rent']);
+    FinancialNote::factory()->debit()->cancelled()->create(['amount_kobo' => 500_000, 'title' => 'Cancelled order']);
+
+    $this->actingAs($admin)->get(route('admin.financial-notes.index'))->assertInertia(fn (Assert $page) => $page
+        ->has('notes.data', 3)
+        ->where('summary.credit', '₦1,000.00')
+        ->where('summary.debit', '₦300.00')
+        ->where('summary.net', '₦700.00'));
+
+    $this->get(route('admin.financial-notes.index', ['progress_status' => 'cancelled']))
+        ->assertInertia(fn (Assert $page) => $page->has('notes.data', 1)
+            ->where('notes.data.0.title', 'Cancelled order')
+            ->where('notes.data.0.progress_status_label', 'Cancelled')
+            ->where('summary.debit', '₦0.00'));
+
+    $this->get(route('admin.financial-notes.index', ['progress_status' => 'unknown']))->assertSessionHasErrors('progress_status');
 });

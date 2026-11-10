@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Enums\AdminPermission;
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use App\Services\AuthorizationService;
 use App\Support\MoneyAmount;
@@ -23,6 +24,7 @@ class FinancialNoteRequest extends FormRequest
         $this->merge([
             'title' => is_string($this->input('title')) ? trim($this->input('title')) : $this->input('title'),
             'category' => is_string($this->input('category')) && trim($this->input('category')) !== '' ? trim($this->input('category')) : null,
+            'link' => is_string($this->input('link')) && trim($this->input('link')) !== '' ? trim($this->input('link')) : null,
             'amount_ngn' => is_string($this->input('amount_ngn')) ? str_replace(',', '', trim($this->input('amount_ngn'))) : $this->input('amount_ngn'),
         ]);
     }
@@ -32,10 +34,12 @@ class FinancialNoteRequest extends FormRequest
     {
         return [
             'type' => ['required', Rule::enum(FinancialNoteType::class)],
+            'progress_status' => ['required', Rule::enum(FinancialNoteProgress::class)],
             'title' => ['required', 'string', 'max:150'],
             'amount_ngn' => ['required', 'string', 'max:20'],
             'note_date' => ['required', 'date_format:Y-m-d'],
             'category' => ['nullable', 'string', 'max:80'],
+            'link' => ['nullable', 'string', 'url:http,https', 'max:2048'],
             'body' => ['required', 'string', 'max:5000'],
             'version' => [$this->isMethod('post') ? 'prohibited' : 'required', 'integer', 'min:1'],
         ];
@@ -64,7 +68,7 @@ class FinancialNoteRequest extends FormRequest
     }
 
     /**
-     * @return array{type: string, title: string, amount_kobo: int, note_date: string, category: ?string, body: string}
+     * @return array{type: string, progress_status: string, title: string, amount_kobo: int, note_date: string, category: ?string, link: ?string, body: string}
      */
     public function noteValues(): array
     {
@@ -72,10 +76,12 @@ class FinancialNoteRequest extends FormRequest
 
         return [
             'type' => $data['type'],
+            'progress_status' => $data['progress_status'],
             'title' => $data['title'],
             'amount_kobo' => MoneyAmount::parseNairaToKobo($data['amount_ngn']),
             'note_date' => $data['note_date'],
             'category' => $data['category'] ?? null,
+            'link' => $data['link'] ?? null,
             'body' => trim($data['body']),
         ];
     }

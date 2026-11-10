@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use App\Models\BusinessProfile;
 use App\Models\FinancialNote;
@@ -27,10 +28,12 @@ class FinancialNoteFactory extends Factory
             'business_profile_id' => BusinessProfile::current()->id,
             'reference' => (string) Str::uuid(),
             'type' => fake()->randomElement(FinancialNoteType::cases()),
+            'progress_status' => FinancialNoteProgress::Pending,
             'title' => fake()->sentence(4),
             'amount_kobo' => fake()->numberBetween(1_000, 5_000_000),
             'note_date' => now()->subDays(fake()->numberBetween(0, 60))->toDateString(),
             'category' => fake()->optional()->randomElement(['Rent', 'Utilities', 'Salaries', 'Sponsorship', 'Transport']),
+            'link' => null,
             'body' => fake()->paragraph(),
             'status' => FinancialNote::STATUS_ACTIVE,
             'created_by_user_id' => $author,
@@ -47,6 +50,16 @@ class FinancialNoteFactory extends Factory
     public function debit(): static
     {
         return $this->state(fn (): array => ['type' => FinancialNoteType::Debit]);
+    }
+
+    public function cancelled(): static
+    {
+        return $this->state(fn (): array => ['progress_status' => FinancialNoteProgress::Cancelled]);
+    }
+
+    public function completed(): static
+    {
+        return $this->state(fn (): array => ['progress_status' => FinancialNoteProgress::Completed]);
     }
 
     public function archived(): static

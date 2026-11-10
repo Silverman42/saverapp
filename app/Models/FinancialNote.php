@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FinancialNoteProgress;
 use App\Enums\FinancialNoteType;
 use Carbon\CarbonImmutable;
 use Database\Factories\FinancialNoteFactory;
@@ -16,16 +17,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $id
  * @property string $reference
  * @property FinancialNoteType $type
+ * @property FinancialNoteProgress $progress_status
  * @property string $title
  * @property int $amount_kobo
  * @property CarbonImmutable $note_date
  * @property string|null $category
+ * @property string|null $link
  * @property string $body
  * @property string $status
  * @property CarbonImmutable|null $archived_at
  * @property int $version
  */
-#[Fillable(['business_profile_id', 'reference', 'type', 'title', 'amount_kobo', 'note_date', 'category', 'body', 'status',
+#[Fillable(['business_profile_id', 'reference', 'type', 'progress_status', 'title', 'amount_kobo', 'note_date', 'category', 'link', 'body', 'status',
     'archived_at', 'created_by_user_id', 'updated_by_user_id', 'archived_by_user_id', 'version'])]
 class FinancialNote extends Model
 {
@@ -53,6 +56,7 @@ class FinancialNote extends Model
     {
         return [
             'type' => FinancialNoteType::class,
+            'progress_status' => FinancialNoteProgress::class,
             'amount_kobo' => 'integer',
             'note_date' => 'immutable_date',
             'archived_at' => 'immutable_datetime',
