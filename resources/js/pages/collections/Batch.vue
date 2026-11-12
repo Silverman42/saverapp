@@ -59,6 +59,7 @@ type Batch = {
     status: string;
     version: number;
     expected_kobo: number;
+    uncollected_kobo: number;
     savings_kobo: number;
     fees_kobo: number;
     remitted_kobo: number;
@@ -362,9 +363,22 @@ function report(): void {
             <CardContent class="space-y-3">
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div class="bg-muted/40 rounded-xl p-4">
-                        <p class="text-muted-foreground text-sm">Recorded</p>
+                        <p class="text-muted-foreground text-sm">
+                            {{
+                                batch.uncollected_kobo > 0
+                                    ? 'Expected'
+                                    : 'Recorded'
+                            }}
+                        </p>
                         <p class="mt-1 text-2xl font-semibold">
                             {{ money(batch.expected_kobo) }}
+                        </p>
+                        <p
+                            v-if="batch.uncollected_kobo > 0"
+                            class="text-muted-foreground mt-1 text-xs"
+                        >
+                            {{ money(batch.uncollected_kobo) }} was corrected
+                            as never collected.
                         </p>
                     </div>
                     <div class="bg-muted/40 rounded-xl p-4">

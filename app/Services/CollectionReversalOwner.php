@@ -8,6 +8,7 @@ use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Enums\ThriftPlanStatus;
 use App\Models\BusinessProfile;
+use App\Models\CollectionBatch;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
@@ -179,6 +180,79 @@ class CollectionReversalOwner implements ReversalOwnerContract
                 app(ReversalWatermark::class)->forCustomer($original->customer_profile_id)], JSON_THROW_ON_ERROR))];
     }
 
+    /**
+     * Whether the Agent may declare that only part of this receipt's cash was collected.
+     *
+     * @param  array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}  $preview
+     */
+    public function supportsReceivedAmount(array $preview): bool
+    {
+        try {
+            $this->partlyReceivedSource($preview, false);
+        } catch (ConflictHttpException) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Split a cash receipt reversal into the cash actually collected, which stays held as unapplied funds for a
+     * replacement receipt, and the uncollected rest, which comes off the recording Agent's cash responsibility.
+     *
+     * @param  array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}  $preview
+     * @return array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}
+     */
+    public function withReceivedAmount(array $preview, int $receivedKobo, bool $forUpdate): array
+    {
+        [$receipt, $batch] = $this->partlyReceivedSource($preview, $forUpdate);
+        if ($receivedKobo < 1 || $receivedKobo >= $receipt->tender_amount_kobo) {
+            throw new ConflictHttpException('The collected amount must be more than zero and less than the recorded receipt.');
+        }
+        $uncollected = $receipt->tender_amount_kobo - $receivedKobo;
+        $position = app(CollectionBatchPosition::class)->read($batch);
+        if ($position['received_kobo'] > $position['expected_kobo'] - $uncollected) {
+            throw new ConflictHttpException('The Agent already handed over more cash than this correction leaves in the batch. Record the difference through reconciliation.');
+        }
+        $account = LedgerAccount::query()->where('code', LedgerAccountCode::AgentReceivable->value)
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
+        if ($account->mapping_status !== 'mapped' || $account->currency !== 'NGN'
+            || $account->account_class !== LedgerAccountClass::AgentReceivable || $account->normal_balance !== LedgerEntrySide::Debit) {
+            throw new ConflictHttpException('The Agent cash responsibility account is unavailable.');
+        }
+        $summary = [...$preview['summary'], 'custody_disposition' => 'partly_received', 'controlled_kobo' => $receivedKobo,
+            'uncollected_kobo' => $uncollected, 'uncollected_account_id' => $account->id,
+            'uncollected_agent_profile_id' => $receipt->recording_agent_profile_id];
+        $dependencies = array_map(fn (array $dependency): array => $dependency['kind'] === 'custody'
+            ? [...$dependency, 'uncollected_kobo' => $uncollected, 'remitted_kobo' => $position['received_kobo']] : $dependency, $preview['dependencies']);
+
+        return ['gross_kobo' => $preview['gross_kobo'], 'summary' => $summary, 'dependencies' => $dependencies,
+            'fingerprint' => hash('sha256', json_encode([$preview['fingerprint'], $receivedKobo, $summary, $position, $batch->version], JSON_THROW_ON_ERROR))];
+    }
+
+    /**
+     * @param  array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}  $preview
+     * @return array{0: CollectionReceipt, 1: CollectionBatch}
+     */
+    private function partlyReceivedSource(array $preview, bool $forUpdate): array
+    {
+        $receipt = CollectionReceipt::query()->whereKey($preview['summary']['receipt_id'] ?? null)->first();
+        if ($receipt === null || $receipt->method !== 'cash' || $receipt->custody_account_code !== LedgerAccountCode::AgentReceivable->value
+            || $receipt->replacement_reversal_id !== null || $receipt->savings_posting_group_id === null
+            || ($preview['summary']['custody_disposition'] ?? null) !== 'received_and_controlled'
+            || ($preview['summary']['no_money'] ?? true) !== false || ($preview['summary']['consumed_external_concession_kobo'] ?? null) !== 0
+            || ($preview['summary']['controlled_kobo'] ?? null) !== $receipt->tender_amount_kobo) {
+            throw new ConflictHttpException('Only a full cash receipt can be corrected to a smaller collected amount.');
+        }
+        $batch = CollectionBatch::query()->whereKey($receipt->collection_batch_id)->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
+        if ($batch === null || $batch->custody_account_code !== LedgerAccountCode::AgentReceivable->value || $batch->status === 'reconciled'
+            || DB::table('collection_exceptions')->where('collection_batch_id', $batch->id)->exists()) {
+            throw new ConflictHttpException('The receipt batch is already reconciled or has a reconciliation case. Record the difference through reconciliation.');
+        }
+
+        return [$receipt, $batch];
+    }
+
     public function compensate(ReversalRequest $request, array $preview, User $reviewer): LedgerPostingGroup|FinancialWorkflowSupplement
     {
         $receipt = CollectionReceipt::query()->where('id', $preview['summary']['receipt_id'])->firstOrFail();
@@ -189,6 +263,11 @@ class CollectionReversalOwner implements ReversalOwnerContract
         if ($preview['summary']['controlled_kobo'] === 0) {
             return app(CollectionNoMoneyCorrection::class)->record($request, $preview, $reviewer);
         }
+        $uncollected = (int) ($preview['summary']['uncollected_kobo'] ?? 0);
+        if ($uncollected !== 0 && ($request->received_amount_kobo !== $preview['summary']['controlled_kobo']
+            || $preview['summary']['controlled_kobo'] + $uncollected !== $receipt->tender_amount_kobo)) {
+            throw new ConflictHttpException('The collected amount and the correction do not reconcile.');
+        }
         $group = LedgerPostingGroup::create([
             'posting_reference' => 'REV-'.Str::uuid(), 'idempotency_key' => 'receipt-compensation-'.$request->id,
             'payload_hash' => $preview['fingerprint'], 'source_type' => 'reversal_request', 'source_id' => (string) $request->id,
@@ -196,8 +275,9 @@ class CollectionReversalOwner implements ReversalOwnerContract
             'customer_profile_id' => $receipt->customer_profile_id, 'occurred_at' => now(), 'occurred_on' => $date,
             'business_timezone' => $business->timezone, 'schema_version' => 1, 'correlation_id' => 'reversal-'.$request->id,
             'thrift_plan_id' => $receipt->thrift_plan_id, 'committed_at' => now(),
-            'metadata' => ['original_posting_group_id' => $original->id, 'custody_disposition' => 'received_and_controlled',
+            'metadata' => ['original_posting_group_id' => $original->id, 'custody_disposition' => $preview['summary']['custody_disposition'],
                 'receipt_id' => $receipt->id, 'controlled_kobo' => $preview['summary']['controlled_kobo'],
+                'uncollected_kobo' => $uncollected,
                 'consumed_external_concession_kobo' => $preview['summary']['consumed_external_concession_kobo'],
                 'external_fee_effects' => collect($preview['dependencies'])->where('kind', 'external_fee')->values()->all(),
                 'plan_fee_effect' => collect($preview['dependencies'])->firstWhere('kind', 'plan_fee') ?? []],
@@ -221,8 +301,13 @@ class CollectionReversalOwner implements ReversalOwnerContract
                 'idempotency_key' => 'receipt-compensation-'.$request->id.'-fee-'.$dependency['settlement_entry_id'], 'actor_user_id' => $reviewer->id,
                 'reason' => $request->internal_reason, 'customer_description' => $request->customer_explanation, 'ledger_posting_reference' => $group->posting_reference]);
         }
-        LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $number, 'ledger_account_id' => $preview['summary']['unapplied_mapping_id'],
+        LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $number++, 'ledger_account_id' => $preview['summary']['unapplied_mapping_id'],
             'side' => LedgerEntrySide::Credit, 'amount_kobo' => $preview['summary']['controlled_kobo'], 'customer_profile_id' => $receipt->customer_profile_id, 'agent_profile_id' => $receipt->recording_agent_profile_id]);
+        if ($uncollected > 0) {
+            LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $number, 'ledger_account_id' => $preview['summary']['uncollected_account_id'],
+                'side' => LedgerEntrySide::Credit, 'amount_kobo' => $uncollected, 'customer_profile_id' => $receipt->customer_profile_id,
+                'agent_profile_id' => $preview['summary']['uncollected_agent_profile_id']]);
+        }
         foreach ($receipt->allocations as $allocation) {
             DB::table('collection_allocation_releases')->insert(['collection_allocation_id' => $allocation->id,
                 'reversal_request_id' => $request->id, 'created_at' => now(), 'updated_at' => now()]);
@@ -235,7 +320,7 @@ class CollectionReversalOwner implements ReversalOwnerContract
         FinancialWorkflowSupplement::create(['operation_reference' => (string) Str::uuid(), 'payload_hash' => $preview['fingerprint'],
             'kind' => 'receipt_compensated', 'customer_profile_id' => $receipt->customer_profile_id, 'thrift_plan_id' => $receipt->thrift_plan_id,
             'collection_batch_id' => $receipt->collection_batch_id, 'reversal_request_id' => $request->id, 'actor_user_id' => $reviewer->id,
-            'facts' => ['original_receipt_id' => $receipt->id, 'controlled_kobo' => $preview['summary']['controlled_kobo'],
+            'facts' => ['original_receipt_id' => $receipt->id, 'controlled_kobo' => $preview['summary']['controlled_kobo'], 'uncollected_kobo' => $uncollected,
                 'consumed_external_concession_kobo' => $preview['summary']['consumed_external_concession_kobo']], 'evidence' => $request->internal_reason, 'created_at' => now()]);
         if ($receipt->thrift_plan_id === null) {
             return $group;

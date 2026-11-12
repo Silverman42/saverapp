@@ -87,7 +87,26 @@ class ReversalService
             'dependencies' => $ownerPreview['dependencies'],
             'owner_fingerprint' => $ownerPreview['fingerprint'],
             'preview_fingerprint' => $fingerprint,
+            'received_amount_supported' => $owner instanceof CollectionReversalOwner && $owner->supportsReceivedAmount($ownerPreview),
         ];
+    }
+
+    /**
+     * The owner's current preview for a submitted request, including any partly-received split it carries.
+     *
+     * @return array{fingerprint: string, gross_kobo: int, summary: array<string, mixed>, dependencies: list<array<string, mixed>>}
+     */
+    private function requestPreview(ReversalOwnerContract $owner, ReversalRequest $reversal, LedgerPostingGroup $original, CustomerProfile $customer, bool $forUpdate): array
+    {
+        $preview = $owner->preview($original, $customer, $forUpdate);
+        if ($reversal->received_amount_kobo === null) {
+            return $preview;
+        }
+        if (! $owner instanceof CollectionReversalOwner) {
+            throw new ConflictHttpException('Only a cash receipt can be corrected to a smaller collected amount.');
+        }
+
+        return $owner->withReceivedAmount($preview, $reversal->received_amount_kobo, $forUpdate);
     }
 
     /** @return array<string, mixed> */
@@ -104,7 +123,7 @@ class ReversalService
         if ($owner === null) {
             abort(503, 'Reversal posting is unavailable until its owner contract is approved.');
         }
-        $preview = $owner->preview($original, $reversal->customerProfile, false);
+        $preview = $this->requestPreview($owner, $reversal, $original, $reversal->customerProfile, false);
 
         return [
             'preview_fingerprint' => $preview['fingerprint'],
@@ -157,6 +176,16 @@ class ReversalService
                 || (int) $data['assignment_version'] !== $quote['assignment_version']) {
                 throw new ConflictHttpException('The reversal preview changed. Review it again.');
             }
+            $receivedKobo = isset($data['received_amount_kobo']) ? (int) $data['received_amount_kobo'] : null;
+            $ownerPreview = ['fingerprint' => $quote['owner_fingerprint'], 'gross_kobo' => $quote['gross_kobo'],
+                'summary' => $quote['summary'], 'dependencies' => $quote['dependencies']];
+            if ($receivedKobo !== null) {
+                $owner = $this->capabilities->resolve($lockedOriginal);
+                if (! $owner instanceof CollectionReversalOwner) {
+                    throw new ConflictHttpException('Only a cash receipt can be corrected to a smaller collected amount.');
+                }
+                $ownerPreview = $owner->withReceivedAmount($ownerPreview, $receivedKobo, true);
+            }
             $assignment = $context->currentAssignment;
             $reversal = ReversalRequest::create([
                 'reversal_id' => (string) Str::uuid(),
@@ -171,9 +200,9 @@ class ReversalService
                 'internal_reason' => trim($data['internal_reason']),
                 'customer_explanation' => trim($data['customer_explanation']),
                 'evidence_text' => trim($data['evidence_text']),
-                'dependency_fingerprint' => $quote['owner_fingerprint'],
-                'dependency_snapshot' => ['summary' => $quote['summary'], 'dependencies' => $quote['dependencies']],
-                'original_amount_kobo' => $quote['gross_kobo'], 'currency' => $quote['currency'],
+                'dependency_fingerprint' => $ownerPreview['fingerprint'],
+                'dependency_snapshot' => ['summary' => $ownerPreview['summary'], 'dependencies' => $ownerPreview['dependencies']],
+                'original_amount_kobo' => $quote['gross_kobo'], 'received_amount_kobo' => $receivedKobo, 'currency' => $quote['currency'],
             ]);
             ReversalAttempt::create([
                 'attempt_reference' => $data['attempt_reference'], 'reversal_request_id' => $reversal->id,
@@ -324,7 +353,7 @@ class ReversalService
                     if ($customer->operational_status->value === 'archived') {
                         throw new ConflictHttpException('Restore the Archived Customer before correction.');
                     }
-                    $current = $owner->preview($original, $customer, true);
+                    $current = $this->requestPreview($owner, $locked, $original, $customer, true);
                     $fingerprint = $data['preview_fingerprint'] ?? '';
                     if (! is_string($fingerprint) || ! hash_equals($current['fingerprint'], $fingerprint)) {
                         throw new ConflictHttpException('The dependency preview changed. Review it again.');

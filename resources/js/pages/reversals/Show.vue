@@ -37,6 +37,7 @@ type Reversal = {
     customer_name: string | null;
     original_reference: string;
     original_amount_kobo: number;
+    received_amount_kobo: number | null;
     state: string;
     requested_at: string;
     reviewed_at: string | null;
@@ -278,6 +279,14 @@ function submit(): void {
                             {{ money(reversal.original_amount_kobo) }}
                         </dd>
                     </div>
+                    <div v-if="reversal.received_amount_kobo !== null">
+                        <dt class="text-muted-foreground">
+                            Actually collected
+                        </dt>
+                        <dd class="text-lg font-semibold">
+                            {{ money(reversal.received_amount_kobo) }}
+                        </dd>
+                    </div>
                     <div>
                         <dt class="text-muted-foreground">Requested</dt>
                         <dd class="font-medium">{{ reversal.requested_at }}</dd>
@@ -454,6 +463,21 @@ function submit(): void {
                                 </dt>
                                 <dd class="font-medium">
                                     {{ money(review.summary.controlled_kobo) }}
+                                </dd>
+                            </div>
+                            <div
+                                v-if="
+                                    typeof review.summary.uncollected_kobo ===
+                                    'number'
+                                "
+                                class="flex justify-between gap-3 py-2"
+                            >
+                                <dt class="text-muted-foreground">
+                                    Never collected (taken off the Agent's cash
+                                    owed)
+                                </dt>
+                                <dd class="font-medium">
+                                    {{ money(review.summary.uncollected_kobo) }}
                                 </dd>
                             </div>
                             <div

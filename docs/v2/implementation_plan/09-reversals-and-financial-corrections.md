@@ -85,6 +85,8 @@ All reversal types remain behind default-off flags (`collections.receipt_correct
 - Evidence files: up to three JPEG, PNG, WebP or PDF files of 5 MB, scanned with Module 07's scanner, stored on the private encrypted disk, immutable, supplemented only while Pending, retrieved through two-minute signed links for the requesting Agent or a reviewing Admin, never for the Customer, with add and download audit events. Without a configured scanner intake fails closed with 503.
 - A full return of a bank transfer is compensated through the same owner as cash returns (`WithdrawalReversalOwner` bank proof): provider returns must sum to the whole net amount, each posted to recovery clearing, with no unresolved provider exception on the attempt.
 
+**Partly collected cash receipts (12 November 2026).** When a cash receipt was entered higher than the cash collected, the Agent can state the collected amount on a `wrong_amount_allocation` request. Approval holds the collected amount as unapplied funds for an exact replacement and credits the uncollected rest to the recording Agent's receivable; `CollectionBatchPosition`, batch review, exception proofs and the batch reconciliation report subtract it from expected cash. Refused for non-cash receipts, reconciled batches, batches with any reconciliation case, or when handed-over cash already exceeds the corrected amount. Evidence: `ReceiptPartlyCollectedCorrectionTest`.
+
 **Decided as blocked, not built.** These need owner policy that does not exist yet, so no accounting was invented.
 
 - A receipt recorded in error whose money was never received, or whose money was returned to the Customer, needs an approved custody map and a separately evidenced return (decision package row "Received-money custody").

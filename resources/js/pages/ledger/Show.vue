@@ -104,6 +104,7 @@ const quote = ref<{
     customer_version: number;
     assignment_version: number;
     gross_kobo: number;
+    received_amount_supported: boolean;
 } | null>(null);
 const quoteError = ref('');
 const previewHttp = useHttp<
@@ -113,6 +114,7 @@ const previewHttp = useHttp<
         customer_version: number;
         assignment_version: number;
         gross_kobo: number;
+        received_amount_supported: boolean;
     }
 >({});
 const reversal = useForm({
@@ -124,6 +126,7 @@ const reversal = useForm({
     internal_reason: '',
     customer_explanation: '',
     evidence_text: '',
+    received_amount_ngn: '',
     files: [] as File[],
     confirmed: false,
 });
@@ -149,10 +152,21 @@ function requestCorrection(): void {
     reversal.preview_fingerprint = quote.value.preview_fingerprint;
     reversal.customer_version = quote.value.customer_version;
     reversal.assignment_version = quote.value.assignment_version;
-    reversal.post(submitReversal.url(props.reversal_original), {
-        forceFormData: true,
-    });
+    reversal
+        .transform(({ received_amount_ngn, ...data }) =>
+            showReceivedAmount.value && received_amount_ngn.trim() !== ''
+                ? { ...data, received_amount_ngn }
+                : data,
+        )
+        .post(submitReversal.url(props.reversal_original), {
+            forceFormData: true,
+        });
 }
+const showReceivedAmount = computed(
+    () =>
+        quote.value?.received_amount_supported === true &&
+        reversal.reason_category === 'wrong_amount_allocation',
+);
 function chooseFiles(event: Event): void {
     const input = event.target as HTMLInputElement;
     reversal.files = Array.from(input.files ?? []).slice(0, 3);
@@ -419,6 +433,31 @@ function money(kobo: number): string {
                         </SelectItem>
                     </SelectContent></Select
                 >
+            </div>
+            <div v-if="showReceivedAmount" class="grid gap-2">
+                <Label for="correction-received"
+                    >Amount actually collected (₦)
+                    <span class="text-muted-foreground font-normal"
+                        >(optional)</span
+                    ></Label
+                ><Input
+                    id="correction-received"
+                    v-model="reversal.received_amount_ngn"
+                    inputmode="decimal"
+                    placeholder="0.00"
+                    maxlength="20"
+                    :aria-invalid="!!reversal.errors.received_amount_ngn"
+                    aria-describedby="correction-received-help"
+                />
+                <p
+                    id="correction-received-help"
+                    class="text-muted-foreground text-xs"
+                >
+                    Fill this in only if you collected less than
+                    {{ money(quote.gross_kobo) }}. The cash you collected is
+                    kept so you can record the correct receipt after approval.
+                    The rest comes off the cash you owe.
+                </p>
             </div>
             <div class="grid gap-2">
                 <Label for="correction-reason"

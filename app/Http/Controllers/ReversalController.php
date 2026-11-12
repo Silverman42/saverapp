@@ -14,6 +14,7 @@ use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
 use App\Services\ReversalCapabilityRegistry;
 use App\Services\ReversalService;
+use App\Support\MoneyAmount;
 use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReversalController extends Controller
@@ -98,7 +100,12 @@ class ReversalController extends Controller
         $this->rejectUnexpected($request, [
             'attempt_reference', 'preview_fingerprint', 'customer_version', 'assignment_version',
             'reason_category', 'internal_reason', 'customer_explanation', 'evidence_text', 'confirmed', 'files',
+            'received_amount_ngn',
         ]);
+        if (is_string($request->input('received_amount_ngn'))) {
+            $received = str_replace(',', '', trim($request->input('received_amount_ngn')));
+            $request->merge(['received_amount_ngn' => $received === '' ? null : $received]);
+        }
         $data = $request->validate([
             'files' => ['sometimes', 'array', 'max:3'], 'files.*' => ['file'],
             'attempt_reference' => ['required', 'uuid'], 'preview_fingerprint' => ['required', 'string', 'size:64'],
@@ -112,9 +119,20 @@ class ReversalController extends Controller
             'customer_explanation' => ['required', 'string', 'min:1', 'max:500'],
             'evidence_text' => ['required', 'string', 'min:1', 'max:1000'],
             'confirmed' => ['required', 'accepted'],
+            'received_amount_ngn' => ['nullable', 'string', 'max:20', 'prohibited_unless:reason_category,wrong_amount_allocation'],
         ]);
         $uploads = array_values($request->file('files', []));
-        unset($data['files']);
+        unset($data['files'], $data['received_amount_ngn']);
+        if ($request->filled('received_amount_ngn')) {
+            try {
+                $data['received_amount_kobo'] = MoneyAmount::parseNairaToKobo((string) $request->input('received_amount_ngn'));
+            } catch (InvalidArgumentException) {
+                throw ValidationException::withMessages(['received_amount_ngn' => 'Enter the amount collected in naira with no more than two decimal places.']);
+            }
+            if ($data['received_amount_kobo'] < 1) {
+                throw ValidationException::withMessages(['received_amount_ngn' => 'Enter an amount greater than zero.']);
+            }
+        }
         $reversal = $service->submit($request->user(), $original, $data, $uploads);
 
         Toast::success('Reversal requested', 'The reversal is waiting for review.');
@@ -240,6 +258,7 @@ class ReversalController extends Controller
             'customer_name' => $reversal->customerProfile->user?->name,
             'original_reference' => $reversal->originalPostingGroup->posting_reference,
             'original_amount_kobo' => $reversal->original_amount_kobo,
+            'received_amount_kobo' => $reversal->received_amount_kobo,
             'currency' => $reversal->currency, 'state' => $reversal->state,
             'requested_at' => $reversal->created_at->toIso8601String(),
             'reviewed_at' => $reversal->reviewed_at?->toIso8601String(),

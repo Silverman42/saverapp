@@ -15,7 +15,7 @@ class CollectionBatchPosition
     /** @return array{expected_kobo: int, received_kobo: int, outstanding_kobo: int, settlement_pending: bool} */
     public function read(CollectionBatch $batch): array
     {
-        $expected = (int) $batch->receipts()->sum('tender_amount_kobo');
+        $expected = $this->expectedKobo($batch);
         $cashRemitted = (int) $batch->remittances()->sum('amount_kobo');
         if ($batch->custody_account_code === 'agent_receivable_ngn') {
             $orphaned = DB::table('ledger_entries as lines')->join('ledger_posting_groups as posting', 'posting.id', '=', 'lines.ledger_posting_group_id')
@@ -57,6 +57,9 @@ class CollectionBatchPosition
                 throw new ConflictHttpException('Verified evidence and posted custody do not reconcile.');
             }
         }
+        if ($this->uncollectedKobo($batch) !== 0) {
+            throw new ConflictHttpException('Only cash batches can carry an uncollected receipt correction.');
+        }
         $received = $expected;
         if ($batch->custody_account_code === 'payment_clearing_ngn') {
             $received = 0;
@@ -72,5 +75,38 @@ class CollectionBatchPosition
         return ['expected_kobo' => $expected, 'received_kobo' => $received,
             'outstanding_kobo' => $expected - $received,
             'settlement_pending' => $batch->custody_account_code === 'payment_clearing_ngn' && $received < $expected];
+    }
+
+    /**
+     * Cash the batch should hold: every recorded receipt, less the part of any receipt an approved correction
+     * found was never collected.
+     */
+    public function expectedKobo(CollectionBatch $batch): int
+    {
+        $recorded = (int) $batch->receipts()->sum('tender_amount_kobo');
+        $uncollected = $this->uncollectedKobo($batch);
+        if ($uncollected < 0 || $uncollected > $recorded) {
+            throw new ConflictHttpException('The batch uncollected corrections do not reconcile.');
+        }
+
+        return $recorded - $uncollected;
+    }
+
+    /** Recorded receipt cash that approved corrections found was never collected. */
+    public function uncollectedKobo(CollectionBatch $batch): int
+    {
+        return (int) $this->uncollectedQuery()->where('receipts.collection_batch_id', $batch->id)
+            ->sum(DB::raw('reversals.original_amount_kobo - reversals.received_amount_kobo'));
+    }
+
+    /**
+     * Approved partly-received receipt corrections, joined to their original receipt.
+     */
+    public function uncollectedQuery(): QueryBuilder
+    {
+        return DB::table('reversal_requests as reversals')
+            ->join('collection_receipts as receipts', 'receipts.savings_posting_group_id', '=', 'reversals.original_posting_group_id')
+            ->where('reversals.state', 'approved_posted')->whereNotNull('reversals.received_amount_kobo')
+            ->whereNull('receipts.replacement_reversal_id');
     }
 }

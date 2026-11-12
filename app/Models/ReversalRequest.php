@@ -9,7 +9,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
 
-/** @property CarbonImmutable|null $reviewed_at */
+/**
+ * @property CarbonImmutable|null $reviewed_at
+ * @property int|null $received_amount_kobo Cash the Agent actually collected when less than the recorded receipt.
+ */
 #[Fillable([
     'reversal_id', 'customer_profile_id', 'original_posting_group_id',
     'live_original_posting_group_id', 'posted_original_posting_group_id',
@@ -17,7 +20,7 @@ use RuntimeException;
     'initiating_agent_profile_id', 'assignment_id', 'reviewed_by_user_id',
     'state', 'version', 'reason_category', 'internal_reason',
     'customer_explanation', 'evidence_text', 'decision_reason', 'dependency_fingerprint',
-    'dependency_snapshot', 'original_amount_kobo', 'currency', 'reviewed_at',
+    'dependency_snapshot', 'original_amount_kobo', 'received_amount_kobo', 'currency', 'reviewed_at',
 ])]
 class ReversalRequest extends Model
 {
@@ -28,7 +31,7 @@ class ReversalRequest extends Model
                 'reversal_id', 'customer_profile_id', 'original_posting_group_id',
                 'requested_by_user_id', 'initiating_agent_profile_id', 'assignment_id',
                 'reason_category', 'internal_reason', 'customer_explanation', 'evidence_text',
-                'dependency_fingerprint', 'dependency_snapshot', 'original_amount_kobo', 'currency',
+                'dependency_fingerprint', 'dependency_snapshot', 'original_amount_kobo', 'received_amount_kobo', 'currency',
             ])) {
                 throw new RuntimeException('Submitted reversal terms are immutable.');
             }
@@ -42,6 +45,7 @@ class ReversalRequest extends Model
     {
         return [
             'dependency_snapshot' => 'array', 'original_amount_kobo' => 'integer',
+            'received_amount_kobo' => 'integer',
             'version' => 'integer', 'reviewed_at' => 'immutable_datetime',
             'evidence_text' => 'encrypted',
         ];

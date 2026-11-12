@@ -61,12 +61,13 @@ class ReconciliationController extends Controller
             ->selectRaw('COUNT(*) as receipt_count, COALESCE(SUM(tender_amount_kobo), 0) as tender_kobo')
             ->selectRaw('COALESCE(SUM(savings_amount_kobo), 0) as savings_kobo, COALESCE(SUM(fee_amount_kobo), 0) as fees_kobo')
             ->first();
-        $expected = (int) $receiptTotals->tender_kobo;
+        $recorded = (int) $receiptTotals->tender_kobo;
         $savings = (int) $receiptTotals->savings_kobo;
         $fees = (int) $receiptTotals->fees_kobo;
         $position = app(CollectionBatchPosition::class)->read($batch);
+        $expected = $position['expected_kobo'];
         $remitted = $position['received_kobo'];
-        if ($expected !== $savings + $fees) {
+        if ($recorded !== $savings + $fees) {
             throw new ConflictHttpException('Batch tender components do not match recorded cash.');
         }
         $canManage = $auth->allows($request->user(), AdminPermission::ReconciliationManage);
@@ -105,7 +106,7 @@ class ReconciliationController extends Controller
                 'method_label' => $batch->collection_method_version_id === null ? 'Cash' : DB::table('collection_method_versions')->where('id', $batch->collection_method_version_id)->value('label'),
                 'settlement_pending' => $position['settlement_pending'],
                 'cash_handoff_allowed' => $batch->custody_account_code === 'agent_receivable_ngn',
-                'expected_kobo' => $expected, 'remitted_kobo' => $remitted,
+                'expected_kobo' => $expected, 'remitted_kobo' => $remitted, 'uncollected_kobo' => $recorded - $expected,
                 'savings_kobo' => $savings, 'fees_kobo' => $fees,
                 'outstanding_kobo' => $expected - $remitted,
                 'receipt_count' => (int) $receiptTotals->receipt_count,
@@ -213,8 +214,8 @@ class ReconciliationController extends Controller
             if ($current->version !== (int) $data['batch_version'] || in_array($current->status, ['open', 'reconciled'], true)) {
                 throw new ConflictHttpException('Batch review changed or is unavailable.');
             }
-            $expected = (int) $current->receipts()->sum('tender_amount_kobo');
             $position = app(CollectionBatchPosition::class)->read($current);
+            $expected = $position['expected_kobo'];
             if ($position['settlement_pending']) {
                 throw new ConflictHttpException('Bank settlement evidence is required before this capture batch can reconcile.');
             }

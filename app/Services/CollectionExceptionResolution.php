@@ -79,7 +79,7 @@ class CollectionExceptionResolution
             || $receipt->collection_evidence_review_id !== ($facts['evidence_review_id'] ?? null)
             || (int) $event->actor_user_id !== $proof->actor_user_id || trim($event->reason) !== $cause
             || ! is_int($facts['expected_kobo'] ?? null) || ! is_int($facts['received_kobo'] ?? null) || ! is_int($facts['outstanding_kobo'] ?? null)
-            || $facts['expected_kobo'] !== (int) $batch->receipts()->sum('tender_amount_kobo')
+            || $facts['expected_kobo'] !== app(CollectionBatchPosition::class)->expectedKobo($batch)
             || $facts['received_kobo'] < 0 || $facts['outstanding_kobo'] < 0
             || $facts['expected_kobo'] !== $facts['received_kobo'] + $facts['outstanding_kobo']
             || ($facts['settlement_pending'] ?? null) !== ($batch->custody_account_code === 'payment_clearing_ngn' && $facts['outstanding_kobo'] > 0)) {

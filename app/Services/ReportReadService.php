@@ -492,10 +492,15 @@ class ReportReadService
             COUNT(*) AS exception_count, MAX(id) AS latest_id, MAX(updated_at) AS latest_update")
             ->groupBy('collection_batch_id');
 
+        $uncollected = app(CollectionBatchPosition::class)->uncollectedQuery()
+            ->selectRaw('receipts.collection_batch_id, SUM(reversals.original_amount_kobo - reversals.received_amount_kobo) AS uncollected')
+            ->groupBy('receipts.collection_batch_id');
+
         $query = DB::table('collection_batches as batches')
             ->join('agent_profiles as agents', 'agents.id', '=', 'batches.agent_profile_id')
             ->leftJoin('collection_batches as predecessor', 'predecessor.id', '=', 'batches.predecessor_batch_id')
             ->leftJoinSub($receipts, 'receipts', 'receipts.collection_batch_id', '=', 'batches.id')
+            ->leftJoinSub($uncollected, 'uncollected', 'uncollected.collection_batch_id', '=', 'batches.id')
             ->leftJoinSub($remittances, 'remittances', 'remittances.collection_batch_id', '=', 'batches.id')
             ->leftJoinSub($settlements, 'settlements', 'settlements.collection_batch_id', '=', 'batches.id')
             ->leftJoin('collection_method_versions as methods', 'methods.id', '=', 'batches.collection_method_version_id')
@@ -521,10 +526,11 @@ class ReportReadService
             ->selectRaw('COALESCE(receipts.receipt_count, 0) AS receipt_count,
                 COALESCE(receipts.tender, 0) AS gross_tender, COALESCE(receipts.savings, 0) AS savings_component,
                 COALESCE(receipts.fees, 0) AS external_fee_component,
+                COALESCE(uncollected.uncollected, 0) AS uncollected,
                 COALESCE(remittances.remitted, 0) AS confirmed_remittances,
                 COALESCE(settlements.settled, 0) AS _settled,
                 CASE WHEN batches.custody_account_code = \'agent_receivable_ngn\'
-                    THEN COALESCE(receipts.tender, 0) - COALESCE(remittances.remitted, 0) ELSE 0 END AS unremitted,
+                    THEN COALESCE(receipts.tender, 0) - COALESCE(uncollected.uncollected, 0) - COALESCE(remittances.remitted, 0) ELSE 0 END AS unremitted,
                 CASE WHEN batches.custody_account_code = \'business_bank_ngn\' THEN COALESCE(receipts.tender, 0)
                     ELSE COALESCE(settlements.settled, 0) END AS bank_received,
                 CASE WHEN batches.custody_account_code = \'payment_clearing_ngn\'
@@ -545,10 +551,11 @@ class ReportReadService
             'columns' => ['reference' => 'Batch', 'received_date' => 'Received date', 'original_agent' => 'Original Agent',
                 'method' => 'Method', 'revision' => 'Revision', 'predecessor' => 'Previous batch', 'state' => 'Current state',
                 'receipt_count' => 'Receipts', 'gross_tender' => 'Gross tender', 'savings_component' => 'Savings component',
-                'external_fee_component' => 'External fee component', 'confirmed_remittances' => 'Confirmed remittances',
+                'external_fee_component' => 'External fee component', 'uncollected' => 'Corrected as uncollected',
+                'confirmed_remittances' => 'Confirmed remittances',
                 'unremitted' => 'Unremitted cash', 'bank_received' => 'Confirmed bank custody',
                 'pending_settlement' => 'Pending clearing settlement', 'open_exceptions' => 'Open exceptions', 'latest_review' => 'Latest review'],
-            'money' => ['gross_tender', 'savings_component', 'external_fee_component', 'confirmed_remittances', 'unremitted', 'bank_received', 'pending_settlement'],
+            'money' => ['gross_tender', 'savings_component', 'external_fee_component', 'uncollected', 'confirmed_remittances', 'unremitted', 'bank_received', 'pending_settlement'],
             'counts' => ['batch_count' => null, 'receipt_count' => 'receipt_count', 'open_exceptions' => 'open_exceptions'],
             'link' => $viewer->user_type === UserType::Admin ? 'collection-batches.show' : null,
             'reference' => 'reference', 'viewer' => $viewer];
@@ -1240,7 +1247,7 @@ class ReportReadService
             'fee_refunds' => ['fee_refunds', 'ledger_posting_groups', 'reversal_requests'],
             'other_deductions' => ['manual_charges', 'ledger_posting_groups', 'reversal_requests'],
             'batch_reconciliation' => ['collection_batches', 'collection_receipts', 'collection_fee_components',
-                'cash_remittances', 'collection_batch_reviews', 'collection_exceptions', 'ledger_posting_groups',
+                'cash_remittances', 'collection_batch_reviews', 'collection_exceptions', 'reversal_requests', 'ledger_posting_groups',
                 'ledger_entries', 'ledger_accounts', 'ledger_transaction_references', 'ledger_transaction_projections'],
             default => [],
         };
@@ -1400,6 +1407,7 @@ class ReportReadService
                 $savings = $this->integer($row['savings_component']);
                 $fees = $this->integer($row['external_fee_component']);
                 $remitted = $this->integer($row['confirmed_remittances']);
+                $expected = $tender - $this->integer($row['uncollected']);
                 $row['method'] ??= 'Cash';
                 $received = $remitted;
                 $outstanding = $this->integer($row['unremitted']);
@@ -1412,7 +1420,7 @@ class ReportReadService
                     }
                     $received = $this->integer($row['bank_received']);
                     $outstanding = $this->integer($row['pending_settlement']);
-                    if ($remitted !== 0 || $position['expected_kobo'] !== $tender
+                    if ($remitted !== 0 || $position['expected_kobo'] !== $expected
                         || $position['received_kobo'] !== $received || $position['outstanding_kobo'] !== $outstanding
                         || $this->integer($row['_invalid_settlements']) !== 0) {
                         throw new RuntimeException('Bank custody disagrees with its verified owner.');
@@ -1420,7 +1428,7 @@ class ReportReadService
                 } else {
                     $batch = CollectionBatch::query()->whereKey($row['reference'])->sole();
                     $position = app(CollectionBatchPosition::class)->read($batch);
-                    if ($this->integer($row['_settled']) !== 0 || $position['expected_kobo'] !== $tender
+                    if ($this->integer($row['_settled']) !== 0 || $position['expected_kobo'] !== $expected
                         || $position['received_kobo'] !== $received || $position['outstanding_kobo'] !== $outstanding) {
                         throw new RuntimeException('Agent custody disagrees with its verified owner.');
                     }
@@ -1431,8 +1439,8 @@ class ReportReadService
                 $version = $this->integer($row['_version']);
                 if ($receiptCount === 0 || $revision < 1 || $this->integer($row['_invalid_receipts']) !== 0
                     || ($row['_invalid_remittances'] !== null && $this->integer($row['_invalid_remittances']) !== 0)
-                    || $this->add($savings, $fees) !== $tender || $remitted > $tender
-                    || $received > $tender || $tender - $received !== $outstanding
+                    || $this->add($savings, $fees) !== $tender || $expected < 0 || $remitted > $expected
+                    || $received > $expected || $expected - $received !== $outstanding
                     || ! in_array($row['state'], ['open', 'ready_for_review', 'in_review', 'exception', 'reconciled'], true)
                     || ($revision === 1 && $row['predecessor'] !== null)
                     || ($revision > 1 && ($row['predecessor'] === null
@@ -1446,7 +1454,7 @@ class ReportReadService
                 if ($row['latest_review'] !== null) {
                     $reviewExpected = $this->integer($row['_review_expected']);
                     $reviewRemitted = $this->integer($row['_review_remitted']);
-                    if ($reviewExpected !== $tender || $reviewRemitted > $received
+                    if ($reviewExpected !== $expected || $reviewRemitted > $received
                         || $reviewRemitted > $reviewExpected
                         || $this->integer($row['_review_outstanding']) !== $reviewExpected - $reviewRemitted
                         || $this->integer($row['_review_version']) >= $version
