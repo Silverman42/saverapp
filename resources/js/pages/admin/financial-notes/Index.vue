@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from "@inertiajs/vue3";
-import { computed, reactive, ref, watch } from "vue";
-import { NotebookPen, Plus } from "@lucide/vue";
-import EmptyState from "@/components/EmptyState.vue";
-import FormSheet from "@/components/FormSheet.vue";
-import PageHeader from "@/components/PageHeader.vue";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { DatePicker } from "@/components/ui/date-picker";
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { computed, reactive, ref, watch } from 'vue';
+import { NotebookPen, Plus } from '@lucide/vue';
+import EmptyState from '@/components/EmptyState.vue';
+import FormSheet from '@/components/FormSheet.vue';
+import PageHeader from '@/components/PageHeader.vue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
     Dialog,
     DialogContent,
@@ -16,27 +16,27 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "@/components/ui/select";
-import { dashboard } from "@/routes";
+} from '@/components/ui/select';
+import { dashboard } from '@/routes';
 import {
     archive,
     index,
     restore,
     store,
     update,
-} from "@/routes/admin/financial-notes";
+} from '@/routes/admin/financial-notes';
 
-type NoteType = "credit" | "debit";
-type ProgressStatus = "pending" | "cancelled" | "completed";
+type NoteType = 'credit' | 'debit';
+type ProgressStatus = 'pending' | 'cancelled' | 'completed';
 type Note = {
     reference: string;
     type: NoteType;
@@ -50,7 +50,7 @@ type Note = {
     category: string | null;
     link: string | null;
     body: string;
-    status: "active" | "archived";
+    status: 'active' | 'archived';
     version: number;
     updated_by: string | null;
     updated_at: string | null;
@@ -62,7 +62,7 @@ type Filters = {
     category?: string | null;
     from?: string | null;
     to?: string | null;
-    status: "active" | "archived";
+    status: 'active' | 'archived';
 };
 
 const props = defineProps<{
@@ -85,20 +85,20 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: "Dashboard", href: dashboard() },
-            { title: "Financial notes", href: index() },
+            { title: 'Dashboard', href: dashboard() },
+            { title: 'Financial notes', href: index() },
         ],
     },
 });
 
-const ALL = "all";
+const ALL = 'all';
 const filterForm = reactive({
-    search: props.filters.search ?? "",
+    search: props.filters.search ?? '',
     type: props.filters.type ?? ALL,
     progressStatus: props.filters.progress_status ?? ALL,
     category: props.filters.category ?? ALL,
-    from: props.filters.from ?? "",
-    to: props.filters.to ?? "",
+    from: props.filters.from ?? '',
+    to: props.filters.to ?? '',
     status: props.filters.status,
 });
 
@@ -111,7 +111,7 @@ function applyFilters(): void {
     if (filterForm.category !== ALL) query.category = filterForm.category;
     if (filterForm.from) query.from = filterForm.from;
     if (filterForm.to) query.to = filterForm.to;
-    if (filterForm.status !== "active") query.status = filterForm.status;
+    if (filterForm.status !== 'active') query.status = filterForm.status;
     router.get(
         index.url({ query }),
         {},
@@ -141,23 +141,23 @@ watch(
 
 const hasFilters = computed(
     () =>
-        filterForm.search !== "" ||
+        filterForm.search !== '' ||
         filterForm.type !== ALL ||
         filterForm.progressStatus !== ALL ||
         filterForm.category !== ALL ||
-        filterForm.from !== "" ||
-        filterForm.to !== "",
+        filterForm.from !== '' ||
+        filterForm.to !== '',
 );
-const viewingArchived = computed(() => filterForm.status === "archived");
+const viewingArchived = computed(() => filterForm.status === 'archived');
 
 function resetFilters(): void {
     Object.assign(filterForm, {
-        search: "",
+        search: '',
         type: ALL,
         progressStatus: ALL,
         category: ALL,
-        from: "",
-        to: "",
+        from: '',
+        to: '',
     });
 }
 
@@ -170,28 +170,28 @@ function today(): string {
 const sheetOpen = ref(false);
 const editing = ref<Note | null>(null);
 const form = useForm({
-    type: "debit" as NoteType,
-    progress_status: "pending" as ProgressStatus,
-    title: "",
-    amount_ngn: "",
+    type: 'debit' as NoteType,
+    progress_status: 'pending' as ProgressStatus,
+    title: '',
+    amount_ngn: '',
     note_date: today(),
-    category: "",
-    link: "",
-    body: "",
+    category: '',
+    link: '',
+    body: '',
     version: 0,
 });
 
 function openCreate(): void {
     editing.value = null;
     form.defaults({
-        type: "debit",
-        progress_status: "pending",
-        title: "",
-        amount_ngn: "",
+        type: 'debit',
+        progress_status: 'pending',
+        title: '',
+        amount_ngn: '',
         note_date: today(),
-        category: "",
-        link: "",
-        body: "",
+        category: '',
+        link: '',
+        body: '',
         version: 0,
     });
     form.reset();
@@ -207,8 +207,8 @@ function openEdit(note: Note): void {
         title: note.title,
         amount_ngn: note.amount_ngn,
         note_date: note.note_date,
-        category: note.category ?? "",
-        link: note.link ?? "",
+        category: note.category ?? '',
+        link: note.link ?? '',
         body: note.body,
         version: note.version,
     });
@@ -247,7 +247,7 @@ function submitStatusChange(): void {
     const note = confirming.value;
     if (!note || statusForm.processing) return;
     const target =
-        note.status === "active"
+        note.status === 'active'
             ? archive.url(note.reference)
             : restore.url(note.reference);
     statusForm.post(target, {
@@ -259,23 +259,23 @@ function submitStatusChange(): void {
 }
 
 function formatDate(value: string): string {
-    return new Date(`${value}T00:00:00`).toLocaleDateString("en-NG", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
+    return new Date(`${value}T00:00:00`).toLocaleDateString('en-NG', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
     });
 }
 
 function progressBadgeVariant(
     status: ProgressStatus,
-): "default" | "secondary" | "outline" {
-    if (status === "completed") return "default";
-    if (status === "cancelled") return "secondary";
-    return "outline";
+): 'default' | 'secondary' | 'outline' {
+    if (status === 'completed') return 'default';
+    if (status === 'cancelled') return 'secondary';
+    return 'outline';
 }
 
 const textareaClass =
-    "border-input bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:border-destructive min-h-32 w-full rounded-xl border px-3.5 py-2.5 text-base outline-none focus-visible:ring-[3px] md:text-sm";
+    'border-input bg-card placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/20 aria-invalid:border-destructive min-h-32 w-full rounded-xl border px-3.5 py-2.5 text-base outline-none focus-visible:ring-[3px] md:text-sm';
 </script>
 
 <template>
@@ -324,7 +324,7 @@ const textareaClass =
             </Card>
         </div>
         <p class="text-muted-foreground -mt-3 text-xs">
-            Totals cover the {{ viewingArchived ? "archived" : "active" }}
+            Totals cover the {{ viewingArchived ? 'archived' : 'active' }}
             notes that match your filters. Cancelled notes are not counted.
         </p>
 
@@ -484,8 +484,7 @@ const textareaClass =
                             <p class="text-muted-foreground mt-1 text-xs">
                                 {{ formatDate(note.note_date) }}
                                 <span v-if="note.updated_by">
-                                    · Last changed by
-                                    {{ note.updated_by }}</span
+                                    · Last changed by {{ note.updated_by }}</span
                                 >
                                 <template v-if="note.link">
                                     ·
@@ -509,7 +508,7 @@ const textareaClass =
                                         ? 'text-destructive'
                                         : ''
                                 "
-                                >{{ note.type === "debit" ? "-" : "+"
+                                >{{ note.type === 'debit' ? '-' : '+'
                                 }}{{ note.amount_display }}</span
                             >
                             <div class="flex gap-2">
@@ -527,9 +526,9 @@ const textareaClass =
                                     :aria-label="`${note.status === 'active' ? 'Archive' : 'Restore'} ${note.title}`"
                                     @click="askStatusChange(note)"
                                     >{{
-                                        note.status === "active"
-                                            ? "Archive"
-                                            : "Restore"
+                                        note.status === 'active'
+                                            ? 'Archive'
+                                            : 'Restore'
                                     }}</Button
                                 >
                             </div>
@@ -763,10 +762,10 @@ const textareaClass =
                     :disabled="form.processing"
                     >{{
                         form.processing
-                            ? "Saving…"
+                            ? 'Saving…'
                             : editing
-                              ? "Save changes"
-                              : "Add note"
+                              ? 'Save changes'
+                              : 'Add note'
                     }}</Button
                 >
             </template>
@@ -774,25 +773,23 @@ const textareaClass =
 
         <Dialog
             :open="confirming !== null"
-            @update:open="
-                if (!$event && !statusForm.processing) confirming = null;
-            "
+            @update:open="if (!$event && !statusForm.processing) confirming = null;"
         >
             <DialogContent class="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle
                         >{{
-                            confirming?.status === "active"
-                                ? "Archive"
-                                : "Restore"
+                            confirming?.status === 'active'
+                                ? 'Archive'
+                                : 'Restore'
                         }}
                         this note?</DialogTitle
                     >
                     <DialogDescription>
                         {{
-                            confirming?.status === "active"
-                                ? "It will be hidden from the list and totals. You can restore it later."
-                                : "It will appear in the list and totals again."
+                            confirming?.status === 'active'
+                                ? 'It will be hidden from the list and totals. You can restore it later.'
+                                : 'It will appear in the list and totals again.'
                         }}
                     </DialogDescription>
                 </DialogHeader>
@@ -814,9 +811,9 @@ const textareaClass =
                         :disabled="statusForm.processing"
                         @click="submitStatusChange"
                         >{{
-                            confirming?.status === "active"
-                                ? "Archive note"
-                                : "Restore note"
+                            confirming?.status === 'active'
+                                ? 'Archive note'
+                                : 'Restore note'
                         }}</Button
                     >
                 </DialogFooter>
