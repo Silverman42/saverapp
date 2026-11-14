@@ -226,7 +226,10 @@ function submitNote(): void {
         },
     };
     if (editing.value) {
-        form.put(update.url(editing.value.reference), options);
+        form.transform((data) => data).put(
+            update.url(editing.value.reference),
+            options,
+        );
     } else {
         form.transform(({ version: _version, ...data }) => data).post(
             store.url(),
