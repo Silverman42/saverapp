@@ -9,11 +9,13 @@ use App\Enums\FeeRuleKind;
 use App\Enums\FeeRuleModel;
 use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
+use App\Enums\LedgerAccountCode;
 use App\Enums\ThriftPlanStatus;
 use App\Models\AgentProfile;
 use App\Models\BusinessProfile;
 use App\Models\CollectionBatch;
 use App\Models\CollectionException;
+use App\Models\CollectionReceipt;
 use App\Models\ContributionSlot;
 use App\Models\CustomerAssignment;
 use App\Models\CustomerProfile;
@@ -24,6 +26,7 @@ use App\Models\FeeSnapshot;
 use App\Models\FinancialArtifact;
 use App\Models\FinancialPeriod;
 use App\Models\LedgerAccount;
+use App\Models\LedgerPostingGroup;
 use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
@@ -44,6 +47,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 require_once __DIR__.'/../FeeFixtures.php';
+require_once __DIR__.'/../ReversalFixtures.php';
 
 beforeEach(function (): void {
     $this->travelTo(CarbonImmutable::parse('2026-10-02 12:00:00', 'Africa/Lagos'));
@@ -258,6 +262,29 @@ test('one receipt allocated across slots is counted once and grouped totals reco
     expect(reportValue($data, 'posted_receipt_count'))->toBe(1);
     expect($data['sections']['primary']['rows'][0]['allocation_count'])->toBe(2);
     expect($data['sections']['primary']['groups'][0]['metrics'][0]['value'])->toBe(300000);
+});
+
+test('a reversed receipt stays listed in contributions without counting toward totals', function (): void {
+    config()->set('collections.receipt_corrections_enabled', true);
+    $fixture = reportFixture();
+    [$agent, $customer, $assignment] = $fixture;
+    reportPostReceipt($fixture, '2000.00');
+    $reversed = CollectionReceipt::query()->latest('id')->firstOrFail();
+    reportPostReceipt($fixture, '1000.00');
+    LedgerAccount::query()->where('code', LedgerAccountCode::UnappliedFunds->value)->update(['mapping_status' => 'mapped']);
+    approveReceiptCorrection($this, $agent, $customer->fresh(), $assignment->fresh(), LedgerPostingGroup::findOrFail($reversed->savings_posting_group_id));
+    app(LedgerTransactionProjectionService::class)->rebuild();
+
+    $data = reportData($agent, 'contributions', ['group' => 'date']);
+
+    $rows = collect($data['sections']['primary']['rows'])->keyBy('reference');
+    expect($data['sections']['primary']['status'])->not->toBe('Unavailable')
+        ->and($data['sections']['primary']['total'])->toBe(2)
+        ->and($rows[$reversed->receipt_reference]['correction_state'])->toBe('reversed')
+        ->and(reportValue($data, 'received_savings'))->toBe(100000)
+        ->and(reportValue($data, 'total_received'))->toBe(100000)
+        ->and(reportValue($data, 'posted_receipt_count'))->toBe(1)
+        ->and($data['sections']['primary']['groups'][0]['metrics'][0]['value'])->toBe(100000);
 });
 
 test('pagination totals cover all pages and cursor returns each stable row once', function (): void {

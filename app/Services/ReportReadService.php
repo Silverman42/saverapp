@@ -283,7 +283,7 @@ class ReportReadService
                     if ($ownAgent !== null) {
                         $receipts->where('receipts.recording_agent_profile_id', $ownAgent);
                     }
-                    $totals = $receipts->selectRaw('COUNT(*) AS count, COALESCE(SUM(receipts.savings_amount_kobo), 0) AS savings')->first();
+                    $totals = $receipts->where('projection.status', 'posted')->selectRaw('COUNT(*) AS count, COALESCE(SUM(receipts.savings_amount_kobo), 0) AS savings')->first();
                     $sections['recorded_activity'] = ['status' => 'Current', 'metrics' => [
                         $this->metric('posted_receipt_count', (int) $totals->count, 'count'),
                         $this->metric('received_savings', $this->integer($totals->savings), 'NGN'),
@@ -1389,7 +1389,7 @@ class ReportReadService
             if (isset($row['received_savings'])) {
                 $savings = $this->integer($row['received_savings']);
                 $fees = $this->integer($row['received_fees']);
-                if ($row['correction_state'] !== 'posted' || $this->integer($row['_projected_tender']) !== $this->integer($row['total_received'])
+                if (! in_array($row['correction_state'], ['posted', 'reversed'], true) || $this->integer($row['_projected_tender']) !== $this->integer($row['total_received'])
                     || $this->add($savings, $fees) !== $this->integer($row['total_received'])) {
                     throw new RuntimeException('Receipt components disagree.');
                 }
@@ -1484,6 +1484,9 @@ class ReportReadService
                     'open' => (int) ThriftPlanStatus::from($row['state'])->isOpen(),
                     default => $this->integer($row[$source]),
                 };
+            }
+            if (isset($row['received_savings']) && $row['correction_state'] === 'reversed') {
+                $values = array_map(fn (?int $value): ?int => $value === null ? null : 0, $values);
             }
             foreach ($values as $field => $value) {
                 $totals[$field] = $totals[$field] === null || $value === null ? null : $this->add($totals[$field], $value);
