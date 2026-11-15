@@ -184,6 +184,10 @@ class ReversalService
                 if (! $owner instanceof CollectionReversalOwner) {
                     throw new ConflictHttpException('Only a cash receipt can be corrected to a smaller collected amount.');
                 }
+                if ($receivedKobo >= $quote['gross_kobo']) {
+                    throw ValidationException::withMessages(['received_amount_ngn' => 'Enter less than ₦'
+                        .number_format($quote['gross_kobo'] / 100, 2).'. If you collected more than the receipt, record another receipt for the difference.']);
+                }
                 $ownerPreview = $owner->withReceivedAmount($ownerPreview, $receivedKobo, true);
             }
             $assignment = $context->currentAssignment;

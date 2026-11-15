@@ -124,8 +124,8 @@ test('the collected amount must be a positive amount below the recorded receipt 
     'zero' => [['received_amount_ngn' => '0'], 'received_amount_ngn'],
     'three decimals' => [['received_amount_ngn' => '10.505'], 'received_amount_ngn'],
     'different reason' => [['reason_category' => 'duplicate_posting'], 'received_amount_ngn'],
-    'equal to the receipt' => [['received_amount_ngn' => '4000'], 'conflict'],
-    'more than the receipt' => [['received_amount_ngn' => '5000'], 'conflict'],
+    'equal to the receipt' => [['received_amount_ngn' => '4000'], 'received_amount_ngn'],
+    'more than the receipt' => [['received_amount_ngn' => '5000'], 'received_amount_ngn'],
 ]);
 
 test('a split is refused once the Agent has handed over more cash than it would leave in the batch', function (): void {

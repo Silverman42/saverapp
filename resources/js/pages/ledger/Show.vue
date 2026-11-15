@@ -3,6 +3,7 @@ import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Undo2 } from '@lucide/vue';
 import FormSheet from '@/components/FormSheet.vue';
+import InputError from '@/components/InputError.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
@@ -152,6 +153,22 @@ function requestCorrection(): void {
     reversal.preview_fingerprint = quote.value.preview_fingerprint;
     reversal.customer_version = quote.value.customer_version;
     reversal.assignment_version = quote.value.assignment_version;
+    reversal.clearErrors('received_amount_ngn');
+    const receivedNaira = Number(
+        reversal.received_amount_ngn.replace(/,/g, '').trim(),
+    );
+    if (
+        showReceivedAmount.value &&
+        reversal.received_amount_ngn.trim() !== '' &&
+        Number.isFinite(receivedNaira) &&
+        receivedNaira * 100 >= quote.value.gross_kobo
+    ) {
+        reversal.setError(
+            'received_amount_ngn',
+            `Enter less than ${money(quote.value.gross_kobo)}. If you collected more than the receipt, record another receipt for the difference.`,
+        );
+        return;
+    }
     reversal
         .transform(({ received_amount_ngn, ...data }) =>
             showReceivedAmount.value && received_amount_ngn.trim() !== ''
@@ -458,6 +475,7 @@ function money(kobo: number): string {
                     kept so you can record the correct receipt after approval.
                     The rest comes off the cash you owe.
                 </p>
+                <InputError :message="reversal.errors.received_amount_ngn" />
             </div>
             <div class="grid gap-2">
                 <Label for="correction-reason"
