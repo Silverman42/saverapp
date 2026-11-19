@@ -367,6 +367,7 @@ class DashboardReadService
                     ->join('ledger_transaction_projections as receipt_projection', 'receipt_projection.ledger_transaction_reference_id', '=', 'receipt_refs.id')
                     ->where('receipt_refs.root_type', 'collection_receipt')
                     ->whereColumn('receipt_refs.root_id', 'collection_receipts.id')
+                    ->where('receipt_projection.status', 'posted')
                     ->where('receipt_projection.projection_version', DB::table('ledger_projection_state')->where('id', 1)->value('active_version'));
             });
         if ($viewer->user_type === UserType::Agent) {
@@ -402,6 +403,15 @@ class DashboardReadService
         if ($savings > PHP_INT_MAX - $fees || $savings + $fees !== $tender) {
             throw new RuntimeException('Receipt components do not reconcile.');
         }
+        $registrationFees = $this->integer(DB::table('collection_fee_components as components')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'components.fee_obligation_id')
+            ->where('obligations.kind', 'registration')
+            ->whereIn('components.collection_receipt_id', (clone $period)->select('collection_receipts.id'))
+            ->sum('components.amount_kobo'));
+        if ($registrationFees > $fees) {
+            throw new RuntimeException('Receipt components do not reconcile.');
+        }
+        $serviceCharge = $fees - $registrationFees;
         $scopeLabel = $viewer->user_type === UserType::Agent ? 'Recorded by you, including former assignments; no former-Customer detail is returned.' : 'Selected current Customer scope and explicit Agent attribution.';
         $start = CarbonImmutable::now($timezone)->subDays(29)->toDateString();
         $end = CarbonImmutable::now($timezone)->toDateString();
@@ -410,7 +420,8 @@ class DashboardReadService
 
         return ['metrics' => [
             $this->metric('received_savings', 'Savings received', $savings, 'NGN', 'verified collection receipts', 'received date', $scopeLabel.' Savings component only; excludes fees and remittances.'),
-            $this->metric('received_fees', 'External fees received', $fees, 'NGN', 'verified collection receipts', 'received date', 'External fee tender; separate from savings and fee earnings.'),
+            $this->metric('received_fees', 'Service Charge', $serviceCharge, 'NGN', 'verified collection receipts', 'received date', 'Service charge tender on receipts; excludes registration fees and fee earnings.'),
+            $this->metric('registration_fees', 'Registration Fee', $registrationFees, 'NGN', 'verified collection receipts', 'received date', 'Registration fee tender on receipts; separate from savings and service charge.'),
             $this->metric('cash_received', 'Cash tender received', $tender, 'NGN', 'verified collection receipts', 'received date', 'Savings plus external fee tender; cash is the only enabled receipt method.'),
             $this->metric('posted_receipt_count', 'Posted receipts', (int) $totals->receipt_count, 'count', 'verified collection receipts', 'received date', 'Distinct verified receipts, not funded slots.'),
         ], 'trend' => $trend->map(fn (object $row): array => ['date' => $row->received_date, 'display' => MoneyFormatter::formatNaira($this->integer($row->savings))])->all(),

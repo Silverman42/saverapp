@@ -6,7 +6,7 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 11;
+    public const VERSION = 12;
 
     /** @var list<string> Dashboard metrics fixed to the business-local today, whatever period is selected. */
     public const TODAY_METRICS = ['customers_registered_today', 'registration_fee_charged_today', 'service_charge_deducted_today', 'deposits_today'];
@@ -22,6 +22,7 @@ class MetricDefinitionService
         'available_savings' => 'customer-summary',
         'received_savings' => 'contributions',
         'received_fees' => 'contributions',
+        'registration_fees' => 'contributions',
         'cash_received' => 'contributions',
         'posted_receipt_count' => 'contributions',
         'agent_receivable' => 'reconciliation',
@@ -38,7 +39,8 @@ class MetricDefinitionService
         'live_payout_reservations' => ['title' => 'Live payout reservations', 'source' => 'withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Live gross reservations; not posted savings debits.'],
         'available_savings' => ['title' => 'Available savings', 'source' => 'ledger + withdrawals', 'date_basis' => 'at cutoff', 'definition' => 'Verified liability less live gross reservations, subtracted once.'],
         'received_savings' => ['title' => 'Customers Deposits (Liability)', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Posted receipt savings component; excludes external fees and remittances.'],
-        'received_fees' => ['title' => 'Service Charge', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'External fee tender; separate from savings and recognized earnings.'],
+        'received_fees' => ['title' => 'Service Charge', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Plan and other non-registration fee tender on receipts; excludes registration fees, savings and recognized earnings.'],
+        'registration_fees' => ['title' => 'Registration Fee', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Registration fee tender on receipts; separate from savings and service charge.'],
         'cash_received' => ['title' => 'Cash tender received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on cash receipts only, counted once; excludes transfer, POS and configured Other methods.'],
         'transfer_received' => ['title' => 'Transfer Tender', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on bank transfer receipts only, counted once; excludes cash, POS and configured Other methods.'],
         'total_received' => ['title' => 'Total Deposits (Assets)', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender across supported methods, counted once; excludes remittances and subsequent clearing settlements.'],

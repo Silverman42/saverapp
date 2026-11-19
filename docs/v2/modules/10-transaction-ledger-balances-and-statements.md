@@ -62,6 +62,8 @@ An account has an immutable account ID/code, display name, account class, normal
 
 Account retirement prevents new source events from selecting it while preserving historical entries and balance computation. Renaming changes presentation prospectively without changing stored references or old statement snapshots. Account creation/mapping belongs to reviewed business configuration; Module 10 introduces no UI or permission to create accounts.
 
+**Module 18 amendment (proposed, 2026-11).** Add the controlled account `customer_wallet_liability_ngn` (class Customer wallet liability, credit-normal, Customer dimension, no plan dimension). It is separate from plan-attributed savings liability, so cycle balances still add up to savings liability exactly. Total Customer liability on statements and reports is savings liability plus wallet liability, shown separately. Wallet availability is wallet liability minus live Wallet-source reservations; plan availability subtracts Plan-source reservations only. See [Customer Wallet](./18-customer-wallet.md) §3 and §5.
+
 ### 4.2 Posting group
 
 Each posting group stores:
@@ -109,6 +111,8 @@ Owning modules validate eligibility, amounts, approvals, physical-money state an
 | Approved reversal                                        | New balanced compensation of the eligible original/dependent bundle; original entries stay unchanged.                                                                     |
 
 These are conceptual patterns; release requires a reviewed chart and exact schema. A ledger endpoint accepts only authenticated service commands from the owning workflow, never arbitrary client-supplied account lines. `fees.manage`, `deductions.manage`, `withdrawals.review`, `reversals.review`, or `reconciliation.manage` authorizes only its defined business workflow, not free-form debits and credits.
+
+**Module 18 amendment (proposed, 2026-11).** Three posting patterns are added. Plan→wallet transfer: debit savings liability G; credit wallet liability P, fee income F and the deduction destination D. Wallet payout: debit wallet liability G; credit the rail's payout account G. Wallet contribution: debit wallet liability T; credit savings liability S and fee income Fc, where `T = S + Fc`. See [Customer Wallet](./18-customer-wallet.md) §6.
 
 ## 6. Transaction projection
 

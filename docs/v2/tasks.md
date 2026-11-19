@@ -786,6 +786,26 @@ Dependencies: Modules 01, 03, 14, 16
 | Build notes storage, service, controller and Admin page. | FNT-FR-003–008, 010, 011 | Done | `financial_notes` table, `FinancialNoteService` (PlatformGuard transaction, actor re-check, version check), `FinancialNoteController`, `admin/financial-notes/Index` page, sidebar item and help article. `FinancialNoteTest` 12 / 12 (FNT-AC-001–007). Related Authz, audit, platform, help and ledger suites pass; Pint, `vue-tsc` and build pass. |
 | Browser acceptance at 390 px in light and dark themes. | FNT-AC-009 | To Do | Not yet run. |
 
+## Module 18 — Customer Wallet
+
+Source: [`18-customer-wallet.md`](./modules/18-customer-wallet.md) · HLD [`18-customer-wallet.md`](./implementation_plan/18-customer-wallet.md) · LLD [`18-customer-wallet-lld.md`](./implementation_plan/18-customer-wallet-lld.md)
+Dependencies: Modules 04, 05, 06, 07, 08, 09, 10, 15
+
+| Task | Specification reference | Status | Evidence or blocker |
+| ---- | ----------------------- | ------ | ------------------- |
+| Write the PRD, HLD and LLD from the 19 November 2026 product-owner decisions. | Sections 1–18 | Completed | All plan exits go to the wallet; completed plans sweep into the wallet automatically; payouts only from the wallet; top-up only from plan transfers; Agent-recorded wallet contributions without approval; plan fees settle at transfer. Amendment notes added to Modules 07, 08 and 10. |
+| WAL-T01 Wallet ledger account, balance owner and integrity check. | WAL-FR-001–003 | To Do | Blocked on finance sign-off of the account mapping before it can be `mapped`. |
+| WAL-T02 Withdrawal and reservation `source`, one live wallet payout per Customer. | WAL-FR-006, 007, 015 | To Do | |
+| WAL-T03 Plan→wallet transfer and Full-transfer closure. | WAL-FR-004, 005 | To Do | Transfer without Admin review confirmed by the product owner, 19 November 2026. |
+| WAL-T04 Wallet payout on the existing rails. | WAL-FR-006, 007 | To Do | Each rail keeps its own Module 08 release gate. |
+| WAL-T05 Wallet collection method and wallet batch. | WAL-FR-008, 009 | To Do | |
+| WAL-T06 Reversal owners and wallet-crediting returns. | WAL-FR-011 | To Do | |
+| WAL-T07 Statements, reports, metrics and dashboard. | WAL-FR-012 | To Do | |
+| WAL-T08 Wallet pages and UI entry points. | WAL-FR-010, 012 | To Do | |
+| WAL-T09 Notifications and audit. | WAL-FR-013 | To Do | |
+| WAL-T11 Automatic transfer to the wallet on plan completion. | WAL-FR-016 | To Do | Product owner decision, 19 November 2026. |
+| WAL-T10 Feature codes, readiness, cutover and MySQL concurrency evidence. | WAL-FR-014, 015 | To Do | |
+
 ## Financial workflow release-readiness checkpoint — 1 October 2026
 
 Source: Modules 05–10, 12, 13 and 16; [release package](./implementation_plan/financial-workflow-release-readiness.md). The coordinated work remains **In Progress**. Earlier partial acceptance statements are not promoted to full acceptance by this checkpoint.

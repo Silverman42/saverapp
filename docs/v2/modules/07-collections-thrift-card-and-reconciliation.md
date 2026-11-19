@@ -248,6 +248,8 @@ Proposed remittance states: **Evidence recorded**, **Confirmed**, **Rejected**. 
 
 No netting of cash remittance against an Agent's fee earnings or an unposted Customer withdrawal is allowed. Payout cash issued to an Agent requires a separately authorized payout accounting contract; until defined, reconciliation cannot invent a cash credit for it. A direct business-bank receipt needs confirmation against that asset/clearing mapping, not a fictitious Agent cash remittance. Method/mapping correction requires a separately reviewed compensation, not editing a batch method.
 
+**Module 18 amendment (proposed, 2026-11).** Add the collection method **Wallet**. The assigned Agent funds a receipt from the Customer's available wallet balance (T ≤ AW, checked under the Customer lock); it requires an Active Customer and the `collection_wallet` feature. No evidence or method version is involved. It posts wallet liability → savings liability plus collection fee in one group. Wallet receipts join a per-Agent, per-day Wallet batch with no physical custody, so they create no remittance, settlement or cash-shortage exposure. The cash-only partly-collected correction does not apply. See [Customer Wallet](./18-customer-wallet.md) §6.3.
+
 ## 13. Reconciliation and exceptions
 
 ### 13.1 Review contract

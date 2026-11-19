@@ -372,6 +372,19 @@ class ReportReadService
     }
 
     /** @param array<string, mixed> $state */
+    /**
+     * Per-receipt fee tender split into registration fees and all fee components.
+     */
+    private function receiptFeeKinds(): Builder
+    {
+        return DB::table('collection_fee_components as components')
+            ->join('fee_obligations as obligations', 'obligations.id', '=', 'components.fee_obligation_id')
+            ->selectRaw("components.collection_receipt_id,
+                SUM(CASE WHEN obligations.kind = 'registration' THEN components.amount_kobo ELSE 0 END) AS registration_kobo,
+                SUM(components.amount_kobo) AS total_kobo")
+            ->groupBy('components.collection_receipt_id');
+    }
+
     private function verifiedReceipts(array $state, CarbonImmutable $cutoff): Builder
     {
         return DB::table('collection_receipts as receipts')->whereNull('receipts.replacement_reversal_id')
@@ -1083,7 +1096,10 @@ class ReportReadService
                     'refs.transaction_reference as transaction', 'receipts.received_date as date', 'projection.committed_at as committed_at',
                     'receipts.timezone as receipt_timezone', 'recording_agents.agent_id as recording_agent', 'plans.plan_id as plan',
                     'projection.status as correction_state', 'projection.gross_amount_kobo as _projected_tender', 'receipts.savings_amount_kobo as received_savings',
-                    'receipts.fee_amount_kobo as received_fees', 'receipts.tender_amount_kobo as total_received', 'receipts.method_label as method')
+                    'receipts.fee_amount_kobo as _receipt_fees', 'receipts.tender_amount_kobo as total_received', 'receipts.method_label as method')
+                ->leftJoinSub($this->receiptFeeKinds(), 'fee_kinds', 'fee_kinds.collection_receipt_id', '=', 'receipts.id')
+                ->selectRaw('receipts.fee_amount_kobo - COALESCE(fee_kinds.registration_kobo, 0) AS received_fees')
+                ->selectRaw('COALESCE(fee_kinds.registration_kobo, 0) AS registration_fees, COALESCE(fee_kinds.total_kobo, 0) AS _component_fees')
                 ->selectRaw("CASE WHEN receipts.method = 'cash' THEN receipts.tender_amount_kobo ELSE 0 END AS cash_received")
                 ->selectRaw("CASE WHEN receipts.method = 'transfer' THEN receipts.tender_amount_kobo ELSE 0 END AS transfer_received");
             if (($filters['agent_basis'] ?? '') === 'recording') {
@@ -1097,7 +1113,7 @@ class ReportReadService
                 ->selectRaw('COALESCE(allocations.slots, 0) AS allocation_count');
             $date = 'receipts.received_date';
             $id = 'receipts.id';
-            $money = ['received_savings', 'received_fees', 'cash_received', 'transfer_received', 'total_received'];
+            $money = ['received_savings', 'received_fees', 'registration_fees', 'cash_received', 'transfer_received', 'total_received'];
             $counts = ['posted_receipt_count' => null];
             $columns = ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer', 'date' => 'Received date',
                 'committed_at' => 'Committed (UTC)', 'receipt_timezone' => 'Receipt timezone', 'plan' => 'Plan', 'method' => 'Method',
@@ -1388,9 +1404,12 @@ class ReportReadService
             }
             if (isset($row['received_savings'])) {
                 $savings = $this->integer($row['received_savings']);
-                $fees = $this->integer($row['received_fees']);
+                $fees = $this->integer($row['_receipt_fees']);
+                $registration = $this->integer($row['registration_fees']);
                 if (! in_array($row['correction_state'], ['posted', 'reversed'], true) || $this->integer($row['_projected_tender']) !== $this->integer($row['total_received'])
-                    || $this->add($savings, $fees) !== $this->integer($row['total_received'])) {
+                    || $this->add($savings, $fees) !== $this->integer($row['total_received'])
+                    || $this->integer($row['_component_fees']) !== $fees || $registration > $fees
+                    || $this->add($this->integer($row['received_fees']), $registration) !== $fees) {
                     throw new RuntimeException('Receipt components disagree.');
                 }
             }

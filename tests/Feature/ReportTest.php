@@ -580,7 +580,7 @@ test('disabled collection owners cannot be bypassed through reports', function (
     expect($fees['sections']['external_receipts']['status'])->toBe('Unavailable');
 });
 
-test('mixed cash separates savings fees and tender without multiplying receipts', function (): void {
+test('mixed cash separates savings registration fees and tender without multiplying receipts', function (): void {
     $fixture = reportFixture();
     [$agent, $customer, $assignment, $plan, $today] = $fixture;
     config()->set('collections.enabled', true);
@@ -597,7 +597,15 @@ test('mixed cash separates savings fees and tender without multiplying receipts'
     $data = reportData($customer->user, 'contributions', ['group' => 'plan']);
 
     expect(reportValue($data, 'received_savings'))->toBe(200000);
-    expect(reportValue($data, 'received_fees'))->toBe(50000);
+    expect(reportValue($data, 'received_fees'))->toBe(0);
+    expect(reportValue($data, 'registration_fees'))->toBe(50000);
+    expect($data['sections']['primary']['rows'][0]['registration_fees'])->toBe('₦500.00');
+    expect($data['sections']['primary']['rows'][0]['received_fees'])->toBe('₦0.00');
+    $dashboard = collect(app(DashboardReadService::class)->read($customer->user, [
+        'period' => 'today', 'from' => $today, 'to' => $today, 'page_size' => 25,
+    ])['sections']['collections']['metrics'])->keyBy('code');
+    expect($dashboard['received_fees']['value'])->toBe(0)
+        ->and($dashboard['registration_fees']['value'])->toBe(50000);
     expect(reportValue($data, 'cash_received'))->toBe(250000);
     expect(reportValue($data, 'total_received'))->toBe(250000);
     expect($data['sections']['primary']['rows'][0]['method'])->toBe('Cash');

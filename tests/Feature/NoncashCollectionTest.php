@@ -288,11 +288,13 @@ test('noncash reports separate physical cash from total tender and verify extern
     expect($contributions['rows'])->toHaveCount(1);
     expect($metrics['received_savings']['value'])->toBe(200000)
         ->and($metrics['received_fees']['value'])->toBe(50000)
+        ->and($metrics['registration_fees']['value'])->toBe(0)
         ->and($metrics['cash_received']['value'])->toBe(0)
         ->and($metrics['transfer_received']['value'])->toBe($method === 'transfer' ? 250000 : 0)
         ->and($metrics['total_received']['value'])->toBe(250000);
     expect($metrics['received_savings']['title'])->toBe('Customers Deposits (Liability)')
         ->and($metrics['received_fees']['title'])->toBe('Service Charge')
+        ->and($metrics['registration_fees']['title'])->toBe('Registration Fee')
         ->and($metrics['transfer_received']['title'])->toBe('Transfer Tender')
         ->and($metrics['total_received']['title'])->toBe('Total Deposits (Assets)')
         ->and($contributions['columns']['transfer_received'])->toBe('Transfer Tender')
