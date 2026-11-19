@@ -130,6 +130,8 @@ const typeLabels: Record<string, string> = {
     contribution: 'Contribution',
     remittance: 'Remittance',
     withdrawal: 'Withdrawal',
+    wallet_transfer: 'Moved to wallet',
+    wallet_payout: 'Wallet payout',
     reversal: 'Correction',
     deduction: 'Deduction',
     fee_application: 'Fee taken from savings',

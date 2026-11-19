@@ -472,9 +472,12 @@ class LedgerTransactionProjectionService
         }
         $date = $group->occurred_on->toDateString();
         $this->upsertProjection($this->reference('withdrawal', (string) $withdrawal->id, $date), $version, [
-            'customer_profile_id' => $withdrawal->customer_profile_id, 'type' => 'withdrawal', 'status' => 'posted',
+            'customer_profile_id' => $withdrawal->customer_profile_id,
+            'type' => match (true) {
+                $withdrawal->isWalletSource() => 'wallet_payout', $withdrawal->method === 'wallet' => 'wallet_transfer', default => 'withdrawal',
+            }, 'status' => 'posted',
             'occurred_on' => $date, 'committed_at' => $group->committed_at, 'timezone' => $group->business_timezone,
-            'currency' => 'NGN', 'gross_amount_kobo' => $savings, 'savings_effect_kobo' => -$savings,
+            'currency' => 'NGN', 'gross_amount_kobo' => $savings, 'savings_effect_kobo' => $withdrawal->isWalletSource() ? 0 : -$savings,
             'fee_amount_kobo' => $fee, 'posting_group_count' => 1, 'source_hash' => $this->sourceHash([$group]), 'source_max_group_id' => $group->id,
         ]);
     }

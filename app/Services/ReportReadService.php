@@ -1101,7 +1101,8 @@ class ReportReadService
                 ->selectRaw('receipts.fee_amount_kobo - COALESCE(fee_kinds.registration_kobo, 0) AS received_fees')
                 ->selectRaw('COALESCE(fee_kinds.registration_kobo, 0) AS registration_fees, COALESCE(fee_kinds.total_kobo, 0) AS _component_fees')
                 ->selectRaw("CASE WHEN receipts.method = 'cash' THEN receipts.tender_amount_kobo ELSE 0 END AS cash_received")
-                ->selectRaw("CASE WHEN receipts.method = 'transfer' THEN receipts.tender_amount_kobo ELSE 0 END AS transfer_received");
+                ->selectRaw("CASE WHEN receipts.method = 'transfer' THEN receipts.tender_amount_kobo ELSE 0 END AS transfer_received")
+                ->selectRaw("CASE WHEN receipts.method = 'wallet' THEN receipts.tender_amount_kobo ELSE 0 END AS wallet_received");
             if (($filters['agent_basis'] ?? '') === 'recording') {
                 $query->where('receipts.recording_agent_profile_id', $agentId);
             }
@@ -1113,7 +1114,7 @@ class ReportReadService
                 ->selectRaw('COALESCE(allocations.slots, 0) AS allocation_count');
             $date = 'receipts.received_date';
             $id = 'receipts.id';
-            $money = ['received_savings', 'received_fees', 'registration_fees', 'cash_received', 'transfer_received', 'total_received'];
+            $money = ['received_savings', 'received_fees', 'registration_fees', 'cash_received', 'transfer_received', 'wallet_received', 'total_received'];
             $counts = ['posted_receipt_count' => null];
             $columns = ['reference' => 'Receipt', 'customer' => 'Customer ID', 'name' => 'Customer', 'date' => 'Received date',
                 'committed_at' => 'Committed (UTC)', 'receipt_timezone' => 'Receipt timezone', 'plan' => 'Plan', 'method' => 'Method',
@@ -1122,12 +1123,12 @@ class ReportReadService
             $reference = 'reference';
         } elseif ($code === 'withdrawals') {
             $query->join('withdrawal_requests as requests', 'requests.customer_profile_id', '=', 'customers.id')
-                ->join('thrift_plans as plans', 'plans.id', '=', 'requests.thrift_plan_id')
+                ->leftJoin('thrift_plans as plans', 'plans.id', '=', 'requests.thrift_plan_id')
                 ->leftJoin('withdrawal_reservations as reservations', 'reservations.id', '=', 'requests.withdrawal_reservation_id')
                 ->where('requests.submitted_at', '>=', CarbonImmutable::parse($filters['from'], BusinessProfile::current()->timezone)->startOfDay()->utc())
                 ->where('requests.submitted_at', '<', CarbonImmutable::parse($filters['to'], BusinessProfile::current()->timezone)->addDay()->startOfDay()->utc())
                 ->where('requests.submitted_at', '<=', $cutoff)->select($identities)
-                ->addSelect('requests.withdrawal_id as reference', 'requests.state', 'requests.held', 'requests.submitted_at as date',
+                ->addSelect('requests.withdrawal_id as reference', 'requests.source', 'requests.method', 'requests.state', 'requests.held', 'requests.submitted_at as date',
                     'requests.deadline_at as deadline', 'plans.plan_id as plan', 'requests.version as _version')
                 ->selectRaw("CASE WHEN reservations.status = 'live' THEN reservations.gross_amount_kobo ELSE 0 END AS live_payout_reservations");
             if (filled($filters['state'] ?? null)) {
@@ -1138,7 +1139,7 @@ class ReportReadService
             }
             $money = ['live_payout_reservations'];
             $counts = ['workflow_requests' => null];
-            $columns += ['reference' => 'Request', 'state' => 'Primary state', 'held' => 'Hold overlay', 'date' => 'Submitted (UTC)', 'deadline' => 'Deadline (UTC)', 'plan' => 'Plan'];
+            $columns += ['reference' => 'Request', 'source' => 'Source', 'method' => 'Method', 'state' => 'Primary state', 'held' => 'Hold overlay', 'date' => 'Submitted (UTC)', 'deadline' => 'Deadline (UTC)', 'plan' => 'Plan'];
             $date = 'requests.submitted_at';
             $id = 'requests.id';
             $link = $viewer->user_type !== UserType::Admin || $this->authorization->allows($viewer, AdminPermission::WithdrawalsReview) ? 'withdrawals.show' : null;

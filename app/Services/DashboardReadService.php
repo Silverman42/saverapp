@@ -111,11 +111,21 @@ class DashboardReadService
                     ]];
                 }
 
-                return ['note' => 'Full permitted savings scope. Activity, operational status, plan and Agent filters do not change these headline positions.', 'metrics' => [
+                $metrics = [
                     $this->metric('customer_liability', 'Customer savings liability', $position['liability_kobo'], 'NGN', 'ledger', 'at cutoff', 'Posted Customer savings liabilities, including every operational status; operational filters do not change this total.'),
                     $this->metric('live_payout_reservations', 'Live payout reservations', $position['reservations_kobo'], 'NGN', 'withdrawals', 'at cutoff', 'Live gross payout reservations; not posted savings debits.'),
                     $this->metric('available_savings', 'Available savings', $position['available_kobo'], 'NGN', 'ledger + withdrawals', 'at cutoff', 'Authoritative liability less live gross reservations, subtracted once.'),
-                ]];
+                ];
+                if (app(WalletBalanceService::class)->available()) {
+                    try {
+                        $wallet = app(WalletBalanceService::class)->scopedLiability($scope);
+                    } catch (Throwable) {
+                        $wallet = null;
+                    }
+                    $metrics[] = $this->metric('wallet_liability', 'Customer wallet balance', $wallet, 'NGN', 'ledger', 'at cutoff', 'Money moved out of plans into Customer wallets and not yet paid out or contributed; separate from plan savings.');
+                }
+
+                return ['note' => 'Full permitted savings scope. Activity, operational status, plan and Agent filters do not change these headline positions.', 'metrics' => $metrics];
             });
             $sections['collections'] = $this->section('collections', $manifest, function () use ($viewer, $operational, $filters, $state, $business): array {
                 $this->requireLedger($state);
@@ -396,7 +406,7 @@ class DashboardReadService
     {
         $query = $this->receiptQuery($viewer, $customers, $filters);
         $period = (clone $query)->whereBetween('received_date', [$filters['from'], $filters['to']]);
-        $totals = (clone $period)->selectRaw('COUNT(*) AS receipt_count, COALESCE(SUM(savings_amount_kobo), 0) AS savings, COALESCE(SUM(fee_amount_kobo), 0) AS fees, COALESCE(SUM(tender_amount_kobo), 0) AS tender')->first();
+        $totals = (clone $period)->selectRaw("COUNT(*) AS receipt_count, COALESCE(SUM(savings_amount_kobo), 0) AS savings, COALESCE(SUM(fee_amount_kobo), 0) AS fees, COALESCE(SUM(tender_amount_kobo), 0) AS tender, COALESCE(SUM(CASE WHEN collection_receipts.method = 'cash' THEN tender_amount_kobo ELSE 0 END), 0) AS cash_tender, COALESCE(SUM(CASE WHEN collection_receipts.method = 'wallet' THEN tender_amount_kobo ELSE 0 END), 0) AS wallet_tender")->first();
         $savings = $this->integer($totals->savings);
         $fees = $this->integer($totals->fees);
         $tender = $this->integer($totals->tender);
@@ -422,7 +432,8 @@ class DashboardReadService
             $this->metric('received_savings', 'Savings received', $savings, 'NGN', 'verified collection receipts', 'received date', $scopeLabel.' Savings component only; excludes fees and remittances.'),
             $this->metric('received_fees', 'Service Charge', $serviceCharge, 'NGN', 'verified collection receipts', 'received date', 'Service charge tender on receipts; excludes registration fees and fee earnings.'),
             $this->metric('registration_fees', 'Registration Fee', $registrationFees, 'NGN', 'verified collection receipts', 'received date', 'Registration fee tender on receipts; separate from savings and service charge.'),
-            $this->metric('cash_received', 'Cash tender received', $tender, 'NGN', 'verified collection receipts', 'received date', 'Savings plus external fee tender; cash is the only enabled receipt method.'),
+            $this->metric('cash_received', 'Cash tender received', $this->integer($totals->cash_tender), 'NGN', 'verified collection receipts', 'received date', 'Savings plus external fee tender on cash receipts only; excludes transfer, POS, Other and wallet receipts.'),
+            $this->metric('wallet_received', 'Wallet-funded contributions', $this->integer($totals->wallet_tender), 'NGN', 'verified collection receipts', 'received date', 'Savings plus fee tender funded from Customer wallets; moves existing Customer money, not new cash.'),
             $this->metric('posted_receipt_count', 'Posted receipts', (int) $totals->receipt_count, 'count', 'verified collection receipts', 'received date', 'Distinct verified receipts, not funded slots.'),
         ], 'trend' => $trend->map(fn (object $row): array => ['date' => $row->received_date, 'display' => MoneyFormatter::formatNaira($this->integer($row->savings))])->all(),
             'trend_from' => $start, 'trend_to' => $end, 'note' => $scopeLabel];
