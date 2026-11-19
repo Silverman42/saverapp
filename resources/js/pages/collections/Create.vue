@@ -1,44 +1,44 @@
 <script setup lang="ts">
-import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { HttpResponseError } from '@inertiajs/core';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { newOperationReference } from '@/lib/operation-reference';
-import CollectionEvidencePanel from '@/components/CollectionEvidencePanel.vue';
-import InputError from '@/components/InputError.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
+import { Head, Link, useForm, useHttp } from "@inertiajs/vue3";
+import { HttpResponseError } from "@inertiajs/core";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { newOperationReference } from "@/lib/operation-reference";
+import CollectionEvidencePanel from "@/components/CollectionEvidencePanel.vue";
+import InputError from "@/components/InputError.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
 import type {
     CollectionMethod,
     PaymentEvidence,
-} from '@/types/collection-evidence';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/types/collection-evidence";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
 import {
     index as collectionsIndex,
     show as showReceipt,
-} from '@/routes/collections';
-import { show as showAttempt } from '@/routes/collections/attempts';
+} from "@/routes/collections";
+import { show as showAttempt } from "@/routes/collections/attempts";
 import {
     preview as previewCollection,
     store as storeCollection,
-} from '@/routes/customers/collections';
+} from "@/routes/customers/collections";
 import {
     preview as previewReplacement,
     store as storeReplacement,
-} from '@/routes/reversals/replacement';
-import { timeOptions } from '@/routes/customers/collections';
+} from "@/routes/reversals/replacement";
+import { timeOptions } from "@/routes/customers/collections";
 
 type Preview = {
     replacement_fingerprint?: string;
@@ -78,6 +78,7 @@ const props = withDefaults(
         };
         collection_methods?: CollectionMethod[];
         cash_enabled?: boolean;
+        wallet?: { active: boolean; available_kobo: number | null };
         initial_evidence?: string | null;
         plans: Array<{ id: string; name: string; timezone: string | null }>;
         fee_obligations: Array<{
@@ -93,16 +94,17 @@ const props = withDefaults(
     {
         collection_methods: () => [],
         cash_enabled: true,
+        wallet: () => ({ active: false, available_kobo: null }),
         initial_evidence: null,
     },
 );
-const FEE_ONLY = '__fee_only';
+const FEE_ONLY = "__fee_only";
 const isLate = computed(() => form.received_date < props.today);
 const paymentChoice = ref(
-    props.initial_evidence || !props.cash_enabled ? 'evidence' : 'cash',
+    props.initial_evidence || !props.cash_enabled ? "evidence" : "cash",
 );
 const selectedEvidence = ref<PaymentEvidence | null>(null);
-const evidenceNotice = ref('');
+const evidenceNotice = ref("");
 const evidenceCustomer = computed(() => ({
     id: props.customer.id,
     resource_id: props.customer.resource_id ?? 0,
@@ -113,81 +115,83 @@ function selectEvidence(proof: PaymentEvidence | null): void {
     selectedEvidence.value = proof;
     form.method =
         proof?.method_key ??
-        (paymentChoice.value === 'evidence'
-            ? (props.collection_methods[0]?.method_key ?? 'transfer')
-            : 'cash');
+        (paymentChoice.value === "evidence"
+            ? (props.collection_methods[0]?.method_key ?? "transfer")
+            : paymentChoice.value === "wallet"
+              ? "wallet"
+              : "cash");
     form.collection_method_version_id =
         proof?.collection_method_version_id ?? null;
     form.evidence_reference = proof?.evidence_reference ?? null;
-    evidenceNotice.value = '';
+    evidenceNotice.value = "";
     if (proof) form.received_date = proof.received_date;
 }
 watch(paymentChoice, () => selectEvidence(null));
 const crossZone = computed(
     () =>
         props.plans.find((plan) => plan.id === form.plan_id)?.timezone !==
-            props.business_timezone && form.plan_id !== '',
+            props.business_timezone && form.plan_id !== "",
 );
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Collections', href: collectionsIndex() },
-            { title: 'Record collection', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Collections", href: collectionsIndex() },
+            { title: "Record collection", href: "#" },
         ],
     },
 });
 
 const form = useForm({
     attempt_reference: newOperationReference(),
-    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
+    method: "cash" as "cash" | "transfer" | "pos" | "other" | "wallet",
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    preview_fingerprint: '',
-    replacement_fingerprint: '',
+    preview_fingerprint: "",
+    replacement_fingerprint: "",
     customer_version: 0,
     assignment_version: 0,
     business_version: 0,
-    plan_id: props.plans[0]?.id ?? '',
+    plan_id: props.plans[0]?.id ?? "",
     plan_version: null as number | null,
     received_date: props.today,
-    received_local_time: '',
-    received_utc_offset: '',
-    savings_ngn: '',
+    received_local_time: "",
+    received_utc_offset: "",
+    savings_ngn: "",
     fees: props.fee_obligations.map((fee) => ({
         obligation_id: fee.id,
-        amount_ngn: '',
+        amount_ngn: "",
     })),
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: '',
-    notes: '',
+    late_reason: "",
+    notes: "",
     confirmed: false,
 });
 const previewHttp = useHttp({
-    method: 'cash' as 'cash' | 'transfer' | 'pos' | 'other',
+    method: "cash" as "cash" | "transfer" | "pos" | "other" | "wallet",
     collection_method_version_id: null as number | null,
     evidence_reference: null as string | null,
-    plan_id: '',
-    received_date: '',
-    received_local_time: '',
-    received_utc_offset: '',
-    savings_ngn: '',
+    plan_id: "",
+    received_date: "",
+    received_local_time: "",
+    received_utc_offset: "",
+    savings_ngn: "",
     fees: [] as Array<{ obligation_id: number; amount_ngn: string }>,
     allocations: [] as Array<{ slot_id: number; amount_ngn: string }>,
-    late_reason: '',
-    notes: '',
+    late_reason: "",
+    notes: "",
 });
 const preview = ref<Preview | null>(null);
 const accessUnavailable = ref(false);
-const reviewMessage = ref('');
+const reviewMessage = ref("");
 const reviewNotice = ref<HTMLElement | null>(null);
 const timeOptionsHttp = useHttp({});
 const reviewBusy = computed(
     () => previewHttp.processing || timeOptionsHttp.processing,
 );
 const reviewBusyLabel = computed(() =>
-    timeOptionsHttp.processing ? 'Checking time…' : 'Checking…',
+    timeOptionsHttp.processing ? "Checking time…" : "Checking…",
 );
 function validationError(field: string): string | undefined {
     return (
@@ -200,7 +204,7 @@ function feeValidationError(obligationId: number): string | undefined {
         (fee) => fee.obligation_id === obligationId,
     );
     const submittedIndex = form.fees
-        .filter((fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0')
+        .filter((fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0")
         .findIndex((fee) => fee.obligation_id === obligationId);
     return (
         (previewHttp.errors as Record<string, string | undefined>)[
@@ -209,14 +213,14 @@ function feeValidationError(obligationId: number): string | undefined {
         (form.errors as Record<string, string | undefined>)[
             `fees.${submittedIndex}.amount_ngn`
         ] ??
-        validationError('fees') ??
-        validationError('amount')
+        validationError("fees") ??
+        validationError("amount")
     );
 }
 const validOffsets = ref<Array<{ offset: string; received_at_utc: string }>>(
     [],
 );
-const timeNotice = ref('');
+const timeNotice = ref("");
 const customSlots = ref<
     Array<{ slot_id: number; due_date: string; capacity_kobo: number }>
 >([]);
@@ -224,16 +228,16 @@ const submissionPending = ref(false);
 const outcomeUnknown = ref(false);
 const attemptLookup = useHttp({});
 const recoveredReceipt = ref<string | null>(null);
-const lookupNotice = ref('');
+const lookupNotice = ref("");
 const retryAllowed = ref(false);
 const pendingAttemptStorageKey = `collection-pending-attempt:${props.customer.id}`;
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function reportReviewFailure(error: unknown): void {
     preview.value = null;
-    form.preview_fingerprint = '';
-    form.replacement_fingerprint = '';
+    form.preview_fingerprint = "";
+    form.replacement_fingerprint = "";
     form.confirmed = false;
     if (
         error instanceof HttpResponseError &&
@@ -241,23 +245,23 @@ function reportReviewFailure(error: unknown): void {
     ) {
         accessUnavailable.value = true;
         selectedEvidence.value = null;
-        evidenceNotice.value = '';
+        evidenceNotice.value = "";
         customSlots.value = [];
         validOffsets.value = [];
-        timeNotice.value = '';
+        timeNotice.value = "";
         previewHttp.defaults({
-            method: 'cash',
+            method: "cash",
             collection_method_version_id: null,
             evidence_reference: null,
-            plan_id: '',
-            received_date: '',
-            received_local_time: '',
-            received_utc_offset: '',
-            savings_ngn: '',
+            plan_id: "",
+            received_date: "",
+            received_local_time: "",
+            received_utc_offset: "",
+            savings_ngn: "",
             fees: [],
             allocations: [],
-            late_reason: '',
-            notes: '',
+            late_reason: "",
+            notes: "",
         });
         previewHttp.reset();
         previewHttp.response = null;
@@ -266,33 +270,33 @@ function reportReviewFailure(error: unknown): void {
         timeOptionsHttp.clearErrors();
         form.clearErrors();
         if (!outcomeUnknown.value && !submissionPending.value) {
-            form.method = 'cash';
+            form.method = "cash";
             form.collection_method_version_id = null;
             form.evidence_reference = null;
             form.customer_version = 0;
             form.assignment_version = 0;
             form.business_version = 0;
-            form.plan_id = '';
+            form.plan_id = "";
             form.plan_version = null;
-            form.received_date = '';
-            form.received_local_time = '';
-            form.received_utc_offset = '';
-            form.savings_ngn = '';
+            form.received_date = "";
+            form.received_local_time = "";
+            form.received_utc_offset = "";
+            form.savings_ngn = "";
             form.fees = [];
             form.allocations = [];
-            form.late_reason = '';
-            form.notes = '';
+            form.late_reason = "";
+            form.notes = "";
         }
         retryAllowed.value = false;
         recoveredReceipt.value = null;
-        lookupNotice.value = '';
+        lookupNotice.value = "";
         reviewMessage.value =
-            'You no longer have access to this customer. Nothing was recorded. Go back to Collections.';
+            "You no longer have access to this customer. Nothing was recorded. Go back to Collections.";
     } else {
         reviewMessage.value =
             error instanceof HttpResponseError
-                ? 'We could not check this payment. Your details are kept and nothing was recorded. Try again.'
-                : 'We could not reach the server. Your details are kept and nothing was recorded. Check your connection and try again.';
+                ? "We could not check this payment. Your details are kept and nothing was recorded. Try again."
+                : "We could not reach the server. Your details are kept and nothing was recorded. Check your connection and try again.";
     }
     void nextTick(() => reviewNotice.value?.focus());
 }
@@ -328,7 +332,7 @@ onMounted(() => {
             form.attempt_reference = reference;
             outcomeUnknown.value = true;
             lookupNotice.value =
-                'Check your last attempt before recording this payment again.';
+                "Check your last attempt before recording this payment again.";
         }
     } catch {
         // A fresh form remains usable when tab storage is unavailable.
@@ -339,8 +343,8 @@ watch(
     () => [form.plan_id, form.received_date, form.received_local_time],
     () => {
         validOffsets.value = [];
-        form.received_utc_offset = '';
-        timeNotice.value = '';
+        form.received_utc_offset = "";
+        timeNotice.value = "";
     },
 );
 
@@ -361,7 +365,7 @@ watch(
     ],
     () => {
         preview.value = null;
-        form.preview_fingerprint = '';
+        form.preview_fingerprint = "";
         form.confirmed = false;
     },
 );
@@ -370,7 +374,7 @@ async function resolveTime(): Promise<boolean> {
     if (accessUnavailable.value) return false;
     if (!crossZone.value) return true;
     if (!form.received_local_time) {
-        timeNotice.value = 'Enter the time the money was received.';
+        timeNotice.value = "Enter the time the money was received.";
         return false;
     }
     try {
@@ -388,9 +392,9 @@ async function resolveTime(): Promise<boolean> {
         if (!result) return false;
         validOffsets.value = result.options;
         if (result.options.length === 0) {
-            form.received_utc_offset = '';
+            form.received_utc_offset = "";
             timeNotice.value =
-                'That time did not happen because of a clock change. Pick another time.';
+                "That time did not happen because of a clock change. Pick another time.";
             return false;
         }
         if (
@@ -399,13 +403,13 @@ async function resolveTime(): Promise<boolean> {
             )
         ) {
             form.received_utc_offset =
-                result.options.length === 1 ? result.options[0]!.offset : '';
+                result.options.length === 1 ? result.options[0]!.offset : "";
         }
         timeNotice.value =
             result.options.length > 1 && !form.received_utc_offset
-                ? 'That time happened twice because of a clock change. Pick the right one below.'
-                : '';
-        return form.received_utc_offset !== '';
+                ? "That time happened twice because of a clock change. Pick the right one below."
+                : "";
+        return form.received_utc_offset !== "";
     } catch (error) {
         reportReviewFailure(error);
         return false;
@@ -420,18 +424,18 @@ async function review(): Promise<void> {
         form.processing
     )
         return;
-    reviewMessage.value = '';
+    reviewMessage.value = "";
     preview.value = null;
-    form.preview_fingerprint = '';
-    form.replacement_fingerprint = '';
+    form.preview_fingerprint = "";
+    form.replacement_fingerprint = "";
     form.confirmed = false;
     if (
         !props.replacement_reversal &&
-        paymentChoice.value === 'evidence' &&
+        paymentChoice.value === "evidence" &&
         !selectedEvidence.value
     ) {
         evidenceNotice.value =
-            'Choose checked payment proof before you continue.';
+            "Choose checked payment proof before you continue.";
         return;
     }
     if (!(await resolveTime())) return;
@@ -443,16 +447,16 @@ async function review(): Promise<void> {
     previewHttp.received_date = form.received_date;
     previewHttp.received_local_time = crossZone.value
         ? form.received_local_time
-        : '';
+        : "";
     previewHttp.received_utc_offset = crossZone.value
         ? form.received_utc_offset
-        : '';
-    previewHttp.savings_ngn = form.savings_ngn || '0';
+        : "";
+    previewHttp.savings_ngn = form.savings_ngn || "0";
     previewHttp.fees = form.fees.filter(
-        (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
+        (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
     );
     previewHttp.allocations = form.allocations.filter(
-        (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
+        (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
     );
     previewHttp.late_reason = form.late_reason;
     previewHttp.notes = form.notes;
@@ -464,7 +468,7 @@ async function review(): Promise<void> {
         )) as Preview | undefined;
         if (!result) return;
         preview.value = result;
-        form.replacement_fingerprint = result.replacement_fingerprint ?? '';
+        form.replacement_fingerprint = result.replacement_fingerprint ?? "";
         form.preview_fingerprint = result.preview_fingerprint;
         form.customer_version = result.customer_version;
         form.assignment_version = result.assignment_version;
@@ -485,7 +489,7 @@ function customizeAllocation(): void {
                 preview.value?.allocations.find(
                     (item) => item.slot_id === slot.slot_id,
                 )?.amount_kobo ?? 0;
-            return amount > 0 ? (amount / 100).toFixed(2) : '';
+            return amount > 0 ? (amount / 100).toFixed(2) : "";
         })(),
     }));
 }
@@ -500,7 +504,7 @@ function submit(retryOriginal = false): void {
     )
         return;
     submissionPending.value = true;
-    lookupNotice.value = '';
+    lookupNotice.value = "";
     retryAllowed.value = false;
     rememberAttempt();
     form.transform((data) => ({
@@ -508,15 +512,15 @@ function submit(retryOriginal = false): void {
             Object.entries(data).filter(
                 ([key]) =>
                     props.replacement_reversal ||
-                    key !== 'replacement_fingerprint',
+                    key !== "replacement_fingerprint",
             ),
         ),
-        savings_ngn: data.savings_ngn || '0',
+        savings_ngn: data.savings_ngn || "0",
         fees: data.fees.filter(
-            (fee) => fee.amount_ngn !== '' && fee.amount_ngn !== '0',
+            (fee) => fee.amount_ngn !== "" && fee.amount_ngn !== "0",
         ),
         allocations: data.allocations.filter(
-            (item) => item.amount_ngn !== '' && item.amount_ngn !== '0',
+            (item) => item.amount_ngn !== "" && item.amount_ngn !== "0",
         ),
     })).post(
         props.replacement_reversal
@@ -556,10 +560,10 @@ async function lookupAttempt(): Promise<void> {
             }),
         )) as { status: string; receipt_reference: string };
         recoveredReceipt.value =
-            result.status === 'posted' ? result.receipt_reference : null;
+            result.status === "posted" ? result.receipt_reference : null;
         lookupNotice.value = recoveredReceipt.value
-            ? 'The payment was recorded.'
-            : 'We could not confirm it yet. Check again before trying again.';
+            ? "The payment was recorded."
+            : "We could not confirm it yet. Check again before trying again.";
     } catch (error) {
         recoveredReceipt.value = null;
         if (
@@ -568,14 +572,14 @@ async function lookupAttempt(): Promise<void> {
         ) {
             try {
                 retryAllowed.value =
-                    JSON.parse(error.response.data)?.status === 'unresolved';
+                    JSON.parse(error.response.data)?.status === "unresolved";
             } catch {
                 retryAllowed.value = false;
             }
         }
         lookupNotice.value = retryAllowed.value
-            ? 'It was not recorded. You can try again with the same details.'
-            : 'We could not check it. Keep this page open and try again.';
+            ? "It was not recorded. You can try again with the same details."
+            : "We could not check it. Keep this page open and try again.";
     }
 }
 </script>
@@ -628,8 +632,8 @@ async function lookupAttempt(): Promise<void> {
             <Alert variant="destructive" role="presentation">
                 <AlertTitle>{{
                     accessUnavailable
-                        ? 'Form not available'
-                        : 'Could not check payment'
+                        ? "Form not available"
+                        : "Could not check payment"
                 }}</AlertTitle>
                 <AlertDescription class="grid gap-2">
                     <p>{{ reviewMessage }}</p>
@@ -654,8 +658,8 @@ async function lookupAttempt(): Promise<void> {
         >
             {{
                 timeOptionsHttp.processing
-                    ? 'Checking the time. Please wait.'
-                    : 'Checking the payment. Please wait.'
+                    ? "Checking the time. Please wait."
+                    : "Checking the payment. Please wait."
             }}
         </p>
         <p
@@ -738,6 +742,9 @@ async function lookupAttempt(): Promise<void> {
                             <SelectItem v-if="cash_enabled" value="cash"
                                 >Cash</SelectItem
                             >
+                            <SelectItem v-if="wallet.active" value="wallet"
+                                >Customer wallet</SelectItem
+                            >
                             <SelectItem
                                 v-if="
                                     collection_methods.length ||
@@ -756,6 +763,18 @@ async function lookupAttempt(): Promise<void> {
                         Transfer and POS are not set up yet.
                     </p>
                 </div>
+                <p
+                    v-if="paymentChoice === 'wallet'"
+                    class="text-muted-foreground text-sm"
+                >
+                    Paid from the customer's wallet. Available:
+                    <span class="text-foreground font-medium">{{
+                        wallet.available_kobo === null
+                            ? "Unavailable"
+                            : `₦${(wallet.available_kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    }}</span>. No cash changes hands, so there is nothing to
+                    hand in.
+                </p>
                 <CollectionEvidencePanel
                     v-if="paymentChoice === 'evidence'"
                     :customer="evidenceCustomer"
@@ -1071,7 +1090,7 @@ async function lookupAttempt(): Promise<void> {
                             :disabled="reviewBusy"
                             @click="review"
                             >{{
-                                reviewBusy ? reviewBusyLabel : 'Check amounts'
+                                reviewBusy ? reviewBusyLabel : "Check amounts"
                             }}</Button
                         >
                         <p
@@ -1139,7 +1158,7 @@ async function lookupAttempt(): Promise<void> {
                         outcomeUnknown
                     "
                     @click="review"
-                    >{{ reviewBusy ? reviewBusyLabel : 'Check again' }}</Button
+                    >{{ reviewBusy ? reviewBusyLabel : "Check again" }}</Button
                 >
             </CardContent>
         </Card>

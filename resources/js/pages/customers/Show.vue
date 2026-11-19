@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Head, Link } from "@inertiajs/vue3";
+import { computed, ref } from "vue";
 import {
     AlertCircle,
     Banknote,
@@ -10,58 +10,60 @@ import {
     Pencil,
     Plus,
     Receipt,
-} from '@lucide/vue';
-import CustomerFeesCard from '@/components/CustomerFeesCard.vue';
+    Wallet,
+} from "@lucide/vue";
+import CustomerFeesCard from "@/components/CustomerFeesCard.vue";
 import type {
     FeeSnapshot,
     PlanFeeObligation,
-} from '@/components/CustomerFeesCard.vue';
-import CustomerInvitationCard from '@/components/CustomerInvitationCard.vue';
-import CustomerOfflineAccessCard from '@/components/CustomerOfflineAccessCard.vue';
-import RegistrationFeeChargeDialog from '@/components/RegistrationFeeChargeDialog.vue';
-import type { RegistrationFeePreview } from '@/components/RegistrationFeeChargeDialog.vue';
-import type { CustomerInvitation } from '@/components/CustomerInvitationCard.vue';
-import ManagementDeliveryPanel from '@/components/ManagementDeliveryPanel.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import NameCorrectionReview from '@/components/NameCorrectionReview.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "@/components/CustomerFeesCard.vue";
+import CustomerInvitationCard from "@/components/CustomerInvitationCard.vue";
+import CustomerOfflineAccessCard from "@/components/CustomerOfflineAccessCard.vue";
+import RegistrationFeeChargeDialog from "@/components/RegistrationFeeChargeDialog.vue";
+import type { RegistrationFeePreview } from "@/components/RegistrationFeeChargeDialog.vue";
+import type { CustomerInvitation } from "@/components/CustomerInvitationCard.vue";
+import ManagementDeliveryPanel from "@/components/ManagementDeliveryPanel.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import NameCorrectionReview from "@/components/NameCorrectionReview.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-} from '@/components/ui/card';
+} from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
     DialogDescription,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { dashboard } from '@/routes';
-import { create as createCustomerPlan } from '@/routes/customers/plans';
-import { create as createCollection } from '@/routes/customers/collections';
-import { create as createWithdrawal } from '@/routes/customers/withdrawals';
-import { index as plansIndex, show as showPlan } from '@/routes/plans';
-import { index as transactionsIndex } from '@/routes/transactions';
-import { preview as statementPreview } from '@/routes/customers/statements';
+} from "@/components/ui/dropdown-menu";
+import { dashboard } from "@/routes";
+import { create as createCustomerPlan } from "@/routes/customers/plans";
+import { create as createCollection } from "@/routes/customers/collections";
+import { create as createWithdrawal } from "@/routes/customers/withdrawals";
+import { show as customerWallet } from "@/routes/customers/wallet";
+import { index as plansIndex, show as showPlan } from "@/routes/plans";
+import { index as transactionsIndex } from "@/routes/transactions";
+import { preview as statementPreview } from "@/routes/customers/statements";
 import {
     edit as editCustomer,
     index as customersIndex,
-} from '@/routes/customers';
-import { edit as reassignCustomer } from '@/routes/customers/reassignment';
-import { show as recoverCustomer } from '@/routes/customers/recovery';
-import { edit as manageCustomerStatus } from '@/routes/customers/status';
+} from "@/routes/customers";
+import { edit as reassignCustomer } from "@/routes/customers/reassignment";
+import { show as recoverCustomer } from "@/routes/customers/recovery";
+import { edit as manageCustomerStatus } from "@/routes/customers/status";
 
 export type { CustomerInvitation, FeeSnapshot };
 
@@ -181,7 +183,7 @@ const props = defineProps<{
  */
 const planFeeObligations = computed(() => {
     const firstRegistrationId = props.fee_obligations.find(
-        (obligation) => obligation.kind === 'registration',
+        (obligation) => obligation.kind === "registration",
     )?.id;
 
     return props.fee_obligations.filter(
@@ -195,11 +197,11 @@ defineOptions({
     layout: {
         breadcrumbs: [
             {
-                title: 'Dashboard',
+                title: "Dashboard",
                 href: dashboard(),
             },
             {
-                title: 'Customers',
+                title: "Customers",
                 href: customersIndex(),
             },
         ],
@@ -219,7 +221,7 @@ const hasMoreActions = computed(
 const getInitials = (name: string): string => {
     const parts = name.trim().split(/\s+/);
     if (parts.length === 0 || !parts[0]) {
-        return 'CU';
+        return "CU";
     }
     if (parts.length === 1) {
         return parts[0].substring(0, 2).toUpperCase();
@@ -229,31 +231,31 @@ const getInitials = (name: string): string => {
 
 const getOperationalBadgeVariant = (
     status: string,
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
+): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-        case 'active':
-            return 'default';
-        case 'inactive':
-            return 'secondary';
-        case 'restricted':
-        case 'archived':
-            return 'destructive';
+        case "active":
+            return "default";
+        case "inactive":
+            return "secondary";
+        case "restricted":
+        case "archived":
+            return "destructive";
         default:
-            return 'outline';
+            return "outline";
     }
 };
 
 const getAccountBadgeVariant = (
     state: string,
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
+): "default" | "secondary" | "destructive" | "outline" => {
     switch (state) {
-        case 'active':
-            return 'outline';
-        case 'suspended':
-        case 'deactivated':
-            return 'destructive';
+        case "active":
+            return "outline";
+        case "suspended":
+        case "deactivated":
+            return "destructive";
         default:
-            return 'secondary';
+            return "secondary";
     }
 };
 </script>
@@ -286,6 +288,11 @@ const getAccountBadgeVariant = (
                         <Link :href="createWithdrawal(customer.id).url"
                             ><Banknote class="size-4" /> Request
                             withdrawal</Link
+                        >
+                    </Button>
+                    <Button as-child variant="outline">
+                        <Link :href="customerWallet(customer.id).url"
+                            ><Wallet class="size-4" /> Wallet</Link
                         >
                     </Button>
                     <Button
@@ -339,9 +346,9 @@ const getAccountBadgeVariant = (
                                     "
                                     >{{
                                         customer.operational_status ===
-                                        'archived'
-                                            ? 'Restore customer'
-                                            : 'Change status'
+                                        "archived"
+                                            ? "Restore customer"
+                                            : "Change status"
                                     }}</Link
                                 >
                             </DropdownMenuItem>
@@ -408,8 +415,8 @@ const getAccountBadgeVariant = (
                 <p class="text-muted-foreground mt-0.5">
                     {{
                         customer.pending_name_correction.can_review
-                            ? 'Please check the new name and confirm it.'
-                            : 'Waiting for the customer to confirm.'
+                            ? "Please check the new name and confirm it."
+                            : "Waiting for the customer to confirm."
                     }}
                 </p>
             </div>
@@ -422,8 +429,8 @@ const getAccountBadgeVariant = (
                 @click="nameCorrectionOpen = true"
                 >{{
                     customer.pending_name_correction.can_review
-                        ? 'Review'
-                        : 'View'
+                        ? "Review"
+                        : "View"
                 }}</Button
             >
         </div>
@@ -525,8 +532,8 @@ const getAccountBadgeVariant = (
                                 <p class="text-muted-foreground mt-0.5">
                                     {{
                                         customer.plans.can_create
-                                            ? 'Start a plan to begin saving.'
-                                            : 'This customer has no plan running.'
+                                            ? "Start a plan to begin saving."
+                                            : "This customer has no plan running."
                                     }}
                                 </p>
                             </div>
@@ -678,13 +685,13 @@ const getAccountBadgeVariant = (
                             <div class="flex justify-between gap-4 py-2.5">
                                 <dt class="text-muted-foreground">Email</dt>
                                 <dd class="text-right font-medium break-all">
-                                    {{ customer.email || 'Not added' }}
+                                    {{ customer.email || "Not added" }}
                                 </dd>
                             </div>
                             <div class="flex justify-between gap-4 py-2.5">
                                 <dt class="text-muted-foreground">Address</dt>
                                 <dd class="text-right">
-                                    {{ customer.address || 'Not added' }}
+                                    {{ customer.address || "Not added" }}
                                 </dd>
                             </div>
                             <div class="flex justify-between gap-4 py-2.5">
@@ -718,9 +725,9 @@ const getAccountBadgeVariant = (
                                     <dd class="capitalize">
                                         {{
                                             customer.gender?.replaceAll(
-                                                '_',
-                                                ' ',
-                                            ) || 'Not added'
+                                                "_",
+                                                " ",
+                                            ) || "Not added"
                                         }}
                                     </dd>
                                 </div>
@@ -729,7 +736,7 @@ const getAccountBadgeVariant = (
                                         Occupation
                                     </dt>
                                     <dd>
-                                        {{ customer.occupation || 'Not added' }}
+                                        {{ customer.occupation || "Not added" }}
                                     </dd>
                                 </div>
                                 <div class="flex justify-between gap-4 py-2">
@@ -739,7 +746,7 @@ const getAccountBadgeVariant = (
                                     <dd>
                                         {{
                                             customer.internal_reference ||
-                                            'None'
+                                            "None"
                                         }}
                                     </dd>
                                 </div>

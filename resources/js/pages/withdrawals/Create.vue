@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import FeeQuoteSummary from '@/components/FeeQuoteSummary.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import type { FeeDisclosure } from '@/types/fee-disclosure';
-import { HttpResponseError } from '@inertiajs/core';
-import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import FeeQuoteSummary from "@/components/FeeQuoteSummary.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import type { FeeDisclosure } from "@/types/fee-disclosure";
+import { HttpResponseError } from "@inertiajs/core";
+import { Head, Link, useForm, useHttp } from "@inertiajs/vue3";
+import { computed, ref, watch } from "vue";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -15,37 +15,37 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
 import {
     index as withdrawalsIndex,
     show as showWithdrawal,
-} from '@/routes/withdrawals';
-import { index as payoutDestinations } from '@/routes/customers/payout-destinations';
+} from "@/routes/withdrawals";
+import { index as payoutDestinations } from "@/routes/customers/payout-destinations";
 import {
     preview as previewWithdrawal,
     store as storeWithdrawal,
-} from '@/routes/customers/withdrawals';
+} from "@/routes/customers/withdrawals";
 
 type Quote = {
     preview_fingerprint: string;
     quote_expires_at: string;
     customer_version: number;
     assignment_version: number;
-    plan_version: number;
+    plan_version: number | null;
     business_version: number;
     gross_kobo: number;
     fee_kobo: number;
-    fee_disclosure: FeeDisclosure;
+    fee_disclosure: FeeDisclosure | null;
     deduction_kobo: number;
     deduction_description: string | null;
     net_kobo: number;
@@ -53,7 +53,7 @@ type Quote = {
         liability_kobo: number;
         reservations_kobo: number;
         available_kobo: number;
-        cycle_available_kobo: number;
+        cycle_available_kobo?: number;
     };
     destination_mask: string;
 };
@@ -68,45 +68,78 @@ const props = defineProps<{
     methods: string[];
     cash_destination_reference: string;
     bank_destinations: Array<{ reference: string; label: string }>;
+    wallet: {
+        active: boolean;
+        available_kobo: number | null;
+        destination_reference: string;
+        methods: string[];
+        live_payout_id: string | null;
+    };
+    initial_source: "plan" | "wallet";
 }>();
+const source = ref<"plan" | "wallet">(props.initial_source);
+const isWalletPayout = computed(() => source.value === "wallet");
+const isWalletTransfer = computed(
+    () => source.value === "plan" && props.wallet.active,
+);
+const payoutMethods = computed(() =>
+    isWalletPayout.value ? props.wallet.methods : props.methods,
+);
+function destinationFor(method: string): string {
+    if (method === "wallet") return props.wallet.destination_reference;
+    return method === "bank_transfer"
+        ? (props.bank_destinations[0]?.reference ?? "")
+        : props.cash_destination_reference;
+}
+function defaultMethod(): string {
+    return payoutMethods.value[0] ?? "cash";
+}
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Withdrawals', href: withdrawalsIndex() },
-            { title: 'Request', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Withdrawals", href: withdrawalsIndex() },
+            { title: "Request", href: "#" },
         ],
     },
 });
 const form = useForm({
     attempt_reference: crypto.randomUUID(),
-    plan_id: props.plans[0]?.id ?? '',
-    type: 'partial',
-    gross_ngn: '',
-    method: props.methods[0] ?? 'cash',
-    destination_reference:
-        props.methods[0] === 'bank_transfer'
-            ? (props.bank_destinations[0]?.reference ?? '')
-            : props.cash_destination_reference,
-    reason: '',
-    internal_notes: '',
-    preview_fingerprint: '',
-    quote_expires_at: '',
+    source: source.value as string,
+    plan_id: (isWalletPayout.value ? null : (props.plans[0]?.id ?? "")) as
+        string | null,
+    type: isWalletPayout.value ? "wallet_payout" : "partial",
+    gross_ngn: "",
+    method: defaultMethod(),
+    destination_reference: destinationFor(defaultMethod()),
+    reason: "",
+    internal_notes: "",
+    preview_fingerprint: "",
+    quote_expires_at: "",
     customer_version: 0,
     assignment_version: 0,
-    plan_version: 0,
+    plan_version: 0 as number | null,
     business_version: 0,
     instruction_attested: false,
     confirmed: false,
 });
+watch(source, (value) => {
+    form.source = value;
+    form.plan_id = value === "wallet" ? null : (props.plans[0]?.id ?? "");
+    form.type = value === "wallet" ? "wallet_payout" : "partial";
+    form.gross_ngn = "";
+    form.method = defaultMethod();
+    form.destination_reference = destinationFor(form.method);
+});
 const previewHttp = useHttp({
-    plan_id: '',
-    type: '',
-    gross_ngn: '',
-    method: '',
-    destination_reference: '',
-    reason: '',
-    internal_notes: '',
+    source: "",
+    plan_id: null as string | null,
+    type: "",
+    gross_ngn: "",
+    method: "",
+    destination_reference: "",
+    reason: "",
+    internal_notes: "",
 });
 const quote = ref<Quote | null>(null);
 const previewFailure = ref<string | null>(null);
@@ -117,7 +150,7 @@ const liveWithdrawalId = computed(
 );
 const reviewOpen = ref(false);
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const selectedCycleKobo = computed(
     () =>
         props.plans.find((plan) => plan.id === form.plan_id)
@@ -125,7 +158,7 @@ const selectedCycleKobo = computed(
 );
 const amountIsFixed = computed(
     () =>
-        (form.type === 'full' || form.type === 'end_of_cycle') &&
+        (form.type === "full" || form.type === "end_of_cycle") &&
         selectedCycleKobo.value !== null,
 );
 watch(
@@ -133,18 +166,15 @@ watch(
     (_, [previousType]) => {
         if (amountIsFixed.value) {
             form.gross_ngn = ((selectedCycleKobo.value ?? 0) / 100).toFixed(2);
-        } else if (previousType !== 'partial' && form.type === 'partial') {
-            form.gross_ngn = '';
+        } else if (previousType !== "partial" && form.type === "partial") {
+            form.gross_ngn = "";
         }
     },
 );
 watch(
     () => form.method,
     (method) => {
-        form.destination_reference =
-            method === 'bank_transfer'
-                ? (props.bank_destinations[0]?.reference ?? '')
-                : props.cash_destination_reference;
+        form.destination_reference = destinationFor(method);
     },
 );
 watch(
@@ -164,6 +194,7 @@ watch(
     },
 );
 async function review(): Promise<void> {
+    previewHttp.source = form.source;
     previewHttp.plan_id = form.plan_id;
     previewHttp.type = form.type;
     previewHttp.gross_ngn = form.gross_ngn;
@@ -190,7 +221,7 @@ async function review(): Promise<void> {
     }
 }
 function failureMessage(error: unknown): string | null {
-    const fallback = 'The quote could not be loaded. Try again.';
+    const fallback = "The quote could not be loaded. Try again.";
     if (!(error instanceof HttpResponseError)) {
         return fallback;
     }
@@ -201,10 +232,10 @@ function failureMessage(error: unknown): string | null {
         const data: unknown = JSON.parse(error.response.data);
         if (
             data &&
-            typeof data === 'object' &&
-            'message' in data &&
-            typeof data.message === 'string' &&
-            data.message !== ''
+            typeof data === "object" &&
+            "message" in data &&
+            typeof data.message === "string" &&
+            data.message !== ""
         ) {
             return data.message;
         }
@@ -224,23 +255,77 @@ function submit(): void {
     <div class="flex flex-col gap-6">
         <PageHeader
             title="Request withdrawal"
-            :description="`Ask for a withdrawal from ${customer.name}'s savings.`"
+            :description="
+                wallet.active
+                    ? `Move ${customer.name}'s plan savings to their wallet, or pay out from the wallet.`
+                    : `Ask for a withdrawal from ${customer.name}'s savings.`
+            "
         />
+        <div
+            v-if="wallet.active"
+            class="flex max-w-3xl flex-wrap gap-2"
+            role="radiogroup"
+            aria-label="Take money from"
+        >
+            <Button
+                type="button"
+                :variant="source === 'plan' ? 'default' : 'outline'"
+                role="radio"
+                :aria-checked="source === 'plan'"
+                @click="source = 'plan'"
+                >Savings plan to wallet</Button
+            >
+            <Button
+                type="button"
+                :variant="source === 'wallet' ? 'default' : 'outline'"
+                role="radio"
+                :aria-checked="source === 'wallet'"
+                @click="source = 'wallet'"
+                >Pay out from wallet</Button
+            >
+            <p
+                v-if="isWalletPayout"
+                class="text-muted-foreground w-full text-sm"
+            >
+                Available in wallet:
+                <span class="text-foreground font-medium">{{
+                    wallet.available_kobo === null
+                        ? "Unavailable"
+                        : money(wallet.available_kobo)
+                }}</span>
+                <template v-if="wallet.live_payout_id">
+                    · A wallet payout is already in progress.
+                    <Link
+                        :href="showWithdrawal.url(wallet.live_payout_id)"
+                        class="text-foreground underline"
+                        >View {{ wallet.live_payout_id }}</Link
+                    >
+                </template>
+            </p>
+        </div>
         <p
-            v-if="methods.length === 0"
+            v-if="payoutMethods.length === 0"
             role="status"
             class="bg-muted rounded-xl p-4 text-sm"
         >
             You can't request withdrawals yet. No payout method is set up.
         </p>
         <Card v-else class="max-w-3xl">
-            <CardHeader><CardTitle>Withdrawal details</CardTitle></CardHeader>
+            <CardHeader
+                ><CardTitle>{{
+                    isWalletPayout
+                        ? "Wallet payout"
+                        : isWalletTransfer
+                          ? "Move savings to wallet"
+                          : "Withdrawal details"
+                }}</CardTitle></CardHeader
+            >
             <CardContent>
                 <form
                     class="grid gap-5 sm:grid-cols-2"
                     @submit.prevent="review"
                 >
-                    <div class="grid gap-2">
+                    <div v-if="!isWalletPayout" class="grid gap-2">
                         <Label for="withdrawal-plan">Savings plan</Label
                         ><Select v-model="form.plan_id"
                             ><SelectTrigger
@@ -270,7 +355,7 @@ function submit(): void {
                             >
                         </p>
                     </div>
-                    <div class="grid gap-2">
+                    <div v-if="!isWalletPayout" class="grid gap-2">
                         <Label for="withdrawal-type">Type</Label
                         ><Select v-model="form.type"
                             ><SelectTrigger
@@ -313,7 +398,15 @@ function submit(): void {
                             Any fees come out of this amount.
                         </p>
                     </div>
-                    <div class="grid gap-2">
+                    <p
+                        v-if="isWalletTransfer"
+                        class="text-muted-foreground text-sm sm:col-span-2"
+                    >
+                        The money moves to the customer's wallet straight away.
+                        Any plan fee comes out first. Pay the customer from the
+                        wallet afterwards.
+                    </p>
+                    <div v-if="!isWalletTransfer" class="grid gap-2">
                         <Label for="withdrawal-method">Pay by</Label
                         ><Select v-model="form.method"
                             ><SelectTrigger
@@ -322,15 +415,17 @@ function submit(): void {
                                 ><SelectValue /></SelectTrigger
                             ><SelectContent
                                 ><SelectItem
-                                    v-if="methods.includes('cash')"
+                                    v-if="payoutMethods.includes('cash')"
                                     value="cash"
                                     >Cash</SelectItem
                                 ><SelectItem
-                                    v-if="methods.includes('bank_transfer')"
+                                    v-if="
+                                        payoutMethods.includes('bank_transfer')
+                                    "
                                     value="bank_transfer"
                                     >Bank transfer</SelectItem
                                 ><SelectItem
-                                    v-if="methods.includes('offline')"
+                                    v-if="payoutMethods.includes('offline')"
                                     value="offline"
                                     >Paid outside platform</SelectItem
                                 ></SelectContent
@@ -376,7 +471,7 @@ function submit(): void {
                         customer does not need to confirm.
                     </p>
                     <p
-                        v-else
+                        v-else-if="form.method === 'cash'"
                         class="text-muted-foreground text-sm sm:col-span-2"
                     >
                         The customer collects the cash in person, then confirms
@@ -453,14 +548,24 @@ function submit(): void {
             <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Check and submit</DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription v-if="isWalletTransfer">
+                        Submitting moves this money to the customer's wallet
+                        now.
+                    </DialogDescription>
+                    <DialogDescription v-else>
                         Submitting sets this money aside while it is reviewed.
                         The customer is not paid yet.
                     </DialogDescription>
                 </DialogHeader>
                 <div v-if="quote" class="grid gap-5 text-sm">
                     <div class="bg-muted/40 rounded-xl p-4">
-                        <p class="text-muted-foreground">Customer receives</p>
+                        <p class="text-muted-foreground">
+                            {{
+                                isWalletTransfer
+                                    ? "Wallet receives"
+                                    : "Customer receives"
+                            }}
+                        </p>
                         <p class="text-2xl font-semibold">
                             {{ money(quote.net_kobo) }}
                         </p>
@@ -471,7 +576,11 @@ function submit(): void {
                     <dl class="divide-border divide-y">
                         <div class="flex justify-between gap-3 py-2">
                             <dt class="text-muted-foreground">
-                                Taken from savings
+                                {{
+                                    isWalletPayout
+                                        ? "Taken from wallet"
+                                        : "Taken from savings"
+                                }}
                             </dt>
                             <dd class="font-medium">
                                 {{ money(quote.gross_kobo) }}
@@ -500,6 +609,7 @@ function submit(): void {
                     <MoreDetails label="Fees and balance">
                         <div class="grid gap-4">
                             <FeeQuoteSummary
+                                v-if="quote.fee_disclosure"
                                 :disclosure="quote.fee_disclosure"
                             />
                             <dl class="grid gap-2 sm:grid-cols-2">
@@ -536,7 +646,12 @@ function submit(): void {
                                         }}
                                     </dd>
                                 </div>
-                                <div>
+                                <div
+                                    v-if="
+                                        quote.position.cycle_available_kobo !==
+                                        undefined
+                                    "
+                                >
                                     <dt class="text-muted-foreground">
                                         Available in this plan
                                     </dt>
@@ -596,7 +711,11 @@ function submit(): void {
                             !form.instruction_attested
                         "
                         @click="submit"
-                        >Submit request</Button
+                        >{{
+                            isWalletTransfer
+                                ? "Move to wallet"
+                                : "Submit request"
+                        }}</Button
                     >
                 </DialogFooter>
             </DialogContent>

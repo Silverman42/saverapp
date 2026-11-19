@@ -22,6 +22,8 @@ use App\Services\CollectionReceivedTime;
 use App\Services\CollectionService;
 use App\Services\CollectionWorkspaceService;
 use App\Services\ResourceScopeService;
+use App\Services\WalletBalanceService;
+use App\Services\WalletFeature;
 use App\Support\PlatformBlocked;
 use App\Support\Toast;
 use Carbon\CarbonImmutable;
@@ -107,6 +109,7 @@ class CollectionController extends Controller
                 'version' => $profile->version, 'assignment_version' => $profile->currentAssignment?->version],
             'collection_methods' => app(CollectionMethodCatalogue::class)->available(),
             'cash_enabled' => app(BusinessSettings::class)->featureEnabled('collection_cash'),
+            'wallet' => $this->walletOption($profile),
             'initial_evidence' => $request->validate(['evidence' => ['nullable', 'uuid']])['evidence'] ?? null,
             'plans' => $plans->map(fn (ThriftPlan $plan): array => [
                 'id' => $plan->plan_id, 'name' => $plan->currentTermsRevision()?->name,
@@ -293,5 +296,18 @@ class CollectionController extends Controller
         }
 
         return $profile;
+    }
+
+    /** @return array{active: bool, available_kobo: int|null} */
+    private function walletOption(CustomerProfile $profile): array
+    {
+        if (! app(WalletFeature::class)->collectionActive()) {
+            return ['active' => false, 'available_kobo' => null];
+        }
+        try {
+            return ['active' => true, 'available_kobo' => app(WalletBalanceService::class)->position($profile)['available_kobo']];
+        } catch (\RuntimeException) {
+            return ['active' => true, 'available_kobo' => null];
+        }
     }
 }

@@ -19,6 +19,8 @@ use App\Models\WithdrawalAttempt;
 use App\Models\WithdrawalRequest;
 use App\Services\AuthorizationService;
 use App\Services\ResourceScopeService;
+use App\Services\WalletBalanceService;
+use App\Services\WalletFeature;
 use App\Services\WithdrawalBalanceService;
 use App\Services\WithdrawalMethodRegistry;
 use App\Services\WithdrawalService;
@@ -67,8 +69,19 @@ class WithdrawalController extends Controller
         $profile = CustomerProfile::query()->where('customer_id', $customer)->firstOrFail();
         Gate::authorize('initiateWithdrawal', $profile);
 
+        $walletActive = app(WalletFeature::class)->active();
+        try {
+            $walletAvailable = $walletActive ? app(WalletBalanceService::class)->position($profile)['available_kobo'] : null;
+        } catch (RuntimeException) {
+            $walletAvailable = null;
+        }
+
         return Inertia::render('withdrawals/Create', [
             'customer' => ['id' => $profile->customer_id, 'name' => $profile->user?->name],
+            'wallet' => ['active' => $walletActive, 'available_kobo' => $walletAvailable,
+                'destination_reference' => 'wallet:'.$profile->id, 'methods' => $walletActive ? $methods->availableMethods('wallet') : [],
+                'live_payout_id' => WithdrawalRequest::query()->where('live_wallet_customer_profile_id', $profile->id)->value('withdrawal_id')],
+            'initial_source' => $walletActive && $request->query('source') === 'wallet' ? 'wallet' : 'plan',
             'plans' => $profile->thriftPlans()->whereIn('status', ['active', 'paused', 'completed'])->get()
                 ->map(fn ($plan): array => ['id' => $plan->plan_id, 'status' => $plan->status->value,
                     'live_withdrawal_id' => WithdrawalRequest::query()->where('live_thrift_plan_id', $plan->id)->value('withdrawal_id'),
@@ -93,7 +106,11 @@ class WithdrawalController extends Controller
         $profile = CustomerProfile::query()->where('customer_id', $customer)->firstOrFail();
         $withdrawal = $service->submit($request->user(), $profile, $request->validated());
 
-        Toast::success('Withdrawal requested', 'The withdrawal is waiting for review.');
+        if ($withdrawal->method === 'wallet') {
+            Toast::success('Moved to wallet', 'The plan savings are now in the customer\'s wallet.');
+        } else {
+            Toast::success('Withdrawal requested', 'The withdrawal is waiting for review.');
+        }
 
         return redirect()->route('withdrawals.show', $withdrawal);
     }

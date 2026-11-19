@@ -1,26 +1,26 @@
 <script setup lang="ts">
-import { Head, Link, router, usePage, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Head, Link, router, usePage, useForm } from "@inertiajs/vue3";
+import { computed, ref } from "vue";
 import {
     ArrowRight,
     ReceiptText,
     Search,
     SlidersHorizontal,
-} from '@lucide/vue';
-import EmptyState from '@/components/EmptyState.vue';
-import FormSheet from '@/components/FormSheet.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import InputError from '@/components/InputError.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { dashboard } from '@/routes';
-import { resolve as resolveIncident } from '@/routes/ledger/incidents';
+} from "@lucide/vue";
+import EmptyState from "@/components/EmptyState.vue";
+import FormSheet from "@/components/FormSheet.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import InputError from "@/components/InputError.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { dashboard } from "@/routes";
+import { resolve as resolveIncident } from "@/routes/ledger/incidents";
 import {
     index as transactionsIndex,
     show as showTransaction,
-} from '@/routes/transactions';
-import { DatePicker } from '@/components/ui/date-picker';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+} from "@/routes/transactions";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -28,16 +28,16 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 
 type Transaction = {
     reference: string;
@@ -68,7 +68,7 @@ const props = defineProps<{
     incidents: Incident[];
     can_resolve_incidents: boolean;
     result: {
-        status: 'ready' | 'unavailable';
+        status: "ready" | "unavailable";
         stale?: boolean;
         data: Transaction[];
         total: number | null;
@@ -95,22 +95,22 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Transactions', href: transactionsIndex() },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Transactions", href: transactionsIndex() },
         ],
     },
 });
 
-const customer = ref(props.filters.customer ?? '');
-const reference = ref(props.filters.reference ?? '');
-const type = ref(props.filters.type ?? '');
+const customer = ref(props.filters.customer ?? "");
+const reference = ref(props.filters.reference ?? "");
+const type = ref(props.filters.type ?? "");
 const from = ref(props.filters.from);
 const to = ref(props.filters.to);
 const pageSize = ref(props.filters.page_size ?? 25);
 const typeSelection = computed({
-    get: () => type.value || '__all',
+    get: () => type.value || "__all",
     set: (value: string) => {
-        type.value = value === '__all' ? '' : value;
+        type.value = value === "__all" ? "" : value;
     },
 });
 const pageSizeSelection = computed({
@@ -127,31 +127,31 @@ const activeFilterCount = computed(
         ((props.filters.page_size ?? 25) !== 25 ? 1 : 0),
 );
 const typeLabels: Record<string, string> = {
-    contribution: 'Contribution',
-    remittance: 'Remittance',
-    withdrawal: 'Withdrawal',
-    wallet_transfer: 'Moved to wallet',
-    wallet_payout: 'Wallet payout',
-    reversal: 'Correction',
-    deduction: 'Deduction',
-    fee_application: 'Fee taken from savings',
-    fee_refund: 'Fee refund owed',
-    external_refund_payment: 'Cash refund',
-    earnings_draw: 'Earnings draw',
+    contribution: "Contribution",
+    remittance: "Remittance",
+    withdrawal: "Withdrawal",
+    wallet_transfer: "Moved to wallet",
+    wallet_payout: "Wallet payout",
+    reversal: "Correction",
+    deduction: "Deduction",
+    fee_application: "Fee taken from savings",
+    fee_refund: "Fee refund owed",
+    external_refund_payment: "Cash refund",
+    earnings_draw: "Earnings draw",
 };
 function typeLabel(value: string): string {
     if (typeLabels[value]) return typeLabels[value];
-    const words = value.replaceAll('_', ' ');
+    const words = value.replaceAll("_", " ");
     return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-const resolution = useForm({ note: '', confirmed: true });
+const resolution = useForm({ note: "", confirmed: true });
 const resolvingIncident = ref<Incident | null>(null);
 function resolve(reference: string): void {
     resolution.post(resolveIncident.url(reference), {
         preserveScroll: true,
         onSuccess: () => {
-            resolution.reset('note');
+            resolution.reset("note");
             resolvingIncident.value = null;
         },
     });
@@ -161,7 +161,7 @@ function applyFromSheet(): void {
     query();
 }
 function clearSheetFilters(): void {
-    customer.value = '';
+    customer.value = "";
     pageSize.value = 25;
     filtersOpen.value = false;
     query();
@@ -184,7 +184,7 @@ function query(cursor?: string): void {
 
 function money(kobo: number): string {
     const absolute = Math.abs(kobo);
-    return `${kobo < 0 ? '−' : ''}₦${(absolute / 100).toLocaleString('en-NG', {
+    return `${kobo < 0 ? "−" : ""}₦${(absolute / 100).toLocaleString("en-NG", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     })}`;
@@ -308,7 +308,7 @@ function money(kobo: number): string {
                     >
                         <div class="min-w-0 space-y-0.5 text-sm">
                             <p class="font-medium capitalize">
-                                {{ incident.category.replaceAll('_', ' ') }}
+                                {{ incident.category.replaceAll("_", " ") }}
                             </p>
                             <p class="text-muted-foreground">
                                 {{ incident.summary }}
@@ -386,7 +386,7 @@ function money(kobo: number): string {
                                     <span class="text-muted-foreground text-xs">
                                         {{
                                             transaction.customer_name ??
-                                            'Business cash'
+                                            "Business cash"
                                         }}
                                         · {{ transaction.occurred_on }} ·
                                         {{ transaction.reference }}
