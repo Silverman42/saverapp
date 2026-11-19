@@ -13,7 +13,7 @@ class UpdateThriftPlanRequest extends FormRequest
         'id', 'plan_id', 'customer_profile_id', 'created_by_user_id', 'status', 'open_customer_profile_id',
         'expected_gross_kobo', 'fee_snapshot_id', 'fee_amount_kobo', 'currency', 'frequency', 'amount_kobo',
         'revision', 'version', 'business_id', 'activity_started_at', 'active_ordinal', 'collection_status',
-        'balance_kobo', 'amount_collected_kobo', 'completed_at', 'closed_at', 'timezone', 'predecessor_plan_id',
+        'balance_kobo', 'amount_collected_kobo', 'completed_at', 'closed_at', 'timezone', 'created_local_date', 'predecessor_plan_id',
     ];
 
     /**
@@ -44,6 +44,7 @@ class UpdateThriftPlanRequest extends FormRequest
             'start_date' => ['required', 'date_format:Y-m-d'],
             'contribution_days' => ['required', 'integer', 'between:1,366'],
             'customer_visible_notes' => ['nullable', 'string', 'max:2000'],
+            'backdate_reason' => ['nullable', 'string', 'max:500'],
             'fee_rule_id' => ['required', 'integer', 'min:1'],
             'fee_rule_version' => ['required', 'integer', 'min:1'],
             'reason' => ['required', 'string', 'min:3', 'max:500'],

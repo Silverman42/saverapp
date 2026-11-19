@@ -340,6 +340,7 @@ class CollectionReadService
             throw new RuntimeException('Plan terms are unavailable.');
         }
         $today = CarbonImmutable::now($revision->timezone)->toDateString();
+        $createdLocalDate = $revision->isBackdated() ? (string) $revision->created_local_date : null;
         $blockedIntervals = [];
         $pauseDate = null;
         $planHistory = $plan->lifecycleEvents()->get();
@@ -419,8 +420,15 @@ class CollectionReadService
                     break;
                 }
             }
+            $preCreation = $createdLocalDate !== null && $slot->due_date < $createdLocalDate;
             $status = match (true) {
                 $funded === $slot->expected_amount_kobo => 'paid',
+                $preCreation => match (true) {
+                    $funded > 0 => 'partial',
+                    $annotation !== null && $annotation->kind === 'skipped' => 'skipped',
+                    $annotation !== null && $annotation->kind === 'missed' => 'missed',
+                    default => 'catch-up',
+                },
                 $classificationUnavailable => 'unavailable',
                 $serviceInterrupted && ! $blocked => 'service-interrupted',
                 $funded > 0 => 'partial',
@@ -435,7 +443,7 @@ class CollectionReadService
                 'target_kobo' => $slot->expected_amount_kobo, 'funded_kobo' => $funded,
                 'remaining_kobo' => $slot->expected_amount_kobo - $funded,
                 'status' => $status, 'advance' => (bool) ($totals[$slot->id]->has_advance ?? false),
-                'blocked' => $blocked,
+                'blocked' => $blocked, 'pre_creation' => $preCreation,
                 'annotation_reason' => $annotation === null ? null : $annotation->reason,
                 'annotation_version' => $annotation === null ? 0 : $annotation->version,
             ];

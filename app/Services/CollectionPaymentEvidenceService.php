@@ -39,7 +39,8 @@ class CollectionPaymentEvidenceService
         $today = CarbonImmutable::now($timezone)->startOfDay();
         $limits = app(BusinessSettings::class)->collectionLimits()['values'];
         if ($date === null || $date->format('Y-m-d') !== $data['received_date'] || $date->gt($today)
-            || $date->lt($today->subDays($limits['late_lookback_days']))
+            || ($date->lt($today->subDays($limits['late_lookback_days']))
+                && ! app(CollectionService::class)->backdatedPlanWindowAllows($customer, $data['received_date']))
             || $amount < $limits['receipt_minimum_kobo'] || $amount > $limits['receipt_maximum_kobo']) {
             throw ValidationException::withMessages(['received_date' => 'Payment date or amount is outside the configured collection limits.']);
         }

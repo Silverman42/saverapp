@@ -48,7 +48,7 @@ class CollectionController extends Controller
         $filters = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', 'in:all,paid,partial,pending,missed,advance-covered,blocked,unavailable,service-interrupted'],
+            'status' => ['nullable', 'in:all,paid,partial,pending,missed,catch-up,advance-covered,blocked,unavailable,service-interrupted'],
         ]);
         $date = $filters['date'] ?? $today;
         if (! is_string($date) || ! preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $date)

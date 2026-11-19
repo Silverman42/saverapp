@@ -15,6 +15,8 @@ use RuntimeException;
  * @property int $contribution_amount_kobo
  * @property string $currency
  * @property string $start_date
+ * @property string|null $created_local_date
+ * @property string|null $backdate_reason
  * @property int $contribution_days
  * @property string $frequency
  * @property string $timezone
@@ -25,6 +27,7 @@ use RuntimeException;
  */
 #[Fillable([
     'thrift_plan_id', 'revision', 'name', 'contribution_amount_kobo', 'currency', 'start_date',
+    'created_local_date', 'backdate_reason',
     'contribution_days', 'frequency', 'timezone', 'business_version', 'expected_gross_kobo',
     'fee_snapshot_id', 'customer_visible_notes', 'reason', 'attested_by_user_id', 'attested_at',
 ])]
@@ -51,6 +54,14 @@ class PlanTermsRevision extends Model
         static::deleting(function (): never {
             throw new RuntimeException('Plan terms revisions cannot be deleted.');
         });
+    }
+
+    /**
+     * Whether the plan starts before the local date it was created on.
+     */
+    public function isBackdated(): bool
+    {
+        return $this->created_local_date !== null && $this->start_date < $this->created_local_date;
     }
 
     /** @return BelongsTo<ThriftPlan, $this> */

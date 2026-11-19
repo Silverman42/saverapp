@@ -13,6 +13,7 @@ use RuntimeException;
  * @property CarbonImmutable $effective_at
  * @property ThriftPlanStatus|null $from_status
  * @property ThriftPlanStatus|null $to_status
+ * @property array<string, mixed>|null $payload
  */
 #[Fillable(['thrift_plan_id', 'plan_operation_attempt_id', 'event_type', 'from_status', 'to_status', 'actor_user_id', 'assignment_version', 'plan_version', 'reason', 'customer_explanation', 'payload', 'effective_at'])]
 class PlanLifecycleEvent extends Model

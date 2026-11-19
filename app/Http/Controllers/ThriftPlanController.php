@@ -69,6 +69,13 @@ class ThriftPlanController extends Controller
             });
         }
 
+        if (($filters['backdated'] ?? null) === '1') {
+            $query->whereHas('termsRevisions', fn (Builder $termsQuery): Builder => $termsQuery
+                ->whereColumn('revision', 'thrift_plans.current_terms_revision')
+                ->whereNotNull('created_local_date')
+                ->whereColumn('start_date', '<', 'created_local_date'));
+        }
+
         $status = $filters['status'] ?? null;
         if (filled($status) && $status !== 'all') {
             $query->where('status', $status);
@@ -119,6 +126,7 @@ class ThriftPlanController extends Controller
                 'terms_revision' => $plan->current_terms_revision,
                 'contribution_amount' => $revision === null ? null : MoneyFormatter::formatNaira($revision->contribution_amount_kobo),
                 'start_date' => $revision?->start_date,
+                'backdated' => $revision?->isBackdated() ?? false,
                 'scheduled_end_date' => $revision === null ? null : $this->scheduledEndDate($revision),
                 'financials' => $funding[$plan->plan_id] ?? $fundingReader->unavailable(),
                 'can_manage' => Gate::forUser($viewer)->allows('managePlan', $plan->customerProfile),
@@ -137,6 +145,7 @@ class ThriftPlanController extends Controller
                 'start_from' => $filters['start_from'] ?? '',
                 'start_to' => $filters['start_to'] ?? '',
                 'agent' => $filters['agent'] ?? '',
+                'backdated' => $filters['backdated'] ?? '',
             ],
             'viewer_type' => $viewer->user_type->value,
         ]);
@@ -161,7 +170,7 @@ class ThriftPlanController extends Controller
         Gate::authorize('managePlan', $customerProfile);
         $this->rejectUnsupportedQuery($request, [
             'preview', 'name', 'amount_ngn', 'start_date', 'contribution_days',
-            'customer_visible_notes', 'fee_rule_id', 'predecessor_plan_id',
+            'customer_visible_notes', 'fee_rule_id', 'predecessor_plan_id', 'backdate_reason',
         ]);
 
         $business = BusinessProfile::current();
@@ -179,6 +188,7 @@ class ThriftPlanController extends Controller
             'contribution_days' => (string) $request->query('contribution_days', $previous['contribution_days'] ?? '30'),
             'customer_visible_notes' => (string) $request->query('customer_visible_notes', ''),
             'fee_rule_id' => (string) $request->query('fee_rule_id', $previous['fee_rule_id'] ?? ($feeOptions->first()->id ?? '')),
+            'backdate_reason' => (string) $request->query('backdate_reason', ''),
         ];
 
         $preview = null;
@@ -191,6 +201,7 @@ class ThriftPlanController extends Controller
                 'customer_visible_notes' => ['nullable', 'string', 'max:2000'],
                 'fee_rule_id' => ['required', 'integer', 'min:1'],
                 'predecessor_plan_id' => ['nullable', 'string', 'max:32'],
+                'backdate_reason' => ['nullable', 'string', 'max:500'],
             ]);
             $preview = $planService->preview($actor, $customerProfile, $validated);
             $form = [
@@ -201,6 +212,7 @@ class ThriftPlanController extends Controller
                 'contribution_days' => (string) $validated['contribution_days'],
                 'customer_visible_notes' => $validated['customer_visible_notes'] ?? '',
                 'fee_rule_id' => (string) $validated['fee_rule_id'],
+                'backdate_reason' => $validated['backdate_reason'] ?? '',
             ];
         }
 
@@ -224,6 +236,7 @@ class ThriftPlanController extends Controller
             ])->values(),
             'form' => $form,
             'preview' => $preview,
+            'today' => $today,
             'attempt_reference' => (string) Str::uuid(),
             'predecessor_plan_id' => $predecessorId,
         ]);
@@ -321,7 +334,7 @@ class ThriftPlanController extends Controller
         }
         $this->rejectUnsupportedQuery($request, [
             'preview', 'name', 'amount_ngn', 'start_date', 'contribution_days',
-            'customer_visible_notes', 'fee_rule_id', 'reason', 'customer_explanation',
+            'customer_visible_notes', 'fee_rule_id', 'reason', 'customer_explanation', 'backdate_reason',
         ]);
 
         $currentRule = $revision->feeSnapshot->feeRule;
@@ -356,6 +369,7 @@ class ThriftPlanController extends Controller
             'fee_rule_version' => $currentRule->version,
             'reason' => (string) $request->query('reason', ''),
             'customer_explanation' => (string) $request->query('customer_explanation', ''),
+            'backdate_reason' => (string) $request->query('backdate_reason', ''),
         ];
         $preview = null;
         if ($request->boolean('preview')) {
@@ -368,6 +382,7 @@ class ThriftPlanController extends Controller
                 'fee_rule_id' => ['required', 'integer', 'min:1'],
                 'reason' => ['nullable', 'string', 'max:500'],
                 'customer_explanation' => ['nullable', 'string', 'max:500'],
+                'backdate_reason' => ['nullable', 'string', 'max:500'],
             ]);
             $preview = $planService->previewRevision($actor, $record, $validated);
             $form = [
@@ -389,6 +404,7 @@ class ThriftPlanController extends Controller
             'business' => ['version' => BusinessProfile::current()->version],
             'form' => $form,
             'preview' => $preview,
+            'today' => CarbonImmutable::now($revision->timezone)->toDateString(),
             'fee_options' => $options,
             'attempt_reference' => (string) Str::uuid(),
             'financial_terms_locked' => $planService->hasCycleActivity($record),
@@ -573,6 +589,7 @@ class ThriftPlanController extends Controller
             'start_from' => ['nullable', 'date_format:Y-m-d'],
             'start_to' => ['nullable', 'date_format:Y-m-d'],
             'agent' => ['nullable', 'string', 'max:100'],
+            'backdated' => ['nullable', 'string', 'in:1'],
         ];
         $prefix = $nested ? 'directory.' : '';
         $validationRules = $nested ? ['directory' => ['nullable', 'array:'.implode(',', array_keys($rules))]] : [];
@@ -634,6 +651,9 @@ class ThriftPlanController extends Controller
                 'formatted_expected_gross' => MoneyFormatter::formatNaira($currentRevision->expected_gross_kobo),
                 'customer_visible_notes' => $currentRevision->customer_visible_notes,
                 'reason' => $isCustomer ? null : $currentRevision->reason,
+                'backdated' => $currentRevision->isBackdated(),
+                'created_local_date' => app(ThriftPlanService::class)->creationLocalDate($plan, $currentRevision),
+                'backdate_reason' => $isCustomer ? null : $currentRevision->backdate_reason,
             ],
             'fee' => $currentFeeSnapshot === null ? null : [
                 'name' => $currentFeeSnapshot->name,

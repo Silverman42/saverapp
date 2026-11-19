@@ -8,6 +8,7 @@ import InputError from '@/components/InputError.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
@@ -45,6 +46,7 @@ type PlanRow = {
     terms_revision: number;
     contribution_amount: string | null;
     start_date: string | null;
+    backdated: boolean;
     scheduled_end_date: string | null;
     financials: FundingSummary;
     savings_summary: PlanSavings;
@@ -71,6 +73,7 @@ const props = defineProps<{
         start_from: string;
         start_to: string;
         agent: string;
+        backdated: string;
     };
     viewer_type: string;
     directory_context: Record<string, string | number>;
@@ -99,6 +102,7 @@ const activeFilterCount = computed(
             props.filters.start_from,
             props.filters.start_to,
             props.viewer_type === 'admin' ? props.filters.agent : '',
+            props.filters.backdated,
         ].filter((value) => value !== '').length +
         (props.filters.per_page !== 25 ? 1 : 0),
 );
@@ -117,6 +121,7 @@ const applyFilters = (): void => {
     if (filters.start_to !== '') query.start_to = filters.start_to;
     if (props.viewer_type === 'admin' && filters.agent.trim() !== '')
         query.agent = filters.agent.trim();
+    if (filters.backdated === '1') query.backdated = '1';
     router.get(
         plansIndex.url({ query }),
         {},
@@ -133,6 +138,7 @@ const clearSheetFilters = (): void => {
     filters.start_from = '';
     filters.start_to = '';
     filters.agent = '';
+    filters.backdated = '';
     filters.per_page = 25;
     filtersOpen.value = false;
     applyFilters();
@@ -266,6 +272,16 @@ const statusVariant = (
                     />
                     <InputError :message="page.props.errors.agent" />
                 </div>
+                <div class="flex items-center gap-3">
+                    <Checkbox
+                        id="plan-backdated"
+                        :model-value="filters.backdated === '1'"
+                        @update:model-value="
+                            filters.backdated = $event === true ? '1' : ''
+                        "
+                    />
+                    <Label for="plan-backdated">Backdated plans only</Label>
+                </div>
                 <div class="grid gap-2">
                     <Label for="plan-page-size">Rows per page</Label>
                     <Select
@@ -379,6 +395,12 @@ const statusVariant = (
                                     >
                                         {{ plan.start_date }} to
                                         {{ plan.scheduled_end_date }}
+                                        <Badge
+                                            v-if="plan.backdated"
+                                            variant="secondary"
+                                            class="ml-1"
+                                            >Backdated</Badge
+                                        >
                                     </div>
                                 </td>
                                 <td class="px-3 py-4">

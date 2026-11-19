@@ -64,6 +64,13 @@ type RevisionPreview = {
         formatted_expected_gross: string;
         customer_visible_notes: string | null;
     };
+    backdate: {
+        backdated: boolean;
+        reason: string | null;
+        created_local_date: string;
+        pre_creation_slots: number;
+        formatted_pre_creation_total: string;
+    };
     fee: {
         rule_id: number;
         rule_version: number;
@@ -89,7 +96,7 @@ const props = defineProps<{
         status_label: string;
         version: number;
         terms_revision: number;
-        current_terms: { name: string };
+        current_terms: { name: string; start_date: string };
     };
     customer: {
         id: string;
@@ -108,8 +115,10 @@ const props = defineProps<{
         fee_rule_version: number;
         reason: string;
         customer_explanation: string;
+        backdate_reason: string;
     };
     preview: RevisionPreview | null;
+    today: string;
     fee_options: FeeOption[];
     attempt_reference: string;
     financial_terms_locked: boolean;
@@ -163,6 +172,7 @@ const previewGeneralErrors = computed(() =>
                 'fee_rule_id',
                 'reason',
                 'customer_explanation',
+                'backdate_reason',
             ].includes(field),
     ),
 );
@@ -170,6 +180,15 @@ const previewGeneralErrors = computed(() =>
 const focusPreviewNotice = (): void => {
     if (previewMessage.value) void nextTick(() => previewNotice.value?.focus());
 };
+
+const needsBackdateReason = computed(
+    () =>
+        form.start_date !== props.plan.current_terms.start_date &&
+        form.start_date !== '' &&
+        form.start_date < props.today,
+);
+const submittedBackdateReason = (): string =>
+    needsBackdateReason.value ? form.backdate_reason.trim() : '';
 
 const previewIsCurrent = computed(() => {
     const preview = props.preview;
@@ -183,6 +202,8 @@ const previewIsCurrent = computed(() => {
         preview.terms.customer_visible_notes ===
             (form.customer_visible_notes.trim() || null) &&
         String(preview.fee.rule_id) === String(form.fee_rule_id) &&
+        (!needsBackdateReason.value ||
+            preview.backdate.reason === submittedBackdateReason()) &&
         preview.terms.contribution_amount_kobo === amountKobo()
     );
 });
@@ -195,6 +216,7 @@ watch(
         form.contribution_days,
         form.customer_visible_notes,
         form.fee_rule_id,
+        form.backdate_reason,
     ],
     () => {
         form.customer_agreement_attested = false;
@@ -225,6 +247,8 @@ const requestPreview = (): void => {
     if (form.reason.trim() !== '') query.reason = form.reason;
     if (form.customer_explanation.trim() !== '')
         query.customer_explanation = form.customer_explanation;
+    if (submittedBackdateReason() !== '')
+        query.backdate_reason = submittedBackdateReason();
 
     router.get(
         editPlan(props.plan.id, { query }).url,
@@ -297,6 +321,7 @@ const submit = (): void => {
         assignment_version: props.preview?.assignment_version ?? 0,
         business_version: props.preview?.business_version ?? 0,
         fee_rule_version: props.preview?.fee.rule_version ?? 0,
+        backdate_reason: submittedBackdateReason(),
     })).patch(updatePlan(props.plan.id).url, { preserveScroll: true });
 };
 </script>
@@ -412,6 +437,36 @@ const submit = (): void => {
                             class="text-destructive text-sm"
                         >
                             {{ form.errors.start_date }}
+                        </p>
+                    </div>
+                    <div
+                        v-if="needsBackdateReason"
+                        class="grid gap-2 sm:col-span-2"
+                    >
+                        <Label for="edit-plan-backdate-reason"
+                            >Reason for backdating</Label
+                        >
+                        <textarea
+                            id="edit-plan-backdate-reason"
+                            :disabled="busy"
+                            v-model="form.backdate_reason"
+                            rows="2"
+                            maxlength="500"
+                            aria-describedby="edit-plan-backdate-help"
+                            class="border-input bg-background focus-visible:ring-ring/30 min-h-16 w-full rounded-xl border px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2"
+                        />
+                        <p
+                            id="edit-plan-backdate-help"
+                            class="text-muted-foreground text-sm"
+                        >
+                            Days before the plan was set up are catch-up days.
+                        </p>
+                        <p
+                            v-if="form.errors.backdate_reason"
+                            role="alert"
+                            class="text-destructive text-sm"
+                        >
+                            {{ form.errors.backdate_reason }}
                         </p>
                     </div>
                     <div class="grid gap-2">
@@ -542,6 +597,17 @@ const submit = (): void => {
                 <p class="text-muted-foreground text-sm">
                     Go through the new terms with the customer before you save.
                 </p>
+                <div
+                    v-if="preview.backdate.backdated"
+                    class="flex flex-wrap items-start gap-2 rounded-xl border p-4 text-sm"
+                >
+                    <Badge variant="secondary">Backdated</Badge>
+                    <p>
+                        Set up on {{ preview.backdate.created_local_date }}. The
+                        {{ preview.backdate.pre_creation_slots }} days before
+                        that are catch-up days, not missed days.
+                    </p>
+                </div>
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div class="bg-muted/40 rounded-xl p-4">
                         <p class="text-muted-foreground text-xs">

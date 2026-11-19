@@ -1,5 +1,14 @@
 # Version 2 Module Implementation Register
 
+### Module updates (backdated plan creation), 19 November 2026
+
+Product-owner change to Modules 06 and 07, recorded in `implementation_plan/module-updates-2026-11.md`. The specs carry TPC-FR-039–041, TPC-AC-052–058 (TPC-AC-012 rewritten), COL-041/042 and COL-AC-064/065.
+
+- **Specified.** Past plan start dates in open financial months with a backdate reason; Catch-up pre-creation slots; late-receipt lookback lifted for a backdated plan's pre-creation days; renewal starts on or after predecessor closure.
+- **Code.** Migration `2026_11_19_173708_add_backdate_fields_to_plan_terms_revisions` adds `created_local_date` (backfilled) and `backdate_reason` to `plan_terms_revisions`. `ThriftPlanService` accepts past start dates in open months with a reason, rechecks under lock at commit, keeps an unchanged past start date on amendment, and floors renewals at the predecessor closure date. Collections lift the lookback for a backdated plan's pre-creation days; the thrift card and workspace show Catch-up. Create, Edit, Show and Index plan pages and the collections workspace updated.
+- **Evidence.** `BackdatedPlanTest` (13 cases) and the rewritten TPC-AC-012 case pass. Plan/collection regression set: 823 passed, 201 skipped, 1 failed (`PlanAuditAcceptanceTest` bound settlement denial, which also fails on `main`). Pint, PHPStan (no new errors), `vue-tsc`, `vp check` and build pass.
+- **Open.** No browser check yet. Full PHP suite not run.
+
 ### Module updates (offline Customers, address search, registration fee options), 27 October 2026
 
 Product-owner changes to Modules 04 and 05, recorded in `implementation_plan/module-updates-2026-10.md`. The specs carry CAM-FR-039/040, CAM-AC-058/059, FEE-FR-037/038 and FEE-AC-049/050.

@@ -214,6 +214,7 @@ function applyFilters(): void {
                         <SelectItem value="partial">Part paid</SelectItem>
                         <SelectItem value="paid">Paid</SelectItem>
                         <SelectItem value="missed">Missed</SelectItem>
+                        <SelectItem value="catch-up">Catch-up</SelectItem>
                         <SelectItem value="advance-covered"
                             >Paid early</SelectItem
                         >
@@ -366,9 +367,12 @@ function applyFilters(): void {
                             <Button
                                 v-if="
                                     viewer_type === 'agent' &&
-                                    ['pending', 'partial', 'missed'].includes(
-                                        slot.status,
-                                    )
+                                    [
+                                        'pending',
+                                        'partial',
+                                        'missed',
+                                        'catch-up',
+                                    ].includes(slot.status)
                                 "
                                 as-child
                                 size="sm"

@@ -85,7 +85,12 @@ class CollectionService
         $business = BusinessProfile::current();
         $today = CarbonImmutable::now($business->timezone)->startOfDay();
         $received = CarbonImmutable::createFromFormat('!Y-m-d', $data['received_date'], $business->timezone);
-        if ($received === null || $received->gt($today) || $received->lt($today->subDays($limits['late_lookback_days']))) {
+        $usesBackdatedPlanLookback = $received !== null && ! $received->gt($today)
+            && $received->lt($today->subDays($limits['late_lookback_days']))
+            && filled($data['plan_id'] ?? null)
+            && $this->backdatedPlanWindowAllows($customer, $received->toDateString(), (string) $data['plan_id']);
+        if ($received === null || $received->gt($today)
+            || ($received->lt($today->subDays($limits['late_lookback_days'])) && ! $usesBackdatedPlanLookback)) {
             throw ValidationException::withMessages(['received_date' => ['Choose today or a received date within the configured late lookback.']]);
         }
         if ($received->lt($today) && blank($data['late_reason'] ?? null)) {
@@ -246,8 +251,26 @@ class CollectionService
             'plan_timezone' => $planTimezone, 'plan_received_date' => $planReceivedDate,
             'savings_kobo' => $savings, 'fees_kobo' => $feeTotal, 'tender_kobo' => $total,
             'fee_items' => $feeItems, 'allocations' => $allocations, 'slot_options' => $slotOptions,
+            'backdated_plan_lookback' => $usesBackdatedPlanLookback,
             'preview_fingerprint' => $fingerprint,
         ];
+    }
+
+    /**
+     * Whether a received date older than the late lookback falls within a backdated plan's pre-creation days (COL-041).
+     *
+     * With no plan reference, the Customer's open plan is checked.
+     */
+    public function backdatedPlanWindowAllows(CustomerProfile $customer, string $receivedDate, ?string $planId = null): bool
+    {
+        $plan = ThriftPlan::query()->where('customer_profile_id', $customer->id)
+            ->when($planId !== null, fn ($query) => $query->where('plan_id', $planId),
+                fn ($query) => $query->whereNotNull('open_customer_profile_id'))
+            ->first();
+        $revision = $plan?->currentTermsRevision();
+
+        return $revision !== null && $revision->isBackdated()
+            && $receivedDate >= $revision->start_date && $receivedDate < (string) $revision->created_local_date;
     }
 
     /** @param array<string, mixed> $data */
@@ -365,6 +388,7 @@ class CollectionService
                 'recording_agent_profile_id' => $custodianId,
                 'received_date' => $preview['received_date'], 'tender_kobo' => $preview['tender_kobo'],
                 'savings_kobo' => $preview['savings_kobo'], 'fee_kobo' => $preview['fees_kobo'],
+                'backdated_plan_lookback' => $preview['backdated_plan_lookback'],
                 'assignment_id' => $receipt->assignment_id, 'business_version' => $receipt->business_version,
                 'currency' => 'NGN', 'timezone' => $receipt->timezone, 'method' => $receipt->method,
                 'custody_account_code' => $receipt->custody_account_code, 'method_version_id' => $receipt->collection_method_version_id,

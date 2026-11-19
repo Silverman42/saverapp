@@ -1000,11 +1000,15 @@ test('invalid starts fail and a future plan occupies open-cycle capacity', funct
     $data = httpPlanData($customer, httpPlanRule($agent->user));
     $this->actingAs($agent->user);
 
-    foreach (['2027-02-09', '2028-02-11'] as $date) {
+    foreach (['2027-02-09' => 'backdate_reason', '2028-02-11' => 'start_date'] as $date => $field) {
         $this->getJson(route('customers.plans.create', [
             'customer' => $customer->customer_id, 'preview' => 1, ...httpPlanPreviewData($data), 'start_date' => $date,
-        ]))->assertUnprocessable()->assertInvalid(['start_date']);
+        ]))->assertUnprocessable()->assertInvalid([$field]);
     }
+    $this->getJson(route('customers.plans.create', [
+        'customer' => $customer->customer_id, 'preview' => 1, ...httpPlanPreviewData($data), 'start_date' => '2027-02-09',
+        'backdate_reason' => 'Customer started yesterday.',
+    ]))->assertUnprocessable()->assertInvalid(['start_date' => 'February 2027 is not open for posting.']);
     $this->getJson(route('customers.plans.create', [
         'customer' => $customer->customer_id, 'preview' => 1, ...httpPlanPreviewData($data), 'scheduled_end_date' => '2027-03-01',
     ]))->assertUnprocessable()->assertInvalid(['scheduled_end_date']);

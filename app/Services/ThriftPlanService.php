@@ -58,7 +58,7 @@ class ThriftPlanService
         $this->assertBusinessTimezone($business->timezone);
         $this->assertCustomerCanCreate($customer);
         $this->assertNoOpenCycle($customer);
-        $this->assertPreviewPredecessor($actor, $customer, $data['predecessor_plan_id'] ?? null);
+        $predecessor = $this->assertPreviewPredecessor($actor, $customer, $data['predecessor_plan_id'] ?? null);
 
         $assignment = $customer->currentAssignment;
         if ($assignment === null) {
@@ -67,6 +67,8 @@ class ThriftPlanService
 
         $rule = $this->currentPlanRule((int) ($data['fee_rule_id'] ?? 0));
         $terms = $this->normalizeTerms($data, $business->timezone);
+        $backdateReason = $this->resolveBackdateReason($terms, $data, $business->timezone, null,
+            $this->predecessorClosedLocalDate($predecessor, $business->timezone), false);
         $expectedGrossKobo = $this->checkedMultiply($terms['contribution_amount_kobo'], $terms['contribution_days']);
         $previewBasisKobo = $this->feeBasisForPreview($rule, $terms['contribution_amount_kobo'], $expectedGrossKobo);
         $quote = $this->feeObligationService->quote($rule, $previewBasisKobo, 'plan_preview', $customer->customer_id);
@@ -89,6 +91,7 @@ class ThriftPlanService
             $rule->id,
             $rule->version,
             filled($data['predecessor_plan_id'] ?? null) ? (string) $data['predecessor_plan_id'] : null,
+            $backdateReason,
         );
 
         return [
@@ -112,6 +115,7 @@ class ThriftPlanService
                 'formatted_expected_gross' => MoneyFormatter::formatNaira($expectedGrossKobo),
                 'scheduled_end_date' => $startDate->addDays($terms['contribution_days'] - 1)->toDateString(),
             ],
+            'backdate' => $this->backdateSummary($terms, CarbonImmutable::now($business->timezone)->toDateString(), $backdateReason),
             'fee' => [
                 'rule_id' => $rule->id,
                 'rule_version' => $rule->version,
@@ -158,7 +162,7 @@ class ThriftPlanService
         $business = BusinessProfile::current();
 
         $hasActivity = $this->hasCycleActivity($plan);
-        $terms = $this->normalizeTerms($data, $currentRevision->timezone, $hasActivity ? $currentRevision->start_date : null);
+        $terms = $this->normalizeTerms($data, $currentRevision->timezone, $currentRevision->start_date);
         $submittedRuleId = (int) ($data['fee_rule_id'] ?? 0);
         $rule = $submittedRuleId === $currentRevision->feeSnapshot->fee_rule_id
             ? FeeRule::query()->whereKey($submittedRuleId)->firstOrFail()
@@ -175,6 +179,7 @@ class ThriftPlanService
         if (! $hasActivity && $this->hasFeeObligations($plan)) {
             throw new ConflictHttpException('A fee obligation exists for this plan. Terms cannot be amended.');
         }
+        $backdateReason = $this->resolveBackdateReason($terms, $data, $currentRevision->timezone, $currentRevision, null, false);
 
         $previewBasisKobo = $this->feeBasisForPreview($rule, $terms['contribution_amount_kobo'], $expectedGrossKobo);
         $quote = $this->feeObligationService->quote($rule, $previewBasisKobo, 'plan_preview', $plan->plan_id);
@@ -200,6 +205,7 @@ class ThriftPlanService
             $terms,
             $rule,
             $financialTermsChanged,
+            $backdateReason,
         );
 
         return [
@@ -218,6 +224,7 @@ class ThriftPlanService
                 'formatted_expected_gross' => MoneyFormatter::formatNaira($expectedGrossKobo),
                 'scheduled_end_date' => $startDate->addDays($terms['contribution_days'] - 1)->toDateString(),
             ],
+            'backdate' => $this->backdateSummary($terms, $this->creationLocalDate($plan, $currentRevision), $backdateReason),
             'fee' => [
                 'rule_id' => $rule->id,
                 'rule_version' => $rule->version,
@@ -306,6 +313,10 @@ class ThriftPlanService
 
             $this->assertCustomerCanCreate($lockedCustomer);
             $predecessor = $this->lockRenewalPredecessor($context->actor, $lockedCustomer, $data['predecessor_plan_id'] ?? null);
+            $backdateReason = $this->resolveBackdateReason($terms, $data, $business->timezone, null,
+                $this->predecessorClosedLocalDate($predecessor, $business->timezone), true);
+            $creationLocalDate = CarbonImmutable::now($business->timezone)->toDateString();
+            $backdate = $this->backdateSummary($terms, $creationLocalDate, $backdateReason);
 
             $expectedGrossKobo = $this->checkedMultiply($terms['contribution_amount_kobo'], $terms['contribution_days']);
             $previewBasisKobo = $this->feeBasisForPreview($rule, $terms['contribution_amount_kobo'], $expectedGrossKobo);
@@ -318,6 +329,7 @@ class ThriftPlanService
                 $rule->id,
                 $rule->version,
                 $predecessor?->plan_id,
+                $backdateReason,
             );
             $currentFingerprint = hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR));
             if ($submittedFingerprint === '' || ! hash_equals($currentFingerprint, $submittedFingerprint)) {
@@ -372,6 +384,8 @@ class ThriftPlanService
                 snapshot: $snapshot,
                 actor: $context->actor,
                 reason: null,
+                createdLocalDate: $creationLocalDate,
+                backdateReason: $backdateReason,
             );
 
             $this->createSlots($plan, $revision, $terms);
@@ -390,6 +404,8 @@ class ThriftPlanService
                     'fee_snapshot_id' => $snapshot->id,
                     'agreement_attested' => true,
                     'predecessor_plan_id' => $predecessor?->plan_id,
+                    ...($backdate['backdated'] ? ['backdated' => true, 'start_date' => $terms['start_date'],
+                        'created_local_date' => $creationLocalDate, 'pre_creation_slots' => $backdate['pre_creation_slots']] : []),
                 ],
             );
             $this->createNotificationIntents($lockedCustomer, $plan, $event, $context->currentAgentProfile?->user_id);
@@ -407,6 +423,8 @@ class ThriftPlanService
                     'assignment_version' => $context->currentAssignment->version,
                     'predecessor_plan_id' => $predecessor?->plan_id,
                     'agreement_attested' => true,
+                    ...($backdateReason !== null ? ['backdated' => $backdate['backdated'], 'created_local_date' => $creationLocalDate,
+                        'pre_creation_slots' => $backdate['pre_creation_slots'], 'reason' => $backdateReason] : []),
                 ],
                 actor: $context->actor,
 
@@ -477,7 +495,7 @@ class ThriftPlanService
             $this->assertBusinessTimezone($currentRevision->timezone);
 
             $hasActivity = $this->hasCycleActivity($planRecord, true);
-            $terms = $this->normalizeTerms($data, $currentRevision->timezone, $hasActivity ? $currentRevision->start_date : null);
+            $terms = $this->normalizeTerms($data, $currentRevision->timezone, $currentRevision->start_date);
             $submittedRuleId = (int) $data['fee_rule_id'];
             $rule = $submittedRuleId === $currentRevision->feeSnapshot->fee_rule_id
                 ? FeeRule::query()->whereKey($submittedRuleId)->lockForUpdate()->firstOrFail()
@@ -500,6 +518,7 @@ class ThriftPlanService
             if (! $hasActivity && $this->hasFeeObligations($planRecord, true)) {
                 throw new ConflictHttpException('A fee obligation exists for this plan. Terms cannot be amended.');
             }
+            $backdateReason = $this->resolveBackdateReason($terms, $data, $currentRevision->timezone, $currentRevision, null, true);
             if (! (bool) ($data['customer_agreement_attested'] ?? false)) {
                 throw ValidationException::withMessages(['customer_agreement_attested' => ['Confirm that the Customer agreed to the revised plan terms.']]);
             }
@@ -511,6 +530,7 @@ class ThriftPlanService
                 $terms,
                 $rule,
                 $financialTermsChanged,
+                $backdateReason,
             );
             if (! hash_equals($previewFingerprint, (string) ($data['preview_fingerprint'] ?? ''))) {
                 throw new ConflictHttpException('Plan details changed after preview. Review and confirm the current agreement.');
@@ -556,6 +576,8 @@ class ThriftPlanService
                 snapshot: $snapshot,
                 actor: $context->actor,
                 reason: trim((string) $data['reason']),
+                createdLocalDate: $this->creationLocalDate($planRecord, $currentRevision),
+                backdateReason: $backdateReason,
             );
 
             if (! $hasActivity && $financialTermsChanged) {
@@ -769,8 +791,8 @@ class ThriftPlanService
 
         $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $startDate, $timezone);
         $today = CarbonImmutable::now($timezone)->startOfDay();
-        if ($startDate !== $retainedStartDate && ($selectedDate->lt($today) || $selectedDate->gt($today->addDays(365)))) {
-            throw ValidationException::withMessages(['start_date' => ['Start date must be today or within the next 365 calendar days.']]);
+        if ($startDate !== $retainedStartDate && $selectedDate->gt($today->addDays(365))) {
+            throw ValidationException::withMessages(['start_date' => ['Start date must be within the next 365 calendar days.']]);
         }
         if ($notes !== null && mb_strlen($notes) > 2000) {
             throw ValidationException::withMessages(['customer_visible_notes' => ['Customer-visible notes must not exceed 2,000 characters.']]);
@@ -783,6 +805,100 @@ class ThriftPlanService
             'contribution_days' => (int) $days,
             'customer_visible_notes' => $notes,
         ];
+    }
+
+    /**
+     * Validate a start date before today and return the backdate reason that applies to the terms.
+     *
+     * An unchanged start date keeps the current revision's reason. A past start date needs a reason and every
+     * financial month from its month through the current month must be open (TPC-FR-039).
+     *
+     * @param  array{name: string, contribution_amount_kobo: int, start_date: string, contribution_days: int, customer_visible_notes: ?string}  $terms
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveBackdateReason(
+        array $terms,
+        array $data,
+        string $timezone,
+        ?PlanTermsRevision $currentRevision,
+        ?string $earliestStartDate,
+        bool $lock,
+    ): ?string {
+        if ($currentRevision !== null && $terms['start_date'] === $currentRevision->start_date) {
+            return $currentRevision->backdate_reason;
+        }
+        if ($earliestStartDate !== null && $terms['start_date'] < $earliestStartDate) {
+            throw ValidationException::withMessages(['start_date' => ['A new page must start on or after '.$earliestStartDate.', the day the previous page closed.']]);
+        }
+
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+        if ($terms['start_date'] >= $today->toDateString()) {
+            return null;
+        }
+
+        $reason = trim((string) ($data['backdate_reason'] ?? ''));
+        if ($reason === '' || mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages(['backdate_reason' => ['Explain why this plan starts before today, in no more than 500 characters.']]);
+        }
+
+        $periods = app(FinancialPeriodService::class);
+        $month = CarbonImmutable::createFromFormat('!Y-m-d', $terms['start_date'], $timezone)->startOfMonth();
+        while ($month->lte($today)) {
+            try {
+                $periods->assertOpen($month->toDateString(), $timezone, $lock);
+            } catch (ConflictHttpException) {
+                $message = $month->format('F Y').' is not open for posting. Choose a later start date or ask an Admin to open that month.';
+
+                throw $lock
+                    ? new ConflictHttpException($message.' Review the current plan preview.')
+                    : ValidationException::withMessages(['start_date' => [$message]]);
+            }
+            $month = $month->addMonth();
+        }
+
+        return $reason;
+    }
+
+    /**
+     * Summarise the slots that fall before the plan's creation date.
+     *
+     * @param  array{name: string, contribution_amount_kobo: int, start_date: string, contribution_days: int, customer_visible_notes: ?string}  $terms
+     * @return array{backdated: bool, reason: ?string, created_local_date: string, pre_creation_slots: int, formatted_pre_creation_total: string}
+     */
+    private function backdateSummary(array $terms, string $creationLocalDate, ?string $reason): array
+    {
+        $preCreationSlots = 0;
+        if ($terms['start_date'] < $creationLocalDate) {
+            $daysBefore = (int) CarbonImmutable::createFromFormat('!Y-m-d', $terms['start_date'], 'UTC')
+                ->diffInDays(CarbonImmutable::createFromFormat('!Y-m-d', $creationLocalDate, 'UTC'));
+            $preCreationSlots = min($terms['contribution_days'], $daysBefore);
+        }
+
+        return [
+            'backdated' => $preCreationSlots > 0,
+            'reason' => $reason,
+            'created_local_date' => $creationLocalDate,
+            'pre_creation_slots' => $preCreationSlots,
+            'formatted_pre_creation_total' => MoneyFormatter::formatNaira($this->checkedMultiply($terms['contribution_amount_kobo'], $preCreationSlots)),
+        ];
+    }
+
+    /**
+     * The local date the plan was created on, used to identify pre-creation slots.
+     */
+    public function creationLocalDate(ThriftPlan $plan, PlanTermsRevision $revision): string
+    {
+        return $revision->created_local_date
+            ?? $plan->created_at->toImmutable()->setTimezone($revision->timezone)->toDateString();
+    }
+
+    private function predecessorClosedLocalDate(?ThriftPlan $predecessor, string $timezone): ?string
+    {
+        $closedAt = $predecessor?->lifecycleEvents()
+            ->whereIn('to_status', [ThriftPlanStatus::Closed->value, ThriftPlanStatus::Cancelled->value])
+            ->latest('effective_at')->first()?->effective_at;
+
+        return $closedAt?->setTimezone($timezone)->toDateString();
     }
 
     private function currentPlanRule(int $ruleId, bool $forUpdate = false, bool $mustMatchPreview = false): FeeRule
@@ -878,10 +994,10 @@ class ThriftPlanService
         return $predecessor;
     }
 
-    private function assertPreviewPredecessor(User $actor, CustomerProfile $customer, mixed $predecessorPlanId): void
+    private function assertPreviewPredecessor(User $actor, CustomerProfile $customer, mixed $predecessorPlanId): ?ThriftPlan
     {
         if ($predecessorPlanId === null || $predecessorPlanId === '') {
-            return;
+            return null;
         }
 
         $predecessor = ThriftPlan::query()
@@ -895,6 +1011,8 @@ class ThriftPlanService
         if ($predecessor->status === ThriftPlanStatus::Closed && ! app(PlanSettlementService::class)->preview($actor, $predecessor)['can_close']) {
             throw new ConflictHttpException('The closed predecessor has unresolved settlement effects.');
         }
+
+        return $predecessor;
     }
 
     public function canCancelUnusedCycle(ThriftPlan $plan): bool
@@ -951,6 +1069,7 @@ class ThriftPlanService
         int $feeRuleId,
         int $feeRuleVersion,
         ?string $predecessorPlanId = null,
+        ?string $backdateReason = null,
     ): array {
         return [
             'customer_profile_id' => $customer->id,
@@ -966,6 +1085,7 @@ class ThriftPlanService
             'contribution_days' => $terms['contribution_days'],
             'customer_visible_notes' => $terms['customer_visible_notes'],
             'predecessor_plan_id' => $predecessorPlanId,
+            'backdate_reason' => $backdateReason,
         ];
     }
 
@@ -978,6 +1098,7 @@ class ThriftPlanService
         array $terms,
         FeeRule $rule,
         bool $financialTermsChanged,
+        ?string $backdateReason = null,
     ): string {
         return hash('sha256', json_encode([
             'plan_id' => $plan->plan_id,
@@ -992,6 +1113,7 @@ class ThriftPlanService
             'fee_rule_version' => $rule->version,
             'financial_terms_changed' => $financialTermsChanged,
             'early_termination_policy_version' => $financialTermsChanged ? EarlyTerminationPolicy::VERSION : $plan->currentTermsRevision()?->feeSnapshot?->early_termination_policy_version,
+            'backdate_reason' => $backdateReason,
         ], JSON_THROW_ON_ERROR));
     }
 
@@ -1047,6 +1169,8 @@ class ThriftPlanService
         FeeSnapshot $snapshot,
         User $actor,
         ?string $reason,
+        string $createdLocalDate,
+        ?string $backdateReason,
     ): PlanTermsRevision {
         return PlanTermsRevision::create([
             'thrift_plan_id' => $plan->id,
@@ -1055,6 +1179,8 @@ class ThriftPlanService
             'contribution_amount_kobo' => $terms['contribution_amount_kobo'],
             'currency' => 'NGN',
             'start_date' => $terms['start_date'],
+            'created_local_date' => $createdLocalDate,
+            'backdate_reason' => $backdateReason,
             'contribution_days' => $terms['contribution_days'],
             'frequency' => 'daily',
             'timezone' => $timezone,
@@ -1288,8 +1414,16 @@ class ThriftPlanService
 
     private function notificationMessage(PlanLifecycleEvent $event): string
     {
+        $payload = $event->payload ?? [];
+        $backdated = ($payload['backdated'] ?? false) === true
+            && is_string($payload['start_date'] ?? null) && is_string($payload['created_local_date'] ?? null);
+
         return match ($event->event_type) {
-            'created' => 'A daily thrift plan has been created for your account.',
+            'created' => $backdated
+                ? 'A daily thrift plan has been created for your account. It started on '
+                    .CarbonImmutable::parse($payload['start_date'])->format('j M Y')
+                    .'; days before '.CarbonImmutable::parse($payload['created_local_date'])->format('j M Y').' are catch-up days.'
+                : 'A daily thrift plan has been created for your account.',
             'renewed' => 'A new daily thrift plan has been created from a cancelled plan.',
             'terms_amended' => 'The terms of your daily thrift plan have been amended.',
             'details_corrected' => 'The name or Customer-visible notes on your daily thrift plan have been updated.',

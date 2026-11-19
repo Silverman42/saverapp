@@ -93,6 +93,9 @@ type PlanData = {
         formatted_expected_gross: string;
         customer_visible_notes: string | null;
         reason: string | null;
+        backdated: boolean;
+        created_local_date: string;
+        backdate_reason: string | null;
     } | null;
     fee: {
         name: string;
@@ -546,6 +549,26 @@ const statusVariant = (
                         <dd class="mt-0.5 font-medium">
                             {{ plan.current_terms.start_date }} to
                             {{ plan.current_terms.scheduled_end_date }}
+                            <Badge
+                                v-if="plan.current_terms.backdated"
+                                variant="secondary"
+                                class="ml-1"
+                                >Backdated</Badge
+                            >
+                            <span
+                                v-if="plan.current_terms.backdated"
+                                class="text-muted-foreground block text-xs font-normal"
+                                >Plan started on
+                                {{ plan.current_terms.start_date }}, set up on
+                                {{ plan.current_terms.created_local_date }}.
+                                Earlier days are catch-up days.</span
+                            >
+                            <span
+                                v-if="plan.current_terms.backdate_reason"
+                                class="text-muted-foreground block text-xs font-normal"
+                                >Reason:
+                                {{ plan.current_terms.backdate_reason }}</span
+                            >
                         </dd>
                     </div>
                     <div>
