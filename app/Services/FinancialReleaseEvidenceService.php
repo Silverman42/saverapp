@@ -15,12 +15,15 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class FinancialReleaseEvidenceService
 {
-    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email', 'emergency_recovery'];
+    public const CAPABILITIES = ['collection_cash', 'withdrawal_cash', 'plan_creation', 'collections', 'payout_execution', 'reversal_posting', 'statement_pdf', 'report_exports', 'manual_charges', 'fee_refunds', 'cash_disbursements', 'retention_restore', 'collection_transfer', 'collection_pos', 'collection_other', 'timezone', 'withdrawal_transfer', 'withdrawal_offline', 'customer_registration', 'transactional_email', 'emergency_recovery', 'wallet', 'collection_wallet'];
 
     public const ROLES = ['finance_mapping', 'delegated_permissions', 'retention_key_custody', 'operations', 'acceptance', 'enablement'];
 
     /** Ledger accounts only the non-cash collection capabilities depend on. */
     public const NONCASH_LEDGER_ACCOUNTS = ['business_bank_ngn', 'payment_clearing_ngn'];
+
+    /** Accounts owned by an optional capability: leaving them unmapped blocks only that capability, never the core release. */
+    public const OPTIONAL_LEDGER_ACCOUNTS = [...self::NONCASH_LEDGER_ACCOUNTS, 'customer_wallet_liability_ngn'];
 
     public function dependencyHash(): string
     {
@@ -74,7 +77,7 @@ class FinancialReleaseEvidenceService
     public function unmappedLedgerAccounts(bool $includeNoncash = false): array
     {
         return LedgerAccount::query()->where('mapping_status', '!=', 'mapped')
-            ->when(! $includeNoncash, fn ($query) => $query->whereNotIn('code', self::NONCASH_LEDGER_ACCOUNTS))
+            ->when(! $includeNoncash, fn ($query) => $query->whereNotIn('code', self::OPTIONAL_LEDGER_ACCOUNTS))
             ->orderBy('code')->get()->map(fn (LedgerAccount $account): string => $account->code->value)->all();
     }
 
@@ -119,7 +122,7 @@ class FinancialReleaseEvidenceService
     {
         $rows = Schema::hasTable('financial_release_evidence') ? DB::table('financial_release_evidence')->orderBy('version')->get()->groupBy('capability') : collect();
         $hash = $this->dependencyHash();
-        $mappingUnavailable = LedgerAccount::query()->whereNotIn('code', self::NONCASH_LEDGER_ACCOUNTS)->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
+        $mappingUnavailable = LedgerAccount::query()->whereNotIn('code', self::OPTIONAL_LEDGER_ACCOUNTS)->where('mapping_status', '!=', 'mapped')->exists() || blank(config('app.financial_release_revision'));
         $methodUnavailable = false;
         try {
             app(CashMethodCatalogue::class)->version('withdrawal');
@@ -146,6 +149,20 @@ class FinancialReleaseEvidenceService
                 && app(PayoutProvider::class)->key() !== 'unavailable';
 
             return $bankAvailable ? [] : ['enabled and certified bank payout provider'];
+        }
+        if ($capability === 'wallet' || $capability === 'collection_wallet') {
+            $blockers = [];
+            if (! LedgerAccount::query()->where('code', 'customer_wallet_liability_ngn')->where('mapping_status', 'mapped')->exists()) {
+                $blockers[] = 'verified customer_wallet_liability_ngn mapping';
+            }
+            if (config('wallet.enabled') !== true || config('wallet.certified') !== true) {
+                $blockers[] = 'enabled and certified wallet switch';
+            }
+            if ($capability === 'collection_wallet' && config('wallet.collection_enabled') !== true) {
+                $blockers[] = 'wallet collection method switch';
+            }
+
+            return $blockers;
         }
         if ($capability === 'withdrawal_offline') {
             return config('withdrawals.offline_enabled') === true ? [] : ['enabled offline payout switch'];

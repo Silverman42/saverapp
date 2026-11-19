@@ -454,7 +454,7 @@ class LedgerTransactionProjectionService
         $fee = 0;
         $deduction = 0;
         foreach ($group->entries as $entry) {
-            if ($entry->account->code === LedgerAccountCode::CustomerSavingsLiability && $entry->side->value === 'debit') {
+            if ($entry->account->code === $withdrawal->source->debitAccount() && $entry->side->value === 'debit') {
                 $savings += $entry->amount_kobo;
             } elseif ($entry->account->code === $payout->payoutAccount && $entry->side->value === 'credit') {
                 $cash += $entry->amount_kobo;

@@ -28,10 +28,19 @@ class WithdrawalMethodRegistry
     /**
      * Methods a Customer withdrawal could currently be previewed with. Never throws: a missing gate simply omits the method.
      *
+     * While the wallet is active, plan savings can only move to the wallet, and external rails pay out from the wallet only.
+     *
      * @return list<string>
      */
-    public function availableMethods(): array
+    public function availableMethods(string $source = 'plan'): array
     {
+        $walletActive = app(WalletFeature::class)->active();
+        if ($source === 'plan' && $walletActive) {
+            return ['wallet'];
+        }
+        if ($source === 'wallet' && ! $walletActive) {
+            return [];
+        }
         $methods = [];
         foreach (['cash' => [$this->available(), 'withdrawal_cash'], 'bank_transfer' => [$this->bankAvailable(), 'withdrawal_transfer']] as $method => [$configured, $feature]) {
             if (! $configured) {
@@ -55,7 +64,14 @@ class WithdrawalMethodRegistry
     /** @return array{version: int, destination_reference: string, destination_mask: string, payout_destination_id: int|null, destination_version: int|null} */
     public function resolve(int $customerProfileId, string $method, string $destinationReference): array
     {
-        abort_unless(in_array($method, ['cash', 'bank_transfer', 'offline'], true), 422, 'Choose a supported payout method.');
+        abort_unless(in_array($method, ['cash', 'bank_transfer', 'offline', 'wallet'], true), 422, 'Choose a supported payout method.');
+        if ($method === 'wallet') {
+            app(WalletFeature::class)->ensureActive();
+            abort_unless($destinationReference === 'wallet:'.$customerProfileId, 422, 'Plan savings move to this Customer\'s own wallet.');
+
+            return ['version' => 1, 'destination_reference' => 'wallet:'.$customerProfileId, 'destination_mask' => 'Customer wallet',
+                'payout_destination_id' => null, 'destination_version' => null];
+        }
         if ($method === 'bank_transfer') {
             return $this->resolveBank($customerProfileId, $destinationReference);
         }

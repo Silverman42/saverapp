@@ -1075,7 +1075,7 @@ class ReportReadService
                 ->where('ledger_accounts.code', 'customer_savings_liability_ngn')
                 ->selectRaw("customer_profile_id, SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -amount_kobo END) AS liability")
                 ->groupBy('customer_profile_id');
-            $reservations = DB::table('withdrawal_reservations')->where('status', 'live')
+            $reservations = DB::table('withdrawal_reservations')->where('source', 'plan')->where('status', 'live')
                 ->selectRaw('customer_profile_id, SUM(gross_amount_kobo) AS reserved')->groupBy('customer_profile_id');
             $query->leftJoinSub($liabilities, 'liabilities', 'liabilities.customer_profile_id', '=', 'customers.id')
                 ->leftJoinSub($reservations, 'reservations', 'reservations.customer_profile_id', '=', 'customers.id')
