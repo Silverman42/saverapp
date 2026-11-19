@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { Head, useForm, usePoll } from '@inertiajs/vue3';
-import { computed, ref, watchEffect } from 'vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import WithdrawalStatusBadge from '@/components/WithdrawalStatusBadge.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Head, useForm, usePoll } from "@inertiajs/vue3";
+import { computed, ref, watchEffect } from "vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import WithdrawalStatusBadge from "@/components/WithdrawalStatusBadge.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -14,38 +14,39 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
-import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
-import { start as startCash } from '@/routes/withdrawals/cash';
-import { start as startBank } from '@/routes/withdrawals/bank';
-import { store as storeOfflinePayout } from '@/routes/withdrawals/offline-payout';
-import { check as checkAttempt } from '@/routes/bank-payout-attempts';
-import { preview as recoveryPreview } from '@/routes/cash-recoveries';
-import CashRecoveryPanel from '@/components/CashRecoveryPanel.vue';
-import { returnMethod as recordReturn } from '@/routes/cash-executions';
-import { handoff, notDelivered, acknowledge } from '@/routes/cash-executions';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
+import { start as startCash } from "@/routes/withdrawals/cash";
+import { start as startBank } from "@/routes/withdrawals/bank";
+import { store as storeOfflinePayout } from "@/routes/withdrawals/offline-payout";
+import { check as checkAttempt } from "@/routes/bank-payout-attempts";
+import { preview as recoveryPreview } from "@/routes/cash-recoveries";
+import CashRecoveryPanel from "@/components/CashRecoveryPanel.vue";
+import { returnMethod as recordReturn } from "@/routes/cash-executions";
+import { handoff, notDelivered, acknowledge } from "@/routes/cash-executions";
 import {
     index as withdrawalsIndex,
     approve,
     reject,
     cancel,
     revoke,
-} from '@/routes/withdrawals';
+} from "@/routes/withdrawals";
 
 type Withdrawal = {
     id: string;
     customer_name: string;
-    plan_id: string;
+    plan_id: string | null;
+    source: "plan" | "wallet";
     type: string;
     gross_kobo: number;
     fee_kobo: number;
@@ -79,7 +80,7 @@ type BankAttempt = {
     settled_at: string | null;
 };
 type OfflinePayout = {
-    channel: 'cash' | 'bank_transfer';
+    channel: "cash" | "bank_transfer";
     external_reference: string | null;
     paid_on: string;
     amount_kobo: number;
@@ -125,31 +126,31 @@ const props = defineProps<{
         liability_kobo: number;
         reservations_kobo: number;
         available_kobo: number;
-        cycle_available_kobo: number;
+        cycle_available_kobo: number | null;
     } | null;
 }>();
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Withdrawals', href: withdrawalsIndex() },
-            { title: 'Request', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Withdrawals", href: withdrawalsIndex() },
+            { title: "Request", href: "#" },
         ],
     },
 });
-const action = ref<'approve' | 'reject' | 'cancel' | 'revoke' | null>(null);
+const action = ref<"approve" | "reject" | "cancel" | "revoke" | null>(null);
 const form = useForm({
     attempt_reference: crypto.randomUUID(),
     version: props.withdrawal.version,
     confirmed: false,
-    decision_note: '',
-    internal_reason: '',
-    customer_explanation: '',
+    decision_note: "",
+    internal_reason: "",
+    customer_explanation: "",
 });
 const cashForm = useForm({
     execution_reference: crypto.randomUUID(),
     version: props.withdrawal.version,
-    evidence: '',
+    evidence: "",
     confirmed: false,
 });
 const bankForm = useForm({
@@ -160,10 +161,10 @@ const bankForm = useForm({
 const offlineForm = useForm({
     attempt_reference: crypto.randomUUID(),
     version: props.withdrawal.version,
-    channel: 'cash' as 'cash' | 'bank_transfer',
-    external_reference: '',
+    channel: "cash" as "cash" | "bank_transfer",
+    external_reference: "",
     paid_on: props.today,
-    note: '',
+    note: "",
     confirmed: false,
 });
 const offlineOpen = ref(false);
@@ -180,14 +181,14 @@ function recordOffline(): void {
 const checkForm = useForm({});
 const poll = usePoll(
     10000,
-    { only: ['withdrawal', 'bank_attempts', 'bank_returns'] },
+    { only: ["withdrawal", "bank_attempts", "bank_returns"] },
     { autoStart: false },
 );
 const processing = computed(
     () =>
         !props.is_customer &&
-        props.withdrawal.method === 'bank_transfer' &&
-        ['payout_processing', 'outcome_unknown'].includes(
+        props.withdrawal.method === "bank_transfer" &&
+        ["payout_processing", "outcome_unknown"].includes(
             props.withdrawal.state,
         ),
 );
@@ -202,33 +203,33 @@ const decisionOpen = computed({
 });
 const canPayOut = computed(
     () =>
-        ['approved', 'payment_failed'].includes(props.withdrawal.state) &&
+        ["approved", "payment_failed"].includes(props.withdrawal.state) &&
         !props.withdrawal.held,
 );
 const decisionCopy = {
     approve: {
-        title: 'Approve this withdrawal?',
+        title: "Approve this withdrawal?",
         description:
-            'The money stays set aside for payout. Approving does not pay the customer.',
-        button: 'Approve',
+            "The money stays set aside for payout. Approving does not pay the customer.",
+        button: "Approve",
     },
     reject: {
-        title: 'Reject this withdrawal?',
+        title: "Reject this withdrawal?",
         description:
-            'This stops the request and frees up the money that was set aside.',
-        button: 'Reject',
+            "This stops the request and frees up the money that was set aside.",
+        button: "Reject",
     },
     cancel: {
-        title: 'Cancel this withdrawal?',
+        title: "Cancel this withdrawal?",
         description:
-            'This stops the request and frees up the money that was set aside.',
-        button: 'Cancel request',
+            "This stops the request and frees up the money that was set aside.",
+        button: "Cancel request",
     },
     revoke: {
-        title: 'Revoke the approval?',
+        title: "Revoke the approval?",
         description:
-            'This stops the request and frees up the money that was set aside.',
-        button: 'Revoke approval',
+            "This stops the request and frees up the money that was set aside.",
+        button: "Revoke approval",
     },
 } as const;
 function startTransfer(): void {
@@ -246,14 +247,14 @@ function checkNow(reference: string): void {
 }
 function when(iso: string | null): string {
     return iso
-        ? new Intl.DateTimeFormat('en-NG', {
-              dateStyle: 'medium',
-              timeStyle: 'short',
+        ? new Intl.DateTimeFormat("en-NG", {
+              dateStyle: "medium",
+              timeStyle: "short",
               timeZone: props.timezone,
           }).format(new Date(iso))
-        : 'Not yet';
+        : "Not yet";
 }
-const handoffForm = useForm({ evidence: '', confirmed: false });
+const handoffForm = useForm({ evidence: "", confirmed: false });
 const acknowledgementForm = useForm({ confirmed: false });
 function startPayment(): void {
     cashForm.version = props.withdrawal.version;
@@ -278,8 +279,8 @@ function confirmReceipt(): void {
     );
 }
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-function choose(next: 'approve' | 'reject' | 'cancel' | 'revoke'): void {
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function choose(next: "approve" | "reject" | "cancel" | "revoke"): void {
     action.value = next;
     form.reset();
     form.attempt_reference = crypto.randomUUID();
@@ -301,7 +302,7 @@ function submit(): void {
     <div class="flex flex-col gap-6">
         <PageHeader
             :title="`Withdrawal ${withdrawal.id}`"
-            :description="`${withdrawal.customer_name} · ${withdrawal.plan_id} · ${withdrawal.type.replaceAll('_', ' ')}`"
+            :description="`${withdrawal.customer_name} · ${withdrawal.plan_id ?? 'Wallet'} · ${withdrawal.type.replaceAll('_', ' ')}`"
         >
             <template
                 v-if="
@@ -349,7 +350,7 @@ function submit(): void {
                         >On hold<template v-if="withdrawal.hold_reason"
                             >:
                             {{
-                                withdrawal.hold_reason.replaceAll('_', ' ')
+                                withdrawal.hold_reason.replaceAll("_", " ")
                             }}</template
                         ></Badge
                     >
@@ -377,7 +378,7 @@ function submit(): void {
                             {{ money(withdrawal.net_kobo) }}
                         </p>
                         <p class="text-muted-foreground mt-1 text-sm">
-                            {{ withdrawal.method.replaceAll('_', ' ') }} ·
+                            {{ withdrawal.method.replaceAll("_", " ") }} ·
                             {{ withdrawal.destination_mask }}
                         </p>
                     </div>
@@ -409,8 +410,8 @@ function submit(): void {
                             <dt class="text-muted-foreground">
                                 {{
                                     withdrawal.approved_at
-                                        ? 'Approved'
-                                        : 'Review by'
+                                        ? "Approved"
+                                        : "Review by"
                                 }}
                             </dt>
                             <dd class="font-medium">
@@ -432,15 +433,28 @@ function submit(): void {
                     role="status"
                     class="bg-muted rounded-xl p-4 text-sm"
                 >
-                    The savings balance can't be shown right now. Decisions are
-                    paused until it is checked.
+                    The
+                    {{ withdrawal.source === "wallet" ? "wallet" : "savings" }}
+                    balance can't be shown right now. Decisions are paused until
+                    it is checked.
                 </p>
-                <MoreDetails v-else label="Savings balance and notes">
+                <MoreDetails
+                    v-else
+                    :label="
+                        withdrawal.source === 'wallet'
+                            ? 'Wallet balance and notes'
+                            : 'Savings balance and notes'
+                    "
+                >
                     <div class="grid gap-4 text-sm">
                         <dl class="grid gap-3 sm:grid-cols-4">
                             <div>
                                 <dt class="text-muted-foreground">
-                                    Total savings
+                                    {{
+                                        withdrawal.source === "wallet"
+                                            ? "Wallet balance"
+                                            : "Total savings"
+                                    }}
                                 </dt>
                                 <dd class="font-medium">
                                     {{ money(position.liability_kobo) }}
@@ -458,7 +472,7 @@ function submit(): void {
                                     {{ money(position.available_kobo) }}
                                 </dd>
                             </div>
-                            <div>
+                            <div v-if="position.cycle_available_kobo !== null">
                                 <dt class="text-muted-foreground">
                                     Available in this plan
                                 </dt>
@@ -541,9 +555,9 @@ function submit(): void {
                         <dt class="text-muted-foreground">Paid by</dt>
                         <dd class="font-medium">
                             {{
-                                offline_payout.channel === 'cash'
-                                    ? 'Cash'
-                                    : 'Bank transfer'
+                                offline_payout.channel === "cash"
+                                    ? "Cash"
+                                    : "Bank transfer"
                             }}
                         </dd>
                     </div>
@@ -604,7 +618,7 @@ function submit(): void {
                                     >Attempt {{ attempt.number }}</span
                                 >
                                 <Badge variant="secondary">{{
-                                    attempt.status.replaceAll('_', ' ')
+                                    attempt.status.replaceAll("_", " ")
                                 }}</Badge>
                                 <span>{{ money(attempt.amount_kobo) }}</span>
                             </div>
@@ -628,7 +642,7 @@ function submit(): void {
                             >
                         </div>
                         <p v-if="attempt.failure_code" class="text-destructive">
-                            {{ attempt.failure_code.replaceAll('_', ' ') }}
+                            {{ attempt.failure_code.replaceAll("_", " ") }}
                         </p>
                         <p class="text-muted-foreground">
                             Started {{ when(attempt.initiated_at) }}

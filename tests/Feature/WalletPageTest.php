@@ -65,3 +65,21 @@ test('an Agent requests a wallet payout through the request form', function (): 
 
     expect(WithdrawalRequest::query()->where('source', 'wallet')->sole()->state)->toBe('pending_review');
 });
+
+test('the withdrawals list and detail page show a wallet payout against the wallet balance', function (): void {
+    [$agent, $customer, , $plan] = walletFixture();
+    transferToWallet($agent, $customer, $plan, 'partial', '300.00');
+    $payout = requestWalletPayout($agent, $customer, '100.00');
+    $admin = walletReviewer();
+
+    $this->actingAs($admin)->get(route('withdrawals.index'))->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->where('requests.data', fn ($rows): bool => collect($rows)
+            ->contains(fn (array $row): bool => $row['id'] === $payout->withdrawal_id && $row['plan_id'] === null && $row['source'] === 'wallet')));
+    foreach ([$admin, $agent, $customer->user] as $viewer) {
+        $this->actingAs($viewer)->get(route('withdrawals.show', $payout))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('withdrawals/Show')
+                ->where('withdrawal.plan_id', null)->where('withdrawal.source', 'wallet')
+                ->where('position.liability_kobo', 29400)->where('position.reservations_kobo', 10000)
+                ->where('position.available_kobo', 19400)->where('position.cycle_available_kobo', null));
+    }
+});

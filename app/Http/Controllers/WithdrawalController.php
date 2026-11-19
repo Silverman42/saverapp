@@ -33,6 +33,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class WithdrawalController extends Controller
 {
@@ -128,11 +129,7 @@ class WithdrawalController extends Controller
     {
         Gate::authorize('view', $withdrawal->customerProfile);
         $customer = $withdrawal->customerProfile;
-        try {
-            $position = $balances->position($customer, $withdrawal->plan);
-        } catch (RuntimeException $exception) {
-            $position = null;
-        }
+        $position = $this->balancePosition($withdrawal, $customer, $balances);
 
         return Inertia::render('withdrawals/Show', [
             'withdrawal' => [
@@ -247,12 +244,36 @@ class WithdrawalController extends Controller
         return [
             'id' => $withdrawal->withdrawal_id, 'customer_id' => $withdrawal->customerProfile->customer_id,
             'customer_name' => $withdrawal->customerProfile->user?->name,
-            'plan_id' => $withdrawal->plan->plan_id, 'type' => $withdrawal->type,
+            'plan_id' => $withdrawal->plan?->plan_id, 'source' => $withdrawal->source->value, 'type' => $withdrawal->type,
             'gross_kobo' => $withdrawal->gross_amount_kobo, 'fee_kobo' => $withdrawal->fee_amount_kobo,
             'net_kobo' => $withdrawal->net_amount_kobo, 'deduction_kobo' => $withdrawal->deduction_amount_kobo, 'method' => $withdrawal->method,
             'state' => $withdrawal->state, 'held' => $withdrawal->held, 'hold_reason' => $withdrawal->hold_reason,
             'submitted_at' => $withdrawal->submitted_at->toIso8601String(),
         ];
+    }
+
+    /**
+     * The balance a decision is checked against: the source plan for plan withdrawals, the Customer wallet for wallet payouts.
+     * Null when that owner is unavailable, which pauses decisions rather than showing a guessed figure.
+     *
+     * @return array{liability_kobo: int, reservations_kobo: int, available_kobo: int, cycle_available_kobo: int|null}|null
+     */
+    private function balancePosition(WithdrawalRequest $withdrawal, CustomerProfile $customer, WithdrawalBalanceService $balances): ?array
+    {
+        try {
+            if ($withdrawal->isWalletSource() || $withdrawal->plan === null) {
+                $wallet = app(WalletBalanceService::class)->position($customer);
+
+                return ['liability_kobo' => $wallet['liability_kobo'], 'reservations_kobo' => $wallet['reservations_kobo'],
+                    'available_kobo' => $wallet['available_kobo'], 'cycle_available_kobo' => null];
+            }
+            $position = $balances->position($customer, $withdrawal->plan);
+
+            return ['liability_kobo' => $position['liability_kobo'], 'reservations_kobo' => $position['reservations_kobo'],
+                'available_kobo' => $position['available_kobo'], 'cycle_available_kobo' => $position['cycle_available_kobo']];
+        } catch (RuntimeException|HttpException) {
+            return null;
+        }
     }
 
     /**
