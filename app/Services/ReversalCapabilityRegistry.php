@@ -17,6 +17,9 @@ class ReversalCapabilityRegistry
         if (config('fees.deduction_corrections_enabled', false) && $original->source_type === 'manual_charge' && $original->event_type === 'other_deduction') {
             return app(DeductionReversalOwner::class);
         }
+        if ($original->source_type === 'withdrawal' && $original->event_type === 'plan_to_wallet_transfer') {
+            return config('wallet.enabled', false) ? app(WalletTransferReversalOwner::class) : null;
+        }
         if ($original->source_type === 'withdrawal' && $original->event_type === 'offline_withdrawal') {
             // Money paid outside the platform has no in-platform return evidence, so no compensation owner supports it.
             return null;
@@ -28,7 +31,7 @@ class ReversalCapabilityRegistry
         }
 
         return config('collections.receipt_corrections_enabled', false) && $original->source_type === 'collection_receipt'
-            && in_array($original->event_type, ['cash_contribution', 'noncash_contribution', 'external_fee_receipt', 'unapplied_replacement', 'unapplied_fee_application'], true)
+            && in_array($original->event_type, ['cash_contribution', 'noncash_contribution', 'wallet_contribution', 'external_fee_receipt', 'unapplied_replacement', 'unapplied_fee_application'], true)
             ? app(CollectionReversalOwner::class) : null;
     }
 }
