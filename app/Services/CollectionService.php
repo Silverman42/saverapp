@@ -471,7 +471,7 @@ class CollectionService
             if ($snapshot->timing === FeeRuleTiming::CycleCompletion) {
                 $this->fees->assessSnapshot($snapshot, $actor);
             }
-            PlanLifecycleEvent::create([
+            $completion = PlanLifecycleEvent::create([
                 'thrift_plan_id' => $plan->id, 'event_type' => 'completed',
                 'from_status' => $previous, 'to_status' => ThriftPlanStatus::Completed,
                 'actor_user_id' => $actor->id, 'assignment_version' => $customer->currentAssignment?->version,
@@ -479,6 +479,7 @@ class CollectionService
                 'customer_explanation' => 'All scheduled contribution slots are funded.',
                 'payload' => ['receipt_reference' => $receipt->receipt_reference], 'effective_at' => now(),
             ]);
+            app(PlanWalletSweepService::class)->recordForCompletion($plan, $completion);
         }
         app(PlanFeeCorrectionService::class)->synchronize($plan, $actor, $receipt->attempt_reference);
         $obligation = $snapshot->obligation()->first();

@@ -1237,6 +1237,16 @@ class ThriftPlanService
         }
     }
 
+    /** Notify only the currently assigned Agent, for operational alerts the Customer has no action on. */
+    public function createAgentNotificationIntent(CustomerProfile $customer, ThriftPlan $plan, PlanLifecycleEvent $event, int $agentUserId): void
+    {
+        $agentUser = User::query()->find($agentUserId);
+        if ($agentUser?->user_type === UserType::Agent && $agentUser->account_state === AccountState::Active) {
+            $this->createNotificationIntent(event: $event, plan: $plan, customer: $customer, recipient: $agentUser,
+                audienceType: 'current_agent', channel: 'database', message: $this->notificationMessage($event));
+        }
+    }
+
     private function createNotificationIntent(
         PlanLifecycleEvent $event,
         ThriftPlan $plan,
@@ -1286,6 +1296,7 @@ class ThriftPlanService
             'pause' => 'Your daily thrift plan has been paused.',
             'resume' => 'Your daily thrift plan has resumed.',
             'cancel' => 'Your unused daily thrift plan has been cancelled.',
+            'wallet_sweep_pending' => 'The automatic wallet transfer for a completed plan is still blocked. Review the plan.',
             default => 'Your daily thrift plan has been updated.',
         };
     }

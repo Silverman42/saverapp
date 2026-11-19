@@ -23,7 +23,7 @@ class AuditCatalogue
         'fee_rule' => ['management_attempt', 'delivery_attempt', 'published', 'retired'],
         'fee_application' => ['delivery_attempt', 'delivery_state_recorded'],
         'fee' => ['action.cancelled', 'delivery_attempt', 'delivery_state_recorded', 'management_attempt', 'refund_authorized', 'obligation.assessed', 'obligation.waived', 'assessment.corrected'],
-        'thrift_plan' => ['delivery_attempt', 'management_attempt', 'created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected', 'early_termination_prepared', 'closed_exception_resolved', 'closed', 'closure_pending'],
+        'thrift_plan' => ['delivery_attempt', 'management_attempt', 'created', 'renewed', 'terms_amended', 'details_corrected', 'pause', 'resume', 'cancel', 'complete', 'close', 'completion_corrected', 'early_termination_prepared', 'closed_exception_resolved', 'closed', 'closure_pending', 'wallet_sweep_pending'],
         'collection' => ['receipt_attempt', 'delivery_attempt', 'method_published', 'evidence_submitted', 'evidence_reviewed', 'evidence_downloaded', 'settlement_confirmed', 'settlement_downloaded', 'receipt_posted', 'batch_frozen', 'remittance_confirmed', 'batch_reviewed', 'exception_opened', 'exception_progressed', 'exception_resolved', 'exception_reopened', 'slot_annotated'],
         'financial_period' => ['open', 'close', 'reopen'],
         'financial_note' => ['created', 'updated', 'archived', 'restored'],
