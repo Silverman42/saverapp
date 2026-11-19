@@ -42,7 +42,7 @@ class WithdrawalPostingService
         array $metadata,
         User $actor,
     ): LedgerPostingGroup {
-        $liability = $this->account(LedgerAccountCode::CustomerSavingsLiability, LedgerAccountClass::CustomerSavingsLiability, LedgerEntrySide::Credit);
+        $liability = $this->account($withdrawal->source->debitAccount(), $withdrawal->source->debitAccountClass(), LedgerEntrySide::Credit);
         $fee = $withdrawal->fee_amount_kobo > 0 ? $this->account(LedgerAccountCode::FeeIncome, LedgerAccountClass::FeeIncome, LedgerEntrySide::Credit) : null;
         $deduction = $withdrawal->deduction_amount_kobo > 0
             ? $this->account(LedgerAccountCode::OtherDeductionDestination, LedgerAccountClass::OtherDeductionDestination, LedgerEntrySide::Credit) : null;

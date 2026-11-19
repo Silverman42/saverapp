@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\LedgerAccountCode;
 use App\Models\BusinessProfile;
 use App\Models\CustomerProfile;
 use App\Models\FeeObligation;
@@ -105,6 +106,7 @@ class StatementPreviewService
                 // Only the availability figure is withheld. It is never shown as zero.
             }
             $unpaidFees = $this->unpaidFees($customer);
+            $wallet = $this->walletSection($customer, $from, $to, $forUpdate);
 
             $preview = [
                 'status' => 'ready', 'customer_id' => $customer->customer_id,
@@ -115,6 +117,7 @@ class StatementPreviewService
                 'current_reserved_kobo' => $reserved,
                 'current_available_kobo' => $available,
                 'unpaid_fees_kobo' => $unpaidFees,
+                'wallet' => $wallet,
                 'type_totals' => array_values($typeTotals),
                 'lines' => $lines,
             ];
@@ -124,6 +127,47 @@ class StatementPreviewService
 
             return $preview;
         }, attempts: 3);
+    }
+
+    /**
+     * The Customer wallet as its own section (Module 18 §8): it is not plan savings, so it never enters the savings totals above.
+     * Null when the wallet is not in use; an unavailable wallet is reported as such, never as zero.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function walletSection(CustomerProfile $customer, string $from, string $to, bool $forUpdate): ?array
+    {
+        $account = DB::table('ledger_accounts')->where('code', LedgerAccountCode::CustomerWalletLiability->value)->first();
+        if ($account === null || $account->mapping_status !== 'mapped') {
+            return null;
+        }
+        try {
+            $position = app(WalletBalanceService::class)->position($customer, $forUpdate);
+        } catch (RuntimeException) {
+            return ['status' => 'unavailable'];
+        }
+        $opening = 0;
+        $closing = 0;
+        $lines = [];
+        foreach (DB::table('ledger_entries as entries')->join('ledger_posting_groups as groups', 'groups.id', '=', 'entries.ledger_posting_group_id')
+            ->where('entries.ledger_account_id', $account->id)->where('entries.customer_profile_id', $customer->id)
+            ->whereDate('groups.occurred_on', '<=', $to)->orderBy('groups.occurred_on')->orderBy('groups.committed_at')->orderBy('entries.id')
+            ->select('entries.side', 'entries.amount_kobo', 'groups.occurred_on', 'groups.event_type', 'groups.posting_reference')->cursor() as $row) {
+            $effect = $row->side === 'credit' ? (int) $row->amount_kobo : -(int) $row->amount_kobo;
+            $closing = $this->checkedAdd($closing, $effect);
+            $occurredOn = substr((string) $row->occurred_on, 0, 10);
+            if ($occurredOn < $from) {
+                $opening = $this->checkedAdd($opening, $effect);
+            } elseif (count($lines) < 2000) {
+                $lines[] = ['reference' => $row->posting_reference, 'type' => $row->event_type, 'occurred_on' => $occurredOn, 'wallet_effect_kobo' => $effect];
+            }
+        }
+        if ($opening === 0 && $closing === 0 && $lines === [] && $position['liability_kobo'] === 0) {
+            return null;
+        }
+
+        return ['status' => 'ready', 'opening_kobo' => $opening, 'closing_kobo' => $closing, 'activity_kobo' => $closing - $opening,
+            'current_reserved_kobo' => $position['reservations_kobo'], 'current_available_kobo' => $position['available_kobo'], 'lines' => $lines];
     }
 
     /** @param array<string, array<string, mixed>> $typeTotals */

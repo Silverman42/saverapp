@@ -24,10 +24,11 @@ class PreviewWithdrawalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'plan_id' => ['required', 'string', 'max:32'],
-            'type' => ['required', 'string', 'in:partial,full,end_of_cycle'],
+            'source' => ['sometimes', 'string', 'in:plan,wallet'],
+            'plan_id' => ['required_unless:source,wallet', 'prohibited_if:source,wallet', 'nullable', 'string', 'max:32'],
+            'type' => ['required', 'string', 'in:partial,full,end_of_cycle,wallet_payout'],
             'gross_ngn' => ['required', 'string', 'regex:/\A(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,2})?\z/'],
-            'method' => ['required', 'string', 'in:cash,bank_transfer,offline'],
+            'method' => ['required', 'string', 'in:cash,bank_transfer,offline,wallet'],
             'destination_reference' => ['required', 'string', 'max:200'],
             'reason' => ['required', 'string', 'min:1', 'max:500', 'not_regex:/[<>\x00-\x08\x0B\x0C\x0E-\x1F]/'],
             'internal_notes' => ['nullable', 'string', 'max:1000', 'not_regex:/[<>\x00-\x08\x0B\x0C\x0E-\x1F]/'],

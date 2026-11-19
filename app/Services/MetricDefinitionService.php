@@ -6,7 +6,7 @@ use App\Support\MoneyFormatter;
 
 class MetricDefinitionService
 {
-    public const VERSION = 12;
+    public const VERSION = 13;
 
     /** @var list<string> Dashboard metrics fixed to the business-local today, whatever period is selected. */
     public const TODAY_METRICS = ['customers_registered_today', 'registration_fee_charged_today', 'service_charge_deducted_today', 'deposits_today'];
@@ -24,6 +24,8 @@ class MetricDefinitionService
         'received_fees' => 'contributions',
         'registration_fees' => 'contributions',
         'cash_received' => 'contributions',
+        'wallet_received' => 'contributions',
+        'wallet_liability' => 'customer-summary',
         'posted_receipt_count' => 'contributions',
         'agent_receivable' => 'reconciliation',
         'business_cash' => 'reconciliation',
@@ -42,6 +44,8 @@ class MetricDefinitionService
         'received_fees' => ['title' => 'Service Charge', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Plan and other non-registration fee tender on receipts; excludes registration fees, savings and recognized earnings.'],
         'registration_fees' => ['title' => 'Registration Fee', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Registration fee tender on receipts; separate from savings and service charge.'],
         'cash_received' => ['title' => 'Cash tender received', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on cash receipts only, counted once; excludes transfer, POS and configured Other methods.'],
+        'wallet_received' => ['title' => 'Wallet-funded contributions', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus fee tender funded from Customer wallets; moves existing Customer money between balances and is not new cash.'],
+        'wallet_liability' => ['title' => 'Customer wallet balance', 'source' => 'ledger', 'date_basis' => 'at cutoff', 'definition' => 'Customer money moved out of plans into wallets and not yet paid out or contributed; separate from plan savings liability.'],
         'transfer_received' => ['title' => 'Transfer Tender', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender on bank transfer receipts only, counted once; excludes cash, POS and configured Other methods.'],
         'total_received' => ['title' => 'Total Deposits (Assets)', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Savings plus external fee tender across supported methods, counted once; excludes remittances and subsequent clearing settlements.'],
         'posted_receipt_count' => ['title' => 'Posted receipts', 'source' => 'verified collection receipts', 'date_basis' => 'received date', 'definition' => 'Distinct verified receipts, not slot allocations.'],

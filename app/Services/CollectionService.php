@@ -417,7 +417,11 @@ class CollectionService
     /** @param array<string, mixed> $method */
     private function currentBatch(int $agentId, string $date, string $timezone, array $method): CollectionBatch
     {
-        $identity = $method['collection_method_version_id'] === null ? 'cash' : 'method-'.$method['collection_method_version_id'];
+        $identity = match (true) {
+            $method['method'] === 'wallet' => 'wallet',
+            $method['collection_method_version_id'] === null => 'cash',
+            default => 'method-'.$method['collection_method_version_id'],
+        };
         $latest = CollectionBatch::query()->where('agent_profile_id', $agentId)
             ->where('method_identity', $identity)
             ->where('received_date', $date)->where('timezone', $timezone)
@@ -471,7 +475,7 @@ class CollectionService
             if ($snapshot->timing === FeeRuleTiming::CycleCompletion) {
                 $this->fees->assessSnapshot($snapshot, $actor);
             }
-            PlanLifecycleEvent::create([
+            $completion = PlanLifecycleEvent::create([
                 'thrift_plan_id' => $plan->id, 'event_type' => 'completed',
                 'from_status' => $previous, 'to_status' => ThriftPlanStatus::Completed,
                 'actor_user_id' => $actor->id, 'assignment_version' => $customer->currentAssignment?->version,
@@ -479,6 +483,7 @@ class CollectionService
                 'customer_explanation' => 'All scheduled contribution slots are funded.',
                 'payload' => ['receipt_reference' => $receipt->receipt_reference], 'effective_at' => now(),
             ]);
+            app(PlanWalletSweepService::class)->recordForCompletion($plan, $completion);
         }
         app(PlanFeeCorrectionService::class)->synchronize($plan, $actor, $receipt->attempt_reference);
         $obligation = $snapshot->obligation()->first();

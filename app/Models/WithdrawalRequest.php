@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\WithdrawalSource;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,12 @@ use RuntimeException;
  * @property int $id
  * @property string $withdrawal_id
  * @property int $customer_profile_id
- * @property int $thrift_plan_id
+ * @property int|null $thrift_plan_id
+ * @property WithdrawalSource $source
+ * @property string $initiated_by
+ * @property int|null $live_wallet_customer_profile_id
+ * @property int|null $fee_snapshot_id
+ * @property int|null $wallet_posting_group_id
  * @property int $withdrawal_reservation_id
  * @property int $gross_amount_kobo
  * @property int $fee_amount_kobo
@@ -39,7 +45,7 @@ use RuntimeException;
  * @property CarbonImmutable|null $terminal_at
  */
 #[Fillable([
-    'withdrawal_id', 'customer_profile_id', 'thrift_plan_id', 'live_thrift_plan_id',
+    'withdrawal_id', 'customer_profile_id', 'source', 'initiated_by', 'thrift_plan_id', 'live_thrift_plan_id', 'live_wallet_customer_profile_id', 'wallet_posting_group_id',
     'initiating_agent_profile_id', 'assignment_id', 'submitted_by_user_id', 'reviewed_by_user_id',
     'fee_snapshot_id', 'withdrawal_reservation_id', 'type', 'state', 'held', 'hold_reason',
     'held_at', 'hold_lifted_at', 'gross_amount_kobo', 'fee_amount_kobo', 'deduction_amount_kobo', 'deduction_category_version_id', 'net_amount_kobo',
@@ -49,11 +55,20 @@ use RuntimeException;
 ])]
 class WithdrawalRequest extends Model
 {
+    /** @var array<string, mixed> */
+    protected $attributes = ['source' => 'plan', 'initiated_by' => 'agent'];
+
     protected static function booted(): void
     {
+        static::saving(function (WithdrawalRequest $request): void {
+            if (in_array($request->state, ['posted', 'rejected', 'cancelled', 'expired'], true)) {
+                $request->live_thrift_plan_id = null;
+                $request->live_wallet_customer_profile_id = null;
+            }
+        });
         static::updating(function (WithdrawalRequest $request): void {
             if ($request->isDirty([
-                'withdrawal_id', 'customer_profile_id', 'thrift_plan_id', 'initiating_agent_profile_id',
+                'withdrawal_id', 'customer_profile_id', 'source', 'initiated_by', 'thrift_plan_id', 'initiating_agent_profile_id',
                 'assignment_id', 'submitted_by_user_id', 'fee_snapshot_id', 'withdrawal_reservation_id',
                 'type', 'gross_amount_kobo', 'fee_amount_kobo', 'deduction_amount_kobo', 'deduction_category_version_id', 'net_amount_kobo', 'currency',
                 'method', 'destination_reference', 'destination_mask', 'customer_payout_destination_id', 'reason', 'internal_notes',
@@ -71,7 +86,7 @@ class WithdrawalRequest extends Model
     protected function casts(): array
     {
         return [
-            'held' => 'boolean', 'gross_amount_kobo' => 'integer', 'fee_amount_kobo' => 'integer', 'deduction_amount_kobo' => 'integer',
+            'source' => WithdrawalSource::class, 'held' => 'boolean', 'gross_amount_kobo' => 'integer', 'fee_amount_kobo' => 'integer', 'deduction_amount_kobo' => 'integer',
             'net_amount_kobo' => 'integer', 'version' => 'integer',
             'destination_reference' => 'encrypted',
             'submitted_at' => 'immutable_datetime', 'approved_at' => 'immutable_datetime',
@@ -107,6 +122,11 @@ class WithdrawalRequest extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(ThriftPlan::class, 'thrift_plan_id');
+    }
+
+    public function isWalletSource(): bool
+    {
+        return $this->source === WithdrawalSource::Wallet;
     }
 
     /** @return HasMany<WithdrawalEvent, $this> */

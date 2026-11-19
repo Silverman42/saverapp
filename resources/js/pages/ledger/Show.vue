@@ -1,33 +1,33 @@
 <script setup lang="ts">
-import { Head, Link, useForm, useHttp } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
-import { Undo2 } from '@lucide/vue';
-import FormSheet from '@/components/FormSheet.vue';
-import InputError from '@/components/InputError.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Head, Link, useForm, useHttp } from "@inertiajs/vue3";
+import { computed, ref } from "vue";
+import { Undo2 } from "@lucide/vue";
+import FormSheet from "@/components/FormSheet.vue";
+import InputError from "@/components/InputError.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
     preview as previewReversal,
     store as submitReversal,
-} from '@/routes/reversals';
-import { dashboard } from '@/routes';
+} from "@/routes/reversals";
+import { dashboard } from "@/routes";
 import {
     index as transactionsIndex,
     show as showTransaction,
-} from '@/routes/transactions';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+} from "@/routes/transactions";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const props = defineProps<{
     reversal_original: string | null;
@@ -62,43 +62,45 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Transactions', href: transactionsIndex() },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Transactions", href: transactionsIndex() },
         ],
     },
 });
 
 const statusLabel: Record<string, string> = {
-    posted: 'Completed',
-    reversed: 'Reversed',
-    approved_no_money: 'Corrected, no money moved',
+    posted: "Completed",
+    reversed: "Reversed",
+    approved_no_money: "Corrected, no money moved",
 };
 const typeLabels: Record<string, string> = {
-    contribution: 'Contribution',
-    remittance: 'Remittance',
-    withdrawal: 'Withdrawal',
-    reversal: 'Correction',
-    deduction: 'Deduction',
-    fee_application: 'Fee taken from savings',
-    fee_refund: 'Fee refund owed',
-    external_refund_payment: 'Cash refund',
-    earnings_draw: 'Earnings draw',
+    contribution: "Contribution",
+    remittance: "Remittance",
+    withdrawal: "Withdrawal",
+    wallet_transfer: "Moved to wallet",
+    wallet_payout: "Wallet payout",
+    reversal: "Correction",
+    deduction: "Deduction",
+    fee_application: "Fee taken from savings",
+    fee_refund: "Fee refund owed",
+    external_refund_payment: "Cash refund",
+    earnings_draw: "Earnings draw",
 };
 const title = computed(() => {
     const type = props.transaction.type;
     if (typeLabels[type]) return typeLabels[type];
-    const words = type.replaceAll('_', ' ');
+    const words = type.replaceAll("_", " ");
     return words.charAt(0).toUpperCase() + words.slice(1);
 });
 const correctionOpen = ref(false);
 const reasonCategories: Array<[string, string]> = [
-    ['duplicate_posting', 'Recorded twice'],
-    ['wrong_customer', 'Recorded for the wrong customer'],
-    ['wrong_amount_allocation', 'Wrong amount or allocation'],
-    ['payment_not_received', 'Payment was never received'],
-    ['incorrect_fee_deduction', 'Incorrect fee or deduction'],
-    ['incorrect_payout_record', 'Incorrect payout record'],
-    ['other', 'Other'],
+    ["duplicate_posting", "Recorded twice"],
+    ["wrong_customer", "Recorded for the wrong customer"],
+    ["wrong_amount_allocation", "Wrong amount or allocation"],
+    ["payment_not_received", "Payment was never received"],
+    ["incorrect_fee_deduction", "Incorrect fee or deduction"],
+    ["incorrect_payout_record", "Incorrect payout record"],
+    ["other", "Other"],
 ];
 const quote = ref<{
     preview_fingerprint: string;
@@ -107,7 +109,7 @@ const quote = ref<{
     gross_kobo: number;
     received_amount_supported: boolean;
 } | null>(null);
-const quoteError = ref('');
+const quoteError = ref("");
 const previewHttp = useHttp<
     Record<string, never>,
     {
@@ -120,14 +122,14 @@ const previewHttp = useHttp<
 >({});
 const reversal = useForm({
     attempt_reference: crypto.randomUUID(),
-    preview_fingerprint: '',
+    preview_fingerprint: "",
     customer_version: 0,
     assignment_version: 0,
-    reason_category: '',
-    internal_reason: '',
-    customer_explanation: '',
-    evidence_text: '',
-    received_amount_ngn: '',
+    reason_category: "",
+    internal_reason: "",
+    customer_explanation: "",
+    evidence_text: "",
+    received_amount_ngn: "",
     files: [] as File[],
     confirmed: false,
 });
@@ -137,7 +139,7 @@ function openCorrection(): void {
 }
 async function reviewCorrection(): Promise<void> {
     if (!props.reversal_original) return;
-    quoteError.value = '';
+    quoteError.value = "";
     try {
         quote.value = await previewHttp.post(
             previewReversal.url(props.reversal_original),
@@ -145,7 +147,7 @@ async function reviewCorrection(): Promise<void> {
     } catch {
         quote.value = null;
         quoteError.value =
-            'This transaction cannot be corrected yet. Some linked records still need to be completed first.';
+            "This transaction cannot be corrected yet. Some linked records still need to be completed first.";
     }
 }
 function requestCorrection(): void {
@@ -153,25 +155,25 @@ function requestCorrection(): void {
     reversal.preview_fingerprint = quote.value.preview_fingerprint;
     reversal.customer_version = quote.value.customer_version;
     reversal.assignment_version = quote.value.assignment_version;
-    reversal.clearErrors('received_amount_ngn');
+    reversal.clearErrors("received_amount_ngn");
     const receivedNaira = Number(
-        reversal.received_amount_ngn.replace(/,/g, '').trim(),
+        reversal.received_amount_ngn.replace(/,/g, "").trim(),
     );
     if (
         showReceivedAmount.value &&
-        reversal.received_amount_ngn.trim() !== '' &&
+        reversal.received_amount_ngn.trim() !== "" &&
         Number.isFinite(receivedNaira) &&
         receivedNaira * 100 >= quote.value.gross_kobo
     ) {
         reversal.setError(
-            'received_amount_ngn',
+            "received_amount_ngn",
             `Enter less than ${money(quote.value.gross_kobo)}. If you collected more than the receipt, record another receipt for the difference.`,
         );
         return;
     }
     reversal
         .transform(({ received_amount_ngn, ...data }) =>
-            showReceivedAmount.value && received_amount_ngn.trim() !== ''
+            showReceivedAmount.value && received_amount_ngn.trim() !== ""
                 ? { ...data, received_amount_ngn }
                 : data,
         )
@@ -182,14 +184,14 @@ function requestCorrection(): void {
 const showReceivedAmount = computed(
     () =>
         quote.value?.received_amount_supported === true &&
-        reversal.reason_category === 'wrong_amount_allocation',
+        reversal.reason_category === "wrong_amount_allocation",
 );
 function chooseFiles(event: Event): void {
     const input = event.target as HTMLInputElement;
     reversal.files = Array.from(input.files ?? []).slice(0, 3);
 }
 function money(kobo: number): string {
-    return `₦${(Math.abs(kobo) / 100).toLocaleString('en-NG', {
+    return `₦${(Math.abs(kobo) / 100).toLocaleString("en-NG", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     })}`;
@@ -217,8 +219,8 @@ function money(kobo: number): string {
                         <p class="text-muted-foreground text-sm">
                             {{
                                 transaction.savings_effect_kobo < 0
-                                    ? 'Taken from savings'
-                                    : 'Added to savings'
+                                    ? "Taken from savings"
+                                    : "Added to savings"
                             }}
                         </p>
                         <p class="mt-1 text-3xl font-semibold">
@@ -233,7 +235,7 @@ function money(kobo: number): string {
                     <div>
                         <dt class="text-muted-foreground">Customer</dt>
                         <dd class="mt-0.5 font-medium">
-                            {{ transaction.customer_name ?? 'Business cash' }}
+                            {{ transaction.customer_name ?? "Business cash" }}
                             <span
                                 v-if="transaction.customer_id"
                                 class="text-muted-foreground block text-xs font-normal"
@@ -311,8 +313,8 @@ function money(kobo: number): string {
                                 )
                             "
                             class="font-medium underline underline-offset-4"
-                            >{{ transaction.compensation_reference }}</Link
-                        >. This record stays as it was.
+                            >{{ transaction.compensation_reference }}</Link>.
+                        This record stays as it was.
                     </p>
                     <p v-if="transaction.original_reference">
                         Corrects
@@ -321,8 +323,7 @@ function money(kobo: number): string {
                                 showTransaction(transaction.original_reference)
                             "
                             class="font-medium underline underline-offset-4"
-                            >{{ transaction.original_reference }}</Link
-                        >.
+                            >{{ transaction.original_reference }}</Link>.
                     </p>
                 </div>
 
@@ -350,7 +351,7 @@ function money(kobo: number): string {
                             <dt class="text-foreground">Source</dt>
                             <dd>
                                 {{
-                                    transaction.source_type.replaceAll('_', ' ')
+                                    transaction.source_type.replaceAll("_", " ")
                                 }}
                             </dd>
                         </div>
@@ -370,7 +371,7 @@ function money(kobo: number): string {
                     >
                         <span>{{ step.label }}</span>
                         <span class="text-muted-foreground">{{
-                            step.at ?? step.on ?? 'Not yet'
+                            step.at ?? step.on ?? "Not yet"
                         }}</span>
                     </li>
                 </ol>
@@ -380,9 +381,9 @@ function money(kobo: number): string {
                 >
                     <div v-for="(name, role) in transaction.actors" :key="role">
                         <dt class="capitalize">
-                            {{ String(role).replaceAll('_', ' ') }}
+                            {{ String(role).replaceAll("_", " ") }}
                         </dt>
-                        <dd class="text-foreground">{{ name ?? 'Not yet' }}</dd>
+                        <dd class="text-foreground">{{ name ?? "Not yet" }}</dd>
                     </div>
                 </dl>
             </CardContent>

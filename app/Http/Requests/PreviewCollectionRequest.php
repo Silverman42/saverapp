@@ -24,7 +24,7 @@ class PreviewCollectionRequest extends FormRequest
     {
         return [
             'currency' => ['sometimes', 'in:NGN'],
-            'method' => ['sometimes', 'in:cash,transfer,pos,other'],
+            'method' => ['sometimes', 'in:cash,transfer,pos,other,wallet'],
             'collection_method_version_id' => ['required_if:method,transfer,pos,other', 'nullable', 'integer', 'min:1'],
             'evidence_reference' => ['required_if:method,transfer,pos,other', 'nullable', 'uuid'],
             'plan_id' => ['nullable', 'string', 'max:32'],

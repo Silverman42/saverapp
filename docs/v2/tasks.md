@@ -794,17 +794,17 @@ Dependencies: Modules 04, 05, 06, 07, 08, 09, 10, 15
 | Task | Specification reference | Status | Evidence or blocker |
 | ---- | ----------------------- | ------ | ------------------- |
 | Write the PRD, HLD and LLD from the 19 November 2026 product-owner decisions. | Sections 1–18 | Completed | All plan exits go to the wallet; completed plans sweep into the wallet automatically; payouts only from the wallet; top-up only from plan transfers; Agent-recorded wallet contributions without approval; plan fees settle at transfer. Amendment notes added to Modules 07, 08 and 10. |
-| WAL-T01 Wallet ledger account, balance owner and integrity check. | WAL-FR-001–003 | To Do | Blocked on finance sign-off of the account mapping before it can be `mapped`. |
-| WAL-T02 Withdrawal and reservation `source`, one live wallet payout per Customer. | WAL-FR-006, 007, 015 | To Do | |
-| WAL-T03 Plan→wallet transfer and Full-transfer closure. | WAL-FR-004, 005 | To Do | Transfer without Admin review confirmed by the product owner, 19 November 2026. |
-| WAL-T04 Wallet payout on the existing rails. | WAL-FR-006, 007 | To Do | Each rail keeps its own Module 08 release gate. |
-| WAL-T05 Wallet collection method and wallet batch. | WAL-FR-008, 009 | To Do | |
-| WAL-T06 Reversal owners and wallet-crediting returns. | WAL-FR-011 | To Do | |
-| WAL-T07 Statements, reports, metrics and dashboard. | WAL-FR-012 | To Do | |
-| WAL-T08 Wallet pages and UI entry points. | WAL-FR-010, 012 | To Do | |
-| WAL-T09 Notifications and audit. | WAL-FR-013 | To Do | |
-| WAL-T11 Automatic transfer to the wallet on plan completion. | WAL-FR-016 | To Do | Product owner decision, 19 November 2026. |
-| WAL-T10 Feature codes, readiness, cutover and MySQL concurrency evidence. | WAL-FR-014, 015 | To Do | |
+| WAL-T01 Wallet ledger account, balance owner and integrity check. | WAL-FR-001–003 | Done | `customer_wallet_liability_ngn` seeded unconfigured; `WalletBalanceService`; plan availability counts plan reservations only. `WalletTransferTest`, `WalletPayoutTest`. Live use still needs finance to map the account. |
+| WAL-T02 Withdrawal and reservation `source`, one live wallet payout per Customer. | WAL-FR-006, 007, 015 | Done | Migration `2026_11_19_153026_add_customer_wallet_tables`; `WithdrawalSource`; `live_wallet_customer_profile_id`. `WalletPayoutTest`. |
+| WAL-T03 Plan→wallet transfer and Full-transfer closure. | WAL-FR-004, 005 | Done | `WalletTransferService`; transfers post at submission. `WalletTransferTest` (fee, full closure, stale quote, replay, unmapped account). |
+| WAL-T04 Wallet payout on the existing rails. | WAL-FR-006, 007 | Done | Source-aware quote, reservation and posting on cash, bank and offline rails. `WalletPayoutTest`, `WalletPageTest`. Each rail keeps its own Module 08 release gate. |
+| WAL-T05 Wallet collection method and wallet batch. | WAL-FR-008, 009 | Done | `wallet` method, per-Agent daily wallet batch reconciled by construction. `WalletCollectionTest`. |
+| WAL-T06 Reversal owners and wallet-crediting returns. | WAL-FR-011 | Done | `WalletTransferReversalOwner`; wallet receipts refund the wallet; returns credit the source account. `WalletReversalTest` (incl. projection rebuild). |
+| WAL-T07 Statements, reports, metrics and dashboard. | WAL-FR-012 | Done | Metrics v13 `wallet_received`, `wallet_liability`; wallet report columns; statement wallet section. `WalletStatementTest`. |
+| WAL-T08 Wallet pages and UI entry points. | WAL-FR-010, 012 | Partial | `wallets/Show`, request page source switch, collection Wallet method, customer Wallet button. `WalletPageTest`; vue-tsc and build pass. Browser check at 390 px not yet run. |
+| WAL-T09 Notifications and audit. | WAL-FR-013 | Done | `withdrawal.wallet_posted` audit and notice; `wallet_sweep_pending` Agent alert. |
+| WAL-T11 Automatic transfer to the wallet on plan completion. | WAL-FR-016 | Done | `PlanWalletSweepService`, `RunPlanWalletSweep`, `wallets:sweep-completed` every five minutes. `PlanWalletSweepTest`. |
+| WAL-T10 Feature codes, readiness, cutover and MySQL concurrency evidence. | WAL-FR-014, 015 | Partial | `wallet` / `collection_wallet` features, `config/wallet.php`, readiness blockers, cutover test. `WalletMySqlConcurrencyTest` written (WAL-AC-014); not yet run against MySQL. WAL-AC-015 race test not written. Flags stay off. |
 
 ## Financial workflow release-readiness checkpoint — 1 October 2026
 

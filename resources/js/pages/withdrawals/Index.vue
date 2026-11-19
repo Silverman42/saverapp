@@ -1,31 +1,32 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import { WalletCards } from '@lucide/vue';
-import EmptyState from '@/components/EmptyState.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import WithdrawalStatusBadge from '@/components/WithdrawalStatusBadge.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
+import { Head, Link, router } from "@inertiajs/vue3";
+import { ref } from "vue";
+import { WalletCards } from "@lucide/vue";
+import EmptyState from "@/components/EmptyState.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import WithdrawalStatusBadge from "@/components/WithdrawalStatusBadge.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
 import {
     index as withdrawalsIndex,
     show as showWithdrawal,
-} from '@/routes/withdrawals';
+} from "@/routes/withdrawals";
 
 type Row = {
     id: string;
     customer_name: string;
-    plan_id: string;
+    plan_id: string | null;
+    source: "plan" | "wallet";
     type: string;
     gross_kobo: number;
     fee_kobo: number;
@@ -50,19 +51,19 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Withdrawals', href: withdrawalsIndex() },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Withdrawals", href: withdrawalsIndex() },
         ],
     },
 });
 const state = ref(props.state_filter);
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 function applyFilter(): void {
     router.get(withdrawalsIndex.url({ query: { state: state.value } }));
 }
 function onStateChange(value: unknown): void {
-    state.value = value === '__all' ? '' : String(value ?? '');
+    state.value = value === "__all" ? "" : String(value ?? "");
     applyFilter();
 }
 </script>
@@ -140,8 +141,8 @@ function onStateChange(value: unknown): void {
                                 >{{ item.customer_name }}</Link
                             >
                             <p class="text-muted-foreground text-xs">
-                                {{ item.id }} · {{ item.plan_id }} ·
-                                {{ item.method.replaceAll('_', ' ') }} ·
+                                {{ item.id }} · {{ item.plan_id ?? "Wallet" }} ·
+                                {{ item.method.replaceAll("_", " ") }} ·
                                 {{ item.submitted_at }}
                             </p>
                             <div class="flex flex-wrap items-center gap-2 pt-1">
@@ -151,8 +152,8 @@ function onStateChange(value: unknown): void {
                                         >:
                                         {{
                                             item.hold_reason.replaceAll(
-                                                '_',
-                                                ' ',
+                                                "_",
+                                                " ",
                                             )
                                         }}</template
                                     ></Badge

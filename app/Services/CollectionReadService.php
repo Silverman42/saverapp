@@ -128,7 +128,7 @@ class CollectionReadService
         $liabilities = DB::table('ledger_entries')->where('ledger_account_id', $account->id)
             ->selectRaw("customer_profile_id, SUM(CASE WHEN side = 'credit' THEN amount_kobo ELSE -amount_kobo END) AS liability")
             ->groupBy('customer_profile_id');
-        $reservations = DB::table('withdrawal_reservations')->where('status', 'live')
+        $reservations = DB::table('withdrawal_reservations')->where('source', 'plan')->where('status', 'live')
             ->selectRaw('customer_profile_id, SUM(gross_amount_kobo) AS reserved')->groupBy('customer_profile_id');
         $rows = (clone $customers)->toBase()
             ->leftJoinSub($liabilities, 'liabilities', 'liabilities.customer_profile_id', '=', 'customer_profiles.id')
@@ -154,7 +154,7 @@ class CollectionReadService
     {
         $entries = $this->liabilityEntries($customer, $forUpdate);
         $reservations = DB::table('withdrawal_reservations')->where('customer_profile_id', $customer->id)
-            ->where('status', 'live')->select('gross_amount_kobo');
+            ->where('source', 'plan')->where('status', 'live')->select('gross_amount_kobo');
         if ($forUpdate) {
             $reservations->lockForUpdate();
         }
@@ -224,7 +224,7 @@ class CollectionReadService
             ->whereIn('customer_profile_id', $customerIds)->select('customer_profile_id', 'side', 'amount_kobo')->orderBy('id')->get()
             ->groupBy('customer_profile_id');
         $reservations = DB::table('withdrawal_reservations')->whereIn('customer_profile_id', $customerIds)
-            ->where('status', 'live')->select('customer_profile_id', 'gross_amount_kobo')->orderBy('id')->get()
+            ->where('source', 'plan')->where('status', 'live')->select('customer_profile_id', 'gross_amount_kobo')->orderBy('id')->get()
             ->groupBy('customer_profile_id');
         $invalidCustomers = $this->invalidFeeSavingsCustomers(CustomerProfile::query()->whereKey($customerIds)->toBase(), (int) $account->id);
         $positions = [];

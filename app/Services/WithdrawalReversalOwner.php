@@ -104,7 +104,7 @@ class WithdrawalReversalOwner implements ReversalOwnerContract
         if ($retainedFee > 0 && app(FinancialCashPosition::class)->undrawnEarningsKobo(forUpdate: $forUpdate) < $retainedFee) {
             throw new ConflictHttpException('Drawn or encumbered fee earnings require recovery before compensation.');
         }
-        $expected = [LedgerAccountCode::CustomerSavingsLiability->value => ['debit', $withdrawal->gross_amount_kobo],
+        $expected = [$withdrawal->source->debitAccount()->value => ['debit', $withdrawal->gross_amount_kobo],
             $payoutCode->value => ['credit', $withdrawal->net_amount_kobo]];
         if ($withdrawal->fee_amount_kobo > 0) {
             $expected[LedgerAccountCode::FeeIncome->value] = ['credit', $withdrawal->fee_amount_kobo];

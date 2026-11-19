@@ -24,6 +24,10 @@ Schedule::command('plans:close-pending')
     ->everyFiveMinutes()
     ->withoutOverlapping()->onOneServer();
 
+Schedule::command('wallets:sweep-completed')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()->onOneServer();
+
 Schedule::command('withdrawals:reconcile-bank-payouts')
     ->everyMinute()
     ->withoutOverlapping()->onOneServer();

@@ -205,7 +205,7 @@ test('LED-AC-043: the ledger screens carry only read data and each role receives
         $screen = Arr::only($statement->inertiaProps(), ['customer', 'preview', 'from', 'to', 'issued_statements']);
         expect(array_keys($screen['preview']))->toEqualCanonicalizing(['status', 'customer_id', 'from', 'to', 'timezone', 'currency', 'cutoff_at',
             'ledger_watermark', 'projection_version', 'opening_kobo', 'activity_kobo', 'closing_kobo', 'current_reserved_kobo', 'current_available_kobo',
-            'unpaid_fees_kobo', 'type_totals', 'lines', 'preview_fingerprint'], $label)
+            'unpaid_fees_kobo', 'wallet', 'type_totals', 'lines', 'preview_fingerprint'], $label)
             ->and(array_keys($screen))->toBe(['customer', 'preview', 'from', 'to', 'issued_statements'], $label);
     }
 });

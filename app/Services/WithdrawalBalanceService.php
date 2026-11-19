@@ -46,7 +46,7 @@ class WithdrawalBalanceService
         $rows = $entries->get();
         $sources = $this->sources($rows, current: $forUpdate);
         $reservationQuery = DB::table('withdrawal_reservations')
-            ->where('customer_profile_id', $customer->id)->where('status', 'live')
+            ->where('customer_profile_id', $customer->id)->where('source', 'plan')->where('status', 'live')
             ->select('thrift_plan_id', 'gross_amount_kobo');
         if ($forUpdate) {
             $reservationQuery->lockForUpdate();
@@ -80,7 +80,7 @@ class WithdrawalBalanceService
             ->orderBy('ledger_entries.id')->get();
         $sources = $this->sources($rows, true);
         $entries = $rows->groupBy('customer_profile_id');
-        $reservations = DB::table('withdrawal_reservations')->whereIn('customer_profile_id', $customerIds)->where('status', 'live')
+        $reservations = DB::table('withdrawal_reservations')->whereIn('customer_profile_id', $customerIds)->where('source', 'plan')->where('status', 'live')
             ->select('customer_profile_id', 'thrift_plan_id', 'gross_amount_kobo')->get()->groupBy('customer_profile_id');
         $result = array_fill_keys($ids, null);
         foreach ($plans as $plan) {

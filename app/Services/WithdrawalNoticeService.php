@@ -13,6 +13,9 @@ class WithdrawalNoticeService
 {
     public function queue(WithdrawalRequest $withdrawal, WithdrawalEvent $event): void
     {
+        if ($withdrawal->method === 'wallet' && $event->event_type === 'submitted') {
+            return;
+        }
         $customer = $withdrawal->customerProfile;
         $customerUser = $customer->user;
         $agentUser = $customer->currentAssignment?->agentProfile?->user;
@@ -39,6 +42,9 @@ class WithdrawalNoticeService
             'bank_settled' => 'The provider settled the bank transfer. Your savings balance did not change again.',
             'bank_returned' => 'The bank returned the transfer. It is being reviewed; your savings balance has not changed yet.',
             'offline_posted' => 'Your withdrawal was paid outside the platform and posted.',
+            'wallet_posted' => $withdrawal->initiated_by === 'system'
+                ? 'Your completed plan savings were moved to your wallet automatically.'
+                : 'Your plan savings were moved to your wallet.',
             'provider_conflict' => 'The provider reported conflicting results for a withdrawal. It is on hold for review.',
             default => 'A withdrawal request was updated.',
         };

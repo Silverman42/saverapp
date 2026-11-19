@@ -26,7 +26,7 @@ class PlanPageClosureService
      */
     public function afterWithdrawalPosted(WithdrawalRequest $withdrawal, ?User $actor): void
     {
-        if ($withdrawal->type !== 'full' || $withdrawal->state !== 'posted') {
+        if ($withdrawal->isWalletSource() || $withdrawal->type !== 'full' || $withdrawal->state !== 'posted') {
             return;
         }
         $plan = ThriftPlan::query()->whereKey($withdrawal->thrift_plan_id)->lockForUpdate()->firstOrFail();

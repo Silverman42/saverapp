@@ -12,6 +12,7 @@ use App\Enums\FeeRuleTiming;
 use App\Enums\FeeSettlementSource;
 use App\Enums\ThriftPlanStatus;
 use App\Enums\UserType;
+use App\Enums\WithdrawalSource;
 use App\Models\AgentProfile;
 use App\Models\AuditEvent;
 use App\Models\BusinessProfile;
@@ -69,8 +70,26 @@ class WithdrawalService
     public function preview(User $actor, CustomerProfile $customer, array $data, bool $forUpdate = false): array
     {
         Gate::forUser($actor)->authorize('initiateWithdrawal', $customer);
+
+        return $this->quote($customer, $data, $forUpdate);
+    }
+
+    /**
+     * The authoritative quote without actor authorization, shared by Agent previews and the system wallet sweep.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function quote(CustomerProfile $customer, array $data, bool $forUpdate = false): array
+    {
         if (! $customer->operational_status->allowsWithdrawalOfExistingFunds()) {
             throw ValidationException::withMessages(['customer' => ['This Customer cannot request settlement now.']]);
+        }
+        if (($data['source'] ?? WithdrawalSource::Plan->value) === WithdrawalSource::Wallet->value) {
+            return $this->walletQuote($customer, $data, $forUpdate);
+        }
+        if (app(WalletFeature::class)->active() && ($data['method'] ?? null) !== 'wallet') {
+            throw ValidationException::withMessages(['method' => ['Plan savings move to the Customer wallet. Pay out from the wallet.']]);
         }
 
         $plan = ThriftPlan::query()->where('plan_id', $data['plan_id'])
@@ -134,6 +153,7 @@ class WithdrawalService
             throw new ConflictHttpException('Current Agent assignment is unavailable.');
         }
         $quote = [
+            'source' => WithdrawalSource::Plan->value,
             'customer_id' => $customer->customer_id, 'customer_version' => $customer->version,
             'assignment_version' => $assignment->version, 'plan_id' => $plan->plan_id,
             'plan_version' => $plan->version, 'business_version' => $business->version,
@@ -172,39 +192,18 @@ class WithdrawalService
                 $this->activityGate->assertAllowed($lockedCustomer, CustomerActivity::InitiateWithdrawal);
                 $quote = $this->preview($context->actor, $lockedCustomer, $data, true);
                 if (! hash_equals($quote['preview_fingerprint'], $data['preview_fingerprint'])
-                    || $quote['plan_version'] !== (int) $data['plan_version']
+                    || $quote['plan_version'] !== (isset($data['plan_version']) ? (int) $data['plan_version'] : null)
                     || $quote['business_version'] !== (int) $data['business_version']) {
                     throw new ConflictHttpException('Withdrawal terms changed. Review the current quote before submitting.');
                 }
-                $plan = ThriftPlan::query()->where('plan_id', $quote['plan_id'])->firstOrFail();
-                $reference = $this->references->generate('withdrawal');
-                $reservationId = DB::table('withdrawal_reservations')->insertGetId([
-                    'customer_profile_id' => $lockedCustomer->id, 'thrift_plan_id' => $plan->id,
-                    'owner_reference' => $reference, 'gross_amount_kobo' => $quote['gross_kobo'],
-                    'status' => 'live', 'version' => 1, 'created_at' => now(), 'updated_at' => now(),
-                ]);
-                $withdrawal = WithdrawalRequest::create([
-                    'withdrawal_id' => $reference, 'customer_profile_id' => $lockedCustomer->id,
-                    'thrift_plan_id' => $plan->id, 'live_thrift_plan_id' => $plan->id,
-                    'initiating_agent_profile_id' => $context->currentAgentProfile->id,
-                    'assignment_id' => $context->currentAssignment->id, 'submitted_by_user_id' => $context->actor->id,
-                    'fee_snapshot_id' => $quote['fee_snapshot_id'], 'withdrawal_reservation_id' => $reservationId,
-                    'type' => $quote['type'], 'state' => 'pending_review', 'held' => false,
-                    'gross_amount_kobo' => $quote['gross_kobo'], 'fee_amount_kobo' => $quote['fee_kobo'],
-                    'deduction_amount_kobo' => $quote['deduction_kobo'], 'deduction_category_version_id' => $quote['deduction_category_version_id'],
-                    'net_amount_kobo' => $quote['net_kobo'], 'currency' => 'NGN',
-                    'method' => $quote['method'], 'destination_reference' => $quote['destination_reference'],
-                    'destination_mask' => $quote['destination_mask'], 'customer_payout_destination_id' => $quote['payout_destination_id'],
-                    'reason' => $quote['reason'],
-                    'internal_notes' => trim((string) ($data['internal_notes'] ?? '')) ?: null,
-                    'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
-                    'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'],
-                    'method_version' => $quote['method_version'], 'version' => 1,
-                    'submitted_at' => now(), 'deadline_at' => now()->addDays((int) config('withdrawals.review_days')),
-                ]);
+                $withdrawal = $this->createRequest($lockedCustomer, $quote, $context->currentAgentProfile->id, $context->currentAssignment->id,
+                    $context->actor->id, trim((string) ($data['internal_notes'] ?? '')) ?: null);
                 WithdrawalAttempt::create(['attempt_reference' => $data['attempt_reference'], 'actor_user_id' => $actor->id,
                     'withdrawal_request_id' => $withdrawal->id, 'operation' => 'submit', 'payload_hash' => $hash]);
                 $this->event($withdrawal, 'submitted', null, $context->actor, null, null);
+                if ($withdrawal->method === 'wallet') {
+                    app(WalletTransferService::class)->post($withdrawal, $context->actor, 'plan-wallet-transfer-'.$withdrawal->id);
+                }
 
                 return $withdrawal;
             }, attempts: 3);
@@ -215,6 +214,103 @@ class WithdrawalService
                 ['executor' => self::class]);
             throw $exception;
         }
+    }
+
+    /**
+     * Persist a quoted request with its live reservation. Plan-source requests reserve plan savings; wallet-source requests reserve the wallet.
+     *
+     * @param  array<string, mixed>  $quote
+     */
+    public function createRequest(CustomerProfile $customer, array $quote, int $agentProfileId, int $assignmentId, ?int $submittedBy, ?string $internalNotes, string $initiatedBy = 'agent'): WithdrawalRequest
+    {
+        $wallet = $quote['source'] === WithdrawalSource::Wallet->value;
+        $plan = $wallet ? null : ThriftPlan::query()->where('plan_id', $quote['plan_id'])->firstOrFail();
+        if ($wallet && WithdrawalRequest::query()->where('live_wallet_customer_profile_id', $customer->id)->lockForUpdate()->exists()) {
+            throw new ConflictHttpException('This Customer already has a live wallet payout.');
+        }
+        $reference = $this->references->generate('withdrawal');
+        $reservationId = DB::table('withdrawal_reservations')->insertGetId([
+            'customer_profile_id' => $customer->id, 'thrift_plan_id' => $plan?->id, 'source' => $quote['source'],
+            'owner_reference' => $reference, 'gross_amount_kobo' => $quote['gross_kobo'],
+            'status' => 'live', 'version' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return WithdrawalRequest::create([
+            'withdrawal_id' => $reference, 'customer_profile_id' => $customer->id,
+            'source' => $quote['source'], 'initiated_by' => $initiatedBy,
+            'thrift_plan_id' => $plan?->id, 'live_thrift_plan_id' => $plan?->id,
+            'live_wallet_customer_profile_id' => $wallet ? $customer->id : null,
+            'initiating_agent_profile_id' => $agentProfileId,
+            'assignment_id' => $assignmentId, 'submitted_by_user_id' => $submittedBy,
+            'fee_snapshot_id' => $quote['fee_snapshot_id'], 'withdrawal_reservation_id' => $reservationId,
+            'type' => $quote['type'], 'state' => 'pending_review', 'held' => false,
+            'gross_amount_kobo' => $quote['gross_kobo'], 'fee_amount_kobo' => $quote['fee_kobo'],
+            'deduction_amount_kobo' => $quote['deduction_kobo'], 'deduction_category_version_id' => $quote['deduction_category_version_id'],
+            'net_amount_kobo' => $quote['net_kobo'], 'currency' => 'NGN',
+            'method' => $quote['method'], 'destination_reference' => $quote['destination_reference'],
+            'destination_mask' => $quote['destination_mask'], 'customer_payout_destination_id' => $quote['payout_destination_id'],
+            'reason' => $quote['reason'],
+            'internal_notes' => $internalNotes,
+            'customer_version' => $quote['customer_version'], 'assignment_version' => $quote['assignment_version'],
+            'plan_version' => $quote['plan_version'], 'business_version' => $quote['business_version'],
+            'method_version' => $quote['method_version'], 'version' => 1,
+            'submitted_at' => now(), 'deadline_at' => now()->addDays((int) config('withdrawals.review_days')),
+        ]);
+    }
+
+    /**
+     * A wallet payout quote: gross G from the Customer's available wallet, no fee or deduction in v1 (Module 18 §6.2).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function walletQuote(CustomerProfile $customer, array $data, bool $forUpdate): array
+    {
+        app(WalletFeature::class)->ensureActive();
+        abort_if(($data['method'] ?? null) === 'wallet', 422, 'Choose an external payout method for a wallet payout.');
+        $method = $this->methods->resolve($customer->id, $data['method'], $data['destination_reference']);
+        try {
+            $gross = MoneyAmount::parseNairaToKobo($data['gross_ngn']);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['gross_ngn' => [$exception->getMessage()]]);
+        }
+        try {
+            $position = app(WalletBalanceService::class)->position($customer, $forUpdate);
+        } catch (\RuntimeException $exception) {
+            throw new ServiceUnavailableHttpException(null, 'The Customer wallet is unavailable.', $exception);
+        }
+        if ($gross < 1 || $gross > $position['available_kobo']) {
+            throw ValidationException::withMessages(['gross_ngn' => ['The payout exceeds the available wallet balance.']]);
+        }
+        if (WithdrawalRequest::query()->where('live_wallet_customer_profile_id', $customer->id)->exists()) {
+            throw new ConflictHttpException('This Customer already has a live wallet payout.');
+        }
+        $expires = isset($data['quote_expires_at'])
+            ? CarbonImmutable::parse($data['quote_expires_at'])->utc()
+            : CarbonImmutable::now()->utc()->addMinutes((int) config('withdrawals.quote_minutes'));
+        if ($expires->isPast() || $expires->greaterThan(CarbonImmutable::now()->utc()->addMinutes((int) config('withdrawals.quote_minutes')))) {
+            throw new ConflictHttpException('The withdrawal quote expired. Preview again.');
+        }
+        $assignment = $customer->currentAssignment;
+        if ($assignment === null) {
+            throw new ConflictHttpException('Current Agent assignment is unavailable.');
+        }
+        unset($position['as_of']);
+        $quote = [
+            'source' => WithdrawalSource::Wallet->value,
+            'customer_id' => $customer->customer_id, 'customer_version' => $customer->version,
+            'assignment_version' => $assignment->version, 'plan_id' => null, 'plan_version' => null,
+            'business_version' => BusinessProfile::current()->version, 'fee_snapshot_id' => null, 'type' => 'wallet_payout',
+            'gross_kobo' => $gross, 'fee_kobo' => 0, 'deduction_kobo' => 0, 'deduction_category_version_id' => null,
+            'deduction_description' => null, 'fee_disclosure' => null, 'net_kobo' => $gross, 'currency' => 'NGN',
+            'method' => $data['method'], 'method_version' => $method['version'],
+            'destination_reference' => $method['destination_reference'], 'destination_mask' => $method['destination_mask'],
+            'payout_destination_id' => $method['payout_destination_id'] ?? null, 'reason' => trim($data['reason']),
+            'position' => $position, 'quote_expires_at' => $expires->toIso8601String(),
+        ];
+        $quote['preview_fingerprint'] = $this->fingerprint($quote);
+
+        return $quote;
     }
 
     /** @param array<string, mixed> $data */
@@ -278,6 +374,7 @@ class WithdrawalService
                         'reject' => 'rejected', 'cancel', 'revoke' => 'cancelled',
                     };
                     $withdrawal->live_thrift_plan_id = null;
+                    $withdrawal->live_wallet_customer_profile_id = null;
                     $withdrawal->terminal_at = now();
                     if ($action !== 'cancel') {
                         $withdrawal->reviewed_by_user_id = $lockedActor->id;
@@ -385,6 +482,7 @@ class WithdrawalService
                 $this->releaseReservation($withdrawal);
                 $withdrawal->state = 'expired';
                 $withdrawal->live_thrift_plan_id = null;
+                $withdrawal->live_wallet_customer_profile_id = null;
                 $withdrawal->terminal_at = now();
                 $withdrawal->version++;
                 $withdrawal->save();
@@ -594,6 +692,11 @@ class WithdrawalService
 
     public function assertReservationAndBalance(WithdrawalRequest $withdrawal, CustomerProfile $customer): void
     {
+        if ($withdrawal->isWalletSource()) {
+            $this->assertWalletReservation($withdrawal, $customer);
+
+            return;
+        }
         $plan = ThriftPlan::query()->whereKey($withdrawal->thrift_plan_id)->lockForUpdate()->firstOrFail();
         if (! in_array($plan->status, [ThriftPlanStatus::Active, ThriftPlanStatus::Paused, ThriftPlanStatus::Completed], true)
             || ($withdrawal->type === 'end_of_cycle' && $plan->status !== ThriftPlanStatus::Completed)) {
@@ -616,6 +719,23 @@ class WithdrawalService
         if ($position['liability_kobo'] < $position['reservations_kobo']
             || $position['cycle_liability_kobo'] < $position['cycle_reservations_kobo']) {
             throw new ConflictHttpException('Savings no longer cover the withdrawal reservation.');
+        }
+    }
+
+    private function assertWalletReservation(WithdrawalRequest $withdrawal, CustomerProfile $customer): void
+    {
+        if ($withdrawal->fee_amount_kobo !== 0 || $withdrawal->deduction_amount_kobo !== 0 || $withdrawal->net_amount_kobo !== $withdrawal->gross_amount_kobo) {
+            throw new ConflictHttpException('A wallet payout carries no fee or deduction.');
+        }
+        $reservation = DB::table('withdrawal_reservations')->where('id', $withdrawal->withdrawal_reservation_id)->lockForUpdate()->first();
+        if ($reservation === null || $reservation->status !== 'live' || $reservation->source !== 'wallet'
+            || $reservation->owner_reference !== $withdrawal->withdrawal_id || (int) $reservation->gross_amount_kobo !== $withdrawal->gross_amount_kobo) {
+            throw new ConflictHttpException('The wallet reservation is unavailable.');
+        }
+        try {
+            app(WalletBalanceService::class)->position($customer, true);
+        } catch (\RuntimeException $exception) {
+            throw new ConflictHttpException('The wallet no longer covers the payout reservation.', $exception);
         }
     }
 

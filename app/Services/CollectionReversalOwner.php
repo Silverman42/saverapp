@@ -94,7 +94,9 @@ class CollectionReversalOwner implements ReversalOwnerContract
         $custodyAgentId = $custodyCode === LedgerAccountCode::AgentReceivable ? $receipt->recording_agent_profile_id : null;
         $custody = $original->entries->where('side', LedgerEntrySide::Debit)->filter(fn (LedgerEntry $entry): bool => $entry->account->code === $custodyCode);
         if ($receipt->savings_amount_kobo > 0 && ($original->entries->count() !== 2 || $principal->sum('amount_kobo') !== $receipt->savings_amount_kobo
-            || $original->event_type !== ($replacement ? 'unapplied_replacement' : ($receipt->method === 'cash' ? 'cash_contribution' : 'noncash_contribution'))
+            || $original->event_type !== ($replacement ? 'unapplied_replacement' : match ($receipt->method) {
+                'cash' => 'cash_contribution', 'wallet' => 'wallet_contribution', default => 'noncash_contribution',
+            })
             || $custody->sum('amount_kobo') !== $receipt->savings_amount_kobo
             || $custody->first()?->agent_profile_id !== $custodyAgentId)) {
             throw new ConflictHttpException('Receipt principal and original custodian do not reconcile.');
@@ -157,11 +159,16 @@ class CollectionReversalOwner implements ReversalOwnerContract
         if ($controlled < 0 || ($controlled === 0 && ($receipt->savings_amount_kobo !== 0 || $plan !== null || $feeIncomeReversal !== 0))) {
             throw new ConflictHttpException('The no-money correction requires a fully conceded fee-only receipt.');
         }
-        $mapping = $controlled === 0 ? null : LedgerAccount::query()->where('code', LedgerAccountCode::UnappliedFunds->value)
+        // Wallet-funded tender returns to the Customer wallet; physical tender is held as unapplied funds for a replacement receipt.
+        $toWallet = $receipt->method === 'wallet';
+        [$destinationCode, $destinationClass] = $toWallet
+            ? [LedgerAccountCode::CustomerWalletLiability, LedgerAccountClass::CustomerWalletLiability]
+            : [LedgerAccountCode::UnappliedFunds, LedgerAccountClass::UnappliedFunds];
+        $mapping = $controlled === 0 ? null : LedgerAccount::query()->where('code', $destinationCode->value)
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->sole();
         if ($mapping !== null && ($mapping->mapping_status !== 'mapped' || $mapping->currency !== 'NGN'
-            || $mapping->account_class !== LedgerAccountClass::UnappliedFunds || $mapping->normal_balance !== LedgerEntrySide::Credit)) {
-            throw new ConflictHttpException('The controlled unapplied-funds destination is unavailable.');
+            || $mapping->account_class !== $destinationClass || $mapping->normal_balance !== LedgerEntrySide::Credit)) {
+            throw new ConflictHttpException('The controlled refund destination is unavailable.');
         }
         $dependencies = [
             ...$fees,
@@ -173,7 +180,8 @@ class CollectionReversalOwner implements ReversalOwnerContract
         ];
         $summary = ['receipt_id' => $receipt->id, 'plan_id' => $plan?->id, 'custody_disposition' => 'received_and_controlled',
             'controlled_kobo' => $controlled, 'consumed_external_concession_kobo' => $consumedExternal,
-            'no_money' => $controlled === 0, 'unapplied_mapping_id' => $mapping?->id, 'unapplied_mapping_version' => $mapping?->version];
+            'no_money' => $controlled === 0, 'unapplied_mapping_id' => $mapping?->id, 'unapplied_mapping_version' => $mapping?->version,
+            'controlled_destination' => $toWallet ? 'wallet' : 'unapplied'];
 
         return ['gross_kobo' => $receipt->tender_amount_kobo, 'summary' => $summary, 'dependencies' => $dependencies,
             'fingerprint' => hash('sha256', json_encode([$original->payload_hash, $summary, $dependencies, $balance,
@@ -302,7 +310,8 @@ class CollectionReversalOwner implements ReversalOwnerContract
                 'reason' => $request->internal_reason, 'customer_description' => $request->customer_explanation, 'ledger_posting_reference' => $group->posting_reference]);
         }
         LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $number++, 'ledger_account_id' => $preview['summary']['unapplied_mapping_id'],
-            'side' => LedgerEntrySide::Credit, 'amount_kobo' => $preview['summary']['controlled_kobo'], 'customer_profile_id' => $receipt->customer_profile_id, 'agent_profile_id' => $receipt->recording_agent_profile_id]);
+            'side' => LedgerEntrySide::Credit, 'amount_kobo' => $preview['summary']['controlled_kobo'], 'customer_profile_id' => $receipt->customer_profile_id,
+            'agent_profile_id' => ($preview['summary']['controlled_destination'] ?? 'unapplied') === 'wallet' ? null : $receipt->recording_agent_profile_id]);
         if ($uncollected > 0) {
             LedgerEntry::create(['ledger_posting_group_id' => $group->id, 'line_number' => $number, 'ledger_account_id' => $preview['summary']['uncollected_account_id'],
                 'side' => LedgerEntrySide::Credit, 'amount_kobo' => $uncollected, 'customer_profile_id' => $receipt->customer_profile_id,

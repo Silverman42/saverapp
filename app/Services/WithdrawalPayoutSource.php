@@ -18,7 +18,7 @@ use RuntimeException;
 class WithdrawalPayoutSource
 {
     /** @var list<string> */
-    public const EVENT_TYPES = ['cash_withdrawal', 'bank_withdrawal', 'offline_withdrawal'];
+    public const EVENT_TYPES = ['cash_withdrawal', 'bank_withdrawal', 'offline_withdrawal', 'plan_to_wallet_transfer'];
 
     /**
      * @param  iterable<int>  $withdrawalIds
@@ -52,6 +52,12 @@ class WithdrawalPayoutSource
                 $payout->amount_kobo, $this->payoutAccount($rail), 'offline_withdrawal', true));
         }
 
+        foreach (WithdrawalRequest::query()->whereIn('id', $ids)->where('method', 'wallet')->whereNotNull('wallet_posting_group_id')
+            ->when($forUpdate, fn ($query) => $query->lockForUpdate())->get() as $transfer) {
+            $payouts->push(new PostedPayout($transfer->id, 'wallet', $transfer->id, (int) $transfer->wallet_posting_group_id,
+                $transfer->net_amount_kobo, LedgerAccountCode::CustomerWalletLiability, 'plan_to_wallet_transfer', true));
+        }
+
         return $payouts;
     }
 
@@ -72,6 +78,7 @@ class WithdrawalPayoutSource
             'bank' => LedgerAccountCode::PayoutClearing,
             'offline_cash' => LedgerAccountCode::BusinessCash,
             'offline_bank_transfer' => LedgerAccountCode::BusinessBank,
+            'wallet' => LedgerAccountCode::CustomerWalletLiability,
             default => throw new RuntimeException('Unsupported payout rail.'),
         };
     }

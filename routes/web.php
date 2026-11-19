@@ -69,6 +69,7 @@ use App\Http\Controllers\ReconciliationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReversalController;
 use App\Http\Controllers\ThriftPlanController;
+use App\Http\Controllers\WalletController;
 use App\Http\Controllers\WithdrawalController;
 use App\Support\RoleDestinationResolver;
 use Illuminate\Http\Request;
@@ -221,6 +222,7 @@ Route::middleware(['auth'])->group(function () {
 
     // Simulated bank-transfer rail (Module 08)
     Route::get('customers/{customer}/payout-destinations', [BankPayoutDestinationController::class, 'index'])->name('customers.payout-destinations.index');
+    Route::get('customers/{customer}/wallet', [WalletController::class, 'show'])->name('customers.wallet.show');
     Route::post('customers/{customer}/payout-destinations', [BankPayoutDestinationController::class, 'store'])->middleware('throttle:10,1,payout-destination-register')->name('customers.payout-destinations.store');
     Route::post('payout-destinations/{destination}/verify', [BankPayoutDestinationController::class, 'verify'])->middleware('fresh')->name('payout-destinations.verify');
     Route::post('payout-destinations/{destination}/reject', [BankPayoutDestinationController::class, 'reject'])->middleware('fresh')->name('payout-destinations.reject');

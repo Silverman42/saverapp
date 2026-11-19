@@ -27,7 +27,7 @@ class StoreWithdrawalRequest extends PreviewWithdrawalRequest
             'quote_expires_at' => ['required', 'date'],
             'customer_version' => ['required', 'integer', 'min:1'],
             'assignment_version' => ['required', 'integer', 'min:1'],
-            'plan_version' => ['required', 'integer', 'min:1'],
+            'plan_version' => ['required_unless:source,wallet', 'prohibited_if:source,wallet', 'nullable', 'integer', 'min:1'],
             'business_version' => ['required', 'integer', 'min:1'],
             'instruction_attested' => ['required', 'accepted'],
             'confirmed' => ['required', 'accepted'],

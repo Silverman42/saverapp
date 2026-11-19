@@ -8,7 +8,9 @@ use App\Models\CustomerProfile;
 use App\Models\ReversalRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class CollectionReceiptMethod
 {
@@ -40,6 +42,9 @@ class CollectionReceiptMethod
                 'collection_method_version_id' => null, 'collection_payment_evidence_id' => null, 'collection_evidence_review_id' => null, 'method_reference' => null,
                 'original_agent_profile_id' => $customer->currentAssignment?->agent_profile_id];
         }
+        if ($key === 'wallet') {
+            return $this->walletPreview($customer, $data, $tenderKobo);
+        }
         if (! in_array($key, ['transfer', 'pos', 'other'], true) || blank($data['evidence_reference'] ?? null)) {
             throw new ConflictHttpException('Choose a supported method and independently verified payment evidence.');
         }
@@ -66,9 +71,46 @@ class CollectionReceiptMethod
             'method_reference' => $evidence->method_reference, 'original_agent_profile_id' => $evidence->recording_agent_profile_id];
     }
 
+    /**
+     * A wallet-funded contribution (Module 18 §6.3): no evidence, an Active Customer, and tender within the available wallet.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function walletPreview(CustomerProfile $customer, array $data, int $tenderKobo): array
+    {
+        if (filled($data['evidence_reference'] ?? null) || filled($data['collection_method_version_id'] ?? null)) {
+            throw new ConflictHttpException('A wallet contribution cannot consume payment evidence.');
+        }
+        app(WalletFeature::class)->ensureCollectionActive();
+        if (! $customer->operational_status->canTransact()) {
+            throw new ConflictHttpException('This Customer cannot fund a contribution from the wallet now.');
+        }
+        try {
+            $available = app(WalletBalanceService::class)->position($customer, DB::transactionLevel() > 0)['available_kobo'];
+        } catch (\RuntimeException $exception) {
+            throw new ServiceUnavailableHttpException(null, 'The Customer wallet is unavailable.', $exception);
+        }
+        if ($tenderKobo > $available) {
+            throw ValidationException::withMessages(['savings_ngn' => ['The contribution exceeds the available wallet balance.']]);
+        }
+
+        return ['method' => 'wallet', 'method_label' => 'Wallet', 'custody_account_code' => LedgerAccountCode::CustomerWalletLiability->value,
+            'collection_method_version_id' => null, 'collection_payment_evidence_id' => null, 'collection_evidence_review_id' => null,
+            'method_reference' => null, 'original_agent_profile_id' => $customer->currentAssignment?->agent_profile_id];
+    }
+
     public function assertReceipt(CollectionReceipt $receipt): LedgerAccountCode
     {
         $code = LedgerAccountCode::tryFrom($receipt->custody_account_code);
+        if ($receipt->method === 'wallet') {
+            if ($code !== LedgerAccountCode::CustomerWalletLiability || $receipt->collection_method_version_id !== null
+                || $receipt->collection_payment_evidence_id !== null || $receipt->collection_evidence_review_id !== null) {
+                throw new ConflictHttpException('The wallet receipt has an invalid method identity.');
+            }
+
+            return $code;
+        }
         if (! in_array($code, [LedgerAccountCode::AgentReceivable, LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing], true)) {
             throw new ConflictHttpException('The receipt custody pattern is unsupported.');
         }
