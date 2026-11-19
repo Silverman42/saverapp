@@ -109,6 +109,14 @@ class PlanSettlementService
                 ->when($forUpdate, fn ($query) => $query->lockForUpdate())->first();
             $custody[] = ['batch_id' => $batch->id, 'version' => $batch->version, 'status' => $batch->status,
                 'review_id' => $review?->id, 'position' => $batchPosition];
+            if ($batch->custody_account_code === 'customer_wallet_liability_ngn') {
+                if ($batchPosition['outstanding_kobo'] !== 0
+                    || DB::table('collection_exceptions')->where('collection_batch_id', $batch->id)->where('status', '!=', 'resolved')->exists()) {
+                    $blockers[] = 'Original custody and reconciliation remain unresolved.';
+                }
+
+                continue;
+            }
             if ($batch->status !== 'reconciled' || $batchPosition['outstanding_kobo'] !== 0 || $batchPosition['settlement_pending']
                 || $review === null || $review->outcome !== 'reconciled' || (int) $review->outstanding_kobo !== 0
                 || (int) $review->expected_kobo !== $batchPosition['expected_kobo'] || (int) $review->remitted_kobo !== $batchPosition['received_kobo']

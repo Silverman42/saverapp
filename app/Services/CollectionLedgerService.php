@@ -29,6 +29,7 @@ class CollectionLedgerService
             LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
             LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
             LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing => LedgerAccountClass::Asset,
+            LedgerAccountCode::CustomerWalletLiability => LedgerAccountClass::CustomerWalletLiability,
             default => throw new ConflictHttpException('The receipt custody account is unsupported.'),
         };
         $accounts = $this->accountsForCodes([$custody, LedgerAccountCode::CustomerSavingsLiability], $forUpdate);
@@ -110,9 +111,12 @@ class CollectionLedgerService
             $debitClass = match ($debitCode) {
                 LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
                 LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
+                LedgerAccountCode::CustomerWalletLiability => LedgerAccountClass::CustomerWalletLiability,
                 default => LedgerAccountClass::Asset,
             };
-            $eventType = $replacement ? 'unapplied_replacement' : ($receipt->method === 'cash' ? 'cash_contribution' : 'noncash_contribution');
+            $eventType = $replacement ? 'unapplied_replacement' : match ($receipt->method) {
+                'cash' => 'cash_contribution', 'wallet' => 'wallet_contribution', default => 'noncash_contribution',
+            };
             if ((int) $sourceData['customer_profile_id'] !== $customerId
                 || (int) $sourceData['recording_agent_profile_id'] !== $agentId
                 || $receipt->savings_amount_kobo !== $amountKobo) {

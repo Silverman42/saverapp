@@ -65,7 +65,11 @@ class WalletBalanceService
         return $positions;
     }
 
-    /** The total wallet liability of the Customers in scope, used by dashboard and reports. */
+    /**
+     * The total wallet liability of the Customers in scope, used by dashboard and reports.
+     *
+     * @param  Builder<CustomerProfile>  $customers
+     */
     public function scopedLiability(Builder $customers): int
     {
         $account = $this->account(false);

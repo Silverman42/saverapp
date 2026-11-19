@@ -417,7 +417,11 @@ class CollectionService
     /** @param array<string, mixed> $method */
     private function currentBatch(int $agentId, string $date, string $timezone, array $method): CollectionBatch
     {
-        $identity = $method['collection_method_version_id'] === null ? 'cash' : 'method-'.$method['collection_method_version_id'];
+        $identity = match (true) {
+            $method['method'] === 'wallet' => 'wallet',
+            $method['collection_method_version_id'] === null => 'cash',
+            default => 'method-'.$method['collection_method_version_id'],
+        };
         $latest = CollectionBatch::query()->where('agent_profile_id', $agentId)
             ->where('method_identity', $identity)
             ->where('received_date', $date)->where('timezone', $timezone)

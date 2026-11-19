@@ -73,6 +73,7 @@ class LedgerPostingService
             LedgerAccountCode::AgentReceivable => LedgerAccountClass::AgentReceivable,
             LedgerAccountCode::UnappliedFunds => LedgerAccountClass::UnappliedFunds,
             LedgerAccountCode::BusinessBank, LedgerAccountCode::PaymentClearing => LedgerAccountClass::Asset,
+            LedgerAccountCode::CustomerWalletLiability => LedgerAccountClass::CustomerWalletLiability,
             default => throw new ConflictHttpException('The receipt custody account is unsupported.'),
         };
 
@@ -434,6 +435,7 @@ class LedgerPostingService
             LedgerAccountCode::PaymentClearing,
             LedgerAccountCode::BusinessDistributions => LedgerEntrySide::Debit,
             LedgerAccountCode::CustomerSavingsLiability,
+            LedgerAccountCode::CustomerWalletLiability,
             LedgerAccountCode::FeeIncome,
             LedgerAccountCode::RefundPayable,
             LedgerAccountCode::OtherDeductionDestination,

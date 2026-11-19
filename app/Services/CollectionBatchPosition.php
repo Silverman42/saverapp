@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\LedgerAccountClass;
+use App\Enums\LedgerAccountCode;
 use App\Enums\LedgerEntrySide;
 use App\Models\CollectionBatch;
 use App\Models\LedgerAccount;
@@ -33,6 +34,9 @@ class CollectionBatchPosition
             }
 
             return ['expected_kobo' => $expected, 'received_kobo' => $cashRemitted, 'outstanding_kobo' => $expected - $cashRemitted, 'settlement_pending' => false];
+        }
+        if ($batch->custody_account_code === LedgerAccountCode::CustomerWalletLiability->value) {
+            return $this->walletPosition($batch, $expected, $cashRemitted);
         }
         if (! in_array($batch->custody_account_code, ['business_bank_ngn', 'payment_clearing_ngn'], true) || $cashRemitted !== 0) {
             throw new ConflictHttpException('The batch has an unsupported custody or cash handoff.');
@@ -75,6 +79,34 @@ class CollectionBatchPosition
         return ['expected_kobo' => $expected, 'received_kobo' => $received,
             'outstanding_kobo' => $expected - $received,
             'settlement_pending' => $batch->custody_account_code === 'payment_clearing_ngn' && $received < $expected];
+    }
+
+    /**
+     * A wallet batch holds no physical money: every receipt is a posted wallet debit, so nothing is outstanding or remittable.
+     *
+     * @return array{expected_kobo: int, received_kobo: int, outstanding_kobo: int, settlement_pending: bool}
+     */
+    private function walletPosition(CollectionBatch $batch, int $expected, int $cashRemitted): array
+    {
+        $account = LedgerAccount::query()->where('code', LedgerAccountCode::CustomerWalletLiability->value)->first();
+        if ($cashRemitted !== 0 || $this->uncollectedKobo($batch) !== 0 || $account === null || $account->mapping_status !== 'mapped'
+            || $account->account_class !== LedgerAccountClass::CustomerWalletLiability || $account->normal_balance !== LedgerEntrySide::Credit) {
+            throw new ConflictHttpException('The wallet batch custody does not reconcile.');
+        }
+        foreach ($batch->receipts()->lazyById(100) as $receipt) {
+            app(CollectionReceiptMethod::class)->assertReceipt($receipt);
+            $groups = DB::table('collection_fee_components')->where('collection_receipt_id', $receipt->id)->pluck('ledger_posting_group_id')->all();
+            if ($receipt->savings_posting_group_id !== null) {
+                $groups[] = $receipt->savings_posting_group_id;
+            }
+            $posted = (int) DB::table('ledger_entries')->whereIn('ledger_posting_group_id', $groups)
+                ->where('ledger_account_id', $account->id)->where('side', 'debit')->sum('amount_kobo');
+            if ($receipt->method !== 'wallet' || $posted !== $receipt->tender_amount_kobo) {
+                throw new ConflictHttpException('Wallet receipts and posted wallet debits do not reconcile.');
+            }
+        }
+
+        return ['expected_kobo' => $expected, 'received_kobo' => $expected, 'outstanding_kobo' => 0, 'settlement_pending' => false];
     }
 
     /**
