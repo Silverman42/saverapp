@@ -41,6 +41,18 @@ function walletMysqlWorker(Closure $work): Closure
     });
 }
 
+/** @param array<string, mixed> $payload */
+function walletMysqlPayoutWorker(int $agentId, int $customerId, array $payload): Closure
+{
+    return walletMysqlWorker(static fn () => app(WithdrawalService::class)->submit(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $payload));
+}
+
+/** @param array<string, mixed> $payload */
+function walletMysqlContributionWorker(int $agentId, int $customerId, array $payload): Closure
+{
+    return walletMysqlWorker(static fn () => app(CollectionService::class)->record(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $payload));
+}
+
 /**
  * A two-day ₦2,000 plan paid for day one in cash, with ₦1,500 moved to the wallet.
  *
@@ -90,8 +102,8 @@ test('WAL-AC-014 mysql a wallet payout and a wallet contribution cannot both ove
     $customerId = $customer->id;
 
     $outcomes = bankMysqlRun([
-        walletMysqlWorker(static fn () => app(WithdrawalService::class)->submit(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $payout)),
-        walletMysqlWorker(static fn () => app(CollectionService::class)->record(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $contribution)),
+        walletMysqlPayoutWorker($agentId, $customerId, $payout),
+        walletMysqlContributionWorker($agentId, $customerId, $contribution),
     ]);
 
     sort($outcomes);
@@ -110,8 +122,8 @@ test('WAL-AC-014 mysql two wallet contributions cannot both spend the same walle
     $customerId = $customer->id;
 
     $outcomes = bankMysqlRun([
-        walletMysqlWorker(static fn () => app(CollectionService::class)->record(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $first)),
-        walletMysqlWorker(static fn () => app(CollectionService::class)->record(User::findOrFail($agentId), CustomerProfile::findOrFail($customerId), $second)),
+        walletMysqlContributionWorker($agentId, $customerId, $first),
+        walletMysqlContributionWorker($agentId, $customerId, $second),
     ]);
 
     sort($outcomes);
