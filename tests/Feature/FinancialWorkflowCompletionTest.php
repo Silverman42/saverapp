@@ -1875,3 +1875,30 @@ test('consumed payout return leaves the restored savings gate until a second def
     }
 })->with(['none', 'missing return source', 'foreign return source', 'missing clearing line',
     'rejected compensation request', 'foreign compensation Customer', 'requester reviewed compensation']);
+
+test('a page waiting to end links the agent to record the replacement for held correction cash', function (): void {
+    [$agent, $customer, $assignment, $plan, $date, , $reversal] = controlledReplacementFixture($this);
+    $plan->update(['status' => ThriftPlanStatus::Paused, 'closure_pending_at' => now()]);
+
+    $this->actingAs($agent)->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('closure_blockers.0.code', 'unapplied_tender')
+            ->where('closure_blockers.0.actions', [['label' => 'Record replacement payment', 'href' => route('reversals.replacement', $reversal)]]));
+
+    $plan->update(['status' => ThriftPlanStatus::Active, 'closure_pending_at' => null]);
+    $data = collectionPayload($customer, $assignment, $plan->fresh(), $date, '2000.00');
+    $quote = app(CollectionReplacementService::class)->preview($agent, $reversal, $data);
+    app(CollectionReplacementService::class)->record($agent, $reversal, [...$data,
+        'preview_fingerprint' => $quote['preview_fingerprint'], 'replacement_fingerprint' => $quote['replacement_fingerprint']]);
+    $plan->fresh()->update(['status' => ThriftPlanStatus::Paused, 'closure_pending_at' => now()]);
+
+    $this->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('closure_blockers', fn ($blockers): bool => collect($blockers)->doesntContain('code', 'unapplied_tender')));
+});
+
+test('an active plan shows no closure blockers', function (): void {
+    [$agent, , , $plan] = controlledReplacementFixture($this);
+
+    $this->actingAs($agent)->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('closure_blockers', []));
+});

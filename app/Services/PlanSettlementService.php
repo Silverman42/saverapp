@@ -57,17 +57,22 @@ class PlanSettlementService
         $customer = $plan->customerProfile;
         $position = app(WithdrawalBalanceService::class)->position($customer, $plan, DB::transactionLevel() > 0);
         $blockers = [];
+        $issues = [];
+        $block = function (string $code, string $message, array $ids = []) use (&$blockers, &$issues): void {
+            $blockers[] = $message;
+            $issues[$code] = ['code' => $code, 'ids' => array_values(array_unique([...($issues[$code]['ids'] ?? []), ...$ids]))];
+        };
         $forUpdate = DB::transactionLevel() > 0;
         $terms = $plan->termsRevisions()->when($forUpdate, fn ($query) => $query->lockForUpdate())->get();
         $obligations = new Collection;
         try {
             $obligations = $this->cycleObligations($plan, $terms, $forUpdate);
         } catch (RuntimeException|ConflictHttpException|ValueError) {
-            $blockers[] = 'Financial obligation attribution is unavailable.';
+            $block('fee_attribution_unavailable', 'Financial obligation attribution is unavailable.');
         }
         foreach ($obligations as $obligation) {
             if ($obligation->outstandingAmountKobo() > 0) {
-                $blockers[] = 'Outstanding cycle fee '.$obligation->id;
+                $block('fee_outstanding', 'Outstanding cycle fee '.$obligation->id, [$obligation->id]);
             }
         }
         $currentTerms = $terms->firstWhere('revision', $plan->current_terms_revision);
@@ -81,24 +86,26 @@ class PlanSettlementService
             503, 'Approved early termination fee policy is unavailable.');
         if (! $this->hasVerifiedFeeAgreements($plan, $terms, $forUpdate)
             || $snapshot === null || (! $snapshot->isZero() && $snapshot->timing === FeeRuleTiming::CycleCompletion && $snapshot->obligation === null)) {
-            $blockers[] = 'Cycle fee disposition is unavailable.';
+            $block('fee_disposition_unavailable', 'Cycle fee disposition is unavailable.');
         }
         if ($position['cycle_liability_kobo'] !== 0 || $position['cycle_reservations_kobo'] !== 0) {
-            $blockers[] = 'Cycle savings or reservations remain.';
+            $block('cycle_balance_remains', 'Cycle savings or reservations remain.');
         }
         $unappliedIds = DB::table('reversal_requests as r')->join('ledger_posting_groups as g', 'g.id', '=', 'r.compensation_posting_group_id')
             ->where('g.thrift_plan_id', $plan->id)->where('g.event_type', 'receipt_reclassification')
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('collection_receipts as replacements')->whereColumn('replacements.replacement_reversal_id', 'r.id'))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('ledger_posting_groups as wallet_credits')
+                ->where('wallet_credits.source_type', ControlledTenderWalletCreditService::SOURCE_TYPE)->whereRaw('wallet_credits.source_id = CAST(r.id AS CHAR)'))
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->pluck('r.id')->all();
         if ($unappliedIds !== []) {
-            $blockers[] = 'Controlled unapplied cycle tender remains.';
+            $block('unapplied_tender', 'Controlled unapplied cycle tender remains.', $unappliedIds);
         }
         $batchIds = CollectionReceipt::query()->where('thrift_plan_id', $plan->id)->whereNull('replacement_reversal_id')
             ->when($forUpdate, fn ($query) => $query->lockForUpdate())->pluck('collection_batch_id');
         try {
             $batchIds = $batchIds->merge($this->feeReceiptBatchIds($plan, $obligations, $forUpdate))->unique();
         } catch (ConflictHttpException|RuntimeException|ValueError) {
-            $blockers[] = 'Cycle fee receipt custody attribution is unavailable.';
+            $block('receipt_custody_unavailable', 'Cycle fee receipt custody attribution is unavailable.');
         }
         $custody = [];
         foreach (CollectionBatch::query()->whereIn('id', $batchIds)->orderBy('id')
@@ -112,7 +119,7 @@ class PlanSettlementService
             if ($batch->custody_account_code === 'customer_wallet_liability_ngn') {
                 if ($batchPosition['outstanding_kobo'] !== 0
                     || DB::table('collection_exceptions')->where('collection_batch_id', $batch->id)->where('status', '!=', 'resolved')->exists()) {
-                    $blockers[] = 'Original custody and reconciliation remain unresolved.';
+                    $block('custody_unresolved', 'Original custody and reconciliation remain unresolved.', [$batch->id]);
                 }
 
                 continue;
@@ -121,24 +128,24 @@ class PlanSettlementService
                 || $review === null || $review->outcome !== 'reconciled' || (int) $review->outstanding_kobo !== 0
                 || (int) $review->expected_kobo !== $batchPosition['expected_kobo'] || (int) $review->remitted_kobo !== $batchPosition['received_kobo']
                 || DB::table('collection_exceptions')->where('collection_batch_id', $batch->id)->where('status', '!=', 'resolved')->exists()) {
-                $blockers[] = 'Original custody and reconciliation remain unresolved.';
+                $block('custody_unresolved', 'Original custody and reconciliation remain unresolved.', [$batch->id]);
             }
         }
         $ownerStates = $this->financialOwnerStates($plan, $forUpdate);
         if ($ownerStates['pending']) {
-            $blockers[] = 'Pending financial owner work remains.';
+            $block('owner_work_pending', 'Pending financial owner work remains.');
         }
         $payoutReturns = $this->payoutReturnDisposition($plan, $forUpdate);
         if ($payoutReturns['unsettled']) {
-            $blockers[] = 'Cycle payout return disposition remains unresolved.';
+            $block('payout_return_unresolved', 'Cycle payout return disposition remains unresolved.');
         }
         if ($this->hasRefundPayable($plan, $obligations, $forUpdate)) {
-            $blockers[] = 'Cycle refund payable remains.';
+            $block('refund_payable', 'Cycle refund payable remains.');
         }
         $resolvedIds = FinancialWorkflowSupplement::query()->where('thrift_plan_id', $plan->id)->where('kind', 'closed_exception_resolved')->get()->pluck('facts.event_id')->all();
         $exceptions = $plan->lifecycleEvents()->where('event_type', 'receipt_compensated')->where('payload->closed_plan_exception', true)->whereNotIn('id', $resolvedIds)->pluck('id')->all();
         if ($action !== 'resolve_exception' && $exceptions !== []) {
-            $blockers[] = 'Post-closure correction exception remains.';
+            $block('closed_exception', 'Post-closure correction exception remains.', $exceptions);
         }
         $preparationBlockers = [];
         $terminationFee = null;
@@ -199,7 +206,7 @@ class PlanSettlementService
             'can_prepare' => $action === 'prepare_termination' && $preparationBlockers === [],
             'ledger_watermark' => DB::table('ledger_posting_groups')->max('id'), 'supplement_watermark' => FinancialWorkflowSupplement::query()->max('id')];
 
-        return [...$facts, 'action' => $action, 'can_close' => $blockers === [], 'preview_fingerprint' => hash('sha256', json_encode([$plan->id, $action, $facts], JSON_THROW_ON_ERROR))];
+        return [...$facts, 'action' => $action, 'can_close' => $blockers === [], 'blocker_details' => array_values($issues), 'preview_fingerprint' => hash('sha256', json_encode([$plan->id, $action, $facts], JSON_THROW_ON_ERROR))];
     }
 
     /** @return array<string, mixed> */

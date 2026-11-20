@@ -181,7 +181,7 @@ class LedgerTransactionProjectionService
                 $transactions++;
             }
 
-            foreach (LedgerPostingGroup::query()->whereIn('source_type', ['cash_recovery', 'disbursement_recovery', 'bank_payout_attempt', 'bank_payout_return'])->lazyById(100) as $group) {
+            foreach (LedgerPostingGroup::query()->whereIn('source_type', ['cash_recovery', 'disbursement_recovery', 'bank_payout_attempt', 'bank_payout_return', ControlledTenderWalletCreditService::SOURCE_TYPE])->lazyById(100) as $group) {
                 $this->assertBalanced($group);
                 $recovery = $group->source_type === 'cash_recovery' ? CashRecovery::query()->findOrFail($group->source_id) : null;
                 if ($recovery !== null && $recovery->return_posting_group_id !== $group->id) {
@@ -515,6 +515,12 @@ class LedgerTransactionProjectionService
 
     /** Project a bank payout settlement or return movement. */
     public function projectBankPayoutMovement(LedgerPostingGroup $group): void
+    {
+        $this->projectOwnedLedgerMovement($group);
+    }
+
+    /** Project a single self-describing posting group whose source is the group itself. */
+    public function projectOwnedLedgerMovement(LedgerPostingGroup $group): void
     {
         $this->projectAdditionalOwner(function (int $version) use ($group): void {
             $group->load('entries.account');

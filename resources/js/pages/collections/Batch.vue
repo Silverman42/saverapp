@@ -1,42 +1,42 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ChevronDown } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
-import CollectionSettlementPanel from '@/components/CollectionSettlementPanel.vue';
-import FormSheet from '@/components/FormSheet.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DatePicker } from '@/components/ui/date-picker';
+import { Head, Link, useForm } from "@inertiajs/vue3";
+import { ChevronDown } from "@lucide/vue";
+import { computed, ref, watch } from "vue";
+import CollectionSettlementPanel from "@/components/CollectionSettlementPanel.vue";
+import FormSheet from "@/components/FormSheet.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { dashboard } from '@/routes';
+} from "@/components/ui/select";
+import { dashboard } from "@/routes";
 import {
     index as batchesIndex,
     review as reviewBatch,
-} from '@/routes/collection-batches';
-import { store as storeRemittance } from '@/routes/collection-batches/remittances';
+} from "@/routes/collection-batches";
+import { store as storeRemittance } from "@/routes/collection-batches/remittances";
 import {
     resolve as resolveException,
     reopen as reopenException,
     store as storeException,
     progress as progressException,
-} from '@/routes/collection-batches/exceptions';
+} from "@/routes/collection-batches/exceptions";
 
 type Page<T> = {
     data: T[];
@@ -57,6 +57,7 @@ type Batch = {
     date: string;
     revision: number;
     status: string;
+    open_notice: string | null;
     version: number;
     expected_kobo: number;
     uncollected_kobo: number;
@@ -104,53 +105,53 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Cash batches', href: batchesIndex() },
-            { title: 'Batch', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Cash batches", href: batchesIndex() },
+            { title: "Batch", href: "#" },
         ],
     },
 });
 const money = (kobo: number): string =>
-    `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const label = (value: string): string => value.replaceAll('_', ' ');
+    `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const label = (value: string): string => value.replaceAll("_", " ");
 const remittance = useForm({
-    handoff_reference: '',
-    amount_ngn: '',
+    handoff_reference: "",
+    amount_ngn: "",
     handoff_date: props.batch.date,
-    receiving_location: '',
-    source_attestation: '',
+    receiving_location: "",
+    source_attestation: "",
     batch_version: props.batch.version,
     confirmed: false,
 });
 const review = useForm({
     batch_version: props.batch.version,
-    reason: '',
+    reason: "",
     confirmed: false,
 });
 const resolution = useForm({
     batch_version: props.batch.version,
-    reason: '',
+    reason: "",
     confirmed: false,
-    resolution_kind: 'remittance',
-    receipt_reference: '',
-    reversal_id: '',
+    resolution_kind: "remittance",
+    receipt_reference: "",
+    reversal_id: "",
 });
 const reopening = useForm({
     batch_version: props.batch.version,
-    reason: '',
+    reason: "",
     confirmed: false,
 });
 const progress = useForm({
     batch_version: props.batch.version,
-    status: 'investigating',
-    reason: '',
+    status: "investigating",
+    reason: "",
     confirmed: false,
 });
 const investigation = useForm({
     batch_version: props.batch.version,
-    kind: props.batch.cash_handoff_allowed ? 'overage' : 'missing_transfer',
-    amount_ngn: '',
-    reason: '',
+    kind: props.batch.cash_handoff_allowed ? "overage" : "missing_transfer",
+    amount_ngn: "",
+    reason: "",
     confirmed: false,
 });
 watch(
@@ -162,13 +163,13 @@ watch(
         reopening.batch_version = version;
         investigation.batch_version = version;
         progress.batch_version = version;
-        progress.reason = '';
+        progress.reason = "";
         progress.confirmed = false;
     },
 );
 
-type BatchAction = 'handoff' | 'review' | 'report';
-type IssueAction = 'progress' | 'close' | 'resolve' | 'reopen';
+type BatchAction = "handoff" | "review" | "report";
+type IssueAction = "progress" | "close" | "resolve" | "reopen";
 const batchSheet = ref<BatchAction | null>(null);
 const issueSheet = ref<{ action: IssueAction; item: Exception } | null>(null);
 const batchSheetOpen = computed({
@@ -188,7 +189,7 @@ const issueSheetOpen = computed({
     },
 });
 const isWorkable = computed(
-    () => props.batch.status !== 'open' && props.batch.status !== 'reconciled',
+    () => props.batch.status !== "open" && props.batch.status !== "reconciled",
 );
 const batchActions = computed(() => {
     const actions: { key: BatchAction; label: string }[] = [];
@@ -198,7 +199,7 @@ const batchActions = computed(() => {
         props.batch.cash_handoff_allowed &&
         isWorkable.value
     ) {
-        actions.push({ key: 'handoff', label: 'Confirm cash' });
+        actions.push({ key: "handoff", label: "Confirm cash" });
     }
 
     if (
@@ -206,11 +207,11 @@ const batchActions = computed(() => {
         !props.batch.settlement_pending &&
         isWorkable.value
     ) {
-        actions.push({ key: 'review', label: 'Review batch' });
+        actions.push({ key: "review", label: "Review batch" });
     }
 
-    if (props.can_manage && props.batch.status !== 'open') {
-        actions.push({ key: 'report', label: 'Report issue' });
+    if (props.can_manage && props.batch.status !== "open") {
+        actions.push({ key: "report", label: "Report issue" });
     }
 
     return actions;
@@ -220,23 +221,23 @@ const batchSheetTitles: Record<
     { title: string; description: string }
 > = {
     handoff: {
-        title: 'Confirm cash',
-        description: 'Record cash an agent handed over to you.',
+        title: "Confirm cash",
+        description: "Record cash an agent handed over to you.",
     },
     review: {
-        title: 'Review batch',
-        description: 'Check the batch and save your review.',
+        title: "Review batch",
+        description: "Check the batch and save your review.",
     },
     report: {
-        title: 'Report issue',
-        description: 'Flag a problem with this batch.',
+        title: "Report issue",
+        description: "Flag a problem with this batch.",
     },
 };
 const issueSheetTitles: Record<IssueAction, string> = {
-    progress: 'Update issue',
-    close: 'Close issue',
-    resolve: 'Resolve issue',
-    reopen: 'Reopen issue',
+    progress: "Update issue",
+    close: "Close issue",
+    resolve: "Resolve issue",
+    reopen: "Reopen issue",
 };
 function openIssue(action: IssueAction, item: Exception): void {
     resolution.clearErrors();
@@ -262,9 +263,9 @@ function submitReview(): void {
     });
 }
 function resolve(exceptionId: number): void {
-    resolution.resolution_kind = 'remittance';
-    resolution.receipt_reference = '';
-    resolution.reversal_id = '';
+    resolution.resolution_kind = "remittance";
+    resolution.receipt_reference = "";
+    resolution.reversal_id = "";
     resolution.post(resolveException.url([props.batch.id, exceptionId]), {
         onSuccess: closeIssueSheet,
     });
@@ -273,7 +274,7 @@ function resolveEvidence(exceptionId: number): void {
     if (
         !resolution.confirmed ||
         resolution.processing ||
-        resolution.resolution_kind === 'remittance'
+        resolution.resolution_kind === "remittance"
     )
         return;
     resolution.post(resolveException.url([props.batch.id, exceptionId]), {
@@ -344,6 +345,14 @@ function report(): void {
         </PageHeader>
 
         <p
+            v-if="batch.open_notice"
+            class="bg-muted rounded-xl p-4 text-sm"
+            role="status"
+        >
+            {{ batch.open_notice }}
+        </p>
+
+        <p
             v-if="batch.settlement_pending"
             class="bg-muted rounded-xl p-4 text-sm"
             role="status"
@@ -366,8 +375,8 @@ function report(): void {
                         <p class="text-muted-foreground text-sm">
                             {{
                                 batch.uncollected_kobo > 0
-                                    ? 'Expected'
-                                    : 'Recorded'
+                                    ? "Expected"
+                                    : "Recorded"
                             }}
                         </p>
                         <p class="mt-1 text-2xl font-semibold">
@@ -377,16 +386,16 @@ function report(): void {
                             v-if="batch.uncollected_kobo > 0"
                             class="text-muted-foreground mt-1 text-xs"
                         >
-                            {{ money(batch.uncollected_kobo) }} was corrected
-                            as never collected.
+                            {{ money(batch.uncollected_kobo) }} was corrected as
+                            never collected.
                         </p>
                     </div>
                     <div class="bg-muted/40 rounded-xl p-4">
                         <p class="text-muted-foreground text-sm">
                             {{
                                 batch.cash_handoff_allowed
-                                    ? 'Handed over'
-                                    : 'Reached the bank'
+                                    ? "Handed over"
+                                    : "Reached the bank"
                             }}
                         </p>
                         <p class="mt-1 text-2xl font-semibold">
@@ -397,8 +406,8 @@ function report(): void {
                         <p class="text-muted-foreground text-sm">
                             {{
                                 batch.cash_handoff_allowed
-                                    ? 'Agent still holds'
-                                    : 'Still to reach the bank'
+                                    ? "Agent still holds"
+                                    : "Still to reach the bank"
                             }}
                         </p>
                         <p class="mt-1 text-2xl font-semibold">
@@ -670,7 +679,7 @@ function report(): void {
                     </p>
                     <p>{{ record.cause }}</p>
                     <p class="text-muted-foreground text-xs break-all">
-                        {{ record.receipt_reference ?? 'No receipt reference'
+                        {{ record.receipt_reference ?? "No receipt reference"
                         }}<span v-if="record.reversal_id">
                             · {{ record.reversal_id }}</span
                         >
@@ -1105,9 +1114,9 @@ function report(): void {
                             )
                         "
                         >{{
-                            issueSheet.item.status === 'investigating'
-                                ? 'Mark waiting'
-                                : 'Start checking'
+                            issueSheet.item.status === "investigating"
+                                ? "Mark waiting"
+                                : "Start checking"
                         }}</Button
                     >
                     <Button

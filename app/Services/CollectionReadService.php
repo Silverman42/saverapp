@@ -660,7 +660,7 @@ class CollectionReadService
         $position = $this->position($customer, $forUpdate);
         $groups = LedgerPostingGroup::query()->where('customer_profile_id', $customer->id)->with('entries.account')->get();
         foreach ($groups as $group) {
-            if (! in_array($group->event_type, ['cash_contribution', 'noncash_contribution', ...WithdrawalPayoutSource::EVENT_TYPES, 'bank_payout_settlement', 'bank_payout_return', 'receipt_reclassification', 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
+            if (! in_array($group->event_type, ['cash_contribution', 'noncash_contribution', ...WithdrawalPayoutSource::EVENT_TYPES, 'bank_payout_settlement', 'bank_payout_return', 'receipt_reclassification', ControlledTenderWalletCreditService::EVENT_TYPE, 'withdrawal_compensation', 'deduction_compensation', 'fee_refund', ...array_column(FeeLedgerPostingType::cases(), 'value')], true)
                 || $group->currency !== 'NGN' || $group->entries->count() < 2 || $group->getRawOriginal('committed_at') === null) {
                 return 'unavailable';
             }

@@ -102,6 +102,7 @@ class ReconciliationController extends Controller
                 'id' => $batch->id, 'date' => $batch->received_date, 'revision' => $batch->revision,
                 'timezone' => $batch->timezone,
                 'status' => $batch->status, 'version' => $batch->version,
+                'open_notice' => $batch->openBatchNotice(),
                 'method_identity' => $batch->method_identity, 'custody_account_code' => $batch->custody_account_code,
                 'method_label' => $batch->collection_method_version_id === null ? 'Cash' : DB::table('collection_method_versions')->where('id', $batch->collection_method_version_id)->value('label'),
                 'settlement_pending' => $position['settlement_pending'],

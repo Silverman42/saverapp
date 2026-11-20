@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 #[Signature('collections:freeze-batches')]
-#[Description('Freeze cash collection batches after their captured local day ends')]
+#[Description('Freeze collection batches once their captured closing time (cutoff or end of day) has passed')]
 class FreezeCollectionBatches extends Command
 {
     public function handle(): int
@@ -31,7 +31,7 @@ class FreezeCollectionBatches extends Command
     {
         CollectionBatch::query()->where('status', 'open')->orderBy('id')->chunkById(100, function ($batches): void {
             foreach ($batches as $batch) {
-                if ($batch->received_date >= CarbonImmutable::now($batch->timezone)->toDateString()) {
+                if ($batch->closes_at !== null ? $batch->closes_at->isFuture() : $batch->received_date >= CarbonImmutable::now($batch->timezone)->toDateString()) {
                     continue;
                 }
                 DB::transaction(function () use ($batch): void {

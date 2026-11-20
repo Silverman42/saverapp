@@ -67,6 +67,7 @@ class BusinessSettingsCatalogue
             'receipt_minimum_kobo' => ['Receipt minimum (kobo)', 'Collection methods & limits', 100, ['required', 'integer', 'min:1', 'max:999999999999']],
             'receipt_maximum_kobo' => ['Receipt maximum (kobo)', 'Collection methods & limits', 999999999999, ['required', 'integer', 'min:1', 'max:999999999999']],
             'late_lookback_days' => ['Late receipt lookback (days)', 'Collection methods & limits', 30, ['required', 'integer', 'min:0', 'max:365']],
+            'cash_batch_cutoff' => ['Cash batch cutoff time', 'Collection methods & limits', null, ['nullable', 'date_format:H:i', 'not_in:00:00']],
             'collection_cash' => ['Agent cash', 'Collection methods & limits', false, ['required', 'boolean']],
             'collection_transfer' => ['Business bank transfer', 'Collection methods & limits', false, ['required', 'boolean']],
             'collection_pos' => ['POS', 'Collection methods & limits', false, ['required', 'boolean']],

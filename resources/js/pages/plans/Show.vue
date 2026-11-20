@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import PlanFeeHistory from '@/components/PlanFeeHistory.vue';
-import type { PlanFeeHistory as FeeHistory } from '@/types/plan-fee-history';
-import PlanPostedActivity from '@/components/PlanPostedActivity.vue';
-import PlanPostingHistory from '@/components/PlanPostingHistory.vue';
-import type { PlanPostingHistory as PostingHistory } from '@/types/plan-posted-activity';
-import type { PlanPostedActivity as PostedActivity } from '@/types/plan-posted-activity';
-import PlanSavingsSummary from '@/components/PlanSavingsSummary.vue';
-import type { PlanSavings } from '@/types/plan-savings';
-import PlanEstimateSummary from '@/components/PlanEstimateSummary.vue';
-import type { PlanEstimate } from '@/types/plan-estimate';
+import PlanFeeHistory from "@/components/PlanFeeHistory.vue";
+import type { PlanFeeHistory as FeeHistory } from "@/types/plan-fee-history";
+import PlanPostedActivity from "@/components/PlanPostedActivity.vue";
+import PlanPostingHistory from "@/components/PlanPostingHistory.vue";
+import type { PlanPostingHistory as PostingHistory } from "@/types/plan-posted-activity";
+import type { PlanPostedActivity as PostedActivity } from "@/types/plan-posted-activity";
+import PlanSavingsSummary from "@/components/PlanSavingsSummary.vue";
+import type { PlanSavings } from "@/types/plan-savings";
+import PlanEstimateSummary from "@/components/PlanEstimateSummary.vue";
+import type { PlanEstimate } from "@/types/plan-estimate";
 import {
     Head,
     Link,
@@ -16,24 +16,26 @@ import {
     setLayoutProps,
     useForm,
     usePage,
-} from '@inertiajs/vue3';
-import { computed, nextTick, ref, watch, watchEffect } from 'vue';
+} from "@inertiajs/vue3";
+import { computed, nextTick, ref, watch, watchEffect } from "vue";
 import {
+    AlertTriangle,
     ArrowLeft,
     CalendarDays,
     Ellipsis,
     History,
     PencilLine,
-} from '@lucide/vue';
-import EmptyState from '@/components/EmptyState.vue';
-import FormSheet from '@/components/FormSheet.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { Badge } from '@/components/ui/badge';
-import PlanFundingSummary from '@/components/PlanFundingSummary.vue';
-import type { PlanFundingSummary as FundingSummary } from '@/types/plan-funding';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+} from "@lucide/vue";
+import EmptyState from "@/components/EmptyState.vue";
+import FormSheet from "@/components/FormSheet.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import PlanFundingSummary from "@/components/PlanFundingSummary.vue";
+import type { PlanFundingSummary as FundingSummary } from "@/types/plan-funding";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -41,18 +43,18 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Label } from '@/components/ui/label';
-import { dashboard } from '@/routes';
-import { show as showCustomer } from '@/routes/customers';
-import { create as createCustomerPlan } from '@/routes/customers/plans';
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { dashboard } from "@/routes";
+import { show as showCustomer } from "@/routes/customers";
+import { create as createCustomerPlan } from "@/routes/customers/plans";
 import {
     settlement as planSettlement,
     index as plansIndex,
@@ -62,8 +64,8 @@ import {
     pause as pausePlan,
     resume as resumePlan,
     cancel as cancelPlan,
-} from '@/routes/plans';
-import { create as createCollection } from '@/routes/customers/collections';
+} from "@/routes/plans";
+import { create as createCollection } from "@/routes/customers/collections";
 
 const page = usePage();
 
@@ -138,7 +140,7 @@ type PlanData = {
     created_at: string | null;
 };
 
-type LifecycleAction = 'pause' | 'resume' | 'cancel';
+type LifecycleAction = "pause" | "resume" | "cancel";
 
 const props = defineProps<{
     plan: PlanData;
@@ -159,12 +161,18 @@ const props = defineProps<{
         can_renew: boolean;
         closure_pending: boolean;
     };
+    closure_blockers: {
+        code: string;
+        title: string;
+        description: string;
+        actions: { label: string; href: string }[];
+    }[];
     attempt_reference: string;
     directory_context: Record<string, string | number>;
 }>();
 
 const confirmationAction = ref<LifecycleAction | null>(null);
-const actionMessage = ref('');
+const actionMessage = ref("");
 const actionNotice = ref<HTMLElement | null>(null);
 const actionRequiresReload = ref(false);
 const reloadingAction = ref(false);
@@ -175,16 +183,16 @@ const transitionForm = useForm({
     plan_version: props.plan.version,
     customer_version: props.customer.version,
     assignment_version: props.customer.assignment_version ?? 0,
-    reason: '',
-    customer_explanation: '',
+    reason: "",
+    customer_explanation: "",
 });
 
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Plans', href: plansIndex() },
-            { title: 'Plan', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Plans", href: plansIndex() },
+            { title: "Plan", href: "#" },
         ],
     },
 });
@@ -195,25 +203,25 @@ const directoryLink = computed(() =>
 watchEffect(() => {
     setLayoutProps({
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Plans', href: directoryLink.value },
-            { title: 'Plan', href: '#' },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Plans", href: directoryLink.value },
+            { title: "Plan", href: "#" },
         ],
     });
 });
 
 const currentQuery = computed(
-    () => new URL(page.url, 'http://localhost').searchParams,
+    () => new URL(page.url, "http://localhost").searchParams,
 );
 const openFeeHistory = computed(
     () =>
-        currentQuery.value.has('fee_page') ||
-        currentQuery.value.has('fee_per_page'),
+        currentQuery.value.has("fee_page") ||
+        currentQuery.value.has("fee_per_page"),
 );
 const openPostingHistory = computed(
     () =>
-        currentQuery.value.has('activity_page') ||
-        currentQuery.value.has('activity_per_page'),
+        currentQuery.value.has("activity_page") ||
+        currentQuery.value.has("activity_per_page"),
 );
 
 const visibleSlots = computed(() =>
@@ -226,20 +234,20 @@ const recentHistory = computed(() => props.plan.history.slice(-3).reverse());
 const fullHistory = computed(() => [...props.plan.history].reverse());
 const fullRevisions = computed(() => [...props.plan.revisions].reverse());
 const confirmationTitle = computed(() => {
-    if (confirmationAction.value === 'pause') return 'Pause this plan?';
-    if (confirmationAction.value === 'resume') return 'Resume this plan?';
-    return 'Cancel this plan?';
+    if (confirmationAction.value === "pause") return "Pause this plan?";
+    if (confirmationAction.value === "resume") return "Resume this plan?";
+    return "Cancel this plan?";
 });
 const canRecordCash = computed(
     () =>
         page.props.features.collections &&
         props.actions.can_manage &&
-        props.plan.status === 'active',
+        props.plan.status === "active",
 );
 const showCancel = computed(
     () =>
         props.actions.can_manage &&
-        ['active', 'paused'].includes(props.plan.status),
+        ["active", "paused"].includes(props.plan.status),
 );
 const hasMoreActions = computed(
     () =>
@@ -251,25 +259,25 @@ const hasMoreActions = computed(
 
 const keyFigures = computed(() => [
     {
-        label: 'Daily amount',
+        label: "Daily amount",
         value:
             props.plan.current_terms?.formatted_contribution_amount ??
-            'Not set',
+            "Not set",
     },
     {
-        label: 'Paid so far',
-        value: props.plan.financial_summary.funded_principal ?? 'Not available',
+        label: "Paid so far",
+        value: props.plan.financial_summary.funded_principal ?? "Not available",
     },
     {
-        label: 'Days paid',
+        label: "Days paid",
         value:
             props.plan.financial_summary.fully_funded_slots === null
-                ? 'Not available'
+                ? "Not available"
                 : `${props.plan.financial_summary.fully_funded_slots} of ${props.plan.financial_summary.required_slots}`,
     },
     {
-        label: 'Available savings',
-        value: props.plan.savings_summary.cycle.available ?? 'Not available',
+        label: "Available savings",
+        value: props.plan.savings_summary.cycle.available ?? "Not available",
     },
 ]);
 
@@ -297,7 +305,7 @@ const openAction = (action: LifecycleAction): void => {
     )
         return;
     confirmationAction.value = action;
-    actionMessage.value = '';
+    actionMessage.value = "";
     transitionForm.clearErrors();
 };
 
@@ -309,36 +317,35 @@ const reloadAction = (): void => {
     if (transitionForm.processing || reloadingAction.value) return;
     reloadingAction.value = true;
     router.reload({
-        only: ['plan', 'customer', 'actions', 'attempt_reference'],
+        only: ["plan", "customer", "actions", "attempt_reference"],
         onSuccess: (currentPage) => {
             const currentPlan = currentPage.props.plan as
-                | { id?: string }
-                | undefined;
+                { id?: string } | undefined;
             if (
-                currentPage.component !== 'plans/Show' ||
+                currentPage.component !== "plans/Show" ||
                 currentPlan?.id !== props.plan.id
             )
                 return;
             actionRequiresReload.value = false;
-            actionMessage.value = '';
+            actionMessage.value = "";
             transitionForm.clearErrors();
-            transitionForm.reset('reason', 'customer_explanation');
+            transitionForm.reset("reason", "customer_explanation");
             confirmationAction.value = null;
         },
         onError: () => {
             actionMessage.value =
-                'We could not load the latest plan. Try reloading again.';
+                "We could not load the latest plan. Try reloading again.";
         },
         onHttpException: (response) => {
             actionMessage.value =
                 response.status === 403 || response.status === 404
-                    ? 'This plan is not available, or your access has changed. We could not confirm your last action.'
-                    : 'We could not load the latest plan. Try reloading again.';
+                    ? "This plan is not available, or your access has changed. We could not confirm your last action."
+                    : "We could not load the latest plan. Try reloading again.";
             return false;
         },
         onNetworkError: () => {
             actionMessage.value =
-                'The connection failed while loading the plan. Try reloading again.';
+                "The connection failed while loading the plan. Try reloading again.";
             return false;
         },
         onFinish: () => {
@@ -357,11 +364,11 @@ const submitAction = (): void => {
         actionRequiresReload.value
     )
         return;
-    actionMessage.value = '';
+    actionMessage.value = "";
     const path =
-        action === 'pause'
+        action === "pause"
             ? pausePlan(props.plan.id).url
-            : action === 'resume'
+            : action === "resume"
               ? resumePlan(props.plan.id).url
               : cancelPlan(props.plan.id).url;
 
@@ -379,21 +386,21 @@ const submitAction = (): void => {
                 actionRequiresReload.value = true;
                 actionMessage.value =
                     response.status === 409
-                        ? 'This plan or customer changed, or this action is no longer available. Reload the plan and check it before trying again.'
+                        ? "This plan or customer changed, or this action is no longer available. Reload the plan and check it before trying again."
                         : response.status === 403 || response.status === 404
-                          ? 'This action was blocked because the plan is not available or your access changed. Reload to check.'
-                          : 'We could not confirm if this worked. Reload the plan to check its status.';
+                          ? "This action was blocked because the plan is not available or your access changed. Reload to check."
+                          : "We could not confirm if this worked. Reload the plan to check its status.";
                 return false;
             },
             onNetworkError: () => {
                 actionRequiresReload.value = true;
                 actionMessage.value =
-                    'The connection failed, so we could not confirm if this was saved. Reload the plan to check.';
+                    "The connection failed, so we could not confirm if this was saved. Reload the plan to check.";
                 return false;
             },
             onSuccess: () => {
                 confirmationAction.value = null;
-                transitionForm.reset('reason', 'customer_explanation');
+                transitionForm.reset("reason", "customer_explanation");
             },
             onFinish: focusActionNotice,
         });
@@ -401,11 +408,11 @@ const submitAction = (): void => {
 
 const statusVariant = (
     status: string,
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
-    if (status === 'active') return 'default';
-    if (status === 'paused') return 'secondary';
-    if (status === 'cancelled') return 'destructive';
-    return 'outline';
+): "default" | "secondary" | "destructive" | "outline" => {
+    if (status === "active") return "default";
+    if (status === "paused") return "secondary";
+    if (status === "cancelled") return "destructive";
+    return "outline";
 };
 </script>
 
@@ -497,13 +504,41 @@ const statusVariant = (
         </PageHeader>
 
         <p
-            v-if="actions.closure_pending"
+            v-if="actions.closure_pending && closure_blockers.length === 0"
             role="status"
             class="bg-muted rounded-xl p-4 text-sm"
         >
-            All savings on this page were paid out. The page closes once its
-            collections are reconciled; then a new page can start.
+            All savings on this page were paid out. The page closes
+            automatically within a few minutes; then a new page can start.
         </p>
+
+        <Alert
+            v-for="blocker in closure_blockers"
+            :key="blocker.code"
+            variant="destructive"
+        >
+            <AlertTriangle class="size-4" />
+            <AlertTitle
+                >This page can't end yet: {{ blocker.title }}</AlertTitle
+            >
+            <AlertDescription class="space-y-3">
+                <p>{{ blocker.description }}</p>
+                <div
+                    v-if="blocker.actions.length > 0"
+                    class="flex flex-row flex-wrap gap-2"
+                >
+                    <Button
+                        v-for="action in blocker.actions"
+                        :key="action.href"
+                        as-child
+                        size="sm"
+                        variant="outline"
+                    >
+                        <Link :href="action.href">{{ action.label }}</Link>
+                    </Button>
+                </div>
+            </AlertDescription>
+        </Alert>
 
         <Card>
             <CardHeader
@@ -639,7 +674,7 @@ const statusVariant = (
                             <div>
                                 <dt>Created</dt>
                                 <dd class="text-foreground mt-0.5">
-                                    {{ plan.created_at ?? 'Unknown' }}
+                                    {{ plan.created_at ?? "Unknown" }}
                                 </dd>
                             </div>
                             <div v-if="plan.current_terms">
@@ -678,8 +713,8 @@ const statusVariant = (
                             <p class="text-muted-foreground text-xs">
                                 {{
                                     plan.fee.estimate_available
-                                        ? 'The final fee is worked out when money is paid out.'
-                                        : 'The fee is worked out when a withdrawal is requested.'
+                                        ? "The final fee is worked out when money is paid out."
+                                        : "The fee is worked out when a withdrawal is requested."
                                 }}
                             </p>
                         </section>
@@ -744,7 +779,7 @@ const statusVariant = (
                 >
                     {{
                         showAllSlots
-                            ? 'Show fewer days'
+                            ? "Show fewer days"
                             : `Show all ${plan.slots.length} days`
                     }}
                 </Button>
@@ -815,7 +850,7 @@ const statusVariant = (
                             </p>
                         </div>
                         <p class="text-muted-foreground text-xs">
-                            {{ event.effective_at ?? 'Date unknown' }}
+                            {{ event.effective_at ?? "Date unknown" }}
                         </p>
                     </li>
                 </ol>
@@ -864,7 +899,7 @@ const statusVariant = (
                             Reason: {{ event.reason }}
                         </p>
                         <p class="text-muted-foreground text-xs">
-                            {{ event.effective_at ?? 'Date unknown'
+                            {{ event.effective_at ?? "Date unknown"
                             }}<template v-if="event.actor">
                                 · By {{ event.actor }}</template
                             >
@@ -899,7 +934,7 @@ const statusVariant = (
                             Reason: {{ revision.reason }}
                         </p>
                         <p class="text-muted-foreground text-xs">
-                            {{ revision.created_at ?? 'Date unknown' }}
+                            {{ revision.created_at ?? "Date unknown" }}
                         </p>
                     </li>
                 </ol>
@@ -1062,7 +1097,7 @@ const statusVariant = (
                     aria-describedby="plan-action-notice"
                     @click="reloadAction"
                     >{{
-                        reloadingAction ? 'Reloading…' : 'Reload plan'
+                        reloadingAction ? "Reloading…" : "Reload plan"
                     }}</Button
                 >
                 <Button
@@ -1087,7 +1122,7 @@ const statusVariant = (
                     "
                     @click="submitAction"
                 >
-                    {{ transitionForm.processing ? 'Saving…' : 'Confirm' }}
+                    {{ transitionForm.processing ? "Saving…" : "Confirm" }}
                 </Button>
             </DialogFooter>
         </DialogContent>

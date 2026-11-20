@@ -13,6 +13,7 @@ use App\Models\PlanOperationAttempt;
 use App\Models\PlanTermsRevision;
 use App\Models\ThriftPlan;
 use App\Models\User;
+use App\Services\PlanClosureBlockerReadService;
 use App\Services\PlanEstimateService;
 use App\Services\PlanFeeHistoryReadService;
 use App\Services\PlanFinancialActivityReadService;
@@ -263,7 +264,7 @@ class ThriftPlanController extends Controller
         return to_route('plans.show', $result['plan']->plan_id);
     }
 
-    public function show(Request $request, string $plan, ResourceScopeService $scopeService, PlanFundingReadService $fundingReader, PlanSavingsReadService $savingsReader, PlanFinancialActivityReadService $activityReader, PlanFeeHistoryReadService $feeReader, ThriftPlanService $planService): Response
+    public function show(Request $request, string $plan, ResourceScopeService $scopeService, PlanFundingReadService $fundingReader, PlanSavingsReadService $savingsReader, PlanFinancialActivityReadService $activityReader, PlanFeeHistoryReadService $feeReader, ThriftPlanService $planService, PlanClosureBlockerReadService $closureBlockers): Response
     {
         /** @var User $viewer */
         $viewer = $request->user();
@@ -313,6 +314,7 @@ class ThriftPlanController extends Controller
                     && $record->customerProfile->operational_status->value === 'active',
                 'closure_pending' => $record->closure_pending_at !== null,
             ],
+            'closure_blockers' => $closureBlockers->read($viewer, $record),
             'attempt_reference' => (string) Str::uuid(),
         ]);
     }

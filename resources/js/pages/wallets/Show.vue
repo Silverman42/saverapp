@@ -55,6 +55,7 @@ const typeLabels: Record<string, string> = {
     wallet_contribution: "Paid into a plan",
     external_fee_receipt: "Fee paid",
     receipt_reclassification: "Plan payment corrected",
+    controlled_tender_wallet_credit: "Corrected payment added",
     cash_withdrawal: "Cash payout",
     bank_withdrawal: "Bank payout",
     offline_withdrawal: "Paid outside platform",

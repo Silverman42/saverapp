@@ -29,6 +29,7 @@ use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 require_once __DIR__.'/../CollectionFixtures.php';
@@ -465,4 +466,33 @@ test('a blocked page closure stays pending and closes once its batch is reconcil
     expect($plan->status)->toBe(ThriftPlanStatus::Closed)->and($plan->closure_pending_at)->toBeNull()
         ->and($plan->open_customer_profile_id)->toBeNull()
         ->and($plan->lifecycleEvents()->where('event_type', 'closed')->count())->toBe(1);
+});
+
+test('a blocked page closure tells staff why on the plan page and links to the batch', function (): void {
+    [$agent, $customer, $assignment, $plan] = approvedTerminationFixture(timing: FeeRuleTiming::FirstContribution);
+    $admin = pageClosureAdmin();
+    payPageOffline($this, $agent, $admin, $customer, $assignment, $plan, 'full');
+    $batch = CollectionReceipt::query()->oldest('id')->firstOrFail()->batch;
+
+    $this->actingAs($agent)->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('closure_blockers.0.code', 'custody_unresolved')
+            ->where('closure_blockers.0.title', 'Collection batch is still open')
+            ->where('closure_blockers.0.description', fn (string $text): bool => str_contains($text, 'is still collecting'))
+            ->where('closure_blockers.0.actions', [['label' => 'Open batch #'.$batch->id, 'href' => route('collection-batches.show', $batch)]]));
+
+    $this->get(route('collection-batches.show', $batch))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('batch.open_notice', fn (string $text): bool => str_contains($text, 'is still collecting')));
+
+    $this->travel(1)->days();
+    $this->flushSession()->actingAs($agent)->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('closure_blockers.0.description', fn (string $text): bool => str_contains($text, 'will be ready for remittance and review')));
+
+    $this->artisan('collections:freeze-batches')->assertSuccessful();
+    $this->flushSession()->actingAs($agent)->get(route('plans.show', $plan->plan_id))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('closure_blockers.0.title', 'Collection batch is not reconciled'));
+    $this->get(route('collection-batches.show', $batch))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('batch.open_notice', null));
 });

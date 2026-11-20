@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ThriftPlanStatus;
 use App\Http\Requests\ConfirmPlanSettlementRequest;
 use App\Http\Requests\PreviewCollectionRequest;
 use App\Http\Requests\StoreReplacementReceiptRequest;
+use App\Http\Requests\StoreReplacementWalletCreditRequest;
 use App\Models\BusinessProfile;
 use App\Models\CollectionReceipt;
 use App\Models\CustomerProfile;
@@ -12,7 +14,9 @@ use App\Models\FeeObligation;
 use App\Models\ReversalRequest;
 use App\Models\ThriftPlan;
 use App\Services\CollectionReplacementService;
+use App\Services\ControlledTenderWalletCreditService;
 use App\Services\PlanSettlementService;
+use App\Services\WalletFeature;
 use App\Support\Toast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,13 +28,17 @@ use Inertia\Response;
 
 class FinancialWorkflowController extends Controller
 {
-    public function replacement(ReversalRequest $reversal, Request $request): Response
+    public function replacement(ReversalRequest $reversal, Request $request): Response|RedirectResponse
     {
         $customer = CustomerProfile::query()->findOrFail($reversal->customer_profile_id);
         Gate::authorize('recordCollection', $customer);
         abort_unless(config('collections.receipt_corrections_enabled', false), 503);
         $dependencies = $reversal->getAttribute('dependency_snapshot');
         $source = CollectionReceipt::query()->whereKey(is_array($dependencies) ? ($dependencies['summary']['receipt_id'] ?? null) : null)->firstOrFail();
+        if ($source->thrift_plan_id !== null && ThriftPlan::query()->whereKey($source->thrift_plan_id)->value('status') !== ThriftPlanStatus::Active
+            && app(WalletFeature::class)->active()) {
+            return to_route('reversals.wallet-credit', $reversal);
+        }
         $controlled = app(CollectionReplacementService::class)->controlledAmount($reversal, $source);
         app(CollectionReplacementService::class)->lockSource($reversal, $customer, $controlled, false);
 
@@ -53,6 +61,23 @@ class FinancialWorkflowController extends Controller
         Toast::success('Replacement recorded', 'The replacement payment was recorded.');
 
         return to_route('collections.show', $receipt);
+    }
+
+    public function walletCredit(ReversalRequest $reversal, Request $request, ControlledTenderWalletCreditService $service): Response
+    {
+        return Inertia::render('reversals/WalletCredit', [
+            'customer' => ['id' => $reversal->customerProfile->customer_id, 'name' => $reversal->customerProfile->user->name],
+            'preview' => $service->preview($request->user(), $reversal), 'attempt_reference' => (string) Str::uuid(),
+        ]);
+    }
+
+    public function walletCreditStore(ReversalRequest $reversal, StoreReplacementWalletCreditRequest $request, ControlledTenderWalletCreditService $service): RedirectResponse
+    {
+        $service->credit($request->user(), $reversal, $request->safe()->only(['attempt_reference', 'preview_fingerprint']));
+        Toast::success('Added to wallet', 'The held payment was added to the customer\'s wallet.');
+        $planId = $service->sourcePlanReference($reversal);
+
+        return $planId === null ? to_route('customers.wallet.show', $reversal->customerProfile->customer_id) : to_route('plans.show', $planId);
     }
 
     public function settlement(ThriftPlan $plan, Request $request, PlanSettlementService $service): Response

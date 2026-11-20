@@ -52,14 +52,7 @@ class PlanPageClosureService
             ->orderBy('closure_pending_at')->limit($limit)->pluck('id');
         foreach ($ids as $id) {
             try {
-                $closed += app(PlatformGuard::class)->transaction('financial', function () use ($id): int {
-                    $plan = ThriftPlan::query()->whereKey($id)->lockForUpdate()->firstOrFail();
-                    if ($plan->closure_pending_at === null || $plan->status !== ThriftPlanStatus::Paused) {
-                        return 0;
-                    }
-
-                    return $this->attemptClose($plan, null, 'closure_retry') ? 1 : 0;
-                }, attempts: 3);
+                $closed += app(PlatformGuard::class)->transaction('financial', fn (): int => $this->closeIfPending($id) ? 1 : 0, attempts: 3);
             } catch (PlatformBlocked) {
                 return $closed;
             } catch (HttpException|RuntimeException $exception) {
@@ -68,6 +61,19 @@ class PlanPageClosureService
         }
 
         return $closed;
+    }
+
+    /**
+     * Retry one pending page inside the caller's financial transaction, for example right after its last blocker clears.
+     */
+    public function closeIfPending(int $planId, string $source = 'closure_retry'): bool
+    {
+        $plan = ThriftPlan::query()->whereKey($planId)->lockForUpdate()->firstOrFail();
+        if ($plan->closure_pending_at === null || $plan->status !== ThriftPlanStatus::Paused) {
+            return false;
+        }
+
+        return $this->attemptClose($plan, null, $source);
     }
 
     private function markPrepared(ThriftPlan $plan, WithdrawalRequest $withdrawal, ?User $actor): void

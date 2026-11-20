@@ -181,6 +181,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('reversals/{reversal}/replacement', [FinancialWorkflowController::class, 'replacement'])->name('reversals.replacement');
     Route::post('reversals/{reversal}/replacement/preview', [FinancialWorkflowController::class, 'replacementPreview'])->name('reversals.replacement.preview');
     Route::post('reversals/{reversal}/replacement', [FinancialWorkflowController::class, 'replacementStore'])->name('reversals.replacement.store');
+    Route::get('reversals/{reversal}/wallet-credit', [FinancialWorkflowController::class, 'walletCredit'])->name('reversals.wallet-credit');
+    Route::post('reversals/{reversal}/wallet-credit', [FinancialWorkflowController::class, 'walletCreditStore'])->name('reversals.wallet-credit.store');
     Route::post('cash-disbursements/{execution}/return', [CashRecoveryController::class, 'disbursement'])->middleware('fresh')->name('cash-disbursements.return');
     Route::get('plans/{plan}', [ThriftPlanController::class, 'show'])->name('plans.show');
 

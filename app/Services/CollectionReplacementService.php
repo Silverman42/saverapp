@@ -71,7 +71,8 @@ class CollectionReplacementService
         $group = LedgerPostingGroup::query()->find($reversal->compensation_posting_group_id);
         if ($reversal->customer_profile_id !== $customer->id || $reversal->state !== 'approved_posted'
             || $group?->event_type !== 'receipt_reclassification'
-            || CollectionReceipt::query()->where('replacement_reversal_id', $reversal->id)->exists()) {
+            || CollectionReceipt::query()->where('replacement_reversal_id', $reversal->id)->exists()
+            || LedgerPostingGroup::query()->where('source_type', ControlledTenderWalletCreditService::SOURCE_TYPE)->where('source_id', (string) $reversal->id)->exists()) {
             throw new ConflictHttpException('This correction has no unconsumed controlled receipt.');
         }
         $dependencies = $reversal->getAttribute('dependency_snapshot');

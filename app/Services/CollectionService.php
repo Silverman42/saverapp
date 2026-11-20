@@ -450,11 +450,12 @@ class CollectionService
             ->where('method_identity', $identity)
             ->where('received_date', $date)->where('timezone', $timezone)
             ->orderByDesc('revision')->lockForUpdate()->first();
-        if ($latest?->status === 'open') {
+        if ($latest?->status === 'open' && ($latest->closes_at === null || $latest->closes_at->isFuture())) {
             return $latest;
         }
 
         return CollectionBatch::create([
+            'closes_at' => $this->batchClosesAt($date, $timezone, $identity === 'cash' ? $this->settings->cashBatchCutoff() : null),
             'method_identity' => $identity, 'collection_method_version_id' => $method['collection_method_version_id'],
             'custody_account_code' => $method['custody_account_code'],
             'agent_profile_id' => $agentId, 'received_date' => $date, 'timezone' => $timezone,
@@ -463,6 +464,21 @@ class CollectionService
             'predecessor_batch_id' => $latest === null ? null : $latest->id,
             'status' => 'open', 'version' => 1,
         ]);
+    }
+
+    /**
+     * A day's first batch closes at the cash cutoff when one is set and has not passed; otherwise, including late additions
+     * recorded after the cutoff, it closes at the end of its received date.
+     */
+    private function batchClosesAt(string $date, string $timezone, ?string $cutoff): CarbonImmutable
+    {
+        $endOfDay = CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone)->addDay();
+        if ($cutoff === null) {
+            return $endOfDay->utc();
+        }
+        $cutoffMoment = CarbonImmutable::createFromFormat('!Y-m-d H:i', $date.' '.$cutoff, $timezone);
+
+        return ($cutoffMoment->isFuture() ? $cutoffMoment : $endOfDay)->utc();
     }
 
     public function updatePlanCompletionAndFee(ThriftPlan $plan, User $actor, CustomerProfile $customer, CollectionReceipt $receipt): void

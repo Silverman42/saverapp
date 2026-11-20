@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm, useHttp } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
-import type { FormDataConvertible } from '@inertiajs/core';
-import { Pencil } from '@lucide/vue';
-import FormSheet from '@/components/FormSheet.vue';
-import MoreDetails from '@/components/MoreDetails.vue';
-import PageHeader from '@/components/PageHeader.vue';
-import { Button } from '@/components/ui/button';
+import { Head, Link, router, useForm, useHttp } from "@inertiajs/vue3";
+import { computed, ref, watch } from "vue";
+import type { FormDataConvertible } from "@inertiajs/core";
+import { Pencil } from "@lucide/vue";
+import FormSheet from "@/components/FormSheet.vue";
+import MoreDetails from "@/components/MoreDetails.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Button } from "@/components/ui/button";
 import {
     Card,
     CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
-} from '@/components/ui/card';
+} from "@/components/ui/card";
 import {
     Dialog,
     DialogContent,
@@ -21,57 +21,57 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { useProtectedWorkspace } from '@/composables/useProtectedWorkspace';
-import { dashboard } from '@/routes';
-import { index } from '@/routes/admin/business-settings';
-import * as drafts from '@/routes/admin/business-settings/drafts';
-import * as versions from '@/routes/admin/business-settings/versions';
-import * as operations from '@/routes/admin/business-settings/operations';
-import * as logo from '@/routes/admin/business-settings/logo';
-import { show as logoAsset } from '@/routes/business-logo';
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { useProtectedWorkspace } from "@/composables/useProtectedWorkspace";
+import { dashboard } from "@/routes";
+import { index } from "@/routes/admin/business-settings";
+import * as drafts from "@/routes/admin/business-settings/drafts";
+import * as versions from "@/routes/admin/business-settings/versions";
+import * as operations from "@/routes/admin/business-settings/operations";
+import * as logo from "@/routes/admin/business-settings/logo";
+import { show as logoAsset } from "@/routes/business-logo";
 import type {
     SettingValue,
     SettingsWorkspace,
-} from '@/types/business-settings';
-import { showToast } from '@/lib/flashToast';
+} from "@/types/business-settings";
+import { showToast } from "@/lib/flashToast";
 const props = defineProps<{ settings: SettingsWorkspace; scope: string }>();
 defineOptions({
     layout: {
         breadcrumbs: [
-            { title: 'Dashboard', href: dashboard() },
-            { title: 'Business settings', href: index() },
+            { title: "Dashboard", href: dashboard() },
+            { title: "Business settings", href: index() },
         ],
     },
 });
 const { visible, notice, refresh } = useProtectedWorkspace(() => props.scope);
-const selectedCode = ref('display_name');
+const selectedCode = ref("display_name");
 const selectedDraft = ref<number | null>(null);
-const value = ref('');
+const value = ref("");
 const unknown = ref(false);
 const operationId = ref<string | null>(null);
-const mutationNotice = ref('');
+const mutationNotice = ref("");
 const lookup = useHttp({});
 const logoUpload = useHttp<{ logo: File | null }, { reference: string }>({
     logo: null,
 });
-const isLogoSetting = computed(() => selectedCode.value === 'logo_reference');
+const isLogoSetting = computed(() => selectedCode.value === "logo_reference");
 const isBooleanSetting = computed(
-    () => typeof definition.value.default === 'boolean',
+    () => typeof definition.value.default === "boolean",
 );
 function isLogoReference(code: string, item: SettingValue): item is string {
-    return code === 'logo_reference' && typeof item === 'string';
+    return code === "logo_reference" && typeof item === "string";
 }
 function uploadLogo(event: Event): void {
     const file = (event.target as HTMLInputElement).files?.[0] ?? null;
@@ -81,21 +81,21 @@ function uploadLogo(event: Event): void {
         onSuccess: (response) => {
             value.value = response.reference;
             showToast({
-                type: 'success',
-                title: 'Logo uploaded',
-                description: 'Save the draft to use the new logo.',
+                type: "success",
+                title: "Logo uploaded",
+                description: "Save the draft to use the new logo.",
             });
         },
     });
 }
 let pendingRequest: {
     url: string;
-    method: 'post' | 'patch';
+    method: "post" | "patch";
     data: Record<string, FormDataConvertible>;
 } | null = null;
 function remember(
     url: string,
-    method: 'post' | 'patch',
+    method: "post" | "patch",
     data: Record<string, FormDataConvertible>,
 ): void {
     pendingRequest = { url, method, data: JSON.parse(JSON.stringify(data)) };
@@ -112,29 +112,33 @@ const editable = computed(() =>
     ),
 );
 const stateLabels: Record<string, string> = {
-    scheduled: 'Scheduled',
-    propagation_pending: 'Going live',
-    blocked: 'Blocked',
-    effective: 'Live',
-    superseded: 'Replaced',
-    cancelled: 'Cancelled',
+    scheduled: "Scheduled",
+    propagation_pending: "Going live",
+    blocked: "Blocked",
+    effective: "Live",
+    superseded: "Replaced",
+    cancelled: "Cancelled",
 };
 const editSheetOpen = ref(false);
 const reviewSheetOpen = ref(false);
 const cancellingVersion = ref<{ id: number; version: number } | null>(null);
 function openEdit(code: string): void {
     selectedCode.value = code;
-    value.value = String(props.settings.values[code] ?? '');
+    value.value = String(props.settings.values[code] ?? "");
     save.clearErrors();
     editSheetOpen.value = true;
 }
-function formatValue(item: SettingValue): string {
-    if (item === null) return 'Not set';
-    if (typeof item === 'boolean') return item ? 'On' : 'Off';
+const timeSettings = ["cash_batch_cutoff"];
+const isTimeSetting = computed(() => timeSettings.includes(selectedCode.value));
+function formatValue(item: SettingValue, code?: string): string {
+    if (item === null && code && timeSettings.includes(code))
+        return "End of day (midnight)";
+    if (item === null) return "Not set";
+    if (typeof item === "boolean") return item ? "On" : "Off";
     return String(item);
 }
 function openCancel(id: number, version: number): void {
-    lifecycle.reason = '';
+    lifecycle.reason = "";
     lifecycle.confirmation = false;
     lifecycle.clearErrors();
     cancellingVersion.value = { id, version };
@@ -145,14 +149,14 @@ function confirmCancel(): void {
 }
 const hasPendingVersions = computed(() =>
     props.settings.history.some((item) =>
-        ['scheduled', 'propagation_pending', 'blocked'].includes(item.state),
+        ["scheduled", "propagation_pending", "blocked"].includes(item.state),
     ),
 );
 
 function stateLabel(state: string | null): string {
     return state === null
-        ? 'Imported'
-        : (stateLabels[state] ?? 'Unknown state');
+        ? "Imported"
+        : (stateLabels[state] ?? "Unknown state");
 }
 
 const groups = computed(() => [
@@ -161,29 +165,29 @@ const groups = computed(() => [
     ),
 ]);
 const save = useForm({
-    operation_id: '',
+    operation_id: "",
     base_version: props.settings.version,
     revision: 1,
     proposed_values: {} as Record<string, SettingValue>,
 });
-const preview = useForm({ revision: 1, effective_at: '' });
+const preview = useForm({ revision: 1, effective_at: "" });
 const publication = useForm({
-    operation_id: '',
+    operation_id: "",
     revision: 1,
-    preview_reference: '',
-    reason: '',
+    preview_reference: "",
+    reason: "",
     confirmation: false,
 });
 const lifecycle = useForm({
-    operation_id: '',
-    reason: '',
+    operation_id: "",
+    reason: "",
     confirmation: false,
     revision: 1,
 });
 watch(
     selectedCode,
     () => {
-        value.value = String(props.settings.values[selectedCode.value] ?? '');
+        value.value = String(props.settings.values[selectedCode.value] ?? "");
     },
     { immediate: true },
 );
@@ -197,14 +201,14 @@ watch(
 watch(
     () => props.scope,
     () => {
-        value.value = '';
+        value.value = "";
         publication.reset();
         save.reset();
     },
 );
 function begin(): string {
     unknown.value = false;
-    mutationNotice.value = '';
+    mutationNotice.value = "";
     const id = crypto.randomUUID();
     operationId.value = id;
     return id;
@@ -214,15 +218,15 @@ const outcomes = {
     onNetworkError: () => {
         unknown.value = true;
         mutationNotice.value =
-            'We could not confirm if your change was saved. Check the result before making another change.';
+            "We could not confirm if your change was saved. Check the result before making another change.";
     },
     onHttpException: () => {
         mutationNotice.value =
-            'The change was not accepted. Refresh the page and check the current settings.';
+            "The change was not accepted. Refresh the page and check the current settings.";
     },
     onSuccess: () => {
         unknown.value = false;
-        mutationNotice.value = 'Saved.';
+        mutationNotice.value = "Saved.";
         editSheetOpen.value = false;
         cancellingVersion.value = null;
         reviewSheetOpen.value = false;
@@ -231,9 +235,9 @@ const outcomes = {
 function saveDraft(): void {
     if (unknown.value) return;
     const raw = isBooleanSetting.value
-        ? value.value === 'true'
-        : typeof definition.value.default === 'number'
-          ? value.value.trim() === ''
+        ? value.value === "true"
+        : typeof definition.value.default === "number"
+          ? value.value.trim() === ""
               ? null
               : Number(value.value)
           : value.value || null;
@@ -251,7 +255,7 @@ function saveDraft(): void {
     const { proposed_values, ...saveData } = save.data();
     remember(
         draft.value ? drafts.update.url(draft.value.id) : drafts.store.url(),
-        draft.value ? 'patch' : 'post',
+        draft.value ? "patch" : "post",
         { ...saveData, patch: proposed_values },
     );
     if (draft.value) save.submit(drafts.update(draft.value.id), outcomes);
@@ -271,13 +275,13 @@ function publishDraft(): void {
     publication.operation_id = begin();
     publication.revision = draft.value.revision;
     publication.preview_reference = draft.value.preview.reference;
-    remember(drafts.publish.url(draft.value.id), 'post', publication.data());
+    remember(drafts.publish.url(draft.value.id), "post", publication.data());
     publication.submit(drafts.publish(draft.value.id), outcomes);
 }
 function discardDraft(): void {
     if (!draft.value || unknown.value) return;
     const payload = { operation_id: begin(), revision: draft.value.revision };
-    remember(drafts.discard.url(draft.value.id), 'post', payload);
+    remember(drafts.discard.url(draft.value.id), "post", payload);
     router.post(drafts.discard.url(draft.value.id), payload, {
         ...outcomes,
         onSuccess: () => {
@@ -289,7 +293,7 @@ function discardDraft(): void {
 function cancelVersion(id: number): void {
     if (unknown.value) return;
     lifecycle.operation_id = begin();
-    remember(versions.cancel.url(id), 'post', {
+    remember(versions.cancel.url(id), "post", {
         operation_id: lifecycle.operation_id,
         reason: lifecycle.reason,
         confirmation: lifecycle.confirmation,
@@ -301,7 +305,7 @@ function cancelVersion(id: number): void {
 function rollbackVersion(id: number): void {
     if (unknown.value) return;
     const payload = { operation_id: begin() };
-    remember(versions.rollback.url(id), 'post', payload);
+    remember(versions.rollback.url(id), "post", payload);
     router.post(versions.rollback.url(id), payload, outcomes);
 }
 function resolveOperation(): void {
@@ -309,7 +313,7 @@ function resolveOperation(): void {
     lookup.get(operations.show.url(operationId.value), {
         onSuccess: () => {
             unknown.value = false;
-            mutationNotice.value = 'Your last change was saved.';
+            mutationNotice.value = "Your last change was saved.";
             refresh();
         },
     });
@@ -451,8 +455,8 @@ function retryOriginal(): void {
                             <dd class="font-medium break-words">
                                 {{
                                     proposed === null
-                                        ? 'Remove value'
-                                        : formatValue(proposed)
+                                        ? "Remove value"
+                                        : formatValue(proposed, code)
                                 }}
                             </dd>
                         </div>
@@ -504,7 +508,12 @@ function retryOriginal(): void {
                                         v-else
                                         class="text-muted-foreground mt-0.5 text-sm break-words"
                                     >
-                                        {{ formatValue(settings.values[code]) }}
+                                        {{
+                                            formatValue(
+                                                settings.values[code],
+                                                code,
+                                            )
+                                        }}
                                     </dd>
                                 </div>
                                 <Button
@@ -584,7 +593,7 @@ function retryOriginal(): void {
                                             {{
                                                 item.effective_at
                                                     ? `Live since ${item.effective_at}`
-                                                    : 'Not live'
+                                                    : "Not live"
                                             }}
                                         </p>
                                     </td>
@@ -657,7 +666,7 @@ function retryOriginal(): void {
                                 <h3 class="text-sm font-medium">
                                     {{
                                         settings.definitions[code]?.label ??
-                                        code.replaceAll('_', ' ')
+                                        code.replaceAll("_", " ")
                                     }}
                                 </h3>
                                 <p
@@ -692,7 +701,7 @@ function retryOriginal(): void {
                     <div>
                         <dt class="inline">Your access:</dt>
                         <dd class="inline">
-                            {{ settings.can_manage ? 'Can edit' : 'View only' }}
+                            {{ settings.can_manage ? "Can edit" : "View only" }}
                         </dd>
                     </div>
                 </dl>
@@ -750,9 +759,31 @@ function retryOriginal(): void {
                             "
                         />
                         <span class="text-muted-foreground text-sm">{{
-                            value === 'true' ? 'On' : 'Off'
+                            value === "true" ? "On" : "Off"
                         }}</span>
                     </div>
+                    <template v-else-if="isTimeSetting">
+                        <Input
+                            id="setting-value"
+                            v-model="value"
+                            type="time"
+                            step="60"
+                            class="w-fit"
+                            :disabled="unknown"
+                            aria-describedby="time-setting-help"
+                        />
+                        <p
+                            id="time-setting-help"
+                            class="text-muted-foreground text-xs"
+                        >
+                            Each day's cash batch stops taking collections at
+                            this business time and becomes ready to remit and
+                            review. Cash recorded later that day goes into a
+                            separate late batch that closes at midnight. Leave
+                            empty to close at midnight. Batches already open
+                            keep their closing time.
+                        </p>
+                    </template>
                     <Input
                         v-else
                         id="setting-value"
@@ -772,7 +803,7 @@ function retryOriginal(): void {
                         {{
                             draft
                                 ? `This is added to draft ${draft.id}. Nothing changes until you publish.`
-                                : 'This starts a new draft. Nothing changes until you publish.'
+                                : "This starts a new draft. Nothing changes until you publish."
                         }}
                     </p>
                 </form>
@@ -862,10 +893,14 @@ function retryOriginal(): void {
                                             }}
                                         </th>
                                         <td class="p-2">
-                                            {{ formatValue(change.before) }}
+                                            {{
+                                                formatValue(change.before, code)
+                                            }}
                                         </td>
                                         <td class="p-2">
-                                            {{ formatValue(change.after) }}
+                                            {{
+                                                formatValue(change.after, code)
+                                            }}
                                         </td>
                                     </tr>
                                 </tbody>
@@ -884,7 +919,7 @@ function retryOriginal(): void {
                         </ul>
                         <p class="text-sm">
                             Starts:
-                            {{ draft.preview.effective_at ?? 'Right away' }}
+                            {{ draft.preview.effective_at ?? "Right away" }}
                         </p>
                         <form
                             id="publish-form"

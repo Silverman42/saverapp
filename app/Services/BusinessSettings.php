@@ -91,6 +91,16 @@ class BusinessSettings
         return $snapshot;
     }
 
+    /**
+     * The business-time (HH:MM) at which each day's cash batch closes, or null to close at the end of the day.
+     */
+    public function cashBatchCutoff(): ?string
+    {
+        $cutoff = $this->resolve(DB::transactionLevel() > 0)['values']['cash_batch_cutoff'] ?? null;
+
+        return is_string($cutoff) ? $cutoff : null;
+    }
+
     public function ensureFeature(string $code): void
     {
         $snapshot = $this->resolve(DB::transactionLevel() > 0);
