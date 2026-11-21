@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerStatus;
+use App\Enums\FeeLedgerPostingType;
 use App\Enums\FeeObligationEntryType;
 use App\Enums\LedgerAccountCode;
 use App\Enums\ThriftPlanStatus;
@@ -735,13 +736,35 @@ class ReportReadService
             'fee_refunds' => ['fee_refunds', 'refund_reference'],
             default => ['manual_charges', 'operation_reference'],
         };
-        $query = $this->customerQuery($customers)->join($table.' as records', 'records.customer_profile_id', '=', 'customers.id');
+        $query = $this->customerQuery($customers);
         if ($section === 'fee_applications') {
-            $query->join('ledger_posting_groups as groups', function (JoinClause $join): void {
-                $join->on('groups.source_id', '=', 'records.operation_reference')->where('groups.source_type', 'fee_savings_application');
-            });
+            $feeCredits = DB::table('ledger_entries as entries')->join('ledger_accounts as accounts', 'accounts.id', '=', 'entries.ledger_account_id')
+                ->where('accounts.code', LedgerAccountCode::FeeIncome->value)->where('entries.side', 'credit')
+                ->selectRaw('entries.ledger_posting_group_id, SUM(entries.amount_kobo) AS fee_credit')
+                ->groupBy('entries.ledger_posting_group_id');
+            $query->join('ledger_posting_groups as groups', 'groups.customer_profile_id', '=', 'customers.id')
+                ->where(function (Builder $sources): void {
+                    $sources->where('groups.source_type', 'fee_savings_application')
+                        ->orWhere(fn (Builder $collection) => $collection->where('groups.source_type', 'fee_application')
+                            ->where('groups.event_type', FeeLedgerPostingType::SavingsFeeApplication->value));
+                })
+                ->leftJoin('fee_savings_applications as applications', function (JoinClause $join): void {
+                    $join->on('applications.operation_reference', '=', 'groups.source_id')->where('groups.source_type', 'fee_savings_application');
+                })
+                ->leftJoin('collection_receipts as receipts', function (JoinClause $join): void {
+                    $join->on(DB::raw('CAST(receipts.id AS CHAR)'), '=', 'groups.source_id')->where('groups.source_type', 'fee_application');
+                })
+                ->leftJoinSub($feeCredits, 'fee_credits', 'fee_credits.ledger_posting_group_id', '=', 'groups.id')
+                ->where(fn (Builder $owner) => $owner->whereNotNull('applications.id')->orWhereNotNull('receipts.id'))
+                ->select('groups.id as _key')
+                ->selectRaw('COALESCE(applications.operation_reference, receipts.receipt_reference) AS reference')
+                ->selectRaw('COALESCE(applications.amount_kobo, fee_credits.fee_credit) AS fee_activity_amount')
+                ->selectRaw('COALESCE(applications.customer_profile_id, receipts.customer_profile_id) AS _record_customer');
         } else {
-            $query->join('ledger_posting_groups as groups', 'groups.id', '=', 'records.ledger_posting_group_id');
+            $query->join($table.' as records', 'records.customer_profile_id', '=', 'customers.id')
+                ->join('ledger_posting_groups as groups', 'groups.id', '=', 'records.ledger_posting_group_id')
+                ->select('records.'.$reference.' as reference', 'groups.id as _key', 'records.amount_kobo as fee_activity_amount',
+                    'records.customer_profile_id as _record_customer');
         }
         if ($section === 'other_deductions') {
             $query->where('groups.event_type', 'other_deduction');
@@ -750,9 +773,8 @@ class ReportReadService
             $join->on('reversals.posted_original_posting_group_id', '=', 'groups.id')->whereNotNull('reversals.compensation_posting_group_id');
         })->where('groups.id', '<=', $state['watermark'])->where('groups.committed_at', '<=', $cutoff)
             ->whereBetween(DB::raw('DATE(groups.occurred_on)'), [$filters['from'], $filters['to']])
-            ->select('records.'.$reference.' as reference', 'groups.id as _key', 'customers.customer_id as customer', 'customer_users.name as name',
-                'records.amount_kobo as fee_activity_amount', 'groups.currency as _currency', 'groups.customer_profile_id as _posting_customer',
-                'records.customer_profile_id as _record_customer', 'reversals.reversal_id as compensation')
+            ->addSelect('customers.customer_id as customer', 'customer_users.name as name', 'groups.currency as _currency',
+                'groups.customer_profile_id as _posting_customer', 'reversals.reversal_id as compensation')
             ->selectRaw('DATE(groups.occurred_on) AS occurred_on')
             ->orderBy('groups.occurred_on')->orderBy('groups.id');
         $columns = ['reference' => 'Reference', 'customer' => 'Customer ID', 'name' => 'Customer', 'occurred_on' => 'Occurred on'];
@@ -1260,7 +1282,7 @@ class ReportReadService
             'fee_exceptions' => ['fee_obligations', 'fee_obligation_entries', 'fee_snapshots'],
             'refund_payables' => ['ledger_entries', 'ledger_posting_groups', 'ledger_accounts'],
             'posted_payouts' => ['ledger_entries', 'ledger_posting_groups', 'reversal_requests', 'cash_recoveries', 'bank_payout_returns'],
-            'fee_applications' => ['ledger_posting_groups', 'reversal_requests'],
+            'fee_applications' => ['ledger_posting_groups', 'reversal_requests', 'collection_receipts'],
             'fee_refunds' => ['fee_refunds', 'ledger_posting_groups', 'reversal_requests'],
             'other_deductions' => ['manual_charges', 'ledger_posting_groups', 'reversal_requests'],
             'batch_reconciliation' => ['collection_batches', 'collection_receipts', 'collection_fee_components',
@@ -1390,7 +1412,7 @@ class ReportReadService
                     || $row['_posting_customer'] !== $row['_receipt_customer']
                     || $row['_posting_type'] !== 'external_fee_receipt' || $row['_posting_source_type'] !== 'collection_receipt'
                     || $row['_posting_source_id'] !== $row['_receipt_id'].'-'.$row['_obligation_id']
-                    || ! in_array($row['_projection_status'], ['posted', 'reversed'], true) || $this->integer($row['_projection_fees']) !== $this->integer($row['_receipt_fees'])
+                    || ! in_array($row['_projection_status'], ['posted', 'reversed'], true) || $this->integer($row['_projection_fees']) < $this->integer($row['_receipt_fees'])
                     || $this->integer($row['_projection_tender']) !== $this->integer($row['_receipt_tender'])
                     || $this->add($this->integer($row['_receipt_savings']), $this->integer($row['_receipt_fees'])) !== $this->integer($row['_receipt_tender'])
                     || $this->integer($row['_settlement_amount']) !== $amount || $this->integer($row['_line_count']) !== 2
