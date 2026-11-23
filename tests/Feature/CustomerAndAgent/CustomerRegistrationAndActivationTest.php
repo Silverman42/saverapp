@@ -450,7 +450,7 @@ test('Client-supplied server-managed fields are rejected', function (): void {
     }
 });
 
-test('Phone and email uniqueness are enforced', function (): void {
+test('Email uniqueness is enforced while customers may share a phone number', function (): void {
     $rule = publishFeeRule();
     $agent = createEligibleAgent();
 
@@ -470,16 +470,18 @@ test('Phone and email uniqueness are enforced', function (): void {
         ])
         ->assertSessionHasErrors(['email']);
 
-    // Duplicate phone
+    // Shared phone, entered in a different format
     $this->actingAs($agent)
         ->post(route('customers.store'), [
             'attempt_reference' => (string) Str::uuid(),
             'fee_rule_version' => $rule->version,
-            'name' => 'Duplicate Phone',
+            'name' => 'Shared Phone',
             'email' => 'unique@saverapp.test',
-            'phone' => '+2348012345678',
+            'phone' => '08012345678',
         ])
-        ->assertSessionHasErrors(['phone']);
+        ->assertSessionHasNoErrors();
+
+    expect(CustomerProfile::query()->where('phone_normalized', '+2348012345678')->count())->toBe(2);
 });
 
 /*

@@ -124,14 +124,13 @@ test('CAM-AC-003: normalized phone and internal reference collide across format 
     expect($profile1->phone_normalized)->toBe('+2348055556666')
         ->and($profile1->internal_reference_normalized)->toBe('acc-999');
 
-    // Same normalized phone on another Customer fails even though first is Archived
+    // Same normalized phone on another Customer is allowed
     $customerUser2 = User::factory()->customer()->create();
-    expect(function () use ($customerUser2): void {
-        CustomerProfile::factory()->create([
-            'user_id' => $customerUser2->id,
-            'phone' => '+2348055556666',
-        ]);
-    })->toThrow(QueryException::class);
+    $profile2 = CustomerProfile::factory()->create([
+        'user_id' => $customerUser2->id,
+        'phone' => '+2348055556666',
+    ]);
+    expect($profile2->phone_normalized)->toBe('+2348055556666');
 
     // Same normalized internal reference on another Customer fails even though casing differs
     $customerUser3 = User::factory()->customer()->create();

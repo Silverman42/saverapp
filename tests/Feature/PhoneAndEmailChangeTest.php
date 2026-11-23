@@ -150,10 +150,10 @@ test('customer phone self-service requires fresh authentication and records a no
             'version' => 2,
             'phone' => '+2348055556666',
         ])
-        ->assertSessionHasErrors('phone');
+        ->assertSessionHasNoErrors();
 
-    expect($profile->refresh()->version)->toBe(2)
-        ->and($profile->phone_normalized)->toBe('+2348033334444');
+    expect($profile->refresh()->version)->toBe(3)
+        ->and($profile->phone_normalized)->toBe('+2348055556666');
 });
 
 test('customer cannot use the pre-activation phone correction route to bypass self-service authentication', function (): void {
@@ -211,6 +211,7 @@ test('staff can correct a customer phone before activation only with a reason', 
         'status' => CustomerAssignmentStatus::Current,
         'is_current' => true,
     ]);
+    CustomerProfile::factory()->create(['phone' => '+2348033334444']);
 
     $this->actingAs($agent)
         ->post(route('customers.phone-corrections.store', $customerProfile->customer_id), [

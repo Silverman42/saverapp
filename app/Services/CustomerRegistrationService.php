@@ -232,12 +232,6 @@ class CustomerRegistrationService
                 ]);
             }
 
-            if (CustomerProfile::query()->where('phone_normalized', $phoneNormalized)->lockForUpdate()->exists()) {
-                throw ValidationException::withMessages([
-                    'phone' => ['The phone number is already in use by a customer.'],
-                ]);
-            }
-
             if ($internalReferenceNormalized !== null && CustomerProfile::query()->where('internal_reference_normalized', $internalReferenceNormalized)->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages([
                     'internal_reference' => ['The internal reference number is already in use.'],

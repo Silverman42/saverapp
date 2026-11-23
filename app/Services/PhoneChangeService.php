@@ -56,9 +56,6 @@ class PhoneChangeService
             if ($lockedProfile->phone_normalized === $normalizedPhone) {
                 return;
             }
-            if (CustomerProfile::query()->where('phone_normalized', $normalizedPhone)->where('id', '!=', $lockedProfile->id)->lockForUpdate()->exists()) {
-                throw ValidationException::withMessages(['phone' => ['The phone number is already in use by a Customer.']]);
-            }
 
             $before = ['phone' => $lockedProfile->phone];
             $lockedProfile->phone = trim($phone);
