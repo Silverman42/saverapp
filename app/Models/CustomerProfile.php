@@ -21,6 +21,7 @@ use RuntimeException;
 /**
  * @property int $id
  * @property int $user_id
+ * @property int|null $master_customer_profile_id
  * @property string $customer_id
  * @property string $phone
  * @property string $phone_normalized
@@ -42,6 +43,7 @@ use RuntimeException;
  */
 #[Fillable([
     'user_id',
+    'master_customer_profile_id',
     'customer_id',
     'phone',
     'phone_normalized',
@@ -177,6 +179,34 @@ class CustomerProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Get the master profile this slave profile belongs to.
+     *
+     * @return BelongsTo<CustomerProfile, $this>
+     */
+    public function master(): BelongsTo
+    {
+        return $this->belongsTo(CustomerProfile::class, 'master_customer_profile_id');
+    }
+
+    /**
+     * Get the slave profiles attached to this master profile.
+     *
+     * @return HasMany<CustomerProfile, $this>
+     */
+    public function slaves(): HasMany
+    {
+        return $this->hasMany(CustomerProfile::class, 'master_customer_profile_id');
+    }
+
+    /**
+     * Whether this profile is a master profile (it has no parent profile).
+     */
+    public function isMaster(): bool
+    {
+        return $this->master_customer_profile_id === null;
     }
 
     /**

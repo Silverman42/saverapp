@@ -30,6 +30,7 @@ class ProfileManagementService
     public function __construct(
         protected CustomerActionAuthorizationGuard $customerActionAuthorizationGuard,
         protected ProfilePhotoService $profilePhotoService,
+        protected CustomerMasterProfileService $masterProfileService,
     ) {}
 
     /**
@@ -46,12 +47,17 @@ class ProfileManagementService
     private function updateCustomerAllowed(User $actor, CustomerProfile $profile, array $input, ?UploadedFile $photo = null): CustomerProfile
     {
         $isCustomer = $actor->user_type === UserType::Customer && $actor->id === $profile->user_id;
+        $isAgent = $actor->user_type === UserType::Agent;
         $allowed = $isCustomer
             ? ['address', 'gender', 'occupation', 'next_of_kin', 'photo', 'remove_photo', 'version']
             : ['address', 'gender', 'occupation', 'next_of_kin', 'notes', 'internal_reference', 'photo', 'remove_photo', 'version', 'reason'];
 
+        if ($isAgent) {
+            $allowed[] = 'master_customer_id';
+        }
+
         $this->rejectUnexpectedFields($input, $allowed);
-        $validated = $this->validateCustomerInput($input, $isCustomer);
+        $validated = $this->validateCustomerInput($input, $isCustomer, $isAgent);
         $newPhotoPath = $photo ? $this->profilePhotoService->storePhoto($photo) : null;
         $oldPhotoPath = null;
 
@@ -82,6 +88,23 @@ class ProfileManagementService
                         $before[$field] = $currentValue;
                         $after[$field] = $comparisonValue;
                         $lockedProfile->{$field} = $value;
+                    }
+                }
+
+                if (array_key_exists('master_customer_id', $validated)) {
+                    Gate::forUser($context->actor)->authorize('changeMaster', $lockedProfile);
+
+                    $currentMaster = $lockedProfile->master()->value('customer_id');
+                    $requestedMaster = filled($validated['master_customer_id']) ? trim((string) $validated['master_customer_id']) : null;
+
+                    if ($currentMaster !== $requestedMaster) {
+                        $master = $requestedMaster !== null
+                            ? $this->masterProfileService->resolveMaster($context->actor, $requestedMaster, $lockedProfile)
+                            : null;
+
+                        $before['master_customer_id'] = $currentMaster;
+                        $after['master_customer_id'] = $master?->customer_id;
+                        $lockedProfile->master_customer_profile_id = $master?->id;
                     }
                 }
 
@@ -314,7 +337,7 @@ class ProfileManagementService
     /** @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    protected function validateCustomerInput(array $input, bool $isCustomer): array
+    protected function validateCustomerInput(array $input, bool $isCustomer, bool $isAgent = false): array
     {
         $rules = [
             'version' => ['required', 'integer', 'min:1'],
@@ -334,6 +357,10 @@ class ProfileManagementService
             $rules['notes'] = ['sometimes', 'nullable', 'string', 'max:2000'];
             $rules['internal_reference'] = ['sometimes', 'nullable', 'string', 'max:50', 'regex:/^[A-Za-z0-9_\-\/]*$/'];
             $rules['reason'] = ['nullable', 'string', 'min:3', 'max:500'];
+        }
+
+        if ($isAgent) {
+            $rules['master_customer_id'] = ['sometimes', 'nullable', 'string', 'max:32'];
         }
 
         $validated = validator($input, $rules)->validate();

@@ -6,6 +6,7 @@ use App\Enums\AccountState;
 use App\Enums\AdminPermission;
 use App\Enums\CustomerStatus;
 use App\Enums\UserType;
+use App\Models\CustomerProfile;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Services\AgentEligibilityService;
@@ -59,7 +60,18 @@ class CustomerProfileController extends Controller
         // 1. Resolve through ResourceScopeService
         $customerProfile = $resourceScopeService->forCustomers($viewer)
             ->where('customer_id', $customer)
-            ->with(['user', 'currentAssignment.agentProfile.user', 'feeSnapshot', 'feeObligations.feeSnapshot', 'feeObligations.entries'])
+            ->with([
+                'user',
+                'currentAssignment.agentProfile.user',
+                'feeSnapshot',
+                'feeObligations.feeSnapshot',
+                'feeObligations.entries',
+                'master.user',
+                'master.currentAssignment',
+                'slaves' => fn ($query) => $query->orderBy('id'),
+                'slaves.user',
+                'slaves.currentAssignment',
+            ])
             ->first();
 
         // Missing or unauthorized IDs return identical generic unavailable response
@@ -154,6 +166,7 @@ class CustomerProfileController extends Controller
                 'effective_at' => $latestStatusHistory->created_at->timezone('Africa/Lagos')->format('Y-m-d H:i'),
             ],
             'assigned_agent' => $assignedAgentData,
+            'linked_accounts' => $this->linkedAccounts($viewer, $customerProfile),
             'relationship_history' => [
                 'registered_at' => $customerProfile->created_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
                 'assignment_started_at' => $currentAssignment?->effective_at?->timezone('Africa/Lagos')->format('Y-m-d H:i'),
@@ -291,5 +304,32 @@ class CustomerProfileController extends Controller
                 ? app(RegistrationFeeService::class)->previewFee()
                 : null,
         ]);
+    }
+
+    /**
+     * Master/slave grouping for staff viewers; Customers do not see other Customers' details.
+     *
+     * @return array{is_master: bool, can_change: bool, master: array{id: string, name: string, phone: string, can_view: bool}|null, slaves: list<array{id: string, name: string, phone: string, operational_status: string, can_view: bool}>}|null
+     */
+    private function linkedAccounts(User $viewer, CustomerProfile $customerProfile): ?array
+    {
+        if ($viewer->user_type === UserType::Customer) {
+            return null;
+        }
+
+        $summarize = fn (CustomerProfile $profile): array => [
+            'id' => $profile->customer_id,
+            'name' => $profile->user->name,
+            'phone' => $profile->phone,
+            'operational_status' => $profile->operational_status->value,
+            'can_view' => Gate::forUser($viewer)->allows('view', $profile),
+        ];
+
+        return [
+            'is_master' => $customerProfile->isMaster(),
+            'can_change' => Gate::forUser($viewer)->allows('changeMaster', $customerProfile),
+            'master' => $customerProfile->master === null ? null : $summarize($customerProfile->master),
+            'slaves' => $customerProfile->slaves->map($summarize)->values()->all(),
+        ];
     }
 }

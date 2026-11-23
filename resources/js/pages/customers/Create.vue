@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Camera, Coins, Loader2, ShieldAlert, UserCheck } from '@lucide/vue';
+import MasterCustomerSelect from '@/components/MasterCustomerSelect.vue';
 import MoreDetails from '@/components/MoreDetails.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -90,6 +91,7 @@ const form = useForm({
     occupation: '',
     internal_reference: '',
     notes: '',
+    master_customer_id: null as string | null,
     photo: null as File | null,
     next_of_kin: {
         full_name: '',
@@ -385,6 +387,31 @@ const submit = (): void => {
                                     {{ form.errors.address }}
                                 </p>
                             </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label for="customer-master-account">
+                                Master account
+                                <span class="text-muted-foreground font-normal"
+                                    >(optional)</span
+                                >
+                            </Label>
+                            <MasterCustomerSelect
+                                id="customer-master-account"
+                                v-model="form.master_customer_id"
+                                :invalid="Boolean(form.errors.master_customer_id)"
+                            />
+                            <p
+                                v-if="form.errors.master_customer_id"
+                                class="text-destructive text-xs"
+                            >
+                                {{ form.errors.master_customer_id }}
+                            </p>
+                            <p v-else class="text-muted-foreground text-xs">
+                                Link this customer to one of your existing
+                                customers. Leave empty to make it a master
+                                account.
+                            </p>
                         </div>
 
                         <MoreDetails

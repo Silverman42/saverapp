@@ -19,7 +19,7 @@ class ProfileManagementController extends Controller
     {
         /** @var User $actor */
         $actor = $request->user();
-        $profile = $scope->forCustomers($actor)->where('customer_id', $customer)->with('user')->first();
+        $profile = $scope->forCustomers($actor)->where('customer_id', $customer)->with(['user', 'master.user'])->withCount('slaves')->first();
         if (! $profile) {
             abort(404, 'Record unavailable.');
         }
@@ -45,6 +45,17 @@ class ProfileManagementController extends Controller
         if ($actor->user_type->value !== 'customer') {
             $customerData['notes'] = $profile->notes;
             $customerData['internal_reference'] = $profile->internal_reference;
+        }
+        if (Gate::forUser($actor)->allows('changeMaster', $profile)) {
+            $customerData['master_account'] = [
+                'can_change' => $profile->slaves_count === 0,
+                'has_slaves' => $profile->slaves_count > 0,
+                'current' => $profile->master === null ? null : [
+                    'id' => $profile->master->customer_id,
+                    'name' => $profile->master->user->name,
+                    'phone' => $profile->master->phone,
+                ],
+            ];
         }
 
         return Inertia::render('customers/Edit', [

@@ -115,6 +115,16 @@ class CustomerProfilePolicy
             && $customerProfile->currentAssignment->agent_profile_id === $user->agentProfile->id;
     }
 
+    /**
+     * Only the eligible current Agent may attach, change or clear the Customer's master profile.
+     * Archived customer records remain read-only.
+     */
+    public function changeMaster(User $user, CustomerProfile $customerProfile): bool
+    {
+        return $customerProfile->operational_status !== CustomerStatus::Archived
+            && $this->managePlan($user, $customerProfile);
+    }
+
     /** Only the eligible current Agent may attest to money actually received. */
     public function recordCollection(User $user, CustomerProfile $customerProfile): bool
     {

@@ -12,6 +12,8 @@ import { store as proposeCustomerName } from '@/routes/customers/name-correction
 import { self as changeOwnCustomerPhone } from '@/routes/customers/phone';
 import { store as correctCustomerPhone } from '@/routes/customers/phone-corrections';
 import FormSheet from '@/components/FormSheet.vue';
+import MasterCustomerSelect from '@/components/MasterCustomerSelect.vue';
+import type { MasterCustomerOption } from '@/components/MasterCustomerSelect.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,6 +54,11 @@ type CustomerProfile = {
     version: number;
     account_state: string | null;
     can_change_phone: boolean;
+    master_account?: {
+        can_change: boolean;
+        has_slaves: boolean;
+        current: MasterCustomerOption | null;
+    };
 };
 
 const props = defineProps<{ customer: CustomerProfile; viewer_type: string }>();
@@ -71,6 +78,12 @@ const form = useForm({
               notes: props.customer.notes ?? '',
               internal_reference: props.customer.internal_reference ?? '',
               reason: '',
+          }
+        : {}),
+    ...(props.customer.master_account?.can_change
+        ? {
+              master_customer_id: (props.customer.master_account.current?.id ??
+                  null) as string | null,
           }
         : {}),
     photo: null as File | null,
@@ -351,6 +364,40 @@ defineOptions({
                         class="text-destructive text-sm sm:col-span-2"
                     >
                         {{ form.errors.next_of_kin }}
+                    </p>
+                </CardContent>
+            </Card>
+
+            <Card v-if="customer.master_account">
+                <CardHeader>
+                    <CardTitle class="text-base">Master account</CardTitle>
+                    <CardDescription>
+                        Link this customer under one of your master accounts.
+                        Clear it to make this a master account.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent class="grid gap-2">
+                    <Label for="master-account">Master account</Label>
+                    <MasterCustomerSelect
+                        id="master-account"
+                        v-model="form.master_customer_id"
+                        :initial="customer.master_account.current"
+                        :exclude="customer.id"
+                        :disabled="!customer.master_account.can_change"
+                        :invalid="Boolean(form.errors.master_customer_id)"
+                    />
+                    <p
+                        v-if="form.errors.master_customer_id"
+                        class="text-destructive text-sm"
+                    >
+                        {{ form.errors.master_customer_id }}
+                    </p>
+                    <p
+                        v-else-if="customer.master_account.has_slaves"
+                        class="text-muted-foreground text-sm"
+                    >
+                        This customer has slave accounts, so it stays a master
+                        account.
                     </p>
                 </CardContent>
             </Card>

@@ -102,6 +102,7 @@ class CustomerRegistrationController extends Controller
             'occupation' => ['nullable', 'string', 'max:100'],
             'internal_reference' => ['nullable', 'string', 'max:50'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'master_customer_id' => ['nullable', 'string', 'max:32'],
             'photo' => ['nullable', 'file', 'image', 'mimes:jpeg,png,webp', 'max:2048'],
             'next_of_kin' => ['nullable', 'array'],
             'next_of_kin.full_name' => ['nullable', 'string', 'max:150'],

@@ -40,6 +40,7 @@ class CustomerRegistrationService
         protected InvitationSenderReadinessService $senderReadinessService,
         protected ProfilePhotoService $profilePhotoService,
         protected RegistrationFeePaymentService $registrationFeePaymentService,
+        protected CustomerMasterProfileService $masterProfileService,
     ) {}
 
     /**
@@ -69,6 +70,7 @@ class CustomerRegistrationService
             'occupation' => filled($data['occupation'] ?? null) ? trim((string) $data['occupation']) : null,
             'internal_reference' => InternalReferenceNormalizer::normalize($data['internal_reference'] ?? null),
             'notes' => filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null,
+            'master_customer_id' => filled($data['master_customer_id'] ?? null) ? trim((string) $data['master_customer_id']) : null,
             'fee_rule_version' => (int) ($data['fee_rule_version'] ?? 0),
             'registration_fee_payment' => (string) ($data['registration_fee_payment'] ?? RegistrationFeePaymentService::PENDING),
             'registration_fee_amount_paid' => filled($data['registration_fee_amount_paid'] ?? null) ? trim((string) $data['registration_fee_amount_paid']) : null,
@@ -238,6 +240,11 @@ class CustomerRegistrationService
                 ]);
             }
 
+            // Resolve the optional master profile within the Agent's own Customers
+            $masterProfile = filled($data['master_customer_id'] ?? null)
+                ? $this->masterProfileService->resolveMaster($freshAgent, trim((string) $data['master_customer_id']))
+                : null;
+
             // Parse optional Next of Kin
             $nextOfKin = null;
             if (isset($data['next_of_kin']) && is_array($data['next_of_kin'])) {
@@ -300,6 +307,7 @@ class CustomerRegistrationService
             // Create Active Customer profile
             $customerProfile = new CustomerProfile([
                 'user_id' => $user->id,
+                'master_customer_profile_id' => $masterProfile?->id,
                 'customer_id' => $customerId,
                 'phone' => $phone,
                 'phone_normalized' => $phoneNormalized,
@@ -421,6 +429,7 @@ class CustomerRegistrationService
                     'name' => $user->name,
                     'email_normalized' => $user->email_normalized,
                     'offline_only' => $offlineOnly,
+                    'master_customer_id' => $masterProfile?->customer_id,
                     'phone_normalized' => $customerProfile->phone_normalized,
                     'operational_status' => $customerProfile->operational_status->value,
                     'account_state' => $user->account_state->value,

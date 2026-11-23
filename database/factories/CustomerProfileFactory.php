@@ -80,4 +80,11 @@ class CustomerProfileFactory extends Factory
             'internal_reference' => $ref ?? 'REF-'.fake()->unique()->numerify('#####'),
         ]);
     }
+
+    public function slaveOf(CustomerProfile $master): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'master_customer_profile_id' => $master->id,
+        ]);
+    }
 }

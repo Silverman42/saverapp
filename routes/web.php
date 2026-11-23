@@ -46,6 +46,7 @@ use App\Http\Controllers\CollectionSettlementController;
 use App\Http\Controllers\CustomerDirectoryController;
 use App\Http\Controllers\CustomerInvitationController;
 use App\Http\Controllers\CustomerLifecycleController;
+use App\Http\Controllers\CustomerMasterCandidateController;
 use App\Http\Controllers\CustomerPhotoController;
 use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\CustomerReassignmentController;
@@ -137,6 +138,7 @@ Route::middleware(['auth'])->group(function () {
     // Customer Registration and Attempts (CAM-T06)
     Route::get('customers/create', [CustomerRegistrationController::class, 'create'])->name('customers.create');
     Route::get('customers/fee-preview', [CustomerRegistrationController::class, 'feePreview'])->name('customers.fee-preview');
+    Route::get('customers/master-candidates', CustomerMasterCandidateController::class)->middleware('throttle:60,1')->name('customers.master-candidates');
     Route::post('customers', [CustomerRegistrationController::class, 'store'])->name('customers.store');
     Route::get('customers/attempts/{reference}', [CustomerRegistrationController::class, 'showAttempt'])->name('customers.attempts.show');
 

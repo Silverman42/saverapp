@@ -60,6 +60,7 @@ import { preview as statementPreview } from "@/routes/customers/statements";
 import {
     edit as editCustomer,
     index as customersIndex,
+    show as customerShow,
 } from "@/routes/customers";
 import { edit as reassignCustomer } from "@/routes/customers/reassignment";
 import { show as recoverCustomer } from "@/routes/customers/recovery";
@@ -72,6 +73,21 @@ export type NextOfKin = {
     relationship: string | null;
     phone: string | null;
     address: string | null;
+};
+
+export type LinkedAccount = {
+    id: string;
+    name: string;
+    phone: string;
+    operational_status: string;
+    can_view: boolean;
+};
+
+export type LinkedAccounts = {
+    is_master: boolean;
+    can_change: boolean;
+    master: LinkedAccount | null;
+    slaves: LinkedAccount[];
 };
 
 export type AssignedAgent = {
@@ -109,6 +125,7 @@ export type CustomerDetail = {
         effective_at: string | null;
     } | null;
     assigned_agent: AssignedAgent | null;
+    linked_accounts: LinkedAccounts | null;
     fee_snapshot?: FeeSnapshot | null;
     invitation?: CustomerInvitation | null;
     pending_name_correction?: {
@@ -833,6 +850,112 @@ const getAccountBadgeVariant = (
                                 </p>
                             </dl>
                         </MoreDetails>
+                    </CardContent>
+                </Card>
+
+                <Card v-if="customer.linked_accounts">
+                    <CardHeader>
+                        <div class="flex items-center justify-between gap-3">
+                            <CardTitle class="text-base"
+                                >Linked accounts</CardTitle
+                            >
+                            <Badge variant="secondary">
+                                {{
+                                    customer.linked_accounts.is_master
+                                        ? "Master"
+                                        : "Slave"
+                                }}
+                            </Badge>
+                        </div>
+                        <CardDescription>
+                            {{
+                                customer.linked_accounts.is_master
+                                    ? "Slave accounts that belong to this customer."
+                                    : "This customer belongs to a master account."
+                            }}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-3">
+                        <template v-if="customer.linked_accounts.master">
+                            <component
+                                :is="
+                                    customer.linked_accounts.master.can_view
+                                        ? Link
+                                        : 'div'
+                                "
+                                :href="
+                                    customer.linked_accounts.master.can_view
+                                        ? customerShow(
+                                              customer.linked_accounts.master
+                                                  .id,
+                                          )
+                                        : undefined
+                                "
+                                class="hover:bg-muted/50 block rounded-lg border p-3 text-sm"
+                            >
+                                <p class="font-medium">
+                                    {{ customer.linked_accounts.master.name }}
+                                </p>
+                                <p class="text-muted-foreground text-xs">
+                                    {{ customer.linked_accounts.master.id }} ·
+                                    {{ customer.linked_accounts.master.phone }}
+                                </p>
+                            </component>
+                        </template>
+                        <template v-else>
+                            <ul
+                                v-if="customer.linked_accounts.slaves.length"
+                                class="divide-y rounded-lg border"
+                            >
+                                <li
+                                    v-for="slave in customer.linked_accounts
+                                        .slaves"
+                                    :key="slave.id"
+                                >
+                                    <component
+                                        :is="slave.can_view ? Link : 'div'"
+                                        :href="
+                                            slave.can_view
+                                                ? customerShow(slave.id)
+                                                : undefined
+                                        "
+                                        class="hover:bg-muted/50 flex items-center justify-between gap-3 p-3 text-sm"
+                                    >
+                                        <div class="min-w-0">
+                                            <p class="truncate font-medium">
+                                                {{ slave.name }}
+                                            </p>
+                                            <p
+                                                class="text-muted-foreground truncate text-xs"
+                                            >
+                                                {{ slave.id }} ·
+                                                {{ slave.phone }}
+                                            </p>
+                                        </div>
+                                        <Badge
+                                            variant="outline"
+                                            class="capitalize"
+                                            >{{
+                                                slave.operational_status
+                                            }}</Badge
+                                        >
+                                    </component>
+                                </li>
+                            </ul>
+                            <p v-else class="text-muted-foreground text-sm">
+                                No slave accounts yet.
+                            </p>
+                        </template>
+                        <Button
+                            v-if="customer.linked_accounts.can_change"
+                            as-child
+                            variant="outline"
+                            size="sm"
+                        >
+                            <Link :href="editCustomer(customer.id)"
+                                >Change master account</Link
+                            >
+                        </Button>
                     </CardContent>
                 </Card>
 
