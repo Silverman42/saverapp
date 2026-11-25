@@ -863,14 +863,14 @@ const getAccountBadgeVariant = (
                                 {{
                                     customer.linked_accounts.is_master
                                         ? "Master"
-                                        : "Slave"
+                                        : "Sub-account"
                                 }}
                             </Badge>
                         </div>
                         <CardDescription>
                             {{
                                 customer.linked_accounts.is_master
-                                    ? "Slave accounts that belong to this customer."
+                                    ? "Sub-accounts that belong to this customer."
                                     : "This customer belongs to a master account."
                             }}
                         </CardDescription>
@@ -943,7 +943,7 @@ const getAccountBadgeVariant = (
                                 </li>
                             </ul>
                             <p v-else class="text-muted-foreground text-sm">
-                                No slave accounts yet.
+                                No sub-accounts yet.
                             </p>
                         </template>
                         <Button

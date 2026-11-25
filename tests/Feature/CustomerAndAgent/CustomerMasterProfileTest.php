@@ -230,7 +230,7 @@ test('only the assigned agent can change a customer\'s master account', function
     expect($customer->refresh()->isMaster())->toBeTrue();
 });
 
-test('the customer profile page shows the master account and its slave accounts', function (): void {
+test('the customer profile page shows the master account and its sub-accounts', function (): void {
     $agent = masterProfileAgent();
     $master = masterProfileCustomerFor($agent);
     $slave = masterProfileCustomerFor($agent, ['master_customer_profile_id' => $master->id]);
