@@ -396,7 +396,7 @@ defineOptions({
                         v-else-if="customer.master_account.has_slaves"
                         class="text-muted-foreground text-sm"
                     >
-                        This customer has slave accounts, so it stays a master
+                        This customer has sub-accounts, so it stays a master
                         account.
                     </p>
                 </CardContent>

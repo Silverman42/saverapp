@@ -61,7 +61,7 @@ class CustomerMasterProfileService
         }
 
         if ($slave !== null && $slave->slaves()->exists()) {
-            throw $this->invalid('This customer has slave accounts, so it must remain a master account.');
+            throw $this->invalid('This customer has sub-accounts, so it must remain a master account.');
         }
 
         /** @var CustomerProfile|null $master */
@@ -79,7 +79,7 @@ class CustomerMasterProfileService
         }
 
         if (! $master->isMaster()) {
-            throw $this->invalid('The selected customer is already a slave account and cannot be a master account.');
+            throw $this->invalid('The selected customer is already a sub-account and cannot be a master account.');
         }
 
         return $master;
